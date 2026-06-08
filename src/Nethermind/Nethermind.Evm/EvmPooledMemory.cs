@@ -246,32 +246,32 @@ public struct EvmPooledMemory
         }
     }
 
-    public long CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
+    public ulong CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
     {
         if (length == 0)
         {
             outOfGas = false;
-            return 0L;
+            return 0;
         }
 
         CheckMemoryAccessViolation(in location, length, out ulong newSize, out outOfGas);
         if (outOfGas) return 0;
 
-        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
-    public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
+    public ulong CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
     {
         if (length.IsZero)
         {
             outOfGas = false;
-            return 0L;
+            return 0;
         }
 
         CheckMemoryAccessViolation(in location, in length, out ulong newSize, out outOfGas);
         if (outOfGas) return 0;
 
-        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -339,7 +339,7 @@ public struct EvmPooledMemory
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private long ComputeMemoryExpansionCost(ulong newSize)
+    private ulong ComputeMemoryExpansionCost(ulong newSize)
     {
         // CheckMemoryAccessViolation has already capped newSize at MaxMemorySize (< 2^31), so the
         // ceiling division cannot overflow uint and the squared terms stay below 2^52. Size is
@@ -352,9 +352,9 @@ public struct EvmPooledMemory
 
         // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
         // in long -- so the outOfGas propagation that older revisions carried is unreachable.
-        long cost = (newActiveWords - activeWords) * GasCostOf.Memory +
-            ((newActiveWords * newActiveWords) >> 9) -
-            ((activeWords * activeWords) >> 9);
+        ulong cost = (ulong)(newActiveWords - activeWords) * GasCostOf.Memory +
+            (ulong)((newActiveWords * newActiveWords) >> 9) -
+            (ulong)((activeWords * activeWords) >> 9);
 
         UpdateSize(newSize, rentIfNeeded: false);
 

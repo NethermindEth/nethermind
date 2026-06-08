@@ -74,7 +74,7 @@ internal class XdcTransactionProcessorTests
         _spec.IsTipTrc21FeeEnabled.Returns(tipTrc21FeeEnabled);
         _spec.IsEip1559Enabled.Returns(isEip1559Enabled);
 
-        long spentGas = 21000;
+        ulong spentGas = 21000;
         UInt256 premiumPerGas = 9;
         UInt256 blobBaseFee = 0;
         Address beneficiaryAddress = TestItem.AddressB;
@@ -117,13 +117,13 @@ internal class XdcTransactionProcessorTests
         if (tipTrc21FeeEnabled)
         {
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(_spec.IsEip1559Enabled, header.BaseFeePerGas);
-            UInt256 expectedFees = effectiveGasPrice * (ulong)spentGas;
+            UInt256 expectedFees = effectiveGasPrice * spentGas;
             Assert.That(ownerReceivedFees, Is.EqualTo(expectedFees));
             Assert.That(beneficiaryReceivedFees, Is.EqualTo(UInt256.Zero));
         }
         else
         {
-            UInt256 expectedFees = premiumPerGas * (ulong)spentGas;
+            UInt256 expectedFees = premiumPerGas * spentGas;
             Assert.That(beneficiaryReceivedFees, Is.EqualTo(expectedFees));
             Assert.That(ownerReceivedFees, Is.EqualTo(UInt256.Zero));
         }
@@ -144,7 +144,7 @@ internal class XdcTransactionProcessorTests
             IReleaseSpec spec,
             ITxTracer tracer,
             in TransactionSubstate substate,
-            long spentGas,
+            ulong spentGas,
             in UInt256 premiumPerGas,
             in UInt256 blobBaseFee,
             int statusCode) =>

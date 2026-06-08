@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             int sequenceLength = decoderContext.ReadSequenceLength();
             int pendingValidatorsCheck = decoderContext.Position + sequenceLength;
 
-            long blockNumber = decoderContext.DecodeLong();
+            ulong blockNumber = decoderContext.DecodeULong();
             Hash256 blockHash = decoderContext.DecodeKeccak();
 
             int addressSequenceLength = decoderContext.ReadSequenceLength();

@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Receipts
         Hash256? FindBlockHash(Hash256 txHash);
         TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true);
         TxReceipt[] Get(Hash256 blockHash, bool recover = true);
-        bool CanGetReceiptsByHash(long blockNumber);
-        bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator);
+        bool CanGetReceiptsByHash(ulong blockNumber);
+        bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator);
     }
 }

@@ -18,8 +18,8 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             int length = decoderContext.ReadSequenceLength();
             int check = decoderContext.Position + length;
-            long finalizingBlockNumber = decoderContext.DecodeLong();
-            long previousFinalizingBlockNumber = decoderContext.DecodeLong();
+            ulong finalizingBlockNumber = decoderContext.DecodeULong();
+            ulong previousFinalizingBlockNumber = decoderContext.DecodeULong();
 
             int addressesSequenceLength = decoderContext.ReadSequenceLength();
             int addressesCheck = decoderContext.Position + addressesSequenceLength;

@@ -138,7 +138,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 });
             }
 
-            scope.Commit(blockNumber: block + 1);
+            scope.Commit(blockNumber: (ulong)(block + 1));
 
             FlatSnapshot snapshot = commitTarget.LastSnapshot
                 ?? throw new InvalidOperationException(
@@ -146,7 +146,7 @@ public class ReadOnlySnapshotBundleBenchmark
             snapshot.TryAcquire();
             allSnapshots.Add(snapshot);
 
-            currentStateId = new StateId(block + 1, scope.RootHash);
+            currentStateId = new StateId((ulong)(block + 1), scope.RootHash);
             storageRanges.Add((totalAccountCount + 1, storageAccountCount, slotsPerStorageAccount));
             totalAccountCount += accountCount;
             totalStorageAccountCount += storageAccountCount;

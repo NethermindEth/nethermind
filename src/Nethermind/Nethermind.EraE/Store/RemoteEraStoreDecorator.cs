@@ -54,7 +54,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     private readonly ConcurrentDictionary<int, EraReader> _openedReaders = new();
 
     // Setup path — sequential, sync-over-async is safe (see thread-safety model above)
-    public (long First, long Last) BlockRange => GetBlockRangeAsync().GetAwaiter().GetResult();
+    public (ulong First, ulong Last) BlockRange => GetBlockRangeAsync().GetAwaiter().GetResult();
 
     public RemoteEraStoreDecorator(
         IEraStore? localStore,
@@ -87,7 +87,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     }
 
     public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(
-        long number, bool ensureValidated = true, CancellationToken cancellation = default)
+        ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
         if (_localStore is not null)
         {
@@ -95,26 +95,26 @@ public sealed class RemoteEraStoreDecorator : IEraStore
             if (b is not null) return (b, r);
         }
 
-        int epoch = (int)(number / _maxEraSize);
+        int epoch = (int)(number / (ulong)_maxEraSize);
         string localPath = await EnsureEpochAvailableAsync(epoch, ensureValidated, cancellation).ConfigureAwait(false);
 
         using EraRenter renter = RentReader(epoch, localPath);
-        if (number > renter.Reader.LastBlock) return (null, null);
+        if (number > (ulong)renter.Reader.LastBlock) return (null, null);
         (Block block, TxReceipt[] receipts) = await renter.Reader.GetBlockByNumber(number, cancellation).ConfigureAwait(false);
         return (block, receipts);
     }
 
-    public bool HasEpoch(long blockNumber) => _localStore is not null && _localStore.HasEpoch(blockNumber);
+    public bool HasEpoch(ulong blockNumber) => _localStore is not null && _localStore.HasEpoch(blockNumber);
 
-    public long NextEraStart(long blockNumber)
+    public ulong NextEraStart(ulong blockNumber)
     {
         if (_localStore is not null && _localStore.HasEpoch(blockNumber))
             return _localStore.NextEraStart(blockNumber);
 
-        int epoch = (int)(blockNumber / _maxEraSize);
+        int epoch = (int)(blockNumber / (ulong)_maxEraSize);
         string localPath = EnsureEpochAvailableAsync(epoch, ensureValidated: false).GetAwaiter().GetResult();
         using EraReader reader = new(localPath);
-        return reader.LastBlock + 1;
+        return (ulong)reader.LastBlock + 1;
     }
 
     public void Dispose()
@@ -161,7 +161,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         public void Dispose() => store.ReturnReader(epoch, reader);
     }
 
-    private async Task<(long First, long Last)> GetBlockRangeAsync(CancellationToken cancellation = default)
+    private async Task<(ulong First, ulong Last)> GetBlockRangeAsync(CancellationToken cancellation = default)
     {
         if (_localStore is not null) return _localStore.BlockRange;
 
@@ -175,7 +175,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         // The actual last block may be slightly lower for a non-full final epoch.
         // FindBlockAndReceipts returns (null, null) when number > reader.LastBlock, so importers that
         // rely on this value (to=0 / auto mode) will stop naturally at the real end.
-        return ((long)minEpoch * _maxEraSize, (long)(maxEpoch + 1) * _maxEraSize - 1);
+        return ((ulong)minEpoch * (ulong)_maxEraSize, (ulong)(maxEpoch + 1) * (ulong)_maxEraSize - 1);
     }
 
     private async Task<IReadOnlyDictionary<int, RemoteEraEntry>> GetManifestAsync(CancellationToken cancellation = default)

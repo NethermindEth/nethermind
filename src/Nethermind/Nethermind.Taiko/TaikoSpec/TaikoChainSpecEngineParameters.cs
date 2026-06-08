@@ -11,8 +11,8 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public string EngineName => SealEngineType;
     public string SealEngineType => Core.SealEngineType.Taiko;
-    public long? OntakeTransition { get; set; }
-    public long? PacayaTransition { get; set; }
+    public ulong? OntakeTransition { get; set; }
+    public ulong? PacayaTransition { get; set; }
     public ulong? ShastaTimestamp { get; set; }
     public ulong? UnzenTimestamp { get; set; }
     public ulong? UnzenBlockZkGasLimit { get; set; }
@@ -23,7 +23,7 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
 
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
     {
         // Filter activations at or before genesis. Taiko chainspecs always have genesis
         // timestamp 0 (see taiko-alethia.json, taiko-hoodi.json, gavin's nmc-devnet.json),

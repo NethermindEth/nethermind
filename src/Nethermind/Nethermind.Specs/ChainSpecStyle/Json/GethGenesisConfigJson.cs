@@ -28,32 +28,32 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 /// </remarks>
 public class GethGenesisConfigJson : IHasNamedForks
 {
-    private readonly Dictionary<string, long> _blocks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ulong> _blocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ulong> _timestamps = new(StringComparer.OrdinalIgnoreCase);
 
     public ulong ChainId { get; set; }
 
-    public long? HomesteadBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? DaoForkBlock { get => GetBlock(nameof(Dao)); set => SetBlock(value, nameof(Dao)); }
+    public ulong? HomesteadBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? DaoForkBlock { get => GetBlock(nameof(Dao)); set => SetBlock(value, nameof(Dao)); }
     public bool? DaoForkSupport { get; set; }
 
     // EIP-level overrides — not fork labels, kept as plain typed properties.
-    public long? Eip150Block { get; set; }
-    public long? Eip155Block { get; set; }
-    public long? Eip158Block { get; set; }
+    public ulong? Eip150Block { get; set; }
+    public ulong? Eip155Block { get; set; }
+    public ulong? Eip158Block { get; set; }
 
-    public long? TangerineWhistleBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? SpuriousDragonBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? ByzantiumBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? ConstantinopleBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? PetersburgBlock { get => GetBlock(nameof(ConstantinopleFix)); set => SetBlock(value, nameof(ConstantinopleFix)); }
-    public long? IstanbulBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? MuirGlacierBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? BerlinBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? LondonBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? ArrowGlacierBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? GrayGlacierBlock { get => GetBlock(); set => SetBlock(value); }
-    public long? MergeNetsplitBlock { get => GetBlock(nameof(Paris)); set => SetBlock(value, nameof(Paris)); }
+    public ulong? TangerineWhistleBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? SpuriousDragonBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? ByzantiumBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? ConstantinopleBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? PetersburgBlock { get => GetBlock(nameof(ConstantinopleFix)); set => SetBlock(value, nameof(ConstantinopleFix)); }
+    public ulong? IstanbulBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? MuirGlacierBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? BerlinBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? LondonBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? ArrowGlacierBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? GrayGlacierBlock { get => GetBlock(); set => SetBlock(value); }
+    public ulong? MergeNetsplitBlock { get => GetBlock(nameof(Paris)); set => SetBlock(value, nameof(Paris)); }
 
     public ulong? ShanghaiTime { get => GetTime(); set => SetTime(value); }
     public ulong? CancunTime { get => GetTime(); set => SetTime(value); }
@@ -73,13 +73,13 @@ public class GethGenesisConfigJson : IHasNamedForks
     public Address? DepositContractAddress { get; set; }
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 
-    IReadOnlyDictionary<string, long>? IHasNamedForks.NamedForkBlocks => _blocks;
+    IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkBlocks => _blocks;
     IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkTimestamps => _timestamps;
 
-    private long? GetBlock([CallerMemberName] string propertyOrForkName = "")
-        => _blocks.TryGetValue(StripSuffix(propertyOrForkName, "Block"), out long v) ? v : null;
+    private ulong? GetBlock([CallerMemberName] string propertyOrForkName = "")
+        => _blocks.TryGetValue(StripSuffix(propertyOrForkName, "Block"), out ulong v) ? v : null;
 
-    private void SetBlock(long? value, [CallerMemberName] string propertyOrForkName = "")
+    private void SetBlock(ulong? value, [CallerMemberName] string propertyOrForkName = "")
     {
         string forkName = StripSuffix(propertyOrForkName, "Block");
         if (value is null) _blocks.Remove(forkName);

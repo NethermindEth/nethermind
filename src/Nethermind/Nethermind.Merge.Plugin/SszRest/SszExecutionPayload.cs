@@ -79,19 +79,19 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
 
     public ulong BlockNumber
     {
-        get => (ulong)Inner.BlockNumber;
+        get => Inner.BlockNumber;
         set => Inner.BlockNumber = SszNumericChecks.CheckedLong(value);
     }
 
     public ulong GasLimit
     {
-        get => (ulong)Inner.GasLimit;
+        get => Inner.GasLimit;
         set => Inner.GasLimit = SszNumericChecks.CheckedLong(value);
     }
 
     public ulong GasUsed
     {
-        get => (ulong)Inner.GasUsed;
+        get => Inner.GasUsed;
         set => Inner.GasUsed = SszNumericChecks.CheckedLong(value);
     }
 

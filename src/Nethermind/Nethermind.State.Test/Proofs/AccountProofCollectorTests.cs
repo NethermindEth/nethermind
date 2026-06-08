@@ -226,12 +226,12 @@ namespace Nethermind.Store.Test.Proofs
         [Test]
         public void Nonce_is_correct()
         {
-            Account account1 = Build.An.Account.WithBalance(1).WithNonce(UInt256.One).TestObject;
+            Account account1 = Build.An.Account.WithBalance(1).WithNonce(1UL).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             StateTree tree = CreateTwoAccountTree(account1, account2);
 
             AccountProof proof = CollectProof(tree, TestItem.AddressA);
-            Assert.That(proof.Nonce, Is.EqualTo(account1.Nonce));
+            Assert.That(proof.Nonce, Is.EqualTo((UInt256)account1.Nonce));
 
             AccountProof proof2 = CollectProof(tree, TestItem.AddressB);
             Assert.That(proof2.Nonce, Is.EqualTo(UInt256.Zero));

@@ -38,13 +38,13 @@ public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelIn
         return Task.CompletedTask;
     }
 
-    private void RunMigration(long startingBlock, long? lastBlock, CancellationToken cancellationToken)
+    private void RunMigration(ulong startingBlock, ulong? lastBlock, CancellationToken cancellationToken)
     {
         lastBlock ??= _blockTree.BestKnownNumber;
 
         if (_logger.IsInfo) _logger.Info($"Starting TotalDifficultyFixMigration. From block {startingBlock} to block {lastBlock}");
 
-        for (long blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
+        for (ulong blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -79,7 +79,7 @@ public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelIn
         if (_logger.IsInfo) _logger.Info("Ended TotalDifficultyFixMigration.");
     }
 
-    UInt256? FindParentTd(BlockHeader blockHeader, long level)
+    UInt256? FindParentTd(BlockHeader blockHeader, ulong level)
     {
         if (blockHeader.ParentHash is null) return null;
         Hash256? parentHash = _blockTree.FindHeader(blockHeader.ParentHash)?.Hash;

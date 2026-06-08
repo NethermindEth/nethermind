@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes, Hash256 actualRootHash) AddAccountRange(
             ISnapTrieFactory factory,
-            long blockNumber,
+            ulong blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,

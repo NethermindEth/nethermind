@@ -47,12 +47,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private static NewBlockHashesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            (Hash256, long)[] blockHashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) =>
+            (Hash256, ulong)[] blockHashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;
 
-                (Hash256, long) result = (c.DecodeKeccak(), (long)c.DecodeUInt256());
+                (Hash256, ulong) result = (c.DecodeKeccak(), (ulong)c.DecodeUInt256());
 
                 c.Check(checkPosition);
                 return result;

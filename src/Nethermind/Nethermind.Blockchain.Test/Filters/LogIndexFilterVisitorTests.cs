@@ -407,6 +407,6 @@ public class LogIndexFilterVisitorTests
     }
 
     private static FilterBuilder BuildFilter() => FilterBuilder.New()
-        .FromBlock(FromBlock)
-        .ToBlock(ToBlock);
+        .FromBlock((ulong)FromBlock)
+        .ToBlock((ulong)ToBlock);
 }

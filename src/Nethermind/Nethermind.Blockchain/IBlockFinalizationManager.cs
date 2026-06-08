@@ -10,9 +10,9 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Current finalized level tracked by the active finalization manager.
         /// </summary>
-        long LastFinalizedBlockLevel { get; }
+        ulong LastFinalizedBlockLevel { get; }
         event EventHandler<FinalizeEventArgs> BlocksFinalized;
 
-        public bool IsFinalized(long level) => LastFinalizedBlockLevel >= level;
+        public bool IsFinalized(ulong level) => LastFinalizedBlockLevel >= level;
     }
 }

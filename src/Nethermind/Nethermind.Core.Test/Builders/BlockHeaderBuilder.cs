@@ -122,7 +122,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithNumber(long blockNumber)
+    public BlockHeaderBuilder WithNumber(ulong blockNumber)
     {
         TestObjectInternal.Number = blockNumber;
         return this;
@@ -134,13 +134,13 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithGasLimit(long gasLimit)
+    public BlockHeaderBuilder WithGasLimit(ulong gasLimit)
     {
         TestObjectInternal.GasLimit = gasLimit;
         return this;
     }
 
-    public BlockHeaderBuilder WithGasUsed(long gasUsed)
+    public BlockHeaderBuilder WithGasUsed(ulong gasUsed)
     {
         TestObjectInternal.GasUsed = gasUsed;
         return this;

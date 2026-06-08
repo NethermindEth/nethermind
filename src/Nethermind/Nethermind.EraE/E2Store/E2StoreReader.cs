@@ -30,7 +30,7 @@ public sealed class E2StoreReader : IDisposable
     private readonly SafeFileHandle _file;
     private readonly long _fileLength;
 
-    private long _startBlock;
+    private ulong _startBlock;
     private long _blockCount;
     private int _componentCount; // 3 (post-merge) or 4 (pre-merge/transition)
     private bool _indexLoaded;
@@ -42,7 +42,7 @@ public sealed class E2StoreReader : IDisposable
         _fileLength = RandomAccess.GetLength(_file);
     }
 
-    public long First
+    public ulong First
     {
         get
         {
@@ -51,7 +51,7 @@ public sealed class E2StoreReader : IDisposable
         }
     }
 
-    public long LastBlock => First + _blockCount - 1;
+    public ulong LastBlock => First + (ulong)_blockCount - 1;
 
     public long BlockCount
     {
@@ -71,13 +71,13 @@ public sealed class E2StoreReader : IDisposable
         }
     }
 
-    public long HeaderOffset(long blockNumber) => ComponentOffset(blockNumber, 0);
+    public long HeaderOffset(ulong blockNumber) => ComponentOffset(blockNumber, 0);
 
-    public long BodyOffset(long blockNumber) => ComponentOffset(blockNumber, 1);
+    public long BodyOffset(ulong blockNumber) => ComponentOffset(blockNumber, 1);
 
-    public long SlimReceiptsOffset(long blockNumber) => ComponentOffset(blockNumber, 2);
+    public long SlimReceiptsOffset(ulong blockNumber) => ComponentOffset(blockNumber, 2);
 
-    public long TotalDifficultyOffset(long blockNumber)
+    public long TotalDifficultyOffset(ulong blockNumber)
     {
         EnsureIndexLoaded();
         if (_componentCount < ComponentsWithTotalDifficulty)
@@ -179,20 +179,20 @@ public sealed class E2StoreReader : IDisposable
         _componentIndexTlvStart = indexEntryStart;
 
         // Read starting block number (first field of index data)
-        _startBlock = ReadInt64(indexEntryStart + EntryHeaderSize);
+        _startBlock = (ulong)ReadInt64(indexEntryStart + EntryHeaderSize);
 
         _indexLoaded = true;
     }
 
-    private long ComponentOffset(long blockNumber, int componentIdx)
+    private long ComponentOffset(ulong blockNumber, int componentIdx)
     {
         EnsureIndexLoaded();
 
-        if (blockNumber < _startBlock || blockNumber >= _startBlock + _blockCount)
-            throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside range [{_startBlock}, {_startBlock + _blockCount - 1}].");
+        if (blockNumber < _startBlock || blockNumber >= _startBlock + (ulong)_blockCount)
+            throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside range [{_startBlock}, {_startBlock + (ulong)_blockCount - 1}].");
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(componentIdx, _componentCount);
 
-        long blockIdx = blockNumber - _startBlock;
+        long blockIdx = (long)(blockNumber - _startBlock);
         // Offset table starts at: indexEntryStart + EntryHeaderSize + IndexFieldSize (starting_number)
         long offsetFieldPos = _componentIndexTlvStart + EntryHeaderSize + IndexFieldSize
             + blockIdx * _componentCount * IndexFieldSize

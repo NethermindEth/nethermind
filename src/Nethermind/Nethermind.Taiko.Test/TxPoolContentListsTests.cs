@@ -41,7 +41,7 @@ public class TxPoolContentListsTests
         txPool.GetPendingTransactionsBySender().ReturnsForAnyArgs(transactions);
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit((long)blockGasLimit).TestObject).TestObject;
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit(blockGasLimit).TestObject).TestObject;
         blockFinder.Head.Returns(block);
 
         BlockExecutionContext? currentContext = null;
@@ -178,10 +178,10 @@ public class TxPoolContentListsTests
         Assert.That(totalTxCount, Is.EqualTo(expectedTxCount));
     }
 
-    [TestCase(21_000, 120, 0, 2, TestName = "Batch is full by bytes")]
-    [TestCase(2_100_000, 100_000, 10, 1, TestName = "Surge filter rejects transaction")]
+    [TestCase(21_000UL, 120, 0, 2, TestName = "Batch is full by bytes")]
+    [TestCase(2_100_000UL, 100_000, 10, 1, TestName = "Surge filter rejects transaction")]
     public void GasUsed_IsNotInflated_WhenTxIsRejectedAfterExecution(
-        int tx1GasLimit, int maxBytesPerTxList,
+        ulong tx1GasLimit, int maxBytesPerTxList,
         int surgeMaxGasLimitRatio, int expectedBatchCount)
     {
         // tx1 is rejected after successful execution, tx2 is accepted

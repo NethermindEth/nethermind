@@ -69,7 +69,7 @@ public class TransactionJsonTest : GeneralStateTestBase
             .WithAccessList(AccessList.Empty)
             .WithGasLimit(100_000)
             .WithGasPrice(10)
-            .WithNonce(UInt256.Zero)
+            .WithNonce(0UL)
             .To(recipient)
             .WithValue(0)
             .SignedAndResolved(TestItem.PrivateKeyA)

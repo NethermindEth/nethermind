@@ -85,19 +85,21 @@ namespace Nethermind.Facade.Find
 
         private static bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
         {
-            long blocksToSearch = toBlock.Number - fromBlock.Number + 1;
+            ulong blocksToSearch = toBlock.Number - fromBlock.Number + 1;
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            IEnumerable<long> EnumerateBlockNumbers(LogFilter f, long from, long to)
+            IEnumerable<ulong> EnumerateBlockNumbers(LogFilter f, ulong from, ulong to)
             {
+                // ContainsRange takes 'in long' — safe cast: block numbers won't exceed long.MaxValue
                 IBloomEnumeration enumeration = _bloomStorage.GetBlooms(from, to);
                 foreach (Bloom bloom in enumeration)
                 {
-                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out long blockNumber))
+                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out ulong blockNumber))
                     {
+                        // TryGetBlockNumber returns long (IBloomEnumeration contract); block numbers are non-negative
                         yield return blockNumber;
                     }
                 }
@@ -106,13 +108,13 @@ namespace Nethermind.Facade.Find
             return FilterLogsInBlocksParallel(filter, EnumerateBlockNumbers(filter, fromBlock.Number, toBlock.Number), cancellationToken);
         }
 
-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, CancellationToken cancellationToken)
+        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<ulong> blockNumbers, CancellationToken cancellationToken)
         {
-            static IEnumerable<long> ParallelizeWithLock(IEnumerable<long> blocks, bool runParallel, CancellationToken ct)
+            static IEnumerable<ulong> ParallelizeWithLock(IEnumerable<ulong> blocks, bool runParallel, CancellationToken ct)
             {
                 try
                 {
-                    foreach (long blockNumber in blocks)
+                    foreach (ulong blockNumber in blocks)
                     {
                         yield return blockNumber;
                         ct.ThrowIfCancellationRequested();
@@ -134,7 +136,7 @@ namespace Nethermind.Facade.Find
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
             bool canRunParallel = parallelLock == 0;
 
-            IEnumerable<long> filterBlocks = ParallelizeWithLock(blockNumbers, canRunParallel, cancellationToken);
+            IEnumerable<ulong> filterBlocks = ParallelizeWithLock(blockNumbers, canRunParallel, cancellationToken);
 
             if (canRunParallel)
             {
@@ -156,6 +158,7 @@ namespace Nethermind.Facade.Find
         {
             // method is designed for convenient debugging
 
+            // ContainsRange takes 'in long' — block numbers are non-negative so the cast is safe
             bool containsRange = _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number);
             if (!containsRange)
             {
@@ -199,7 +202,7 @@ namespace Nethermind.Facade.Find
                 ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
                 : [];
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {
@@ -271,9 +274,9 @@ namespace Nethermind.Facade.Find
             return logList ?? (IEnumerable<FilterLog>)[];
         }
 
-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
-            TxReceipt[]? GetReceipts(Hash256 hash, long number)
+            TxReceipt[]? GetReceipts(Hash256 hash, ulong number)
             {
                 bool canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
                 if (canUseHash)
@@ -338,7 +341,7 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        protected BlockHeader? FindHeaderOrLogError(long blockNumber, CancellationToken token)
+        protected BlockHeader? FindHeaderOrLogError(ulong blockNumber, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
 

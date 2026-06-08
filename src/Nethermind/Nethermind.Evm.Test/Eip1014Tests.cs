@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1014Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         private static readonly byte[] _defaultSalt = [4, 5, 6];
         private static readonly byte[] _defaultDeployedCode = [1, 2, 3];

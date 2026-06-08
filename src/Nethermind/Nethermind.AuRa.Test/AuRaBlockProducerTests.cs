@@ -58,13 +58,13 @@ namespace Nethermind.AuRa.Test
                 Timestamper = Substitute.For<ITimestamper>();
                 AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
                 NodeAddress = TestItem.AddressA;
-                TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
-                Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
+                TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns(Array.Empty<Transaction>());
+                Sealer.CanSeal(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
                 Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
                 Sealer.Address.Returns(TestItem.AddressA);
                 BlockProcessingQueue.IsEmpty.Returns(true);
                 AuRaStepCalculator.TimeToNextStep.Returns(StepDelay);
-                BlockTree.BestKnownNumber.Returns(1);
+                BlockTree.BestKnownNumber.Returns(1UL);
                 BlockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, []).TestObject).TestObject);
                 BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(returnThis: c =>
                 {
@@ -151,7 +151,7 @@ namespace Nethermind.AuRa.Test
         public async Task Does_not_produce_block_when_cannot_seal()
         {
             Context context = new();
-            context.Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(false);
+            context.Sealer.CanSeal(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(false);
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
 
@@ -170,7 +170,7 @@ namespace Nethermind.AuRa.Test
             Context context = new();
             AuRaConfig auRaConfig = new() { ForceSealing = false };
             context.InitProducer(auRaConfig);
-            context.TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(new[] { Build.A.Transaction.TestObject });
+            context.TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns(new[] { Build.A.Transaction.TestObject });
             (await StartStop(context)).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
 

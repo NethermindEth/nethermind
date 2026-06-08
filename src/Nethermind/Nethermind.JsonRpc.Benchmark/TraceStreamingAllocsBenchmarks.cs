@@ -111,10 +111,10 @@ public class TraceStreamingAllocsBenchmarks
             int opsAtDepth = OpcodesPerTx / CallDepthPerTx;
             for (int op = 0; op < opsAtDepth; op++)
             {
-                tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - op, _envByDepth[depth]);
+                tracer.StartOperation(op, Instruction.SSTORE, (ulong)(1_000_000 - op), _envByDepth[depth]);
                 tracer.ReportStackPush(value);
                 tracer.ReportStorageChange(value, value);
-                tracer.ReportOperationRemainingGas(900_000 - op);
+                tracer.ReportOperationRemainingGas((ulong)(900_000 - op));
             }
         }
         for (int depth = 1; depth <= CallDepthPerTx; depth++)

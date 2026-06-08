@@ -49,6 +49,10 @@ namespace Nethermind.Core
             public bool KeyExists(long key) => db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
             public byte[]? Get(long key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
+
+            public bool KeyExists(ulong key) => db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
+            public byte[]? Get(ulong key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
         }
 
         extension(IWriteOnlyKeyValueStore db)
@@ -79,7 +83,7 @@ namespace Nethermind.Core
                 }
             }
 
-            public void Set(long blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+            public void Set(ulong blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
             {
                 Span<byte> blockNumberPrefixedKey = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, key, blockNumberPrefixedKey);
@@ -92,8 +96,10 @@ namespace Nethermind.Core
 
             public void Delete(long key) => db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
+            public void Delete(ulong key) => db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
             [SkipLocalsInit]
-            public void Delete(long blockNumber, Hash256 hash)
+            public void Delete(ulong blockNumber, Hash256 hash)
             {
                 Span<byte> key = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, hash, key);
@@ -101,9 +107,11 @@ namespace Nethermind.Core
             }
 
             public void Set(long key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
+
+            public void Set(ulong key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
         }
 
-        public static void GetBlockNumPrefixedKey(long blockNumber, ValueHash256 blockHash, Span<byte> output)
+        public static void GetBlockNumPrefixedKey(ulong blockNumber, ValueHash256 blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);

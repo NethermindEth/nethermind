@@ -203,31 +203,31 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, false, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, false, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, false, new long[] { 4 }).SetName("filter_by_any_A_any_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, false, new long[] { 4 }).SetName("filter_by_B_any_E_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, false, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, false, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B_without_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, false, new ulong[] { 1ul, 1ul, 4ul }).SetName("filter_by_topic_A_without_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, false, new ulong[] { 1ul, 4ul }).SetName("filter_by_any_then_topic_B_without_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, false, new ulong[] { 4ul }).SetName("filter_by_any_A_any_without_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, false, new ulong[] { 4ul }).SetName("filter_by_B_any_E_without_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, false, new ulong[] { 1ul, 1ul, 4ul, 4ul }).SetName("filter_by_topic_A_or_B_without_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, false, new ulong[] { 1ul, 4ul }).SetName("filter_by_A_or_B_then_B_without_bloom");
 
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, true, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, true, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, true, new long[] { 4 }).SetName("filter_by_any_A_any_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, true, new long[] { 4 }).SetName("filter_by_B_any_E_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, true, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, true, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B_with_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, true, new ulong[] { 1ul, 1ul, 4ul }).SetName("filter_by_topic_A_with_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, true, new ulong[] { 1ul, 4ul }).SetName("filter_by_any_then_topic_B_with_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, true, new ulong[] { 4ul }).SetName("filter_by_any_A_any_with_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, true, new ulong[] { 4ul }).SetName("filter_by_B_any_E_with_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, true, new ulong[] { 1ul, 1ul, 4ul, 4ul }).SetName("filter_by_topic_A_or_B_with_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, true, new ulong[] { 1ul, 4ul }).SetName("filter_by_A_or_B_then_B_with_bloom");
         }
     }
 
     [TestCaseSource(nameof(FilterByTopicsTestsData))]
-    public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, bool withBloomDb, long[] expectedBlockNumbers)
+    public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, bool withBloomDb, ulong[] expectedBlockNumbers)
     {
         StoreTreeBlooms(withBloomDb);
         LogFilter logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
 
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
-        long[] blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
+        ulong[] blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
         Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
     }
 
@@ -406,10 +406,10 @@ public class LogFinderTests
             .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
 
         Address address = TestItem.AddressA;
-        BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
-        BlockHeader toHeader = Build.A.BlockHeader.WithNumber(to).TestObject;
+        BlockHeader fromHeader = Build.A.BlockHeader.WithNumber((ulong)from).TestObject;
+        BlockHeader toHeader = Build.A.BlockHeader.WithNumber((ulong)to).TestObject;
         LogFilter filter = FilterBuilder.New()
-            .FromBlock(from).ToBlock(to)
+            .FromBlock((ulong)from).ToBlock((ulong)to)
             .WithAddress(address)
             .Build();
 
@@ -446,7 +446,7 @@ public class LogFinderTests
     {
         if (withBloomDb)
         {
-            for (int i = 0; i <= _blockTree.Head!.Number; i++)
+            for (ulong i = 0ul; i <= _blockTree.Head!.Number; i++)
             {
                 _bloomStorage.Store(i, _blockTree.FindHeader(i)!.Bloom!);
             }

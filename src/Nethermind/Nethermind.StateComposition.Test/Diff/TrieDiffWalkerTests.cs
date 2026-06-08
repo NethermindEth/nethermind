@@ -24,7 +24,7 @@ namespace Nethermind.StateComposition.Test.Diff;
 [TestFixture]
 public class TrieDiffWalkerTests
 {
-    private static Account CreateEOA(int balance = 100) => new(0, (UInt256)balance);
+    private static Account CreateEOA(ulong balance = 100UL) => new(0UL, balance);
 
     private static Account CreateContract(Hash256 storageRoot, byte[]? code = null)
     {
@@ -332,7 +332,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        for (int i = 0; i < 50; i++)
+        for (ulong i = 0; i < 50; i++)
         {
             byte[] addressBytes = new byte[20];
             addressBytes[0] = (byte)(i >> 8);
@@ -348,7 +348,7 @@ public class TrieDiffWalkerTests
         tree.Accept(v1, root1);
         CumulativeTrieStats cumulative = CumulativeTrieStats.FromScanStats(v1.GetStats(1, root1));
 
-        for (int i = 50; i < 60; i++)
+        for (ulong i = 50; i < 60; i++)
         {
             byte[] addressBytes = new byte[20];
             addressBytes[0] = (byte)(i >> 8);
@@ -436,7 +436,7 @@ public class TrieDiffWalkerTests
             for (int i = 0; i < newEOAsPerBlock; i++)
             {
                 Address addr = AddressFromSeed(addressSeed++);
-                tree.Set(addr, CreateEOA(rng.Next(1, 10000)));
+                tree.Set(addr, CreateEOA((ulong)rng.Next(1, 10000)));
                 eoaAddresses.Add(addr);
             }
 
@@ -462,7 +462,7 @@ public class TrieDiffWalkerTests
                 for (int i = 0; i < modifiedEOAsPerBlock && pool > 0; i++)
                 {
                     int idx = rng.Next(0, pool);
-                    tree.Set(eoaAddresses[idx], CreateEOA(rng.Next(1, 10000)));
+                    tree.Set(eoaAddresses[idx], CreateEOA((ulong)rng.Next(1, 10000)));
                 }
             }
 
@@ -499,9 +499,8 @@ public class TrieDiffWalkerTests
             $"\nState generated: {eoaAddresses.Count} EOAs, {contractAddresses.Count} contracts, {totalBlocks} blocks\n");
 
         // --- Verification: scan(X) + diffs(X→Y) == scan(Y) ---
-        (int from, int to)[] ranges = [(0, 5), (0, 10), (0, 19), (5, 15), (10, 19), (0, 1), (18, 19)];
-
-        foreach ((int from, int to) in ranges)
+        (ulong from, ulong to)[] ranges = [(0, 5), (0, 10), (0, 19), (5, 15), (10, 19), (0, 1), (18, 19)];
+        foreach ((ulong from, ulong to) in ranges)
         {
             // 1. Full scan at 'from'
             StateCompositionVisitor v1 = new(LimboLogs.Instance);
@@ -513,7 +512,7 @@ public class TrieDiffWalkerTests
             // 2. Incremental diffs from→to
             RawScopedTrieStore resolver = new(db);
             TrieDiffWalker walker = new();
-            for (int b = from; b < to; b++)
+            for (ulong b = from; b < to; b++)
             {
                 TrieDiff diff = walker.ComputeDiff(roots[b], roots[b + 1], resolver);
                 cumulative = cumulative.ApplyDiff(diff);

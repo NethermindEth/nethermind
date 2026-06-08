@@ -10,14 +10,14 @@ namespace Nethermind.BalRecorder.Test;
 /// <summary>In-memory <see cref="IRecordedBalStore"/> for decorator tests.</summary>
 internal sealed class FakeRecordedBalStore : IRecordedBalStore
 {
-    private readonly Dictionary<long, ReadOnlyBlockAccessList> _seeded = [];
+    private readonly Dictionary<ulong, ReadOnlyBlockAccessList> _seeded = [];
 
     public bool ReplayEnabled { get; init; }
     public bool RecordingEnabled { get; init; }
-    public List<(long Number, GeneratedBlockAccessList Bal)> Inserted { get; } = [];
+    public List<(ulong Number, GeneratedBlockAccessList Bal)> Inserted { get; } = [];
 
-    public void Seed(long number, ReadOnlyBlockAccessList bal) => _seeded[number] = bal;
+    public void Seed(ulong number, ReadOnlyBlockAccessList bal) => _seeded[number] = bal;
     public void Insert(Block block, GeneratedBlockAccessList bal) => Inserted.Add((block.Number, bal));
-    public ReadOnlyBlockAccessList? Get(long blockNumber) => _seeded.GetValueOrDefault(blockNumber);
+    public ReadOnlyBlockAccessList? Get(ulong blockNumber) => _seeded.GetValueOrDefault(blockNumber);
     public void Dispose() { }
 }

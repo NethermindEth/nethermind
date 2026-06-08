@@ -70,8 +70,8 @@ namespace Nethermind.Facade.Test.Eth
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber((ulong)bestHeader).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber((ulong)currentHead).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, new SyncConfig(),
                 new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
@@ -97,7 +97,7 @@ namespace Nethermind.Facade.Test.Eth
                 PivotNumber = 1000
             };
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.SyncPivot.Returns((1000, Keccak.Zero));
+            blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);
@@ -164,8 +164,8 @@ namespace Nethermind.Facade.Test.Eth
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(false);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(false);
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber((ulong)bestHeader).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber((ulong)currentHead).TestObject).TestObject);
             SyncConfig syncConfig = new()
             {
                 FastSync = true,
@@ -182,7 +182,7 @@ namespace Nethermind.Facade.Test.Eth
         private SyncingResult CreateSyncingResult(bool isSyncing, long currentBlock, long highestBlock, SyncMode syncMode)
         {
             if (!isSyncing) return SyncingResult.NotSyncing;
-            return new SyncingResult { CurrentBlock = currentBlock, HighestBlock = highestBlock, IsSyncing = true, StartingBlock = 0, SyncMode = syncMode };
+            return new SyncingResult { CurrentBlock = (ulong)currentBlock, HighestBlock = (ulong)highestBlock, IsSyncing = true, StartingBlock = 0, SyncMode = syncMode };
         }
     }
 }

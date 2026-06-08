@@ -66,7 +66,7 @@ internal class TestXdcBlockProducer(
             masternodes = epochSwitchInfo!.Masternodes;
         }
 
-        int currentLeaderIndex = ((int)round % spec.EpochLength % masternodes.Length);
+        int currentLeaderIndex = (int)(round % spec.EpochLength % (ulong)masternodes.Length);
         return masternodes[currentLeaderIndex];
     }
 }

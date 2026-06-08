@@ -27,7 +27,7 @@ public class ChainLevelInfoRepositoryTests
             repository.PersistLevel(10, level10);
         }
 
-        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(new ArrayPoolListRef<long>(2, 1, 10));
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(new ArrayPoolListRef<ulong>(2, 1UL, 10UL));
         AssertChainLevelInfo(levels[0], level1);
         AssertChainLevelInfo(levels[1], level10);
     }

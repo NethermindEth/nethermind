@@ -24,7 +24,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
     private readonly Lock _lock = new();
     public const int MaxDepth = BlockhashProvider.MaxDepth;
-    private long _minBlock = int.MaxValue;
+    private ulong _minBlock = ulong.MaxValue;
     private Task _pruningTask = Task.CompletedTask;
 
     public Hash256? GetHash(BlockHeader headBlock, int depth) =>
@@ -51,7 +51,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 if (!_blocks.TryGetValue(currentHash, out currentNode))
                 {
-                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - i);
+                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - (ulong)i);
                     if (currentHeader is null)
                     {
                         break;
@@ -189,10 +189,10 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         bool ShouldPrune() => _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
     }
 
-    public int PruneBefore(long blockNumber)
+    public int PruneBefore(ulong blockNumber)
     {
         int removed = 0;
-        long minBlockNumber = long.MaxValue;
+        ulong minBlockNumber = ulong.MaxValue;
 
         Interlocked.Exchange(ref _minBlock, blockNumber);
 
@@ -254,7 +254,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private class CacheNode(BlockHeader blockHeader, CacheNode? parent = null)
     {
         public Hash256 Hash { get; } = blockHeader.Hash!;
-        public long Number { get; } = blockHeader.Number;
+        public ulong Number { get; } = blockHeader.Number;
         public Hash256 ParentHash { get; } = blockHeader.ParentHash!;
         public CacheNode? Parent { get; set; } = parent;
     }

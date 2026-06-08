@@ -29,7 +29,7 @@ public class EraExporterTests
 
         string tmpDirectory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
-        await sut.Export(tmpDirectory, start, end);
+        await sut.Export(tmpDirectory, (ulong)start, (ulong)end);
 
         int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory).Length;
         int metaFile = 2;
@@ -69,7 +69,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, to), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, (ulong)to), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -84,6 +84,6 @@ public class EraExporterTests
 
         IEraExporter sut = container.Resolve<IEraExporter>();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, 1), Throws.TypeOf<EraException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
     }
 }

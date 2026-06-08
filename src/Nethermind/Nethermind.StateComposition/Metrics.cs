@@ -60,7 +60,7 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Block number of latest incremental update")]
-    public static long StateCompIncrementalBlock { get; set; }
+    public static ulong StateCompIncrementalBlock { get; set; }
 
     [GaugeMetric]
     [Description("Diffs applied since last full scan")]
@@ -72,7 +72,7 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Block number of last completed full scan")]
-    public static long StateCompScanBlock { get; set; }
+    public static ulong StateCompScanBlock { get; set; }
 
     [CounterMetric]
     [Description("Total full scans completed")]

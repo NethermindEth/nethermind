@@ -222,12 +222,12 @@ namespace Nethermind.Evm.Test
 
         private static VmState<EthereumGasPolicy> CreateEvmState(VmState<EthereumGasPolicy> parentVmState = null, bool isContinuation = false) =>
             parentVmState is null
-                ? VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromLong(10000),
+                ? VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromULong(10000),
                     ExecutionType.CALL,
                     RentExecutionEnvironment(),
                     new StackAccessTracker(),
                     Snapshot.Empty)
-                : VmState<EthereumGasPolicy>.RentFrame(EthereumGasPolicy.FromLong(10000),
+                : VmState<EthereumGasPolicy>.RentFrame(EthereumGasPolicy.FromULong(10000),
                     0,
                     0,
                     ExecutionType.CALL,

@@ -54,7 +54,7 @@ public class TaikoVirtualMachine<TGasPolicy>(
         {
             TGasPolicy gas = state.Gas;
             PrecompileExtras extras = new(
-                remainingGas: TGasPolicy.GetRemainingGas(in gas),
+                remainingGas: (long)TGasPolicy.GetRemainingGas(in gas),
                 l1Origin: _blockL1Origin);
 
             Result<(byte[] returnValue, long gasConsumed)> output;
@@ -77,7 +77,7 @@ public class TaikoVirtualMachine<TGasPolicy>(
             // Deduct dynamic gas (e.g. actual L1 consumption) regardless of success/failure.
             // On L1 OOG the user loses the full gas limit — matching standard EVM sub-call semantics.
             long gasConsumed = output.Data.gasConsumed;
-            if (gasConsumed > 0 && !TGasPolicy.UpdateGas(ref gas, gasConsumed))
+            if (gasConsumed > 0 && !TGasPolicy.UpdateGas(ref gas, (ulong)gasConsumed))
             {
                 return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
             }

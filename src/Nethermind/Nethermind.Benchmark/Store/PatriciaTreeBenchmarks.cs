@@ -355,7 +355,7 @@ namespace Nethermind.Benchmarks.Store
             {
                 if (i % _repeatedlyFactor == 0)
                 {
-                    using IBlockCommitter _ = trieStore.BeginBlockCommit(i / _repeatedlyFactor);
+                    using IBlockCommitter _ = trieStore.BeginBlockCommit((ulong)(i / _repeatedlyFactor));
                     tempTree.Commit();
                 }
 

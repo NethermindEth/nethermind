@@ -9,21 +9,21 @@ namespace Nethermind.Db.Blooms
 {
     public interface IBloomStorage : IDisposable
     {
-        long MinBlockNumber { get; }
+        ulong MinBlockNumber { get; }
 
-        void Store(IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms);
-        void Store(long blockNumber, Bloom bloom);
+        void Store(IReadOnlyList<(ulong BlockNumber, Bloom Bloom)> blooms);
+        void Store(ulong blockNumber, Bloom bloom);
 
         void Migrate(IEnumerable<BlockHeader> blockHeaders);
 
-        IBloomEnumeration GetBlooms(long fromBlock, long toBlock);
+        IBloomEnumeration GetBlooms(ulong fromBlock, ulong toBlock);
 
-        bool ContainsRange(in long fromBlockNumber, in long toBlockNumber);
+        bool ContainsRange(in ulong fromBlockNumber, in ulong toBlockNumber);
 
         public bool NeedsMigration => MinBlockNumber != 0;
 
         IEnumerable<Average> Averages { get; }
 
-        long MigratedBlockNumber { get; }
+        ulong MigratedBlockNumber { get; }
     }
 }

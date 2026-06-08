@@ -120,8 +120,8 @@ public class ProcessingStatsTests
         long originalBlockchainHeight = BlockchainMetrics.BlockchainHeight;
         UInt256 originalTotalDifficulty = BlockchainMetrics.TotalDifficulty;
         UInt256 originalLastDifficulty = BlockchainMetrics.LastDifficulty;
-        long originalGasUsed = BlockchainMetrics.GasUsed;
-        long originalGasLimit = BlockchainMetrics.GasLimit;
+        ulong originalGasUsed = BlockchainMetrics.GasUsed;
+        ulong originalGasLimit = BlockchainMetrics.GasLimit;
 
         try
         {
@@ -152,7 +152,7 @@ public class ProcessingStatsTests
             Block block,
             BlockHeader baseBlock,
             long blockCount,
-            long gasUsed,
+            ulong gasUsed,
             long transactionCount,
             long processingMicroseconds) =>
             GenerateReport(new BlockData

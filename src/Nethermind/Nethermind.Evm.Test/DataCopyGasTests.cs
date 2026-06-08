@@ -57,7 +57,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
     public void Copy_ZeroLength_InsufficientGas_ReturnsOutOfGas(Instruction instruction)
     {
         byte[] code = BuildCopyCode(instruction, 0);
-        long gasLimit = GetBaseGas(instruction) - 1;
+        ulong gasLimit = GetBaseGas(instruction) - 1UL;
 
         TestAllTracerWithOutput result = Execute(Activation, gasLimit, code);
 
@@ -74,7 +74,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(code);
 
         Assert.That(result.Error, Is.Null);
-        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction) + 2 * GasCostOf.Memory));
+        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction) + 2UL * GasCostOf.Memory));
     }
 
     private static byte[] BuildCopyCode(Instruction instruction, int length)
@@ -90,7 +90,7 @@ public class DataCopyGasTests : VirtualMachineTestsBase
         return prepare.Op(instruction).Done;
     }
 
-    private static long GetBaseGas(Instruction instruction) => instruction == Instruction.EXTCODECOPY
-        ? GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.ExtCodeEip150
-        : GasCostOf.Transaction + 3 * GasCostOf.VeryLow + GasCostOf.VeryLow;
+    private static ulong GetBaseGas(Instruction instruction) => instruction == Instruction.EXTCODECOPY
+        ? GasCostOf.Transaction + 4UL * GasCostOf.VeryLow + GasCostOf.ExtCodeEip150
+        : GasCostOf.Transaction + 3UL * GasCostOf.VeryLow + GasCostOf.VeryLow;
 }

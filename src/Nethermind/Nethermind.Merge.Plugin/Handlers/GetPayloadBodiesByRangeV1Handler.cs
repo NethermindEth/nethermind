@@ -19,7 +19,7 @@ public abstract class GetPayloadBodiesByRangeHandler<TResult>(IBlockTree blockTr
 
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeHandler<>));
 
-    public Task<ResultWrapper<IReadOnlyList<TResult?>>> Handle(long start, long count)
+    public Task<ResultWrapper<IReadOnlyList<TResult?>>> Handle(ulong start, ulong count)
     {
         if (start < 1 || count < 1)
         {
@@ -42,14 +42,14 @@ public abstract class GetPayloadBodiesByRangeHandler<TResult>(IBlockTree blockTr
 
     protected virtual IReadOnlyList<TResult?> CreateResponse(TResult?[] results) => results;
 
-    private TResult?[] GetRequests(long start, long count)
+    private TResult?[] GetRequests(ulong start, ulong count)
     {
-        long headNumber = blockTree.Head?.Number ?? 0;
-        long end = Math.Min(start + count - 1, headNumber);
+        ulong headNumber = blockTree.Head?.Number ?? 0;
+        ulong end = Math.Min(start + count - 1, headNumber);
         if (end < start) return [];
 
         TResult?[] results = new TResult?[end - start + 1];
-        for (long i = start; i <= end; i++)
+        for (ulong i = start; i <= end; i++)
         {
             Block? block = blockTree.FindBlock(i);
             results[i - start] = block is null ? null : CreateResult(block);

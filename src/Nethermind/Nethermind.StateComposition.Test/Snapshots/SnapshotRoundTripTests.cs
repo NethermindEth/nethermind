@@ -51,10 +51,10 @@ public class SnapshotRoundTripTests
 
     private static StateCompositionSnapshot BuildSnapshot(
         CumulativeTrieStats stats,
-        long blockNumber,
+        ulong blockNumber,
         Hash256 stateRoot,
         int diffsSinceBaseline = 0,
-        long scanBlockNumber = 0,
+        ulong scanBlockNumber = 0,
         Dictionary<ValueHash256, long>? slotCountByAddress = null,
         Dictionary<ValueHash256, int>? codeHashRefcounts = null,
         Dictionary<ValueHash256, int>? codeHashSizes = null) =>

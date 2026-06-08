@@ -32,8 +32,8 @@ internal class XdcBlockProducerTest
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
         xdcReleaseSpec.MinePeriod.Returns(2);
-        xdcReleaseSpec.EpochLength.Returns(900);
-        xdcReleaseSpec.GasLimitBoundDivisor.Returns(1);
+        xdcReleaseSpec.EpochLength.Returns(900UL);
+        xdcReleaseSpec.GasLimitBoundDivisor.Returns(1UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
         IEpochSwitchManager epochManager = Substitute.For<IEpochSwitchManager>();
         IWorldState stateProvider = Substitute.For<IWorldState>();

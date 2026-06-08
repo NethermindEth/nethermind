@@ -100,11 +100,11 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     // Note: TxTypeTxFilter prevents a sender from holding both types simultaneously, so
     // the merge case is rare in practice but the API handles it correctly anyway.
     private static (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued)
-        SplitByNonce(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
+        SplitByNonce(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
     {
         Dictionary<ulong, Transaction> pending = [];
         Dictionary<ulong, Transaction> queued = [];
-        UInt256 expectedNonce = accountNonce;
+        ulong expectedNonce = accountNonce;
 
         int i = 0;
         int j = 0;
@@ -116,7 +116,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
                 ? standard![i++]
                 : blobs![j++];
 
-            ulong nonce = (ulong)next.Nonce;
+            ulong nonce = next.Nonce;
             if (next.Nonce == expectedNonce)
             {
                 pending[nonce] = next;
@@ -133,10 +133,10 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         return (pending, queued);
     }
 
-    private static int CountPending(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
+    private static int CountPending(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
     {
         int pending = 0;
-        UInt256 expectedNonce = accountNonce;
+        ulong expectedNonce = accountNonce;
 
         int i = 0;
         int j = 0;
@@ -151,7 +151,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
             if (next.Nonce == expectedNonce)
             {
                 pending++;
-                expectedNonce += UInt256.One;
+                expectedNonce++;
             }
         }
 

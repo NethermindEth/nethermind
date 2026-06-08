@@ -22,10 +22,10 @@ namespace Nethermind.StateComposition.Data;
 /// </summary>
 public readonly record struct StateCompositionSnapshot(
     CumulativeTrieStats Stats,
-    long BlockNumber,
+    ulong BlockNumber,
     Hash256 StateRoot,
     int DiffsSinceBaseline,
-    long ScanBlockNumber,
+    ulong ScanBlockNumber,
     CumulativeDepthStats DepthStats,
     Dictionary<ValueHash256, long> SlotCountByAddress,
     Dictionary<ValueHash256, int> CodeHashRefcounts,

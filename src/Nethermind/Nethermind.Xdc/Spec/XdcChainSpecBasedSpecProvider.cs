@@ -26,7 +26,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         return GetXdcSpec(header.Number, round);
     }
 
-    public IXdcReleaseSpec GetXdcSpec(long blockNumber, ulong round = 0)
+    public IXdcReleaseSpec GetXdcSpec(ulong blockNumber, ulong round = 0)
     {
         int blockIndex = GetBlockTransitionIndex(blockNumber);
         int roundIndex = GetRoundConfigIndex(round);
@@ -41,7 +41,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         return _specCache.GetOrAdd((blockIndex, roundIndex), copy);
     }
 
-    private int GetBlockTransitionIndex(long blockNumber)
+    private int GetBlockTransitionIndex(ulong blockNumber)
     {
         int result = _blockTransitions.BinarySearch(new ForkActivation(blockNumber),
             static (a, t) => a.CompareTo(t.Activation));
@@ -57,7 +57,8 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
     }
 
     protected override ReleaseSpec CreateEmptyReleaseSpec() => new XdcReleaseSpec();
-    protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
+
+    protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, ulong releaseStartBlock, ulong? releaseStartTimestamp = null)
     {
         XdcReleaseSpec releaseSpec = (XdcReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
 
@@ -74,13 +75,14 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.ProtectorReward = chainSpecEngineParameters.ProtectorReward;
         releaseSpec.ObserverReward = chainSpecEngineParameters.ObserverReward;
 
-        releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0) <= releaseStartBlock;
+        releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0UL) <= releaseStartBlock;
         releaseSpec.IsBlackListingEnabled = chainSpecEngineParameters.BlackListHFNumber <= releaseStartBlock;
         releaseSpec.IsTIP2019 = chainSpecEngineParameters.TIP2019Block <= releaseStartBlock;
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
-        releaseSpec.IsDynamicGasLimitBlock = chainSpecEngineParameters.DynamicGasLimitBlock <= releaseStartBlock;
-        releaseSpec.IsTipUpgradeRewardEnabled = (chainSpecEngineParameters.TipUpgradeReward ?? long.MaxValue) <= releaseStartBlock;
-        releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? long.MaxValue) <= releaseStartBlock;
+        releaseSpec.IsDynamicGasLimitBlock = (chainSpecEngineParameters.DynamicGasLimitBlock ?? 0UL) <= releaseStartBlock;
+        // Fall back to ulong.MaxValue so that a null TipUpgradeReward/Penalty means "never enabled".
+        releaseSpec.IsTipUpgradeRewardEnabled = (chainSpecEngineParameters.TipUpgradeReward ?? ulong.MaxValue) <= releaseStartBlock;
+        releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? ulong.MaxValue) <= releaseStartBlock;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;
         releaseSpec.BlackListedAddresses = [.. chainSpecEngineParameters.BlackListedAddresses ?? []];
@@ -100,7 +102,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
 
         if (releaseSpec.SwitchBlock == 0)
         {
-            //We can parse genesis masternodes from genesis if the chain starts as V2
+            // We can parse genesis masternodes from genesis if the chain starts as V2
             byte[] genesisExtraData = chainSpec.Genesis?.ExtraData
                 ?? throw new ArgumentException("Genesis ExtraData is required when SwitchBlock is 0", nameof(chainSpec));
             releaseSpec.GenesisMasterNodes = genesisExtraData.ParseV1Masternodes();
@@ -112,5 +114,4 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
 
         return releaseSpec;
     }
-
 }

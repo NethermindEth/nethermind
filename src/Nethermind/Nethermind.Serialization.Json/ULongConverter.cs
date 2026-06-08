@@ -8,12 +8,38 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
 
 namespace Nethermind.Serialization.Json;
 
 public class ULongConverter : JsonConverter<ulong>
 {
     public static ulong FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<ulong>(s);
+
+    public static ulong FromString(string s)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+
+        if (s == Nethermind.Core.Extensions.Bytes.ZeroHexValue)
+        {
+            return 0UL;
+        }
+
+        if (s.StartsWith("0x0"))
+        {
+            return ulong.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+        }
+
+        if (s.StartsWith("0x"))
+        {
+            Span<char> withZero = new(new char[s.Length - 1]);
+            withZero[0] = '0';
+            s.AsSpan(2).CopyTo(withZero[1..]);
+            return ulong.Parse(withZero, NumberStyles.AllowHexSpecifier);
+        }
+
+        return ulong.Parse(s, NumberStyles.Integer);
+    }
 
     [SkipLocalsInit]
     public override void Write(

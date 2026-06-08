@@ -5,17 +5,17 @@ using System.Collections.Generic;
 
 namespace Nethermind.EthStats.Messages.Models
 {
-    public class Block(long number, string hash, string parentHash, long timestamp, string miner, long gasUsed,
-        long gasLimit, string difficulty, string totalDifficulty, IEnumerable<Transaction> transactions,
+    public class Block(ulong number, string hash, string parentHash, long timestamp, string miner, ulong gasUsed,
+        ulong gasLimit, string difficulty, string totalDifficulty, IEnumerable<Transaction> transactions,
         string transactionsRoot, string stateRoot, IEnumerable<Uncle> uncles)
     {
-        public long Number { get; } = number;
+        public ulong Number { get; } = number;
         public string Hash { get; } = hash;
         public string ParentHash { get; } = parentHash;
         public long Timestamp { get; } = timestamp;
         public string Miner { get; } = miner;
-        public long GasUsed { get; } = gasUsed;
-        public long GasLimit { get; } = gasLimit;
+        public ulong GasUsed { get; } = gasUsed;
+        public ulong GasLimit { get; } = gasLimit;
         public string Difficulty { get; } = difficulty;
         public string TotalDifficulty { get; } = totalDifficulty;
         public IEnumerable<Transaction> Transactions { get; } = transactions;

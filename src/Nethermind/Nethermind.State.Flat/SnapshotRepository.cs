@@ -42,7 +42,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return list;
     }
 
-    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
+    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, ulong minBlockNumber, int estimatedSize)
     {
         SnapshotPooledList snapshots = new(estimatedSize);
 
@@ -51,7 +51,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             if (_logger.IsTrace) _logger.Trace($"Got {snapshot.From} -> {snapshot.To}");
 
-            if (snapshot.From.BlockNumber < minBlockNumber)
+            if (minBlockNumber != ulong.MaxValue && snapshot.From.BlockNumber < minBlockNumber)
             {
                 // `snapshot` is now a compacted snapshot, we dont want to use it.
                 snapshot.Dispose();
@@ -64,7 +64,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
                 }
             }
 
-            if (snapshot.From.BlockNumber < minBlockNumber)
+            if (minBlockNumber != ulong.MaxValue && snapshot.From.BlockNumber < minBlockNumber)
             {
                 // Should not happen... unless someone try to add out of order snapshots
                 snapshot.Dispose();
@@ -145,7 +145,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return false;
     }
 
-    public ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber)
+    public ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
 
@@ -202,7 +202,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
     {
-        if (stateId.BlockNumber < 0)
+        if (stateId == StateId.PreGenesis)
             return ArrayPoolList<StateId>.Empty();
 
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);

@@ -14,7 +14,7 @@ public class ExitOnBlockNumberHandler
     public ExitOnBlockNumberHandler(
         IBlockTree blockTree,
         IProcessExitSource processExitSource,
-        long initConfigExitOnBlockNumber,
+        ulong initConfigExitOnBlockNumber,
         ILogManager logManager)
     {
         ILogger logger = logManager.GetClassLogger<ExitOnBlockNumberHandler>();

@@ -16,7 +16,7 @@ namespace Nethermind.Blockchain.Spec
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private CachedSpec? _cache;
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) =>
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null) =>
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Spec
 
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
-        public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
+        public ulong? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
         public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;
 
@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Spec
         public IReleaseSpec GetCurrentHeadSpec()
         {
             BlockHeader? header = _blockFinder.FindBestSuggestedHeader();
-            long headerNumber = header?.Number ?? 0;
+            ulong headerNumber = header?.Number ?? 0;
 
             // Reference-type record keeps the (number, spec) publication atomic.
             // Don't change to a record struct — 16-byte writes are not atomic.
@@ -60,6 +60,6 @@ namespace Nethermind.Blockchain.Spec
             return spec;
         }
 
-        private sealed record CachedSpec(long Number, IReleaseSpec Spec);
+        private sealed record CachedSpec(ulong Number, IReleaseSpec Spec);
     }
 }

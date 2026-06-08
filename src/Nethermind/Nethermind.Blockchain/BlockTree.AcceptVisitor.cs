@@ -20,9 +20,9 @@ namespace Nethermind.Blockchain
 
             try
             {
-                long levelNumber = visitor.StartLevelInclusive;
-                long blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
-                for (long i = 0; i < blocksToVisit; i++)
+                ulong levelNumber = visitor.StartLevelInclusive;
+                ulong blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
+                for (ulong i = 0; i < blocksToVisit; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {

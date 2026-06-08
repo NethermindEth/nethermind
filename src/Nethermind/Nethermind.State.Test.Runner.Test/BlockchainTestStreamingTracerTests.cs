@@ -45,10 +45,10 @@ public class BlockchainTestStreamingTracerTests
 
         for (int b = 0; b < blockCount; b++)
         {
-            tracer.StartNewBlockTrace(Build.A.Block.WithNumber(b + 1).TestObject);
-            for (int t = 0; t < txPerBlock; t++)
+            tracer.StartNewBlockTrace(Build.A.Block.WithNumber((ulong)(b + 1)).TestObject);
+            for (uint t = 0; t < txPerBlock; t++)
             {
-                tracer.StartNewTxTrace(Build.A.Transaction.WithValue(t + 1).WithNonce((ulong)t).TestObject);
+                tracer.StartNewTxTrace(Build.A.Transaction.WithValue(t + 1).WithNonce(t).TestObject);
                 tracer.EndTxTrace();
             }
             tracer.EndBlockTrace();

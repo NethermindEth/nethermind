@@ -87,8 +87,8 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         if (baseLength == uint.MaxValue || modulusLength == uint.MaxValue || (baseLength == 0 && modulusLength == 0))
             return inputData[..LengthsLengths];
 
-        ulong end = (ulong)LengthsLengths + baseLength + expLength + modulusLength;
-        return end < (ulong)inputData.Length ? inputData[..(int)end] : inputData;
+        long end = (long)LengthsLengths + baseLength + expLength + modulusLength;
+        return end < inputData.Length ? inputData[..(int)end] : inputData;
     }
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
@@ -131,7 +131,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         return result > long.MaxValue || overflow
             ? long.MaxValue
-            : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
+            : (long)Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (ulong)result);
     }
 
     /// <summary>
@@ -148,7 +148,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         // Compute ceil(max/8) via a single add + shift
         // (max + 7) >> 3  ==  (max + 7) / 8, rounding up
-        ulong words = ((ulong)max + 7u) >> 3;
+        ulong words = (max + 7UL) >> 3;
 
         // Square it once
         ulong sq = words * words;

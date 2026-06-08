@@ -28,7 +28,7 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
 
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body);
+        (ulong start, ulong count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body);
         if (count > MaxPayloadBodiesRequest)
         {
             await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,

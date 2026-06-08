@@ -64,7 +64,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
+        ulong? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
             AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
             if (allocation is null) return null;
@@ -72,13 +72,15 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             if (pricing?.Length > 0)
             {
                 string key = pricing[0].Key;
-                return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
+                // Block numbers in built-in pricing keys are always non-negative; parse as ulong
+                // directly. Hex keys are parsed via Convert then cast — safe for any valid block number.
+                return ulong.TryParse(key, out ulong transition) ? transition : (ulong)Convert.ToInt64(key, 16);
             }
 
             return null;
         }
 
-        long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+        ulong? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
         {
             bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o) =>
                 o.Value.TryGetSubProperty(innerPath, out JsonElement value) && value.GetInt64() == expectedValue;
@@ -86,7 +88,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return GetTransitions(builtInName, GetForExpectedPricing);
         }
 
-        long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
+        ulong? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
         {
             bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o) =>
                 o.Value.TryGetSubProperty(innerPath, out _);
@@ -96,9 +98,9 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
         chainSpec.Parameters = new ChainParameters
         {
-            GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
+            GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400UL,
             MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
-            MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
+            MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000UL,
             MinHistoryRetentionEpochs = chainSpecJson.Params.MinHistoryRetentionEpochs ?? 82125,
             MinBalRetentionEpochs = chainSpecJson.Params.MinBalRetentionEpochs ?? 3533,
             MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
@@ -276,6 +278,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
         chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
         chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
+        // null when Eip1283DisableTransition is absent (chain never had a Constantinople/fix split).
         chainSpec.ConstantinopleBlockNumber =
             chainSpec.Parameters.Eip1283DisableTransition is null
                 ? null
@@ -295,7 +298,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
         chainSpec.TerminalPoWBlockNumber = chainSpec.Parameters.TerminalPoWBlockNumber;
         chainSpec.TerminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
-
 
         if (chainSpec.EngineChainSpecParametersProvider is not null)
         {
@@ -332,7 +334,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return;
         }
 
-        UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
+        ulong nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0UL;
         Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
         byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
@@ -342,7 +344,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
-        UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
+        ulong gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
         ChainParameters parameters = chainSpec.Parameters;
         UInt256 baseFee = parameters.Eip1559Transition switch
@@ -362,7 +364,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             beneficiary,
             difficulty,
             0,
-            (long)gasLimit,
+            gasLimit,
             timestamp,
             extraData)
         {
@@ -370,7 +372,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Hash = Keccak.Zero, // need to run the block to know the actual hash
             Bloom = Bloom.Empty,
             MixHash = mixHash,
-            Nonce = (ulong)nonce,
+            Nonce = nonce,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             StateRoot = stateRoot,
             TxRoot = Keccak.EmptyTreeHash,
@@ -470,7 +472,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[] codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
-                    account.Value.Nonce,
+                    (ulong)account.Value.Nonce,
                     codeHash,
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());
@@ -479,7 +481,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             {
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
-                    account.Value.Nonce,
+                    (ulong)account.Value.Nonce,
                     account.Value.Code,
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());

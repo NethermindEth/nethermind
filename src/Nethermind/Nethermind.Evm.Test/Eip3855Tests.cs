@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip3855Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         private TestAllTracerWithOutput testBase(int repeat, bool isShanghai)
@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
         {
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(receipt.GasSpent, Is.EqualTo(repeat * GasCostOf.Base + GasCostOf.Transaction));
+            Assert.That(receipt.GasSpent, Is.EqualTo((ulong)repeat * GasCostOf.Base + GasCostOf.Transaction));
         }
 
 

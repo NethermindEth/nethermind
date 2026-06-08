@@ -36,8 +36,8 @@ public partial class BlockAccessListManager
         MergeAndReturnBal(0u);
         ValidateBlockAccessList(block, 0u);
 
-        long totalRegularGas = 0;
-        long totalStateGas = 0;
+        ulong totalRegularGas = 0;
+        ulong totalStateGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
             if (token.IsCancellationRequested)
@@ -83,10 +83,10 @@ public partial class BlockAccessListManager
         // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
         _blockExecutionContext.Value.Header.GasUsed = Math.Max(totalRegularGas, totalStateGas);
 
-        static void CheckGasUsed(int index, Block block, long totalRegularGas, long totalStateGas)
+        static void CheckGasUsed(int index, Block block, ulong totalRegularGas, ulong totalStateGas)
         {
             // EIP-8037: block gasUsed = max(sum_regular, sum_state)
-            long effectiveGas = Math.Max(totalRegularGas, totalStateGas);
+            ulong effectiveGas = Math.Max(totalRegularGas, totalStateGas);
             if (effectiveGas > block.Header.GasLimit)
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
@@ -94,7 +94,7 @@ public partial class BlockAccessListManager
         }
     }
 
-    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
+    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, ulong cumulativeRegular, ulong cumulativeState)
     {
         if (!spec.IsEip8037Enabled) return;
 
@@ -104,12 +104,12 @@ public partial class BlockAccessListManager
 
     // EIP-8037 worst-case 2D inclusion check. Only fires when EIP-8037 is active; legacy and
     // pre-EIP-8037 blocks rely solely on the post-execution running max(R,S) check.
-    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
+    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, ulong cumulativeRegular, ulong cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
     {
         if (!spec.IsEip8037Enabled) return;
 
-        long intrinsicRegular = intrinsic.Standard.Value;
-        long intrinsicState = intrinsic.Standard.StateReservoir;
+        ulong intrinsicRegular = intrinsic.Standard.Value;
+        ulong intrinsicState = intrinsic.Standard.StateReservoir;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
             block.Header.GasLimit,
@@ -164,7 +164,7 @@ public partial class BlockAccessListManager
         }
 
         int surplus = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
-        if (validateStorageReads && surplus > 0 && _gasRemaining < surplus * Eip7928Constants.ItemCost)
+        if (validateStorageReads && surplus > 0 && _gasRemaining < (ulong)(surplus * Eip7928Constants.ItemCost))
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
@@ -235,7 +235,7 @@ public partial class BlockAccessListManager
         }
 
         int surplusSuggestedReads = suggestedReads - generatedReads;
-        if (validateStorageReads && surplusSuggestedReads > 0 && _gasRemaining < surplusSuggestedReads * Eip7928Constants.ItemCost)
+        if (validateStorageReads && surplusSuggestedReads > 0 && _gasRemaining < (ulong)(surplusSuggestedReads * Eip7928Constants.ItemCost))
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
@@ -305,7 +305,7 @@ public partial class BlockAccessListManager
 
         // Storage-read gas budget — counts already tracked block-cumulative on both sides.
         int surplusReads = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
-        if (validateStorageReads && surplusReads > 0 && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
+        if (validateStorageReads && surplusReads > 0 && _gasRemaining < (ulong)(surplusReads * Eip7928Constants.ItemCost))
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }

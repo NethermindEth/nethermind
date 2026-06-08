@@ -5,7 +5,7 @@ namespace Nethermind.Synchronization.Test;
 
 public class MemorySyncPointers : ISyncPointers
 {
-    public long? LowestInsertedBodyNumber { get; set; }
-    public long? LowestInsertedReceiptBlockNumber { get; set; }
-    public long? LowestInsertedBlockAccessListBlockNumber { get; set; }
+    public ulong? LowestInsertedBodyNumber { get; set; }
+    public ulong? LowestInsertedReceiptBlockNumber { get; set; }
+    public ulong? LowestInsertedBlockAccessListBlockNumber { get; set; }
 }

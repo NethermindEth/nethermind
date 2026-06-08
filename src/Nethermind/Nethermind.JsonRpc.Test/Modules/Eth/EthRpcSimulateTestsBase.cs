@@ -91,8 +91,8 @@ public class EthRpcSimulateTestsBase
         byte[] bytecode = Bytes.FromHexString(contractBytecode);
         Transaction tx = new()
         {
-            Value = UInt256.Zero,
-            Nonce = 0,
+            Value = 0UL,
+            Nonce = 0UL,
             Data = bytecode,
             GasLimit = 3_000_000,
             SenderAddress = privateKey.Address,

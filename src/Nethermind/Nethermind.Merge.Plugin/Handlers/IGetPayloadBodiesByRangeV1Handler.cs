@@ -10,5 +10,5 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public interface IGetPayloadBodiesByRangeV1Handler
 {
-    Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count);
+    Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Handle(ulong start, ulong count);
 }

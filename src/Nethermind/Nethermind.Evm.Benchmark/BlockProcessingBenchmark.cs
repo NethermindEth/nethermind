@@ -347,7 +347,7 @@ public class BlockProcessingBenchmark
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce((ulong)(startNonce + i))
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)
@@ -358,14 +358,14 @@ public class BlockProcessingBenchmark
         return txs;
     }
 
-    private Transaction[] BuildEip1559Transfers(int count, int startNonce)
+    private Transaction[] BuildEip1559Transfers(int count, uint startNonce)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce(startNonce + i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)
@@ -384,7 +384,7 @@ public class BlockProcessingBenchmark
         {
             txs[i] = Build.A.Transaction
                 .WithType(TxType.AccessList)
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce((ulong)(startNonce + i))
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
                 .WithGasLimit(50_000)
@@ -402,7 +402,7 @@ public class BlockProcessingBenchmark
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce((ulong)(startNonce + i))
                 .WithTo(null)
                 .WithData(ContractCode)
                 .WithGasLimit(100_000)
@@ -419,7 +419,7 @@ public class BlockProcessingBenchmark
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
-                .WithNonce((UInt256)(startNonce + i))
+                .WithNonce((ulong)(startNonce + i))
                 .WithTo(TestItem.AddressB)
                 .WithGasLimit(50_000)
                 .WithGasPrice(2.GWei)

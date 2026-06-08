@@ -62,7 +62,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
         AccessList = builder.Build();
     }
 
-    public long GasSpent { get; set; }
+    public ulong GasSpent { get; set; }
     public AccessList? AccessList { get; private set; }
 
     public void Reset()

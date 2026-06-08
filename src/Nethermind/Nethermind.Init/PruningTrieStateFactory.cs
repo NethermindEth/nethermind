@@ -220,19 +220,19 @@ public class MainPruningTrieStoreFactory
         int pruningConfigSimulateLongFinalizationDepth
     ) : IFinalizedStateProvider
     {
-        private long? _lastFinalizedBlockNumber = null;
+        private ulong? _lastFinalizedBlockNumber = null;
 
-        public long FinalizedBlockNumber
+        public ulong FinalizedBlockNumber
         {
             get
             {
-                long baseFinalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
+                ulong baseFinalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
 
                 // Need to limit by head, otherwise it does not work for forward sync.
-                long headNumber = blockTree.Head?.Number ?? 0;
-                baseFinalizedBlockNumber = Math.Min(baseFinalizedBlockNumber, headNumber + pruningConfigSimulateLongFinalizationDepth / 2);
+                ulong headNumber = blockTree.Head?.Number ?? 0UL;
+                baseFinalizedBlockNumber = Math.Min(baseFinalizedBlockNumber, headNumber + (ulong)pruningConfigSimulateLongFinalizationDepth / 2);
 
-                if (_lastFinalizedBlockNumber is null || baseFinalizedBlockNumber - _lastFinalizedBlockNumber > pruningConfigSimulateLongFinalizationDepth)
+                if (_lastFinalizedBlockNumber is null || baseFinalizedBlockNumber - _lastFinalizedBlockNumber.Value > (ulong)pruningConfigSimulateLongFinalizationDepth)
                 {
                     _lastFinalizedBlockNumber = baseFinalizedBlockNumber;
                 }
@@ -241,6 +241,6 @@ public class MainPruningTrieStoreFactory
             }
         }
 
-        public Hash256? GetFinalizedStateRootAt(long blockNumber) => finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
     }
 }

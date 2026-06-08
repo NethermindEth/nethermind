@@ -11,8 +11,8 @@ using Nethermind.Evm.GasPolicy;
 namespace Nethermind.Consensus.Processing;
 
 public readonly record struct GasValidationResult(
-    long BlockGasUsed,
-    long BlockStateGasUsed,
+    ulong BlockGasUsed,
+    ulong BlockStateGasUsed,
     IntrinsicGas<EthereumGasPolicy> IntrinsicGas,
     InvalidBlockException? Exception);
 

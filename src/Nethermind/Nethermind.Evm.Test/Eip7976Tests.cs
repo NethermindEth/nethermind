@@ -21,22 +21,22 @@ public class Eip7976Tests
     // Standard: 21000 + zero*4 + nonzero*16 (+ 32000 + InitCodeWord for contract creation)
     private static IEnumerable<TestCaseData> IntrinsicGasCases()
     {
-        yield return new TestCaseData(Eip7976Spec, Address.Zero, new byte[] { 1 }, 21_016L, 21_064L)
+        yield return new TestCaseData(Eip7976Spec, Address.Zero, new byte[] { 1 }, 21_016UL, 21_064UL)
             .SetName("EIP-7976: single nonzero byte");
-        yield return new TestCaseData(Eip7976Spec, Address.Zero, new byte[] { 0 }, 21_004L, 21_064L)
+        yield return new TestCaseData(Eip7976Spec, Address.Zero, new byte[] { 0 }, 21_004UL, 21_064UL)
             .SetName("EIP-7976: single zero byte");
-        yield return new TestCaseData(Eip7976Spec, Address.Zero, new byte[] { 0, 0, 1, 1 }, 21_040L, 21_256L)
+        yield return new TestCaseData(Eip7976Spec, Address.Zero, new byte[] { 0, 0, 1, 1 }, 21_040UL, 21_256UL)
             .SetName("EIP-7976: mixed data");
-        yield return new TestCaseData(Eip7976Spec, Address.Zero, Array.Empty<byte>(), 21_000L, 21_000L)
+        yield return new TestCaseData(Eip7976Spec, Address.Zero, Array.Empty<byte>(), 21_000UL, 21_000UL)
             .SetName("EIP-7976: empty data");
-        yield return new TestCaseData(Eip7976Spec, null, new byte[] { 1 }, 53_018L, 21_064L)
+        yield return new TestCaseData(Eip7976Spec, null, new byte[] { 1 }, 53_018UL, 21_064UL)
             .SetName("EIP-7976: contract creation standard exceeds floor");
-        yield return new TestCaseData(Prague.Instance, Address.Zero, new byte[] { 0 }, 21_004L, 21_010L)
+        yield return new TestCaseData(Prague.Instance, Address.Zero, new byte[] { 0 }, 21_004UL, 21_010UL)
             .SetName("EIP-7623 fallback: single zero byte");
     }
 
     [TestCaseSource(nameof(IntrinsicGasCases))]
-    public void Intrinsic_gas_calculation(IReleaseSpec spec, Address? to, byte[] data, long expectedStandard, long expectedFloor)
+    public void Intrinsic_gas_calculation(IReleaseSpec spec, Address? to, byte[] data, ulong expectedStandard, ulong expectedFloor)
     {
         Transaction transaction = new() { Data = data, To = to };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, spec);

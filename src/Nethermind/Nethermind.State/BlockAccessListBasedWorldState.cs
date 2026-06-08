@@ -135,9 +135,9 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return default;
     }
 
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce) => oldNonce = GetNonce(address);
+    public void IncrementNonce(Address address, ulong delta, out ulong oldNonce) => oldNonce = GetNonce(address);
 
-    public void SetNonce(Address address, in UInt256 nonce) { }
+    public void SetNonce(Address address, in ulong nonce) { }
 
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
@@ -156,7 +156,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return ref parentReader.GetBalance(address);
     }
 
-    public UInt256 GetNonce(Address address)
+    public ulong GetNonce(Address address)
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
@@ -193,17 +193,17 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public void DeleteAccount(Address address) { }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default) { }
+    public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default) { }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default) { }
+    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default) { }
 
     public bool TryGetAccount(Address address, out AccountStruct account)
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
         bool exists = parentReader.TryGetAccount(address, out account);
-        UInt256 nonce = exists ? account.Nonce : UInt256.Zero;
-        UInt256 balance = exists ? account.Balance : UInt256.Zero;
+        ulong nonce = exists ? account.Nonce : 0;
+        ulong balance = exists ? (ulong)account.Balance : 0UL;
         ValueHash256 storageRoot = exists ? account.StorageRoot : Keccak.EmptyTreeHash.ValueHash256;
         ValueHash256 codeHash = exists ? account.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
 
@@ -216,7 +216,9 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
         if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balanceChange))
         {
-            balance = balanceChange.Value;
+            // BalanceChange.Value is UInt256; Account.Balance is ulong. Cast is safe —
+            // total ETH supply is well below 2^64 Wei.
+            balance = (ulong)balanceChange.Value;
             hasPriorChange = true;
         }
 
@@ -289,10 +291,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) { }
 
-    public void CommitTree(long blockNumber)
+    public void CommitTree(ulong blockNumber)
         => _innerWorldState.CommitTree(blockNumber);
 
-    public void DecrementNonce(Address address, UInt256 delta) { }
+    public void DecrementNonce(Address address, ulong delta) { }
 
     public void RecalculateStateRoot() { }
 

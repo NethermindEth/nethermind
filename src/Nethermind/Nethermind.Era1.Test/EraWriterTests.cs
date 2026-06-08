@@ -47,7 +47,7 @@ internal class EraWriterTests
         stream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>()).Returns(Task.CompletedTask);
 
         EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
-        for (int i = 0; i < EraWriter.MaxEra1Size; i++)
+        for (uint i = 0; i < EraWriter.MaxEra1Size; i++)
         {
             Block block = Build.A.Block.WithNumber(i)
                 .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;

@@ -41,17 +41,17 @@ internal class TestBlockTree : IBlockTree
     public Hash256? PendingHash => null;
     public Hash256? FinalizedHash => null;
     public Hash256? SafeHash => null;
-    public long? BestPersistedState { get; set; }
+    public ulong? BestPersistedState { get; set; }
 
-    public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => null;
-    public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options) => null;
-    public bool HasBlock(long blockNumber, Hash256 blockHash) => false;
-    public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => null;
-    public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options) => null;
-    public Hash256? FindBlockHash(long blockNumber) => null;
+    public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => null;
+    public Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options) => null;
+    public bool HasBlock(ulong blockNumber, Hash256 blockHash) => false;
+    public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => null;
+    public BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options) => null;
+    public Hash256? FindBlockHash(ulong blockNumber) => null;
     public bool IsMainChain(BlockHeader blockHeader) => false;
     public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => false;
-    public long GetLowestBlock() => 0;
+    public ulong GetLowestBlock() => 0;
 
     // IBlockTree implementation
     public ulong NetworkId => 1;
@@ -61,10 +61,10 @@ internal class TestBlockTree : IBlockTree
     public BlockHeader? BestSuggestedBeaconHeader => null;
     public BlockHeader? LowestInsertedHeader { get; set; }
     public BlockHeader? LowestInsertedBeaconHeader { get; set; }
-    public long BestKnownNumber => Head?.Number ?? 0;
-    public long BestKnownBeaconNumber => 0;
+    public ulong BestKnownNumber => Head?.Number ?? 0;
+    public ulong BestKnownBeaconNumber => 0;
     public bool CanAcceptNewBlocks => true;
-    public (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+    public (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
     public bool IsProcessingBlock { get; set; }
 
     public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None)
@@ -77,29 +77,29 @@ internal class TestBlockTree : IBlockTree
         => AddBlockResult.Added;
 
     public void UpdateHeadBlock(Hash256 blockHash) { }
-    public void NewOldestBlock(long oldestBlock) { }
+    public void NewOldestBlock(ulong oldestBlock) { }
     public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => AddBlockResult.Added;
     public ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         => ValueTask.FromResult(AddBlockResult.Added);
     public AddBlockResult SuggestHeader(BlockHeader header) => AddBlockResult.Added;
-    public bool IsKnownBlock(long number, Hash256 blockHash) => false;
-    public bool IsKnownBeaconBlock(long number, Hash256 blockHash) => false;
-    public bool WasProcessed(long number, Hash256 blockHash) => false;
+    public bool IsKnownBlock(ulong number, Hash256 blockHash) => false;
+    public bool IsKnownBeaconBlock(ulong number, Hash256 blockHash) => false;
+    public bool WasProcessed(ulong number, Hash256 blockHash) => false;
     public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) { }
     public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) { }
     public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => Task.CompletedTask;
-    public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash) => (null, null);
-    public ChainLevelInfo? FindLevel(long number) => null;
-    public BlockInfo FindCanonicalBlockInfo(long blockNumber) => null!;
-    public Hash256? FindHash(long blockNumber) => null;
+    public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash) => (null, null);
+    public ChainLevelInfo? FindLevel(ulong number) => null;
+    public BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => null!;
+    public Hash256? FindHash(ulong blockNumber) => null;
     public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         => new ArrayPoolList<BlockHeader>(0);
     public void DeleteInvalidBlock(Block invalidBlock) { }
-    public void DeleteOldBlock(long blockNumber, Hash256 blockHash) { }
+    public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) { }
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) { }
-    public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) => 0;
+    public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false) => 0;
     public bool IsBetterThanHead(BlockHeader? header) => false;
-    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) { }
+    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, ulong clearBeaconMainChainStartPoint) { }
     public void RecalculateTreeLevels() { }
-    public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
+    public void HealCanonicalChain(Hash256 startHash, ulong maxBlockDepth) { }
 }

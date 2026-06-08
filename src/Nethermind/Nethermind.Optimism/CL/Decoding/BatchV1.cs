@@ -90,7 +90,7 @@ public sealed class BatchV1
                 ChainId = chainId,
                 Type = Txs.Types[(int)txIdx],
                 Nonce = Txs.Nonces[(int)txIdx],
-                GasLimit = (long)Txs.Gases[(int)txIdx],
+                GasLimit = Txs.Gases[(int)txIdx],
             };
             bool contractCreationBit = ((Txs.ContractCreationBits >> (int)txIdx) & 1) == 1;
             if (!contractCreationBit)
@@ -115,20 +115,27 @@ public sealed class BatchV1
                             v = 27u + (parityBit ? 1u : 0u);
                         }
 
-                        (tx.Value, tx.GasPrice, tx.Data) = DecodeLegacyTransaction(Txs.Data[(int)txIdx].Span);
+                        (UInt256 legacyValue, tx.GasPrice, byte[] legacyData) = DecodeLegacyTransaction(Txs.Data[(int)txIdx].Span);
+                        tx.Value = (ulong)legacyValue;
+                        tx.Data = legacyData;
                         break;
                     }
                 case TxType.AccessList:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
-                        (tx.Value, tx.GasPrice, tx.Data, tx.AccessList) = DecodeAccessListTransaction(Txs.Data[(int)txIdx].Span);
+                        (UInt256 accessValue, tx.GasPrice, byte[] accessData, tx.AccessList) = DecodeAccessListTransaction(Txs.Data[(int)txIdx].Span);
+                        tx.Value = (ulong)accessValue;
+                        tx.Data = accessData;
                         break;
                     }
                 case TxType.EIP1559:
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
-                        (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList) =
+                        (UInt256 eipValue, tx.GasPrice, UInt256 maxFee, byte[] eipData, tx.AccessList) =
                             DecodeEip1559Transaction(Txs.Data[(int)txIdx].Span);
+                        tx.Value = (ulong)eipValue;
+                        tx.DecodedMaxFeePerGas = (ulong)maxFee;
+                        tx.Data = eipData;
                         break;
                     }
                 default:

@@ -57,7 +57,7 @@ namespace Nethermind.Core.Collections
             return ~lower;
         }
 
-        public static bool TryGetForBlock(this IList<long> list, in long blockNumber, out long item) =>
+        public static bool TryGetForBlock(this IList<ulong> list, in ulong blockNumber, out ulong item) =>
             list.TryGetSearchedItem(blockNumber, static (b, c) => b.CompareTo(c), out item);
 
         public static bool TryGetSearchedItem<T, TComparable>(this IList<T> list, in TComparable searchedItem, Func<TComparable, T, int> comparer, out T? item)

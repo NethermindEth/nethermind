@@ -314,10 +314,10 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(() => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes], Is.Null.After(100, 10));
     }
 
-    [TestCase(1L, false)]
-    [TestCase(10L, false)]
-    [TestCase(11L, true)]
-    public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(long blockNumber, bool willPruneOldIndices)
+    [TestCase(1ul, false)]
+    [TestCase(10ul, false)]
+    [TestCase(11ul, true)]
+    public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(ulong blockNumber, bool willPruneOldIndices)
     {
         _receiptConfig.TxLookupLimit = 10;
         CreateStorage();
@@ -333,7 +333,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         _receiptConfig.TxLookupLimit = 1000;
         CreateStorage();
-        (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
+        (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001ul);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
         Assert.That(() => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes], Is.Null.After(100, 10));
     }
@@ -437,7 +437,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.Not.Null);
         }
 
-        Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1).TestObject;
+        Block newHead = Build.A.Block.WithNumber((ulong)_receiptConfig.TxLookupLimit.Value + 1ul).TestObject;
         _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead));
 
@@ -448,7 +448,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
     }
 
-    private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
+    private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null)
     {
         block ??= Build.A.Block
             .WithNumber(1)
@@ -484,7 +484,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         return (block, receipts);
     }
 
-    private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null, WriteFlags writeFlags = WriteFlags.None)
+    private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null, WriteFlags writeFlags = WriteFlags.None)
     {
         (block, TxReceipt[] receipts) = PrepareBlock(block, isFinalized, headNumber);
         _storage.Insert(block, receipts, writeFlags: writeFlags);

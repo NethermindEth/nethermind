@@ -30,8 +30,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 {
     private const int DefaultFlushIntervalEntries = 8192;
     private const int InitialFrameStackCapacity = 8;
-    private const long ParityCallCostBeforeStipend = 7400;
-    private const long ParityCallCostAfterStipend = 9700;
+    private const ulong ParityCallCostBeforeStipend = 7400UL;
+    private const ulong ParityCallCostAfterStipend = 9700UL;
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
@@ -43,8 +43,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private bool _hasPendingOp;
     private bool _pushAssigned;
     private int _pendingPc;
-    private long _pendingCost;
-    private long _pendingUsed;
+    private ulong _pendingCost;
+    private ulong _pendingUsed;
 
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
@@ -281,7 +281,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         if (!_streamVmTrace) { base.StartOperation(pc, opcode, gas, env); return; }
 
@@ -302,14 +302,14 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         ReleaseOpBuffers();
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_streamVmTrace) { base.ReportOperationRemainingGas(gas); return; }
 
         if (_gasAlreadySetForCurrentOp || !_hasPendingOp) return;
         _gasAlreadySetForCurrentOp = true;
 
-        _pendingCost -= _treatGasParityStyle ? 0 : gas;
+        _pendingCost -= _treatGasParityStyle ? 0UL : gas;
         if (_pendingCost == ParityCallCostBeforeStipend) _pendingCost = ParityCallCostAfterStipend;
         _pendingUsed = gas;
         _pushAssigned = true;
@@ -383,7 +383,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         frame.CodeLength = codeSpan.Length;
     }
 
-    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
         if (!_streamVmTrace) { base.ReportGasUpdateForVmTrace(refund, gasAvailable); return; }
 
@@ -442,7 +442,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         bool hadPendingParent = frame.HasPendingParentOpToClose;
         int outerPc = frame.OuterPendingPc;
-        long outerCost = frame.OuterPendingCost;
+        ulong outerCost = frame.OuterPendingCost;
         ReturnFrame(frame);
 
         if (hadPendingParent)
@@ -699,7 +699,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         public bool JsonObjectOpened;
         public bool HasPendingParentOpToClose;
         public int OuterPendingPc;
-        public long OuterPendingCost;
+        public ulong OuterPendingCost;
 
         public void Reset()
         {

@@ -134,7 +134,7 @@ public class ForensicsProcessorTests
             Substitute.For<IEpochSwitchManager>(),
             LimboLogs.Instance);
 
-    private static QuorumCertificate BuildQc(string seed, ulong round, long number)
+    private static QuorumCertificate BuildQc(string seed, ulong round, ulong number)
     {
         Hash256 hash = Keccak.Compute(seed);
         return new QuorumCertificate(new BlockRoundInfo(hash, round, number), [], 450);

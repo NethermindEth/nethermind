@@ -30,7 +30,7 @@ public class TaikoChainSpecEngineParametersTests
             UnzenTimestamp = 0x69df3615,
         };
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);
@@ -52,12 +52,12 @@ public class TaikoChainSpecEngineParametersTests
             ShastaTimestamp = 0x69CE6BD4,
         };
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);
 
-        Assert.That(blockNumbers, Is.EqualTo(new[] { 0x836c0L, 0x11CAB0L }));
+        Assert.That(blockNumbers, Is.EqualTo(new[] { 0x836c0UL, 0x11CAB0UL }));
         Assert.That(timestamps, Is.EqualTo(new[] { 0x69CE6BD4ul }));
     }
 
@@ -66,7 +66,7 @@ public class TaikoChainSpecEngineParametersTests
     {
         TaikoChainSpecEngineParameters parameters = new();
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);
@@ -84,7 +84,7 @@ public class TaikoChainSpecEngineParametersTests
             L1StaticCallTransitionTimestamp = 0,
         };
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
 
         parameters.AddTransitions(blockNumbers, timestamps);

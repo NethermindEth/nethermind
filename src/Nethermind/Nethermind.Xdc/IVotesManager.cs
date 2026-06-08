@@ -15,5 +15,5 @@ public interface IVotesManager
     Task OnReceiveVote(Vote vote);
     bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate certificate, [NotNullWhen(false)] out string? error);
     bool VerifyVotingRules(XdcBlockHeader header, [NotNullWhen(false)] out string? error);
-    bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc, [NotNullWhen(false)] out string? error);
+    bool VerifyVotingRules(Hash256 blockHash, ulong blockNumber, ulong roundNumber, QuorumCertificate qc, [NotNullWhen(false)] out string? error);
 }

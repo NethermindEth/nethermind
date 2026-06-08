@@ -31,7 +31,7 @@ namespace Nethermind.History.Test;
 public class HistoryPrunerTests
 {
     private const long SecondsPerSlot = 1;
-    private const long BeaconGenesisBlockNumber = 50;
+    private const ulong BeaconGenesisBlockNumber = 50;
     private static readonly IBlocksConfig BlocksConfig = new BlocksConfig()
     {
         SecondsPerSlot = SecondsPerSlot
@@ -174,9 +174,9 @@ public class HistoryPrunerTests
         for (int i = 1; i <= blocks; i++)
         {
             if (i < expectedPruneBelow)
-                CheckBlockPruned(testBlockchain, blockHashes, i);
+                CheckBlockPruned(testBlockchain, blockHashes, (ulong)i);
             else
-                CheckBlockPreserved(testBlockchain, blockHashes, i);
+                CheckBlockPreserved(testBlockchain, blockHashes, (ulong)i);
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
@@ -229,7 +229,7 @@ public class HistoryPrunerTests
 
         for (int i = 1; i <= blocks; i++)
         {
-            CheckBlockPreserved(testBlockchain, blockHashes, i);
+            CheckBlockPreserved(testBlockchain, blockHashes, (ulong)i);
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
@@ -327,14 +327,14 @@ public class HistoryPrunerTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(testBlockchain.BlockTree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist");
-            Assert.That(testBlockchain.BlockTree.FindHeader(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block header should still exist");
-            Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(0), Is.Not.Null, "Genesis block info should still exist");
-            Assert.That(testBlockchain.ReceiptStorage.HasBlock(0, genesisHash), Is.True, "Genesis block receipt should still exist");
+            Assert.That(testBlockchain.BlockTree.FindBlock(0UL, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist");
+            Assert.That(testBlockchain.BlockTree.FindHeader(0UL, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block header should still exist");
+            Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(0UL), Is.Not.Null, "Genesis block info should still exist");
+            Assert.That(testBlockchain.ReceiptStorage.HasBlock(0UL, genesisHash), Is.True, "Genesis block receipt should still exist");
         }
     }
 
-    private static void CheckHeadPreserved(BasicTestBlockchain testBlockchain, long headNumber)
+    private static void CheckHeadPreserved(BasicTestBlockchain testBlockchain, ulong headNumber)
     {
         using (Assert.EnterMultipleScope())
         {
@@ -343,23 +343,23 @@ public class HistoryPrunerTests
         }
     }
 
-    private static void CheckBlockPreserved(BasicTestBlockchain testBlockchain, List<Hash256> blockHashes, int blockNumber)
+    private static void CheckBlockPreserved(BasicTestBlockchain testBlockchain, List<Hash256> blockHashes, ulong blockNumber)
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(testBlockchain.BlockTree.FindBlock(blockNumber, BlockTreeLookupOptions.None), Is.Not.Null, $"Block {blockNumber} should still exist");
             Assert.That(testBlockchain.BlockTree.FindHeader(blockNumber, BlockTreeLookupOptions.None), Is.Not.Null, $"Header {blockNumber} should still exist");
             Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(blockNumber), Is.Not.Null, $"Block info {blockNumber} should still exist");
-            Assert.That(testBlockchain.ReceiptStorage.HasBlock(blockNumber, blockHashes[blockNumber]), Is.True, $"Receipt for block {blockNumber} should still exist");
+            Assert.That(testBlockchain.ReceiptStorage.HasBlock(blockNumber, blockHashes[(int)blockNumber]), Is.True, $"Receipt for block {blockNumber} should still exist");
         }
     }
 
-    private static void CheckBlockPruned(BasicTestBlockchain testBlockchain, List<Hash256> blockHashes, int blockNumber)
+    private static void CheckBlockPruned(BasicTestBlockchain testBlockchain, List<Hash256> blockHashes, ulong blockNumber)
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(testBlockchain.BlockTree.FindBlock(blockNumber, BlockTreeLookupOptions.None), Is.Null, $"Block {blockNumber} should be pruned");
-            Assert.That(testBlockchain.ReceiptStorage.HasBlock(blockNumber, blockHashes[blockNumber]), Is.False, $"Receipt for block {blockNumber} should be pruned");
+            Assert.That(testBlockchain.ReceiptStorage.HasBlock(blockNumber, blockHashes[(int)blockNumber]), Is.False, $"Receipt for block {blockNumber} should be pruned");
 
             // should still be preserved
             Assert.That(testBlockchain.BlockTree.FindHeader(blockNumber, BlockTreeLookupOptions.None), Is.Not.Null, $"Header {blockNumber} should still exist");
@@ -392,7 +392,7 @@ public class HistoryPrunerTests
             blockHashes?.Add(bc.BlockTree.Head!.Hash!);
         }
         if (syncPivot is { } pivot)
-            bc.BlockTree.SyncPivot = (pivot, Hash256.Zero);
+            bc.BlockTree.SyncPivot = ((ulong)pivot, Hash256.Zero);
         return bc;
     }
 

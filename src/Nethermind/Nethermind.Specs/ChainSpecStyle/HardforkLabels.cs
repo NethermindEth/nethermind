@@ -15,7 +15,7 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// <summary>
 /// Shorthand hardfork labels for the Parity-style chainspec JSON and the EIP-7949 Geth-style
 /// genesis. Each label is a single activation value — a block number for pre-Shanghai forks
-/// (<c>long?</c>) and a timestamp for post-merge forks (<c>ulong?</c>) — that fans out at load
+/// (<c>ulong?</c>) and a timestamp for post-merge forks (<c>ulong?</c>) — that fans out at load
 /// time to the full set of per-EIP transition fields that make up that fork.
 /// </summary>
 /// <remarks>
@@ -56,12 +56,12 @@ public static partial class HardforkLabels
         foreach (IHardforkLabel label in All) label.Apply(target, source);
     }
 
-    /// <param name="name">Fork class name (e.g. <c>Cancun</c>); the JSON wire key is its camelCase form.</param>
-    internal static HardforkLabel<long> Block(
+    /// <param name="name">Fork class name (e.g. <c>Homestead</c>); the JSON wire key is its camelCase form.</param>
+    internal static HardforkLabel<ulong> Block(
         string name,
-        params Expression<Func<ChainParameters, long?>>[] eips) =>
+        params Expression<Func<ChainParameters, ulong?>>[] eips) =>
         new(name, HardforkLabelKind.Block,
-            (s, k) => s.NamedForkBlocks is { } d && d.TryGetValue(k, out long v) ? v : null,
+            (s, k) => s.NamedForkBlocks is { } d && d.TryGetValue(k, out ulong v) ? v : null,
             eips);
 
     /// <inheritdoc cref="Block"/>
@@ -81,7 +81,7 @@ public static partial class HardforkLabels
 public interface IHasNamedForks
 {
     /// <summary>Pre-merge fork → activation block number. Case-insensitive lookup.</summary>
-    IReadOnlyDictionary<string, long>? NamedForkBlocks { get; }
+    IReadOnlyDictionary<string, ulong>? NamedForkBlocks { get; }
 
     /// <summary>Post-merge fork → activation timestamp. Case-insensitive lookup.</summary>
     IReadOnlyDictionary<string, ulong>? NamedForkTimestamps { get; }

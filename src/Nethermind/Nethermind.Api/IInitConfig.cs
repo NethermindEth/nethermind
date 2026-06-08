@@ -85,7 +85,7 @@ public interface IInitConfig : IConfig
     INodeStorage.KeyScheme StateDbKeyScheme { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
-    long? ExitOnBlockNumber { get; set; }
+    ulong? ExitOnBlockNumber { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     bool ExitOnInvalidBlock { get; set; }

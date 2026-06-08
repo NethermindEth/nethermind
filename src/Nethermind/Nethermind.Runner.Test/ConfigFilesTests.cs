@@ -203,15 +203,15 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
     }
 
-    [TestCase("^mainnet ^gnosis ^sepolia", 0L)]
-    [TestCase("mainnet ^archive", 15537394L)]
-    [TestCase("gnosis ^archive", 25349537L)]
-    [TestCase("sepolia ^archive", 1450409L)]
-    [TestCase("archive", 0L)]
-    public void Barriers_defaults_are_correct(string configWildcard, long barrier)
+    [TestCase("^mainnet ^gnosis ^sepolia", 0UL)]
+    [TestCase("mainnet ^archive", 15537394UL)]
+    [TestCase("gnosis ^archive", 25349537UL)]
+    [TestCase("sepolia ^archive", 1450409UL)]
+    [TestCase("archive", 0UL)]
+    public void Barriers_defaults_are_correct(string configWildcard, ulong barrier)
     {
-        Test<ISyncConfig, long>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
-        Test<ISyncConfig, long>(configWildcard, static c => c.AncientReceiptsBarrier, barrier);
+        Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
+        Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientReceiptsBarrier, barrier);
     }
 
     [TestCase("^spaceneth", "nethermind_db")]

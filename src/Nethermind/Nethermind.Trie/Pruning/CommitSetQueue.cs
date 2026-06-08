@@ -23,7 +23,7 @@ public class CommitSetQueue
     }
 
     public bool IsEmpty => Count == 0;
-    public long? MinBlockNumber
+    public ulong? MinBlockNumber
     {
         get
         {
@@ -31,7 +31,7 @@ public class CommitSetQueue
         }
     }
 
-    public long? MaxBlockNumber
+    public ulong? MaxBlockNumber
     {
         get
         {
@@ -75,7 +75,7 @@ public class CommitSetQueue
         }
     }
 
-    public ArrayPoolListRef<BlockCommitSet> GetCommitSetsAtBlockNumber(long blockNumber)
+    public ArrayPoolListRef<BlockCommitSet> GetCommitSetsAtBlockNumber(ulong blockNumber)
     {
         lock (_queue)
         {
@@ -90,7 +90,7 @@ public class CommitSetQueue
         }
     }
 
-    public ArrayPoolListRef<BlockCommitSet> GetAndDequeueCommitSetsBeforeOrAt(long blockNumber)
+    public ArrayPoolListRef<BlockCommitSet> GetAndDequeueCommitSetsBeforeOrAt(ulong blockNumber)
     {
         lock (_queue)
         {

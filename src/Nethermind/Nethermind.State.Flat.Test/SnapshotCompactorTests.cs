@@ -31,16 +31,16 @@ public class SnapshotCompactorTests
         _compactor = new SnapshotCompactor(_config, ScheduleHelper.CreateWithOffset(_config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
     }
 
-    private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
         return new StateId(blockNumber, new ValueHash256(bytes));
     }
 
-    private void BuildSnapshotChain(long startBlock, long endBlock)
+    private void BuildSnapshotChain(ulong startBlock, ulong endBlock)
     {
-        for (long i = startBlock; i < endBlock; i++)
+        for (ulong i = startBlock; i < endBlock; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
@@ -414,10 +414,10 @@ public class SnapshotCompactorTests
         Assert.That(snapshots.Count, Is.EqualTo(16));
     }
 
-    [TestCase(4, 4)]   // 4 & -4 = 4, compact size 4, blocks 0->4
-    [TestCase(8, 8)]   // 8 & -8 = 8, compact size 8, blocks 0->8
-    [TestCase(12, 4)]  // 12 & -12 = 4, compact size 4, blocks 8->12
-    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(long blockNumber, int expectedCount)
+    [TestCase(4UL, 4)]   // 4 & -4 = 4, compact size 4, blocks 0->4
+    [TestCase(8UL, 8)]   // 8 & -8 = 8, compact size 8, blocks 0->8
+    [TestCase(12UL, 4)]  // 12 & -12 = 4, compact size 4, blocks 8->12
+    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(ulong blockNumber, int expectedCount)
     {
         BuildSnapshotChain(0, blockNumber);
 
@@ -450,7 +450,7 @@ public class SnapshotCompactorTests
     public void GetSnapshotsToCompact_IncompleteChain_ReturnsEmpty()
     {
         // Missing 1
-        for (long i = 2; i < 16; i++)
+        for (ulong i = 2; i < 16; i++)
         {
             StateId from = new(i, Keccak.Zero);
             StateId to = new(i + 1, Keccak.Zero);
@@ -478,7 +478,7 @@ public class SnapshotCompactorTests
         StateId targetFrom = CreateStateId(15);
         StateId targetTo = CreateStateId(16);
         Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account((UInt256)20, (UInt256)2000);
+        targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account(20UL, 2000UL);
         _snapshotRepository.TryAddSnapshot(targetSnapshot);
         _snapshotRepository.AddStateId(targetTo);
 
@@ -499,7 +499,7 @@ public class SnapshotCompactorTests
         SnapshotRepository repo = new(LimboLogs.Instance);
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
 
-        for (long i = 0; i < 2; i++)
+        for (ulong i = 0; i < 2; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
@@ -517,12 +517,12 @@ public class SnapshotCompactorTests
         targetSnapshot!.Dispose();
     }
 
-    [TestCase(1)]
-    [TestCase(3)]
-    [TestCase(5)]
-    [TestCase(7)]
-    [TestCase(9)]
-    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(long blockNumber)
+    [TestCase(1UL)]
+    [TestCase(3UL)]
+    [TestCase(5UL)]
+    [TestCase(7UL)]
+    [TestCase(9UL)]
+    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(ulong blockNumber)
     {
         BuildSnapshotChain(0, blockNumber);
 
@@ -535,17 +535,17 @@ public class SnapshotCompactorTests
         Assert.That(snapshots.Count, Is.EqualTo(0));
     }
 
-    [TestCase(2, 2)]   // blockNumber & -blockNumber = 2
-    [TestCase(4, 4)]
-    [TestCase(6, 2)]
-    [TestCase(8, 8)]
-    [TestCase(10, 2)]
-    [TestCase(12, 4)]
-    [TestCase(14, 2)]
-    [TestCase(16, 16)]
-    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(long blockNumber, int expectedCompactSize)
+    [TestCase(2UL, 2)]   // blockNumber & -blockNumber = 2
+    [TestCase(4UL, 4)]
+    [TestCase(6UL, 2)]
+    [TestCase(8UL, 8)]
+    [TestCase(10UL, 2)]
+    [TestCase(12UL, 4)]
+    [TestCase(14UL, 2)]
+    [TestCase(16UL, 16)]
+    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(ulong blockNumber, int expectedCompactSize)
     {
-        int actualCompactSize = (int)Math.Min(blockNumber & -blockNumber, 16);
+        int actualCompactSize = (int)Math.Min(blockNumber & (~blockNumber + 1UL), 16UL);
         Assert.That(actualCompactSize, Is.EqualTo(expectedCompactSize));
     }
 
@@ -558,7 +558,7 @@ public class SnapshotCompactorTests
         SnapshotRepository repo = new(LimboLogs.Instance);
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
 
-        for (long i = 0; i < 29; i++)
+        for (ulong i = 0; i < 29; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);

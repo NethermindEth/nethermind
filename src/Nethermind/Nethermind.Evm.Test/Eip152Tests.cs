@@ -12,7 +12,11 @@ namespace Nethermind.Evm.Test;
 public class Eip152Tests : VirtualMachineTestsBase
 {
     private const int InputLength = 213;
-    protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
+
+    protected override ulong BlockNumber =>
+        _blockNumberAdjustment >= 0
+            ? MainnetSpecProvider.IstanbulBlockNumber + (ulong)_blockNumberAdjustment
+            : MainnetSpecProvider.IstanbulBlockNumber - (ulong)-_blockNumberAdjustment;
 
     private int _blockNumberAdjustment;
 
@@ -38,7 +42,9 @@ public class Eip152Tests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode
             .CallWithInput(Blake2FPrecompile.Address, 1000L, new byte[InputLength])
             .Done;
+
         TestAllTracerWithOutput result = Execute(code);
+
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 }

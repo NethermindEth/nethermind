@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain
     public class ManualBlockFinalizationManager : IManualBlockFinalizationManager
     {
         // We could save in DB, but its not really needed yet
-        public long LastFinalizedBlockLevel { get; private set; } = 0;
+        public ulong LastFinalizedBlockLevel { get; private set; } = 0;
 
         // We could save in DB, but its not really needed yet
         public Hash256 LastFinalizedHash { get; private set; } = Keccak.Zero;

@@ -300,11 +300,11 @@ namespace Nethermind.Blockchain.Test
             {
                 HashSet<Address> missingAddressesSet = missingAddresses.ToHashSet();
 
-                foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
+                foreach (KeyValuePair<Address, (UInt256 Balance, ulong Nonce)> accountState in testCase.AccountStates
                     .Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
                     stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                    for (int i = 0; i < accountState.Value.Nonce; i++)
+                    for (ulong i = 0; i < accountState.Value.Nonce; i++)
                     {
                         stateProvider.IncrementNonce(accountState.Key);
                     }
@@ -454,7 +454,7 @@ namespace Nethermind.Blockchain.Test
 
         public new bool TryGetAccount(Address address, out AccountStruct account)
         {
-            account = new(UInt256.Zero, UInt256.MaxValue);
+            account = new(0ul, ulong.MaxValue);
             return true;
         }
 
@@ -466,7 +466,7 @@ namespace Nethermind.Blockchain.Test
 
             public bool TryGetAccount(Address address, out AccountStruct account)
             {
-                account = new(UInt256.Zero, UInt256.MaxValue);
+                account = new(0ul, ulong.MaxValue);
                 return true;
             }
 

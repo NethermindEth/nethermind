@@ -15,12 +15,12 @@ internal static class SszNumericChecks
     /// <see cref="InvalidDataException"/> when the value exceeds <see cref="long.MaxValue"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long CheckedLong(ulong value)
+    public static ulong CheckedLong(ulong value)
     {
         if (value > long.MaxValue)
             ThrowLongOutOfRange(value);
 
-        return (long)value;
+        return value;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowLongOutOfRange(ulong value) =>

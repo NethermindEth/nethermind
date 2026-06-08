@@ -149,7 +149,7 @@ public class JsonRpcServiceTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         ethRpcModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
         BlockForRpc result = RpcTest.AssertSuccess<BlockForRpc>(TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", "true"));
-        Assert.That(assertSize ? result.Size : result.Number, Is.EqualTo(expected));
+        Assert.That(assertSize ? (long)result.Size : (long)result.Number!.Value, Is.EqualTo(expected));
     }
 
     [Test]
@@ -420,7 +420,7 @@ public class JsonRpcServiceTests
         }
         else
         {
-            ethRpcModule.DidNotReceive().eth_feeHistory(Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>());
+            ethRpcModule.DidNotReceive().eth_feeHistory(Arg.Any<ulong>(), Arg.Any<BlockParameter>(), Arg.Any<double[]>());
         }
     }
 

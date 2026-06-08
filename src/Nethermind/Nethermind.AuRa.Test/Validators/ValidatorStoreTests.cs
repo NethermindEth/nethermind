@@ -83,12 +83,12 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [TestCaseSource(nameof(ValidatorsTests))]
-        public void validators_return_as_expected(IDb db, long? blockNumber, IEnumerable<(long FinalizingBlock, Address[] Validators)> validatorsToAdd, Address[] expectedValidators)
+        public void validators_return_as_expected(IDb db, ulong? blockNumber, IEnumerable<(long FinalizingBlock, Address[] Validators)> validatorsToAdd, Address[] expectedValidators)
         {
             ValidatorStore store = new(db);
             if (validatorsToAdd is not null)
             {
-                foreach ((long FinalizingBlock, Address[] Validators) validator in validatorsToAdd.OrderBy(static v => v.FinalizingBlock))
+                foreach ((ulong FinalizingBlock, Address[] Validators) validator in validatorsToAdd.OrderBy(static v => v.FinalizingBlock))
                 {
                     store.SetValidators(validator.FinalizingBlock, validator.Validators);
                 }
@@ -142,7 +142,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         private static MemDb CreateMemDbWithValidators(IEnumerable<(long FinalizingBlock, Address[] Validators)> validators = null)
         {
-            static Hash256 GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
+            static Hash256 GetKey(in ulong blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
             validators ??= Array.Empty<(long FinalizingBlock, Address[] Validators)>();
             (long FinalizingBlock, Address[] Validators)[] ordered = validators.OrderByDescending(static v => v.FinalizingBlock).ToArray();
@@ -152,15 +152,17 @@ namespace Nethermind.AuRa.Test.Validators
             for (int i = 0; i < ordered.Length; i++)
             {
                 (long FinalizingBlock, Address[] Validators) current = ordered[i];
-                (long FinalizingBlock, Address[] Validators) next = i + 1 < ordered.Length ? ordered[i + 1] : (-1, Array.Empty<Address>());
-                ValidatorInfo validatorInfo = new(current.FinalizingBlock, next.FinalizingBlock, current.Validators);
+                (long FinalizingBlock, Address[] Validators) next = i + 1 < ordered.Length ? ordered[i + 1] : (-1L, Array.Empty<Address>());
+
+                // Safe: FinalizingBlock is a block number, always non-negative
+                ValidatorInfo validatorInfo = new((ulong)current.FinalizingBlock, (ulong)next.FinalizingBlock, current.Validators);
 
                 if (i == 0)
                 {
-                    memDb.Set(ValidatorStore.LatestFinalizedValidatorsBlockNumberKey, current.FinalizingBlock.ToBigEndianByteArrayWithoutLeadingZeros());
+                    memDb.Set(ValidatorStore.LatestFinalizedValidatorsBlockNumberKey, ((ulong)current.FinalizingBlock).ToBigEndianByteArrayWithoutLeadingZeros());
                 }
 
-                memDb.Set(GetKey(current.FinalizingBlock), Rlp.Encode(validatorInfo).Bytes);
+                memDb.Set(GetKey((ulong)current.FinalizingBlock), Rlp.Encode(validatorInfo).Bytes);
             }
 
             return memDb;

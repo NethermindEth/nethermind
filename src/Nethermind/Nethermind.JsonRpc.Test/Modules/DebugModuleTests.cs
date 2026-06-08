@@ -63,7 +63,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         _debugBridge
-            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<long?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<ulong?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(static c => StreamBundles(c.ArgAt<CancellationToken>(3)));
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
@@ -140,7 +140,7 @@ public class DebugModuleTests
         HeaderDecoder decoder = new();
         Block blk = Build.A.Block.WithNumber(0).TestObject;
         Rlp rlp = decoder.Encode(blk.Header);
-        _debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
+        _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(blk);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", "0x");
@@ -387,7 +387,7 @@ public class DebugModuleTests
     [Test]
     public async Task Migrate_receipts()
     {
-        _debugBridge.MigrateReceipts(Arg.Any<long>(), Arg.Any<long>()).Returns(true);
+        _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
         IDebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", 100);
         Assert.That(response, Is.Not.Null);

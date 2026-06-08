@@ -135,7 +135,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         int endHashIndex;
 
         // Now process account ranges using stored snapshots
-        for (int blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
+        for (uint blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Set remote tree to the state at this block number
             remote.StateTree.RootHash = rootHashAtBlock[blockNumber];
@@ -164,7 +164,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
                 endHashIndex = pathPool.Length - 1;
             }
 
-            ProcessAccountRange(remote.StateTree, snapTrieFactory, blockJumps, finalRootHash,
+            ProcessAccountRange(remote.StateTree, snapTrieFactory, (ulong)blockJumps, finalRootHash,
                 accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
             startingHashIndex += 1000;
@@ -181,7 +181,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Assert.That(data.RequestedNodesCount, Is.LessThan(accounts.Count / 2));
     }
 
-    private static void ProcessAccountRange(StateTree remoteStateTree, ISnapTrieFactory snapTrieFactory, int blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
+    private static void ProcessAccountRange(StateTree remoteStateTree, ISnapTrieFactory snapTrieFactory, ulong blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
     {
         ValueHash256 startingHash = accounts.First().Path;
         ValueHash256 endHash = accounts.Last().Path;

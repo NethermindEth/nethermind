@@ -22,9 +22,9 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public Address? From { get; set; }
 
-    public long Gas { get; set; }
+    public ulong Gas { get; set; }
 
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
 
     public Address? To { get; set; }
 

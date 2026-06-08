@@ -30,7 +30,7 @@ public class ForkchoiceStateV1(Hash256 headBlockHash, Hash256 finalizedBlockHash
     public Hash256 FinalizedBlockHash { get; set; } = finalizedBlockHash;
 
     public override string ToString() => $"ForkChoice: {HeadBlockHash}, Safe: {SafeBlockHash}, Finalized: {FinalizedBlockHash}";
-    public string ToString(long? headNumber, long? safeNumber, long? finalizedNumber) =>
+    public string ToString(ulong? headNumber, ulong? safeNumber, ulong? finalizedNumber) =>
         headNumber is null || safeNumber is null || finalizedNumber is null
             ? ToString()
             : $"ForkChoice: {headNumber} ({HeadBlockHash.ToShortString()}), Safe: {safeNumber} ({SafeBlockHash.ToShortString()}), Finalized: {finalizedNumber} ({FinalizedBlockHash.ToShortString()})";

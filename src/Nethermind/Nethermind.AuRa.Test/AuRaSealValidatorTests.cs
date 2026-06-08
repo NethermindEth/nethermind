@@ -146,8 +146,8 @@ namespace Nethermind.AuRa.Test
 
             object cause = null;
 
-            _reportingValidator.ReportBenign(Arg.Any<Address>(), Arg.Any<long>(), Arg.Do<IReportingValidator.BenignCause>(c => cause ??= c));
-            _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<long>(), Arg.Any<byte[]>(), Arg.Do<IReportingValidator.MaliciousCause>(c => cause ??= c));
+            _reportingValidator.ReportBenign(Arg.Any<Address>(), Arg.Any<ulong>(), Arg.Do<IReportingValidator.BenignCause>(c => cause ??= c));
+            _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<ulong>(), Arg.Any<byte[]>(), Arg.Do<IReportingValidator.MaliciousCause>(c => cause ??= c));
             BlockHeader header = null, parent = null;
             _reportingValidator.TryReportSkipped(Arg.Do<BlockHeader>(h => header = h), Arg.Do<BlockHeader>(h => parent = h));
 
@@ -179,7 +179,7 @@ namespace Nethermind.AuRa.Test
             _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), Arg.Any<Address>(), Arg.Any<long>(), out _).Returns(true);
 
             object cause = null;
-            _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<long>(), Arg.Any<byte[]>(),
+            _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<ulong>(), Arg.Any<byte[]>(),
                 Arg.Do<IReportingValidator.MaliciousCause>(c => cause ??= c));
 
             // step 15 arrives first
@@ -229,7 +229,7 @@ namespace Nethermind.AuRa.Test
         }
 
         [TestCaseSource(nameof(ValidateSealTests))]
-        public bool validate_seal(long blockNumber, Address signedAddress, Address recoveredAddress)
+        public bool validate_seal(ulong blockNumber, Address signedAddress, Address recoveredAddress)
         {
             signedAddress ??= _address;
             recoveredAddress ??= _address;

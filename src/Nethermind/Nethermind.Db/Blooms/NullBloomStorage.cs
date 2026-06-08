@@ -16,18 +16,18 @@ namespace Nethermind.Db.Blooms
         }
 
         public static NullBloomStorage Instance { get; } = new();
-        public long MinBlockNumber { get; } = long.MaxValue;
-        public long MaxBlockNumber { get; } = 0;
-        public long MigratedBlockNumber { get; } = -1;
+        public ulong MinBlockNumber { get; } = ulong.MaxValue;
+        public ulong MaxBlockNumber { get; } = 0;
+        public ulong MigratedBlockNumber { get; } = 0;
 
-        public void Store(IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms) { }
-        public void Store(long blockNumber, Bloom bloom) { }
+        public void Store(IReadOnlyList<(ulong BlockNumber, Bloom Bloom)> blooms) { }
+        public void Store(ulong blockNumber, Bloom bloom) { }
 
         public void Migrate(IEnumerable<BlockHeader> blockHeaders) { }
 
-        public IBloomEnumeration GetBlooms(long fromBlock, long toBlock) => new NullBloomEnumerator();
+        public IBloomEnumeration GetBlooms(ulong fromBlock, ulong toBlock) => new NullBloomEnumerator();
 
-        public bool ContainsRange(in long fromBlockNumber, in long toBlockNumber) => false;
+        public bool ContainsRange(in ulong fromBlockNumber, in ulong toBlockNumber) => false;
 
         public IEnumerable<Average> Averages { get; } = Array.Empty<Average>();
 
@@ -36,13 +36,13 @@ namespace Nethermind.Db.Blooms
         {
             public IEnumerator<Core.Bloom> GetEnumerator() => Enumerable.Empty<Core.Bloom>().GetEnumerator();
 
-            public bool TryGetBlockNumber(out long blockNumber)
+            public bool TryGetBlockNumber(out ulong blockNumber)
             {
                 blockNumber = default;
                 return false;
             }
 
-            public (long FromBlock, long ToBlock) CurrentIndices { get; } = (0, 0);
+            public (ulong FromBlock, ulong ToBlock) CurrentIndices { get; } = (0, 0);
 
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }

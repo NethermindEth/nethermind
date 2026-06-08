@@ -47,7 +47,7 @@ public class SyncStatusListTests
     public void Will_not_go_below_ancient_barrier()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
+        blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
         SyncStatusList syncStatusList = new(blockTree, 1000, null, 900);
 
         syncStatusList.TryGetInfosForBatch(500, new AlwaysDownloadStrategy(), out BlockInfo?[] infos);
@@ -59,10 +59,10 @@ public class SyncStatusListTests
     public void Will_skip_existing_keys()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindCanonicalBlockInfo(Arg.Any<long>())
+        blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>())
             .Returns(ci =>
             {
-                long blockNumber = (long)ci[0];
+                ulong blockNumber = ci.ArgAt<ulong>(0);
                 return new BlockInfo(TestItem.KeccakA, 0)
                 {
                     BlockNumber = blockNumber
@@ -71,19 +71,19 @@ public class SyncStatusListTests
 
         SyncStatusList syncStatusList = new(blockTree, 100000, null, 1000);
 
-        ConstantDownloadStrategy downloadStrategy = new([99999, 99995, 99950, 99000, 99001, 99003, 85000]);
+        ConstantDownloadStrategy downloadStrategy = new([99999UL, 99995UL, 99950UL, 99000UL, 99001UL, 99003UL, 85000UL]);
 
-        List<long> TryGetInfos()
+        List<ulong> TryGetInfos()
         {
             syncStatusList.TryGetInfosForBatch(50, downloadStrategy, out BlockInfo?[] infos);
             return [.. infos.Where(bi => bi != null).Select((bi) => bi!.BlockNumber)];
         }
 
-        Assert.That(TryGetInfos(), Is.EquivalentTo([99999, 99995])); // first two as it will try the first 50 only
-        Assert.That(TryGetInfos(), Is.EquivalentTo([99950])); // Then the next 50
-        Assert.That(TryGetInfos(), Is.EquivalentTo([99000, 99001, 99003])); // If the next 50 failed, it will try looking far back.
+        Assert.That(TryGetInfos(), Is.EquivalentTo([99999UL, 99995UL])); // first two as it will try the first 50 only
+        Assert.That(TryGetInfos(), Is.EquivalentTo([99950UL])); // Then the next 50
+        Assert.That(TryGetInfos(), Is.EquivalentTo([99000UL, 99001UL, 99003UL])); // If the next 50 failed, it will try looking far back.
         Assert.That(TryGetInfos(), Is.Empty); // If it look far back enough and still does not find anything it will just return so that progress can update.
-        Assert.That(TryGetInfos(), Is.EquivalentTo([85000])); // But as the existing blocks was already marked as inserted, it should be able to make progress on later call.
+        Assert.That(TryGetInfos(), Is.EquivalentTo([85000UL])); // But as the existing blocks was already marked as inserted, it should be able to make progress on later call.
     }
 
     [Test]
@@ -185,7 +185,7 @@ public class SyncStatusListTests
         public bool ShouldDownloadBlock(BlockInfo info) => true;
     }
 
-    private class ConstantDownloadStrategy(HashSet<long> needToFetchBlocks) : IBlockDownloadStrategy
+    private class ConstantDownloadStrategy(HashSet<ulong> needToFetchBlocks) : IBlockDownloadStrategy
     {
         public bool ShouldDownloadBlock(BlockInfo info)
             => needToFetchBlocks.Contains(info.BlockNumber);

@@ -14,7 +14,7 @@ public static partial class EvmInstructions
 {
     public interface IOpMath3Param
     {
-        virtual static long GasCost => GasCostOf.Mid;
+        virtual static ulong GasCost => GasCostOf.Mid;
         abstract static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result);
     }
 

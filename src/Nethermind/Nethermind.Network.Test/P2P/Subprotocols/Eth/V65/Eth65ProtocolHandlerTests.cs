@@ -111,7 +111,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
             }
 
             _handler.SendNewTransactions(txs, false);
@@ -131,7 +131,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
             }
 
             _handler.SendNewTransactions(txs, false);

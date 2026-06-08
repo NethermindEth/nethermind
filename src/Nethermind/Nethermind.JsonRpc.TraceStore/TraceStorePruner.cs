@@ -17,7 +17,7 @@ public class TraceStorePruner : IDisposable
 {
     private readonly IBlockTree _blockTree;
     private readonly IDb _db;
-    private readonly int _blockToKeep;
+    private readonly ulong _blockToKeep;
     private readonly ILogger _logger;
 
     public TraceStorePruner(IBlockTree blockTree, [KeyFilter(TraceStorePlugin.DbName)] IDb db, ITraceStoreConfig traceStoreConfig, ILogManager logManager)
@@ -26,7 +26,7 @@ public class TraceStorePruner : IDisposable
     }
 
     [ConstructorWithSideEffect]
-    public TraceStorePruner(IBlockTree blockTree, IDb db, int blockToKeep, ILogManager logManager)
+    public TraceStorePruner(IBlockTree blockTree, IDb db, ulong blockToKeep, ILogManager logManager)
     {
         _blockTree = blockTree;
         _db = db;
@@ -38,7 +38,7 @@ public class TraceStorePruner : IDisposable
 
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => Task.Run((() =>
     {
-        long levelToDelete = e.Block.Number - _blockToKeep;
+        ulong levelToDelete = e.Block.Number - _blockToKeep;
         if (levelToDelete > 0)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);

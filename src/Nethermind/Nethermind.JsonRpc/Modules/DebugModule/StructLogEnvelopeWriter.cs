@@ -29,7 +29,7 @@ internal static class StructLogEnvelopeWriter
         CancellationToken cancellationToken,
         Func<Utf8JsonWriter, PipeWriter?, CancellationToken, GethLikeTxTrace?> runTrace,
         ILogger logger,
-        long fallbackGas = 0L)
+        ulong fallbackGas = 0UL)
     {
         GethLikeTxTrace? trace = null;
         Exception? failure = null;
@@ -76,7 +76,7 @@ internal static class StructLogEnvelopeWriter
     /// Writes a failure trace envelope for the case where the trace was never invoked
     /// (e.g. tx couldn't even be constructed from RPC input). No structLogs are emitted.
     /// </summary>
-    public static void EmitFailedTrace(Utf8JsonWriter writer, long gasLimit, string? errorMessage = null)
+    public static void EmitFailedTrace(Utf8JsonWriter writer, ulong gasLimit, string? errorMessage = null)
     {
         writer.WriteStartObject();
         writer.WritePropertyName("structLogs"u8);
@@ -123,9 +123,9 @@ internal static class StructLogEnvelopeWriter
     private static string ReplacePrefix(string s, string oldPrefix, string newPrefix)
         => s.StartsWith(oldPrefix, StringComparison.Ordinal) ? newPrefix + s[oldPrefix.Length..] : s;
 
-    private static void WriteFooter(Utf8JsonWriter writer, GethLikeTxTrace? trace, string? errorMessage, int errorCode, long fallbackGas)
+    private static void WriteFooter(Utf8JsonWriter writer, GethLikeTxTrace? trace, string? errorMessage, int errorCode, ulong fallbackGas)
     {
-        long gas = trace?.Gas ?? fallbackGas;
+        ulong gas = trace?.Gas ?? fallbackGas;
         bool failed = errorMessage is not null || trace is null || trace.Failed;
         byte[] returnValue = trace?.ReturnValue ?? [];
 

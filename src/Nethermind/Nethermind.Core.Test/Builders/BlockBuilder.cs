@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithNumber(long number)
+        public BlockBuilder WithNumber(ulong number)
         {
             TestObjectInternal.Header.Number = number;
             return this;
@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithGasLimit(long gasLimit)
+        public BlockBuilder WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.Header.GasLimit = gasLimit;
             return this;
@@ -261,7 +261,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithGasUsed(long gasUsed)
+        public BlockBuilder WithGasUsed(ulong gasUsed)
         {
             TestObjectInternal.Header.GasUsed = gasUsed;
             return this;

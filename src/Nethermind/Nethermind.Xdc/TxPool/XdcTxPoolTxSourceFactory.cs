@@ -5,9 +5,10 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.Core.Specs;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc.TxPool;
 

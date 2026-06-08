@@ -49,7 +49,7 @@ public class PersistenceManager(
         return _currentPersistedStateId;
     }
 
-    private Snapshot? GetFinalizedSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
+    private Snapshot? GetFinalizedSnapshotAtBlockNumber(ulong blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
         Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
         using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
@@ -80,7 +80,9 @@ public class PersistenceManager(
         return null;
     }
 
-    private Snapshot? GetFirstSnapshotAtBlockNumber(long blockNumber, StateId currentPersistedState, bool compactedSnapshot)
+    // Signature changed: long -> ulong. Block numbers are non-negative; callers previously
+    // passed ulong values via implicit narrowing which could silently truncate.
+    private Snapshot? GetFirstSnapshotAtBlockNumber(ulong blockNumber, StateId currentPersistedState, bool compactedSnapshot)
     {
         using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
         foreach (StateId stateId in states)
@@ -111,12 +113,23 @@ public class PersistenceManager(
     internal Snapshot? DetermineSnapshotToPersist(StateId latestSnapshot)
     {
         // Actually, the latest compacted snapshot, not the latest snapshot.
-        long lastSnapshotNumber = latestSnapshot.BlockNumber;
+        ulong lastSnapshotNumber = latestSnapshot.BlockNumber;
 
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
-        long inMemoryStateDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
-        if (inMemoryStateDepth - _compactSize < _minReorgDepth)
+        ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
+
+        // Non-trivial: subtraction of two ulongs. Safe here because lastSnapshotNumber is the
+        // tip of the in-memory chain which is always >= currentPersistedState.BlockNumber by
+        // invariant. If the invariant is violated the result would wrap; the subsequent
+        // comparisons against _minReorgDepth / _maxReorgDepth (int) would then be nonsensical.
+        // A Debug.Assert guards this in debug builds.
+        Debug.Assert(currentPersistedState == StateId.PreGenesis || lastSnapshotNumber >= currentPersistedState.BlockNumber,
+            "Latest snapshot must be at or ahead of the last persisted block.");
+        ulong inMemoryStateDepth = currentPersistedState == StateId.PreGenesis
+            ? lastSnapshotNumber + 1
+            : lastSnapshotNumber - currentPersistedState.BlockNumber;
+
+        if (inMemoryStateDepth - (ulong)_compactSize < (ulong)_minReorgDepth)
         {
             // Keep some state in memory
             return null;
@@ -124,10 +137,11 @@ public class PersistenceManager(
 
         Snapshot? snapshotToPersist;
 
-        long nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+        // NextFullCompactionAfter now returns ulong to match block number type.
+        ulong nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
         if (nextCompactedBoundary > finalizedBlockNumber)
         {
-            if (inMemoryStateDepth <= _maxReorgDepth)
+            if (inMemoryStateDepth <= (ulong)_maxReorgDepth)
             {
                 // Unfinalized, and still under max reorg depth
                 return null;
@@ -135,12 +149,12 @@ public class PersistenceManager(
 
             if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Force persisting to conserve memory. finalized block number is {finalizedBlockNumber}.");
             snapshotToPersist = GetFirstSnapshotAtBlockNumber(nextCompactedBoundary, currentPersistedState, true) ??
-                                GetFirstSnapshotAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, false);
+                                GetFirstSnapshotAtBlockNumber(currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1, currentPersistedState, false);
         }
         else
         {
             snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(nextCompactedBoundary, currentPersistedState, true) ??
-                                GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, false);
+                                GetFinalizedSnapshotAtBlockNumber(currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1, currentPersistedState, false);
         }
 
         if (snapshotToPersist is null)
@@ -185,9 +199,9 @@ public class PersistenceManager(
         }
 
         // Persist all snapshots from current persisted state to latest
-        while (currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
+        while (currentPersistedState == StateId.PreGenesis || currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
         {
-            long nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+            ulong nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
 
             // Try finalized snapshots first (compacted, then non-compacted)
             Snapshot? snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(
@@ -196,7 +210,7 @@ public class PersistenceManager(
                 compactedSnapshot: true);
 
             snapshotToPersist ??= GetFinalizedSnapshotAtBlockNumber(
-                currentPersistedState.BlockNumber + 1,
+                currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1,
                 currentPersistedState,
                 compactedSnapshot: false);
 
@@ -207,7 +221,7 @@ public class PersistenceManager(
                 compactedSnapshot: true);
 
             snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
-                currentPersistedState.BlockNumber + 1,
+                currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1,
                 currentPersistedState,
                 compactedSnapshot: false);
 
@@ -233,10 +247,13 @@ public class PersistenceManager(
 
     internal void PersistSnapshot(Snapshot snapshot)
     {
-        long compactLength = snapshot.To.BlockNumber! - snapshot.From.BlockNumber!;
+        // Non-trivial: subtraction of two ulongs. Safe by invariant — snapshot.To always
+        // follows snapshot.From on the canonical chain. The ! null-forgiving operators from
+        // the old code are removed since BlockNumber is now a non-nullable ulong.
+        ulong compactLength = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
 
         // Usually at the start of the application
-        if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
+        if (compactLength != (ulong)_compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
 
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
@@ -271,7 +288,6 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (_, TreePath path) = k;
@@ -299,7 +315,6 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long storageNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (Hash256 address, TreePath path) = k;

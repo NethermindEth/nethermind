@@ -27,23 +27,23 @@ public class StateSyncPivotTest
     )
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<long>())
-            .Returns(static (ci) => Build.A.BlockHeader.WithNumber((long)ci[0]).TestObject);
+        blockTree.FindHeader(Arg.Any<ulong>())
+            .Returns(static (ci) => Build.A.BlockHeader.WithNumber((ulong)ci[0]).TestObject);
 
         Synchronization.FastSync.StateSyncPivot stateSyncPivot = new(blockTree,
             new TestSyncConfig()
             {
-                PivotNumber = syncPivot,
+                PivotNumber = (ulong)syncPivot,
                 FastSync = true,
                 StateMinDistanceFromHead = minDistance,
                 StateMaxDistanceFromHead = maxDistance,
             }, LimboLogs.Instance);
-        blockTree.SyncPivot = (syncPivot, Keccak.Zero);
+        blockTree.SyncPivot = ((ulong)syncPivot, Keccak.Zero);
 
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(originalBestSuggested).TestObject);
+        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber((ulong)originalBestSuggested).TestObject);
         Assert.That(stateSyncPivot.GetPivotHeader(), Is.Not.Null);
 
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(newBestSuggested).TestObject);
-        Assert.That(stateSyncPivot.GetPivotHeader()?.Number, Is.EqualTo(newPivotHeader));
+        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber((ulong)newBestSuggested).TestObject);
+        Assert.That(stateSyncPivot.GetPivotHeader()?.Number, Is.EqualTo((ulong)newPivotHeader));
     }
 }

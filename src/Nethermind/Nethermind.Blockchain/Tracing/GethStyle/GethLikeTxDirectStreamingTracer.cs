@@ -41,8 +41,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private bool _hasPendingOpcode;
     private int _pendingPc;
     private Instruction _pendingOpcode;
-    private long _pendingGas;
-    private long _pendingGasCost;
+    private ulong _pendingGas;
+    private ulong _pendingGasCost;
     private int _pendingDepth;
     private string? _pendingError;
     private bool _gasCostAlreadySet;
@@ -108,7 +108,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         Trace.Gas = gasSpent.SpentGas;
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         FinalizePendingOpcode();
 
@@ -127,7 +127,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _memoryByteCount = 0;
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (_gasCostAlreadySet || !_hasPendingOpcode) return;
         _pendingGasCost = _pendingGas - gas;

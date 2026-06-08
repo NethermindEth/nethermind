@@ -41,7 +41,7 @@ public class RemoteEraStoreDecoratorTests
 
         using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16);
 
-        (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(epoch * 16, ensureValidated: false);
+        (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts((ulong)epoch * 16, ensureValidated: false);
 
         Assert.That(block, Is.Not.Null);
         Assert.That(receipts, Is.Not.Null);
@@ -71,7 +71,7 @@ public class RemoteEraStoreDecoratorTests
     public async Task FindBlockAndReceipts_WhenEpochAbsentFromManifest_ThrowsEraException()
     {
         IEraStore localStore = Substitute.For<IEraStore>();
-        localStore.FindBlockAndReceipts(Arg.Any<long>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        localStore.FindBlockAndReceipts(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns((null, null));
 
         _client.FetchManifestAsync(Arg.Any<CancellationToken>())
@@ -79,7 +79,7 @@ public class RemoteEraStoreDecoratorTests
 
         using RemoteEraStoreDecorator sut = CreateDecorator(localStore, maxEraSize: 16);
 
-        Assert.That(async () => await sut.FindBlockAndReceipts(5, ensureValidated: false),
+        Assert.That(async () => await sut.FindBlockAndReceipts(5UL, ensureValidated: false),
             Throws.TypeOf<EraException>().With.Message.Contains("Epoch 0").And.Message.Contains("not available"));
     }
 
@@ -101,7 +101,7 @@ public class RemoteEraStoreDecoratorTests
         string expectedFilePath = Path.Join(_downloadDir.Path, filename);
         using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16);
 
-        Assert.That(async () => await sut.FindBlockAndReceipts(0, ensureValidated: false), Throws.TypeOf<EraVerificationException>().With.Message.Contains(@"SHA-256"));
+        Assert.That(async () => await sut.FindBlockAndReceipts(0UL, ensureValidated: false), Throws.TypeOf<EraVerificationException>().With.Message.Contains(@"SHA-256"));
 
         Assert.That(File.Exists(expectedFilePath), Is.False);
     }
@@ -124,14 +124,14 @@ public class RemoteEraStoreDecoratorTests
 
         if (contentValid && accumulatorTrusted)
         {
-            (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(epoch * 16);
+            (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts((ulong)epoch * 16);
             Assert.That(block, Is.Not.Null);
             Assert.That(receipts, Is.Not.Null);
             Assert.That(block!.Number, Is.EqualTo(epoch * 16));
         }
         else
         {
-            Assert.That(async () => await sut.FindBlockAndReceipts(epoch * 16), Throws.TypeOf<EraVerificationException>());
+            Assert.That(async () => await sut.FindBlockAndReceipts((ulong)epoch * 16), Throws.TypeOf<EraVerificationException>());
             // Rejected content caches nothing: the file is removed so a retry re-downloads.
             Assert.That(File.Exists(Path.Join(_downloadDir.Path, filename)), Is.False);
         }
@@ -149,12 +149,12 @@ public class RemoteEraStoreDecoratorTests
         using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16, ctx.Resolve<ISpecProvider>(), blockValidator);
 
         // An unvalidated read caches availability only and must not run content validation.
-        await sut.FindBlockAndReceipts(epoch * 16, ensureValidated: false);
+        await sut.FindBlockAndReceipts((ulong)epoch * 16, ensureValidated: false);
         blockValidator.DidNotReceiveWithAnyArgs().ValidateBodyAgainstHeader(default!, default!, out Arg.Any<string?>());
 
         // A later validated read on the same epoch must still run VerifyContent — the availability
         // cache alone cannot satisfy it.
-        await sut.FindBlockAndReceipts(epoch * 16, ensureValidated: true);
+        await sut.FindBlockAndReceipts((ulong)epoch * 16, ensureValidated: true);
         blockValidator.ReceivedWithAnyArgs().ValidateBodyAgainstHeader(default!, default!, out Arg.Any<string?>());
     }
 
@@ -194,7 +194,7 @@ public class RemoteEraStoreDecoratorTests
         string escapedPath = Path.GetFullPath(Path.Join(_downloadDir.Path, filename));
         using RemoteEraStoreDecorator sut = CreateDecorator(localStore: null, maxEraSize: 16);
 
-        Assert.That(async () => await sut.FindBlockAndReceipts(0, ensureValidated: false), Throws.TypeOf<EraException>().With.Message.Contains("escapes the download directory"));
+        Assert.That(async () => await sut.FindBlockAndReceipts(0UL, ensureValidated: false), Throws.TypeOf<EraException>().With.Message.Contains("escapes the download directory"));
 
         await _client.DidNotReceive().DownloadFileAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         Assert.That(File.Exists(escapedPath), Is.False);

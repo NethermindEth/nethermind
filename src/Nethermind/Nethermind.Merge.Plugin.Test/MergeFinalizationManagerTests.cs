@@ -26,7 +26,7 @@ public class MergeFinalizationManagerTests
     [Test]
     public void Dispose_unsubscribes_from_PoSSwitcher_TerminalBlockReached()
     {
-        _inner.LastFinalizedBlockLevel.Returns(999L);
+        _inner.LastFinalizedBlockLevel.Returns(999UL);
 
         _manager.Dispose();
 

@@ -55,7 +55,7 @@ public partial class BlockAccessListManager(
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
     private const int GasValidationChunkSize = 8;
-    private long? _gasRemaining;
+    private ulong? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
 
@@ -161,7 +161,7 @@ public partial class BlockAccessListManager(
         }
     }
 
-    public void SpendGas(long gas)
+    public void SpendGas(ulong gas)
     {
         CheckInitialized();
         _gasRemaining -= gas;

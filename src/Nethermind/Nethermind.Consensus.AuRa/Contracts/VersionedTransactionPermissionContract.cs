@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public class VersionedTransactionPermissionContract(IAbiEncoder abiEncoder,
         Address contractAddress,
-        long activation,
+        ulong activation,
         IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
         LruCache<ValueHash256, UInt256> cache,
         ILogManager logManager,

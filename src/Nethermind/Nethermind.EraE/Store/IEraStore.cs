@@ -7,11 +7,11 @@ namespace Nethermind.EraE.Store;
 
 public interface IEraStore : IDisposable
 {
-    Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default);
-    (long First, long Last) BlockRange { get; }
+    Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default);
+    (ulong First, ulong Last) BlockRange { get; }
 
-    bool HasEpoch(long blockNumber);
+    bool HasEpoch(ulong blockNumber);
 
     /// Used for alignment when parallelizing imports so different tasks work on different files.
-    long NextEraStart(long blockNumber);
+    ulong NextEraStart(ulong blockNumber);
 }

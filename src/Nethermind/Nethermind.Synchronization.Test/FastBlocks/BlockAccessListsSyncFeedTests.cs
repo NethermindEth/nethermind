@@ -41,7 +41,7 @@ public class BlockAccessListsSyncFeedTests
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _metadataDb = new TestMemDb();
 
-        _blockTree.SyncPivot.Returns((1, TestItem.KeccakA));
+        _blockTree.SyncPivot.Returns((1UL, TestItem.KeccakA));
 
         _feed = new BlockAccessListsSyncFeed(
             MainnetSpecProvider.Instance,
@@ -84,7 +84,7 @@ public class BlockAccessListsSyncFeedTests
         SyncResponseHandlingResult result = _feed.HandleResponse(batch);
 
         Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
-        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
         _syncPeerPool.Received(1).ReportBreachOfProtocol(
             peerInfo,
             DisconnectReason.InvalidTxOrUncle,
@@ -94,20 +94,20 @@ public class BlockAccessListsSyncFeedTests
     [Test]
     public void Treats_pivot_without_block_access_list_hash_as_available()
     {
-        const long previousBarrier = 123;
+        const ulong previousBarrier = 123;
         _metadataDb.Set(MetadataDbKeys.BlockAccessListsBarrierWhenStarted, previousBarrier.ToBigEndianByteArrayWithoutLeadingZeros());
 
         BlockHeader pivotHeader = Build.A.BlockHeader
             .WithBlockAccessListHash(null)
             .TestObject;
-        _blockTree.SyncPivot.Returns((2, TestItem.KeccakB));
+        _blockTree.SyncPivot.Returns((2UL, TestItem.KeccakB));
         _blockTree.FindHeader(TestItem.KeccakB, blockNumber: 2).Returns(pivotHeader);
 
         _feed.InitializeFeed();
 
-        long barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+        ulong barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
         Assert.That(barrier, Is.EqualTo(previousBarrier));
-        _blockAccessListStore.DidNotReceive().Exists(Arg.Any<long>(), TestItem.KeccakB);
+        _blockAccessListStore.DidNotReceive().Exists(Arg.Any<ulong>(), TestItem.KeccakB);
     }
 
     [Test]
@@ -125,7 +125,7 @@ public class BlockAccessListsSyncFeedTests
         SyncResponseHandlingResult result = _feed.HandleResponse(batch);
 
         Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
-        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+        _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),

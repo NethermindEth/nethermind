@@ -21,7 +21,7 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
 
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeV2Handler));
 
-    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Handle(long start, long count)
+    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Handle(ulong start, ulong count)
     {
         if (start < 1 || count < 1)
         {
@@ -40,16 +40,16 @@ public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager 
         return ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>.Success(GetRequests(start, count));
     }
 
-    private PayloadBodiesV2DirectResponse GetRequests(long start, long count)
+    private PayloadBodiesV2DirectResponse GetRequests(ulong start, ulong count)
     {
-        long headNumber = blockTree.Head?.Number ?? 0;
-        long end = Math.Min(start + count - 1, headNumber);
+        ulong headNumber = blockTree.Head?.Number ?? 0;
+        ulong end = Math.Min(start + count - 1, headNumber);
         if (end < start) return new PayloadBodiesV2DirectResponse([]);
 
         PayloadBodiesV2DirectResponse.PayloadBody?[] results = new PayloadBodiesV2DirectResponse.PayloadBody?[end - start + 1];
         try
         {
-            for (long i = start; i <= end; i++)
+            for (ulong i = start; i <= end; i++)
             {
                 Block? block = blockTree.FindBlock(i);
                 if (block is null)

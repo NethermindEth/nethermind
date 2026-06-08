@@ -32,7 +32,7 @@ internal class XdcSealValidatorTests
             return false;
         }
         ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
-        ulong epochStart = extraFields.BlockRound - extraFields.BlockRound % (ulong)spec.EpochLength;
+        ulong epochStart = extraFields.BlockRound - extraFields.BlockRound % spec.EpochLength;
 
         return parentRound < epochStart;
     }
@@ -222,11 +222,11 @@ internal class XdcSealValidatorTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
-        releaseSpec.EpochLength.Returns(900);
+        releaseSpec.EpochLength.Returns(900UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         IMasternodesCalculator masternodesCalculator = Substitute.For<IMasternodesCalculator>();
-        masternodesCalculator.CalculateNextEpochMasternodes(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
+        masternodesCalculator.CalculateNextEpochMasternodes(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
             .Returns((epochCandidates.ToArray(), penalties.ToArray()));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));

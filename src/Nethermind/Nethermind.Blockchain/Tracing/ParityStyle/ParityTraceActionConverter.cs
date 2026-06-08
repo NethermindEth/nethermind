@@ -73,7 +73,7 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("gas"u8))
             {
                 reader.Read();
-                value.Gas = JsonSerializer.Deserialize<long>(ref reader, options);
+                value.Gas = JsonSerializer.Deserialize<ulong>(ref reader, options);
             }
             else if (reader.ValueTextEquals("value"u8))
             {

@@ -1073,7 +1073,7 @@ public partial class EngineModuleTests
         public long BestKnownNumber;
         public BlockHeader? BestSuggestedHeader;
         public Block? BestSuggestedBody;
-        public long BestKnownBeaconBlock;
+        public ulong BestKnownBeaconBlock;
         public BlockHeader? LowestInsertedBeaconHeader;
     }
 }

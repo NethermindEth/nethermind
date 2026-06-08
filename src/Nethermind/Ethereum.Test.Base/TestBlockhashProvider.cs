@@ -12,7 +12,7 @@ namespace Ethereum.Test.Base
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec) =>
+        public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec? spec) =>
             number != 0 ? Keccak.Zero : Keccak.Compute(number.ToString());
 
         public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;

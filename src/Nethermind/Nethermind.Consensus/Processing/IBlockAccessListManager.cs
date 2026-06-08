@@ -24,7 +24,7 @@ public interface IBlockAccessListManager
 
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
     void Setup(Block block);
-    void SpendGas(long gas);
+    void SpendGas(ulong gas);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
     ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null);
     void NextTransaction();

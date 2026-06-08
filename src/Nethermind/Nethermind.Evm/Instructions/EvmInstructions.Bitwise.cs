@@ -20,7 +20,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing the bitwise operation.
         /// </summary>
-        static virtual long GasCost => GasCostOf.VeryLow;
+        static virtual ulong GasCost => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the bitwise operation.
         /// </summary>
@@ -47,7 +47,7 @@ public static partial class EvmInstructions
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.
-        TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
+        TGasPolicy.Consume(ref gas, (ulong)TOpBitwise.GasCost);
 
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();

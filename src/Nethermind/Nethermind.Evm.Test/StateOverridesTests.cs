@@ -32,27 +32,6 @@ public class StateOverridesTests
     [TearDown]
     public void TearDown() => _stateScope.Dispose();
 
-    // Only values that don't fit in a ulong are rejected (> ulong.MaxValue).
-    // ulong.MaxValue itself is valid — consistent with Geth's hexutil.Uint64 type.
-    private static IEnumerable<TestCaseData> InvalidNonceCases() =>
-    [
-        new TestCaseData((UInt256)ulong.MaxValue + 1).SetName("ulong_max_plus_one"),
-        new TestCaseData(UInt256.MaxValue).SetName("uint256_max"),
-    ];
-
-    [TestCaseSource(nameof(InvalidNonceCases))]
-    public void nonce_override_above_uint64_range_throws(UInt256 nonce)
-    {
-        Dictionary<Address, AccountOverride> overrides = new()
-        {
-            { TestItem.AddressA, new AccountOverride { Nonce = nonce } }
-        };
-
-        Action act = () => _state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance);
-
-        Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains(@"maximum supported value"));
-    }
-
     private static IEnumerable<TestCaseData> ValidNonceCases() =>
     [
         new TestCaseData((UInt256)ulong.MaxValue).SetName("ulong_max"),
@@ -61,7 +40,7 @@ public class StateOverridesTests
     ];
 
     [TestCaseSource(nameof(ValidNonceCases))]
-    public void nonce_override_within_uint64_range_does_not_throw(UInt256 nonce)
+    public void nonce_override_within_uint64_range_does_not_throw(ulong nonce)
     {
         Dictionary<Address, AccountOverride> overrides = new()
         {

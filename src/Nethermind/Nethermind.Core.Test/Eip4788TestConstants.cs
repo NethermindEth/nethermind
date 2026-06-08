@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Nethermind.Core.Test;
 
@@ -13,5 +12,5 @@ public static class Eip4788TestConstants
 
     public static readonly ValueHash256 CodeHash = ValueKeccak.Compute(Code);
 
-    public static readonly UInt256 Nonce = 1;
+    public static readonly ulong Nonce = 1;
 }

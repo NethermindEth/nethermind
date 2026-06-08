@@ -117,7 +117,7 @@ public class BlockchainBridgeTests
     {
         int index = 5;
         Transaction[] transactions = Enumerable.Range(0, 10)
-            .Select(static i => Build.A.Transaction.WithNonce((UInt256)i).WithHash(TestItem.Keccaks[i]).TestObject)
+            .Select(static i => Build.A.Transaction.WithNonce((ulong)i).WithHash(TestItem.Keccaks[i]).TestObject)
             .ToArray();
         Block block = Build.A.Block
             .WithTransactions(transactions.ToArray())
@@ -138,7 +138,7 @@ public class BlockchainBridgeTests
         Assert.That(_blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result), Is.True);
         Assert.Multiple(() =>
         {
-            Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((UInt256)index));
+            Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((ulong)index));
             Assert.That(result.Value.Transaction.Hash, Is.EqualTo(TestItem.Keccaks[index]));
         });
         Assert.That(result.Value.ExtraData, Is.EqualTo(new TransactionForRpcContext(
@@ -221,8 +221,8 @@ public class BlockchainBridgeTests
     [TestCase(0)]
     public void Bridge_head_is_correct(long headNumber)
     {
-        Block head = Build.A.Block.WithNumber(headNumber).TestObject;
-        Block bestSuggested = Build.A.Block.WithNumber(8).TestObject;
+        Block head = Build.A.Block.WithNumber((ulong)headNumber).TestObject;
+        Block bestSuggested = Build.A.Block.WithNumber(8UL).TestObject;
 
         _blockTree.Head.Returns(head);
         _blockTree.BestSuggestedBody.Returns(bestSuggested);
@@ -571,7 +571,7 @@ public class BlockchainBridgeTests
         {
             GasLimit = 56786,
             SenderAddress = sender,
-            DecodedMaxFeePerGas = maxFeePerGas,
+            DecodedMaxFeePerGas = (ulong)maxFeePerGas,
             Type = TxType.EIP1559
         };
         yield return new TestCaseData(

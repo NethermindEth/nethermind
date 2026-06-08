@@ -189,7 +189,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
         new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
 
-    public void Commit(long blockNumber)
+    public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
 
@@ -199,6 +199,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _storages.Clear();
 
+        // Flat persistence keys state by signed block number; mainnet height fits in long.
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);

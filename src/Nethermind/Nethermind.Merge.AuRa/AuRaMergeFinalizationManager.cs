@@ -44,9 +44,9 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
         _auRaBlockFinalizationManager.Dispose();
     }
 
-    public long GetLastLevelFinalizedBy(Hash256 blockHash) => _auRaBlockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
+    public ulong GetLastLevelFinalizedBy(Hash256 blockHash) => _auRaBlockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
 
-    public long? GetFinalizationLevel(long level) => _auRaBlockFinalizationManager.GetFinalizationLevel(level);
+    public ulong? GetFinalizationLevel(ulong level) => _auRaBlockFinalizationManager.GetFinalizationLevel(level);
 
     public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
     {
@@ -54,7 +54,7 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
         _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
     }
 
-    public override long LastFinalizedBlockLevel => IsPostMerge
+    public override ulong LastFinalizedBlockLevel => IsPostMerge
         ? _manualBlockFinalizationManager.LastFinalizedBlockLevel
         : _auRaBlockFinalizationManager.LastFinalizedBlockLevel;
 

@@ -21,17 +21,17 @@ namespace Nethermind.Blockchain.Visitors
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
-        private readonly long _startNumber;
-        private readonly long _blocksToLoad;
+        private readonly ulong _startNumber;
+        private readonly ulong _blocksToLoad;
 
         private ChainLevelInfo _currentLevel;
-        private long _currentLevelNumber;
-        private long _blocksCheckedInCurrentLevel;
-        private long _bodiesInCurrentLevel;
+        private ulong _currentLevelNumber;
+        private ulong _blocksCheckedInCurrentLevel;
+        private ulong _bodiesInCurrentLevel;
 
-        private long? _gapStart;
-        private long? _lastProcessedLevel;
-        private long? _processingGapStart;
+        private ulong? _gapStart;
+        private ulong? _lastProcessedLevel;
+        private ulong? _processingGapStart;
 
         private bool _firstBlockVisited = true;
         private bool _suggestBlocks = true;
@@ -42,14 +42,14 @@ namespace Nethermind.Blockchain.Visitors
             IBlockTree blockTree,
             IStateReader stateReader,
             ILogger logger,
-            long batchSize = DefaultBatchSize)
+            ulong batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, batchSize, batchSize / 2);
             _stateReader = stateReader;
             _logger = logger;
 
-            long assumedHead = _blockTree.Head?.Number ?? 0;
+            ulong assumedHead = _blockTree.Head?.Number ?? 0;
             _startNumber = Math.Max(_blockTree.SyncPivot.BlockNumber, assumedHead + 1);
             _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
 
@@ -59,11 +59,11 @@ namespace Nethermind.Blockchain.Visitors
 
         public bool PreventsAcceptingNewBlocks => true;
         public bool CalculateTotalDifficultyIfMissing => true;
-        public long StartLevelInclusive => _startNumber;
+        public ulong StartLevelInclusive => _startNumber;
 
-        public long EndLevelExclusive => _startNumber + _blocksToLoad;
+        public ulong EndLevelExclusive => _startNumber + _blocksToLoad;
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber,
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber,
             CancellationToken cancellationToken)
         {
             if (_currentLevelNumber >= EndLevelExclusive - 1)
@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain.Visitors
 
             Task waitSuggestQueue = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
 
-            long i = block.Number - StartLevelInclusive;
+            ulong i = block.Number - StartLevelInclusive;
             if (!waitSuggestQueue.IsCompleted)
             {
                 if (_logger.IsInfo)
@@ -166,17 +166,17 @@ namespace Nethermind.Blockchain.Visitors
 
         }
 
-        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber,
+        Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber,
             CancellationToken cancellationToken)
         {
             int expectedVisitedBlocksCount = _currentLevel?.BlockInfos.Length ?? 0;
-            if (_blocksCheckedInCurrentLevel != expectedVisitedBlocksCount)
+            if (_blocksCheckedInCurrentLevel != (ulong)expectedVisitedBlocksCount)
             {
                 throw new InvalidDataException(
                     $"Some blocks have not been visited at level {_currentLevelNumber}: {_blocksCheckedInCurrentLevel}/{expectedVisitedBlocksCount}");
             }
 
-            if (_bodiesInCurrentLevel > expectedVisitedBlocksCount)
+            if (_bodiesInCurrentLevel > (ulong)expectedVisitedBlocksCount)
             {
                 throw new InvalidOperationException(
                     $"Invalid bodies count at level {_currentLevelNumber}: {_bodiesInCurrentLevel}/{expectedVisitedBlocksCount}");

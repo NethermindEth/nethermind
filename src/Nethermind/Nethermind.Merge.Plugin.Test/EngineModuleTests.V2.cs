@@ -484,7 +484,7 @@ public partial class EngineModuleTests
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
 
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
-        blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
+        blockTree.FindBlock(Arg.Any<ulong>()).Returns(input.Impl);
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>
             builder
@@ -506,8 +506,8 @@ public partial class EngineModuleTests
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
 
-        blockTree.FindBlock(Arg.Any<long>())
-            .Returns(static i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
+        blockTree.FindBlock(Arg.Any<ulong>())
+            .Returns(static i => Build.A.Block.WithNumber(i.ArgAt<ulong>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) => builder

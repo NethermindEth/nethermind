@@ -31,18 +31,18 @@ namespace Nethermind.Consensus.AuRa.Validators
         private const int ReportsSkipBlocks = 1;
 
         private readonly LinkedList<PersistentReport> _persistentReports;
-        private long _sentReportsInBlock = 0;
+        private ulong _sentReportsInBlock = 0;
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             foreach (Transaction transaction in _contractValidator.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
             }
 
-            long currentBlockNumber = parent.Number + 1;
+            ulong currentBlockNumber = parent.Number + 1;
 
             if (_contractValidator.ForSealing && IsPosdao(currentBlockNumber))
             {
@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private IEnumerable<Transaction> GetPersistentReportsTransactions(long currentBlockNumber)
+        private IEnumerable<Transaction> GetPersistentReportsTransactions(ulong currentBlockNumber)
         {
             foreach (PersistentReport persistentReport in _persistentReports)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void ResendPersistedReports(BlockHeader blockHeader)
         {
-            long blockNumber = blockHeader.Number;
+            ulong blockNumber = blockHeader.Number;
             if (!IsPosdao(blockNumber))
             {
                 if (_logger.IsTrace) _logger.Trace("Skipping resending of queued malicious behavior reports.");

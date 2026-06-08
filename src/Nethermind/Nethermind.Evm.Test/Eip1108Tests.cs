@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Test;
 
 public class Eip1108Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
+    protected override ulong BlockNumber => (ulong)((long)MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment);
 
     private int _blockNumberAdjustment;
 
@@ -32,7 +32,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
+        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + (ulong)expectedPrecompileGas);
     }
 
     [TestCase(-1, 50000L, 40000L, Description = "Before Istanbul")]
@@ -45,7 +45,7 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
+        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + (ulong)expectedPrecompileGas);
     }
 
     [TestCase(-1, 180000L, Description = "Before Istanbul")]
@@ -58,6 +58,6 @@ public class Eip1108Tests : VirtualMachineTestsBase
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
+        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + (ulong)expectedPrecompileGas);
     }
 }

@@ -319,7 +319,7 @@ public class EvmStackTests
 
     private static VmState<EthereumGasPolicy> CreateEvmState() =>
         VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromLong(10_000),
+            EthereumGasPolicy.FromULong(10_000UL),
             ExecutionType.CALL,
             ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default),
             new StackAccessTracker(),

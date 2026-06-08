@@ -290,28 +290,29 @@ public class SszMiddlewareTests
     [TestCase(2, "/engine/v2/payloads/bodies/by-range")]
     public async Task GetPayloadBodiesByRange_routes_to_correct_engine_method_with_correct_args(int version, string path)
     {
-        const long expectedStart = 7;
-        const long expectedCount = 3;
+        const ulong expectedStart = 7;
+        const ulong expectedCount = 3;
 
-        long v1Start = -1, v1Count = -1;
-        long v2Start = -1, v2Count = -1;
+        ulong v1Start = ulong.MaxValue, v1Count = ulong.MaxValue;
+        ulong v2Start = ulong.MaxValue, v2Count = ulong.MaxValue;
+
         _engineModule
-            .engine_getPayloadBodiesByRangeV1(Arg.Do<long>(s => v1Start = s), Arg.Do<long>(c => v1Count = c))
+            .engine_getPayloadBodiesByRangeV1(Arg.Do<ulong>(s => v1Start = s), Arg.Do<ulong>(c => v1Count = c))
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
         _engineModule
-            .engine_getPayloadBodiesByRangeV2(Arg.Do<long>(s => v2Start = s), Arg.Do<long>(c => v2Count = c))
+            .engine_getPayloadBodiesByRangeV2(Arg.Do<ulong>(s => v2Start = s), Arg.Do<ulong>(c => v2Count = c))
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>.Success([]));
 
-        byte[] body = BuildPayloadBodiesByRangeRequest((ulong)expectedStart, (ulong)expectedCount);
+        byte[] body = BuildPayloadBodiesByRangeRequest(expectedStart, expectedCount);
         DefaultHttpContext ctx = MakePostContext(path, body);
 
         await _middleware.InvokeAsync(ctx);
 
-        await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByRangeV1(Arg.Any<long>(), Arg.Any<long>());
-        await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByRangeV2(Arg.Any<long>(), Arg.Any<long>());
+        await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByRangeV1(Arg.Any<ulong>(), Arg.Any<ulong>());
+        await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByRangeV2(Arg.Any<ulong>(), Arg.Any<ulong>());
 
-        long capturedStart = version == 1 ? v1Start : v2Start;
-        long capturedCount = version == 1 ? v1Count : v2Count;
+        ulong capturedStart = version == 1 ? v1Start : v2Start;
+        ulong capturedCount = version == 1 ? v1Count : v2Count;
         Assert.That(capturedStart, Is.EqualTo(expectedStart));
         Assert.That(capturedCount, Is.EqualTo(expectedCount));
     }

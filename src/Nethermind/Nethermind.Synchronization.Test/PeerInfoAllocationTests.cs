@@ -113,13 +113,13 @@ namespace Nethermind.Synchronization.Test
             ArrayPoolList<BlockHeader> headers = new(end - start + 1);
             for (int number = start; number <= end; number++)
             {
-                headers.Add(Build.A.BlockHeader.WithNumber(number).TestObject);
+                headers.Add(Build.A.BlockHeader.WithNumber((ulong)number).TestObject);
             }
 
             return headers;
         }
 
-        private static PeerInfo SetupPeerInfo(string versionString, long headNumber, byte protocolVersion, int port)
+        private static PeerInfo SetupPeerInfo(string versionString, ulong headNumber, byte protocolVersion, int port)
         {
             ISyncPeer peer = SetupSyncPeer(versionString);
             peer.Node.Returns(new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", port));

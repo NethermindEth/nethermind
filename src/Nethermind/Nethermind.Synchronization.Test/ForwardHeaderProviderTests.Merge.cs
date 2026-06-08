@@ -23,13 +23,13 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class ForwardHeaderProviderTests
 {
-    [TestCase(16L, 32L, 32, 32, 3, 32)]
-    [TestCase(16L, 32L, 32, 29, 3, 29)]
-    [TestCase(16L, 32L, 0, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, 32, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, 32, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, 32, SyncBatchSizeMax * 8 - 16L, 3, 130)]
-    public async Task Merge_Happy_path(long beaconPivot, long headNumber, int threshold, long insertedBeaconBlocks, long expectedFirstBlock, long expectedLastBlock)
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3, 32)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 29UL, 3, 29)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 0, 32UL, 3, 32)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3, 32)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, 32UL, 3, 32)]
+    [TestCase(16UL, SyncBatchSizeMax * 8UL, 32, SyncBatchSizeMax * 8UL - 16UL, 3, 130)]
+    public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, int threshold, ulong insertedBeaconBlocks, long expectedFirstBlock, long expectedLastBlock)
     {
         int notSyncedTreeStartingBlockNumber = 3;
 
@@ -37,7 +37,7 @@ public partial class ForwardHeaderProviderTests
             .GoesLikeThis()
             .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, (int)headNumber + 1)
             .InsertBeaconPivot(beaconPivot)
-            .InsertBeaconHeaders(notSyncedTreeStartingBlockNumber + 1, beaconPivot - 1)
+            .InsertBeaconHeaders((ulong)(notSyncedTreeStartingBlockNumber + 1), beaconPivot - 1)
             .InsertBeaconBlocks(beaconPivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree syncedTree = blockTrees.SyncedTree;
 
@@ -83,7 +83,7 @@ public partial class ForwardHeaderProviderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16UL, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
 
@@ -95,9 +95,9 @@ public partial class ForwardHeaderProviderTests
 
     }
 
-    [TestCase(32L, 32L, 0, 32)]
-    [TestCase(32L, 32L, 10, 22)]
-    public async Task WillSkipBlocksToIgnore(long pivot, long headNumber, int blocksToIgnore, long expectedBestKnownNumber)
+    [TestCase(32UL, 32UL, 0, 32)]
+    [TestCase(32UL, 32UL, 10, 22)]
+    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, int blocksToIgnore, long expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()

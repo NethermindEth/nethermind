@@ -10,7 +10,7 @@ public class FrameResult
 {
     private ITypedArray<byte>? _outputConverted;
     private byte[] _output;
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
 
     public byte[] Output
     {
@@ -23,7 +23,7 @@ public class FrameResult
     }
 
     public string? Error { get; set; }
-    public long getGasUsed() => GasUsed;
+    public ulong getGasUsed() => GasUsed;
     public ITypedArray<byte> getOutput() => _outputConverted ??= Output.ToTypedScriptArray();
     public dynamic getError() => !string.IsNullOrEmpty(Error) ? Error : Undefined.Value;
 }

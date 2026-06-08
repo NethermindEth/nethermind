@@ -221,13 +221,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             }
         }
 
-        long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        long gapNumber = epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) - (long)spec.Gap;
+        ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong epochBase = epochSwitchNumber - (epochSwitchNumber % (ulong)spec.EpochLength);
+        ulong gapNumber = epochBase >= spec.Gap ? epochBase - spec.Gap : 0UL;
 
-        if (epochSwitchNumber - (epochSwitchNumber % (long)spec.EpochLength) < (long)spec.Gap)
-            gapNumber = 0;
-
-        if (gapNumber != (long)qc.GapNumber)
+        if (gapNumber != qc.GapNumber)
         {
             error = $"Gap number mismatch between QC Gap {qc.GapNumber} and {gapNumber}";
             return false;
@@ -268,7 +266,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             if (current.ExtraConsensusData is null && _logger.IsInfo)
                 _logger.Info($"Block {current.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data; initializing consensus on round 1.");
             latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
-                    (ulong)Math.Max(0, current.Number - spec.Gap));
+                    current.Number >= spec.Gap ? current.Number - spec.Gap : 0UL);
             _context.HighestQC = latestQc;
             _context.SetNewRound(1);
         }

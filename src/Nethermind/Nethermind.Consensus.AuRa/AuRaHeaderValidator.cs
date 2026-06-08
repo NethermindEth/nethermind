@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaHeaderValidator : HeaderValidator
     {
-        private readonly IList<long> _blockGasLimitContractTransitions;
+        private readonly IList<ulong> _blockGasLimitContractTransitions;
 
         public AuRaHeaderValidator(
             IBlockTree blockTree,
@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.AuRa
             AuRaChainSpecEngineParameters param)
             : base(blockTree, sealValidator, specProvider, logManager)
         {
-            long[] blockGasLimitContractTransitions = param.BlockGasLimitContractTransitions.Keys.ToArray();
+            ulong[] blockGasLimitContractTransitions = param.BlockGasLimitContractTransitions.Keys.ToArray();
             _blockGasLimitContractTransitions = blockGasLimitContractTransitions;
         }
 

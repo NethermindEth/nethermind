@@ -56,9 +56,9 @@ namespace Nethermind.Synchronization.Test
             Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
         }
 
-        [TestCase(true, 6)]
-        [TestCase(false, 5)]
-        public void Best_state_depends_on_whether_suggested_block_has_state(bool suggestedHasState, long expectedNumber)
+        [TestCase(true, 6UL)]
+        [TestCase(false, 5UL)]
+        public void Best_state_depends_on_whether_suggested_block_has_state(bool suggestedHasState, ulong expectedNumber)
         {
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
             Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.Test
                 DownloadReceiptsInFastSync = true,
                 PivotNumber = 1,
             };
-            _blockTree.SyncPivot.Returns((1, Hash256.Zero));
+            _blockTree.SyncPivot.Returns((1UL, Hash256.Zero));
             _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, syncConfig);

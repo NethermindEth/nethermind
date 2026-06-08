@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
@@ -40,7 +41,9 @@ public class IndexedLogFinder(
 
     private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
     {
-        if (indexRange.from > fromBlock.Number && FindHeaderOrLogError(indexRange.from - 1, cancellationToken) is { } beforeIndex)
+        // CAST NOTE: indexRange uses int for log-index storage (kept as int for performance).
+        // Block numbers in the index fit in int (max ~2 billion blocks).
+        if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
         {
             foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
                 yield return log;
@@ -48,7 +51,10 @@ public class IndexedLogFinder(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        IEnumerable<long> indexNumbers = _logIndexStorage.EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to);
+        // EnumerateBlockNumbersFor returns IEnumerable<long> (log-index contract kept as long for performance).
+        // Block numbers from the index are non-negative so the cast is safe.
+        IEnumerable<ulong> indexNumbers = _logIndexStorage.EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to)
+            .Select(static n => (ulong)n);
         foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexNumbers, cancellationToken))
         {
             yield return log;
@@ -56,7 +62,7 @@ public class IndexedLogFinder(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (indexRange.to < toBlock.Number && FindHeaderOrLogError(indexRange.to + 1, cancellationToken) is { } afterIndex)
+        if ((ulong)indexRange.to < toBlock.Number && FindHeaderOrLogError((ulong)(indexRange.to + 1), cancellationToken) is { } afterIndex)
         {
             foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
                 yield return log;

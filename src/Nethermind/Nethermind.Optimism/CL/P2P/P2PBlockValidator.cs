@@ -22,7 +22,7 @@ public class P2PBlockValidator(
     private readonly Address _sequencerP2PAddress = sequencerP2PAddress;
     private readonly ITimestamper _timestamper = timestamper;
     private readonly ILogger _logger = logManager.GetClassLogger<P2PBlockValidator>();
-    private readonly Dictionary<long, long> _numberOfBlocksSeen = [];
+    private readonly Dictionary<ulong, long> _numberOfBlocksSeen = [];
 
     public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
     {

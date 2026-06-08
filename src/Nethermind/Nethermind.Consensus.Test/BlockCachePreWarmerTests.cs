@@ -345,7 +345,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _), Is.True);
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _), Is.True);
 
-        preBlockCaches.StateCache.Set(in warmedAddress, new Account((UInt256)777));
+        preBlockCaches.StateCache.Set(in warmedAddress, new Account(777UL));
         preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
 
         AddressAsKey missedAddress = TestItem.AddressB;

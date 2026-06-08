@@ -39,10 +39,10 @@ public sealed class Validator
         _historicalSummariesProvider = historicalSummariesProvider;
     }
 
-    public bool VerifyAccumulator(long blockNumber, ValueHash256 accumulatorRoot)
+    public bool VerifyAccumulator(ulong blockNumber, ValueHash256 accumulatorRoot)
     {
         if (!TrustedAccumulatorsProvided()) return true;
-        ValueHash256? trusted = GetAccumulatorForEpoch(blockNumber / HistoricalRootConstants.SlotsPerHistoricalRoot);
+        ValueHash256? trusted = GetAccumulatorForEpoch((long)(blockNumber / (ulong)HistoricalRootConstants.SlotsPerHistoricalRoot));
         return trusted is null
             ? throw new EraVerificationException("Trusted accumulator root was not provided.")
             : trusted.Equals(accumulatorRoot);

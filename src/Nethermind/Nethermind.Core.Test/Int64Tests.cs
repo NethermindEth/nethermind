@@ -13,8 +13,8 @@ namespace Nethermind.Core.Test
         public void ToLongFromBytes()
         {
             byte[] bytes = Bytes.FromHexString("7fffffffffffffff");
-            long number = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            Assert.That(number, Is.EqualTo(long.MaxValue));
+            ulong number = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            Assert.That(number, Is.EqualTo((ulong)long.MaxValue));
         }
     }
 }

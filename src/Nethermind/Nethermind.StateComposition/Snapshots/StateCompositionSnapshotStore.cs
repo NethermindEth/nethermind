@@ -40,13 +40,13 @@ internal sealed class StateCompositionSnapshotStore(
         // still works. The reverse order (remove-first) would let PurgeOldEntries
         // delete the freshly written snapshot because LatestKey still pointed at
         // the already-removed old block.
-        long prevBlock = long.MinValue;
+        ulong prevBlock = ulong.MinValue;
         byte[]? prevBytes = db.Get(LatestKey);
         if (prevBytes is not null && prevBytes.Length >= 8)
-            prevBlock = BinaryPrimitives.ReadInt64BigEndian(prevBytes);
+            prevBlock = BinaryPrimitives.ReadUInt64BigEndian(prevBytes);
 
         Span<byte> key = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(key, snapshot.BlockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(key, snapshot.BlockNumber);
 
         int length = Decoder.GetLength(snapshot);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
@@ -62,21 +62,21 @@ internal sealed class StateCompositionSnapshotStore(
         }
 
         Span<byte> blockBytes = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(blockBytes, snapshot.BlockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(blockBytes, snapshot.BlockNumber);
         db.PutSpan(LatestKey, blockBytes);
 
-        if (prevBlock != long.MinValue && prevBlock != snapshot.BlockNumber)
+        if (prevBlock != ulong.MinValue && prevBlock != snapshot.BlockNumber)
         {
             Span<byte> prevKey = stackalloc byte[8];
-            BinaryPrimitives.WriteInt64BigEndian(prevKey, prevBlock);
+            BinaryPrimitives.WriteUInt64BigEndian(prevKey, prevBlock);
             db.Remove(prevKey);
         }
     }
 
-    public StateCompositionSnapshot? ReadSnapshot(long blockNumber)
+    public StateCompositionSnapshot? ReadSnapshot(ulong blockNumber)
     {
         Span<byte> key = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(key, blockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(key, blockNumber);
 
         byte[]? data = db.Get(key);
         if (data is null) return null;
@@ -103,7 +103,7 @@ internal sealed class StateCompositionSnapshotStore(
         byte[]? latestBytes = db.Get(LatestKey);
         if (latestBytes is null || latestBytes.Length < 8) return null;
 
-        long latestBlock = BinaryPrimitives.ReadInt64BigEndian(latestBytes);
+        ulong latestBlock = BinaryPrimitives.ReadUInt64BigEndian(latestBytes);
         return ReadSnapshot(latestBlock);
     }
 

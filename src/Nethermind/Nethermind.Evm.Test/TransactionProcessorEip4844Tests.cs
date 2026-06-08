@@ -55,7 +55,7 @@ internal class TransactionProcessorEip4844Tests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        long gasLimit = GasCostOf.Transaction;
+        ulong gasLimit = GasCostOf.Transaction;
         Transaction blobTx = Build.A.Transaction
             .WithValue(value)
             .WithGasPrice(1)
@@ -93,7 +93,7 @@ internal class TransactionProcessorEip4844Tests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        long gasLimit = GasCostOf.Transaction;
+        ulong gasLimit = GasCostOf.Transaction;
         Transaction blobTx = Build.A.Transaction
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
@@ -119,7 +119,7 @@ internal class TransactionProcessorEip4844Tests
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.ErrorDescription, Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas));
             Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(balance));
-            Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(0UL));
         }
     }
 

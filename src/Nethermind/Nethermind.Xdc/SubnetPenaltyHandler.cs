@@ -13,7 +13,7 @@ namespace Nethermind.Xdc;
 
 internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
 {
-    public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
+    public Address[] HandlePenalties(ulong number, Hash256 parentHash, Address[] candidates)
     {
         // Triggered only at gap blocks
         XdcSubnetBlockHeader header = tree.FindHeader(parentHash, number - 1) as XdcSubnetBlockHeader
@@ -24,13 +24,13 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
 
 
         List<Hash256> listBlockHash = [];
-        List<long> listBlockNumber = [];
+        List<ulong> listBlockNumber = [];
 
         Dictionary<Address, int> minerStatistics = [];
 
 
-        long parentNumber = number - 1;
-        long minBlockNumber = Math.Max(1, number - currentSpec.EpochLength);
+        ulong parentNumber = number - 1;
+        ulong minBlockNumber = Math.Max(1UL, number - currentSpec.EpochLength);
 
         while (true)
         {
@@ -73,10 +73,10 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
 
         HashSet<Hash256> blockHashes = [];
 
-        long startRange = Math.Max(number - (long)currentSpec.RangeReturnSigner + 1, 0);
+        ulong startRange = Math.Max(number - currentSpec.RangeReturnSigner + 1, 0);
         for (int i = listBlockNumber.Count - 1; i >= 0; i--)
         {
-            long blockNumber = listBlockNumber[i];
+            ulong blockNumber = listBlockNumber[i];
             Hash256 blockHash = listBlockHash[i];
 
             if (blockNumber < startRange)

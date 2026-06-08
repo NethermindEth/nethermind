@@ -14,7 +14,7 @@ public class EraFlatStoreTests
     private static string TempDir([System.Runtime.CompilerServices.CallerMemberName] string name = "") =>
         Path.Combine(TestContext.CurrentContext.TestDirectory, $"eraflatstore_test_{name}_{System.Threading.Thread.CurrentThread.ManagedThreadId}");
 
-    private static byte[]? TryReadBytes(SlotStore store, long blockNumber)
+    private static byte[]? TryReadBytes(SlotStore store, ulong blockNumber)
     {
         byte[]? result = null;
         store.TryRead(blockNumber, (data, _) => result = data.ToArray(), 0);
@@ -135,12 +135,12 @@ public class EraFlatStoreTests
             Parallel.For(0, 64, i =>
             {
                 byte[] data = [(byte)i];
-                store.Write(i, data);
+                store.Write((ulong)i, data);
             });
 
             for (int i = 0; i < 64; i++)
             {
-                Assert.That(TryReadBytes(store, i), Is.EqualTo(new[] { (byte)i }), $"slot {i} should be intact");
+                Assert.That(TryReadBytes(store, (ulong)i), Is.EqualTo(new[] { (byte)i }), $"slot {i} should be intact");
             }
         }
         finally { Directory.Delete(dir, true); }

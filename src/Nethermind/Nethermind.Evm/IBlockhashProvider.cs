@@ -11,7 +11,7 @@ namespace Nethermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec);
+        Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec);
         Task Prefetch(BlockHeader currentBlock, CancellationToken token);
     }
 }

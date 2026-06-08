@@ -17,8 +17,8 @@ namespace Nethermind.Ethash.Test
         public void Calculate_should_returns_expected_results()
         {
             IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-            releaseSpec.DifficultyBombDelay.Returns(0);
-            releaseSpec.DifficultyBoundDivisor.Returns(2048);
+            releaseSpec.DifficultyBombDelay.Returns(0UL);
+            releaseSpec.DifficultyBoundDivisor.Returns(2048UL);
             releaseSpec.IsEip2Enabled.Returns(true);
             releaseSpec.IsEip100Enabled.Returns(true);
             releaseSpec.IsTimeAdjustmentPostOlympic.Returns(true);
@@ -80,12 +80,12 @@ namespace Nethermind.Ethash.Test
             ISpecProvider firstHardForkSpecProvider = Substitute.For<ISpecProvider>();
             firstHardForkSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(firstHardfork);
             EthashDifficultyCalculator firstHardforkDifficultyCalculator = new(firstHardForkSpecProvider);
-            UInt256 firstHardforkResult = firstHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
+            UInt256 firstHardforkResult = firstHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, (ulong)blocksAbove, false);
 
             ISpecProvider secondHardforkSpecProvider = Substitute.For<ISpecProvider>();
             secondHardforkSpecProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(secondHardfork);
             EthashDifficultyCalculator secondHardforkDifficultyCalculator = new(secondHardforkSpecProvider);
-            UInt256 secondHardforkResult = secondHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
+            UInt256 secondHardforkResult = secondHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, (ulong)blocksAbove, false);
 
             Assert.That(secondHardforkResult, Is.Not.EqualTo(firstHardforkResult));
         }

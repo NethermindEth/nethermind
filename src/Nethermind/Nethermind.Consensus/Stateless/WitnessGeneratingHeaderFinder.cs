@@ -13,9 +13,9 @@ namespace Nethermind.Consensus.Stateless;
 public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
 {
     private static readonly HeaderDecoder _decoder = new();
-    private long _lowestRequestedHeader = long.MaxValue;
+    private ulong _lowestRequestedHeader = ulong.MaxValue;
 
-    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null)
     {
         BlockHeader? header = inner.Get(blockHash, blockNumber);
         if (header is not null && header.Number < _lowestRequestedHeader)
@@ -33,9 +33,9 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
         BlockHeader childHeader = inner.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
         headers.Add(_decoder.Encode(childHeader).Bytes);
 
-        if (_lowestRequestedHeader < long.MaxValue)
+        if (_lowestRequestedHeader < ulong.MaxValue)
         {
-            for (long i = childHeader.Number - 1; i >= _lowestRequestedHeader; i--)
+            for (ulong i = childHeader.Number - 1; i >= _lowestRequestedHeader && i != ulong.MaxValue; i--)
             {
                 currentHash = childHeader.ParentHash!;
                 childHeader = inner.Get(currentHash, i) ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");

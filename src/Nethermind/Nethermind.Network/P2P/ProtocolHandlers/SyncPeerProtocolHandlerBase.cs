@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
 
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
 
         // this means that we know what the number, hash, and total diff of the head block is
@@ -110,7 +110,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
-        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {

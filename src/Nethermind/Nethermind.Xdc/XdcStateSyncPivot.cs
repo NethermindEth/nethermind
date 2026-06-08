@@ -48,7 +48,7 @@ public class XdcStateSyncPivot(
 
     public void UpdateHeaderForcefully() { }
     public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
-    public long Diff => (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_pivotHeader?.Number ?? 0);
+    public ulong Diff => (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_pivotHeader?.Number ?? 0);
     public bool CanFinalize(BlockHeader pivot)
     {
         EnsureInitialized();
@@ -60,7 +60,7 @@ public class XdcStateSyncPivot(
         if (_initialized) return;
         _initialized = true;
 
-        long pivotNumber = _syncConfig.PivotNumber;
+        ulong pivotNumber = _syncConfig.PivotNumber;
         if (pivotNumber == 0) return;
 
         XdcBlockHeader pivotHeader = _blockTree.FindHeader(pivotNumber) as XdcBlockHeader

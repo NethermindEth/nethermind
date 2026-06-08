@@ -88,14 +88,14 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
             _beaconSyncStrategy!.GetFinalizedHash().Returns(expectedFinalizedHash);
 
             _syncModeSelector!.Changed += Raise.EventWith(args);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
             Rlp.ValueDecoderContext ctx = new(storedData!);
-            long storedPivotBlockNumber = ctx.DecodeLong();
+            ulong storedPivotBlockNumber = ctx.DecodeULong();
             Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
             Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
@@ -152,7 +152,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
             Hash256 expectedPivotBlockHash = _externalPeerBlockTree!.FindLevel(expectedPivotBlockNumber)!.BlockInfos[0].BlockHash;
             _beaconSyncStrategy!.GetHeadBlockHash().Returns(expectedHeadBlockHash);
 
@@ -160,7 +160,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
             Rlp.ValueDecoderContext ctx = new(storedData!);
-            long storedPivotBlockNumber = ctx.DecodeLong();
+            ulong storedPivotBlockNumber = ctx.DecodeULong();
             Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 
             Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
@@ -170,7 +170,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         [Test]
         public void TrySetFreshPivot_for_unsafe_updater_ignores_peer_header_with_mismatched_number()
         {
-            long requestedPivotNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            ulong requestedPivotNumber = _externalPeerBlockTree!.Head!.Number - 64;
             Hash256 wrongNumberHash = _externalPeerBlockTree!.FindLevel(requestedPivotNumber + 5)!.BlockInfos[0].BlockHash;
             _syncPeer!.GetBlockHeaders(requestedPivotNumber, 1, 0, default)
                 .ReturnsForAnyArgs(_ => _externalPeerBlockTree!.FindHeaders(wrongNumberHash, 1, 0, default));

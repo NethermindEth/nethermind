@@ -14,7 +14,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
-               + Rlp.LengthOf(in tx.ValueRef)
+               + Rlp.LengthOf(tx.Value)
                + Rlp.LengthOf(tx.GasLimit)
                + Rlp.LengthOf(tx.GasPrice)
                + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
@@ -32,7 +32,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.SenderAddress);
         rlpStream.Encode(tx.Nonce);
         rlpStream.Encode(tx.Hash);
-        rlpStream.Encode(in tx.ValueRef);
+        rlpStream.Encode(tx.Value);
         rlpStream.Encode(tx.GasLimit);
         rlpStream.Encode(tx.GasPrice);
         rlpStream.Encode(tx.DecodedMaxFeePerGas);
@@ -51,12 +51,12 @@ public class LightTxDecoder : TxDecoder<Transaction>
         return new LightTransaction(
             timestamp: ctx.DecodeUInt256(),
             sender: ctx.DecodeAddress()!,
-            nonce: ctx.DecodeUInt256(),
+            nonce: ctx.DecodeULong(),
             hash: ctx.DecodeKeccak()!,
-            value: ctx.DecodeUInt256(),
-            gasLimit: ctx.DecodeLong(),
-            gasPrice: ctx.DecodeUInt256(),
-            maxFeePerGas: ctx.DecodeUInt256(),
+            value: ctx.DecodeULong(),
+            gasLimit: ctx.DecodeULong(),
+            gasPrice: ctx.DecodeULong(),
+            maxFeePerGas: ctx.DecodeULong(),
             maxFeePerBlobGas: ctx.DecodeUInt256(),
             blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
             poolIndex: ctx.DecodeULong(),

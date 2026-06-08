@@ -25,10 +25,10 @@ public class E2StoreReader : IDisposable
 
     private readonly SafeFileHandle _file;
 
-    // Read these two value ahead of time instead of fetching the value everything it is needed to reduce
+    // Read these two values ahead of time instead of fetching the value every time it is needed to reduce
     // the page fault when looking up.
-    private long? _startBlock;
-    private long _blockCount;
+    private ulong? _startBlock;
+    private ulong _blockCount;
     private readonly long _fileLength;
 
     public E2StoreReader(string filePath)
@@ -63,7 +63,7 @@ public class E2StoreReader : IDisposable
 
         Entry entry = new(type, length);
         if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
-        if (entry.Length + (ulong)position > (ulong)_fileLength)
+        if ((long)entry.Length + position > _fileLength)
             throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_fileLength}.");
         if (entry.Length > ValueSizeLimit)
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {entry.Length}.");
@@ -92,7 +92,7 @@ public class E2StoreReader : IDisposable
 
     public void Dispose() => _file.Dispose();
 
-    public long BlockOffset(long blockNumber)
+    public long BlockOffset(ulong blockNumber)
     {
         EnsureIndexAvailable();
 
@@ -100,8 +100,11 @@ public class E2StoreReader : IDisposable
             throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside the bounds of this index.");
 
         // <offset> * 8 + <count>
+        // Cast to int is safe: _blockCount is bounded by era file size (max ~8192 blocks per era).
         int indexLength = (int)_blockCount * IndexOffsetSize + IndexSectionCount;
-        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!) * IndexOffsetSize;
+
+        // Cast to long is safe: blockNumber - _startBlock is bounded by _blockCount which fits in int.
+        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!.Value) * IndexOffsetSize;
 
         // <header> + <start block> + <the rest of the index>
         int indexSizeIncludingHeader = HeaderSize + IndexSectionStartBlock + indexLength;
@@ -118,18 +121,19 @@ public class E2StoreReader : IDisposable
         if (_fileLength < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
 
         // Read the block count
-        _blockCount = (long)ReadUInt64(_fileLength - IndexSectionCount);
+        _blockCount = ReadUInt64(_fileLength - IndexSectionCount);
 
         // <starting block> + <offsets> * 8 + <count>
+        // Cast to int is safe: _blockCount is bounded by era file size (max ~8192 blocks per era).
         int indexLength = IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 
         // Verify that its a block index
         _ = ReadEntry(_fileLength - indexLength - HeaderSize, EntryTypes.BlockIndex);
 
-        _startBlock = (long?)ReadUInt64(_fileLength - indexLength);
+        _startBlock = ReadUInt64(_fileLength - indexLength);
     }
 
-    public long First
+    public ulong First
     {
         get
         {
@@ -138,7 +142,16 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public long LastBlock => First + _blockCount - 1;
+    public ulong LastBlock
+    {
+        get
+        {
+            EnsureIndexAvailable();
+            // _blockCount >= 1 is guaranteed by EnsureIndexAvailable (empty era files are invalid),
+            // so this subtraction cannot underflow.
+            return First + _blockCount - 1;
+        }
+    }
 
     public long AccumulatorOffset
     {
@@ -147,6 +160,7 @@ public class E2StoreReader : IDisposable
             EnsureIndexAvailable();
 
             // <index header> + <starting block> + <offset> * 8 + <count>
+            // Cast to int is safe: _blockCount is bounded by era file size (max ~8192 blocks per era).
             int indexLengthIncludingHeader = HeaderSize + IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
 
             // <header> + <the 32 byte hash> + <indexes>
@@ -156,7 +170,7 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public long BlockCount
+    public ulong BlockCount
     {
         get
         {

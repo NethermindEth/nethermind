@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization
 
         private readonly LruCache<ValueHash256, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
-        private readonly long _pivotNumber;
+        private readonly ulong _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
         private CancellationTokenSource _rangeBroadcastCts = new();
@@ -130,7 +130,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public long LowestBlock => Math.Min(Head?.Number ?? 0, _blockTree.GetLowestBlock());
+        public ulong LowestBlock => Math.Min(Head?.Number ?? 0UL, _blockTree.GetLowestBlock());
 
         public int GetPeerCount() => _pool.PeerCount;
 
@@ -173,7 +173,10 @@ namespace Nethermind.Synchronization
             // it delivers information about the peer's chain.
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
-            bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
+            ulong headNumber = _blockTree.Head?.Number ?? 0UL;
+            // Guard against underflow: MaxReorgLength is long but subtraction is on ulong.
+            bool isBlockOlderThanMaxReorgAllows = headNumber > (ulong)Sync.MaxReorgLength &&
+                                                  block.Number < headNumber - (ulong)Sync.MaxReorgLength;
 
             // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
@@ -252,7 +255,8 @@ namespace Nethermind.Synchronization
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
-            _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
+            // HintValidationRange takes long; cast is safe for realistic block heights.
+            _sealValidator.HintValidationRange(_sealValidatorUserGuid, (long)block.Number - 128, (long)block.Number + 1024);
             return _sealValidator.ValidateSeal(block.Header, true);
         }
 
@@ -357,11 +361,12 @@ namespace Nethermind.Synchronization
             _logger.Info(sb.ToString());
         }
 
-        public void HintBlock(Hash256 hash, long number, ISyncPeer syncPeer)
+        public void HintBlock(Hash256 hash, ulong number, ISyncPeer syncPeer)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
-            if (number > syncPeer.HeadNumber)
+            // number is from the peer protocol (long); HeadNumber is ulong. Guard against negative values.
+            if (number >= 0 && number > syncPeer.HeadNumber)
             {
                 if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
                 syncPeer.HeadNumber = number;
@@ -441,7 +446,7 @@ namespace Nethermind.Synchronization
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
-        public Hash256? FindHash(long number)
+        public Hash256? FindHash(ulong number)
         {
             try
             {
@@ -535,7 +540,7 @@ namespace Nethermind.Synchronization
                         return;
                     }
                     PeerInfo peerInfo = allPeers[i];
-                    if (peerInfo.ShouldNotifyNewRange(earliest.Number, latest.Number))
+                    if (peerInfo.ShouldNotifyNewRange((long)earliest.Number, (long)latest.Number))
                     {
                         NotifyOfNewRange(peerInfo, earliest, latest);
                         Interlocked.Increment(ref counter);

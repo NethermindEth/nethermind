@@ -115,14 +115,14 @@ public static partial class EvmInstructions
             }
         }
 
-        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out bool outOfGas);
+        ulong initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out bool outOfGas);
         if (outOfGas)
             goto OutOfGas;
 
-        long initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
-        long extraCost = initCodeWordCost + create2HashCost;
-        long gasCost = (TEip8037.IsActive ? GasCostOf.CreateRegular : GasCostOf.Create) + extraCost;
+        ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        ulong create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
+        ulong extraCost = initCodeWordCost + create2HashCost;
+        ulong gasCost = (TEip8037.IsActive ? GasCostOf.CreateRegular : GasCostOf.Create) + extraCost;
         bool createOutOfGas = !TGasPolicy.UpdateGas(ref gas, gasCost);
         if (createOutOfGas) goto OutOfGas;
 
@@ -155,9 +155,8 @@ public static partial class EvmInstructions
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
-        UInt256 accountNonce = state.GetNonce(env.ExecutingAccount);
-        UInt256 maxNonce = ulong.MaxValue;
-        if (accountNonce >= maxNonce)
+        ulong accountNonce = state.GetNonce(env.ExecutingAccount);
+        if (accountNonce >= ulong.MaxValue)
         {
             RefundCreateStateGas(ref gas);
             vm.ReturnDataBuffer = Array.Empty<byte>();
@@ -165,7 +164,7 @@ public static partial class EvmInstructions
         }
 
         // Get remaining gas for the create operation.
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
         // End tracing if enabled, prior to switching to the new call frame.
         if (TTracingInst.IsActive)
@@ -173,7 +172,7 @@ public static partial class EvmInstructions
 
         // Calculate gas available for the contract creation call.
         // Use the 63/64 gas rule if specified in the current EVM specification.
-        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        ulong callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64 : gasAvailable;
         if (!TGasPolicy.UpdateGas(ref gas, callGas))
             goto OutOfGas;
 

@@ -156,8 +156,8 @@ namespace Nethermind.Core.Test.Builders
             random ??= Random;
 
             Account account = new(
-                (UInt256)random.Next(1000),
-                (UInt256)random.Next(1000),
+                (ulong)random.Next(1000),
+                (ulong)random.Next(1000),
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 
@@ -176,8 +176,8 @@ namespace Nethermind.Core.Test.Builders
         public static Account GenerateIndexedAccount(int index)
         {
             Account account = new(
-                (UInt256)index,
-                (UInt256)index);
+                (ulong)index,
+                (ulong)index);
 
             return account;
         }

@@ -43,7 +43,7 @@ public class TaikoTransactionProcessor(
     }
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
+        in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
     {
         UInt256 tipFees = (UInt256)spentGas * premiumPerGas;
         UInt256 baseFees = (UInt256)spentGas * header.BaseFeePerGas;
@@ -87,7 +87,7 @@ public class TaikoTransactionProcessor(
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.IsAnchorTx)
-            WorldState.CreateAccountIfNotExists(tx.SenderAddress!, UInt256.Zero, UInt256.Zero);
+            WorldState.CreateAccountIfNotExists(tx.SenderAddress!, UInt256.Zero, 0UL);
 
         return base.IncrementNonce(tx, header, spec, tracer, opts);
     }

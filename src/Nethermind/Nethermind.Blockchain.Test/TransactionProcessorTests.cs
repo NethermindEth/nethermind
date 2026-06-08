@@ -78,7 +78,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithGasLimit(100000).TestObject;
 
-        long blockNumber = eip155Enabled
+        ulong blockNumber = eip155Enabled
             ? MainnetSpecProvider.ByzantiumBlockNumber
             : MainnetSpecProvider.ByzantiumBlockNumber - 1;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
@@ -147,7 +147,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
 
-        tx.Value = AccountBalance - 3 * GasCostOf.Transaction;
+        tx.Value = (ulong)(AccountBalance - 3 * GasCostOf.Transaction);
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
 
@@ -163,7 +163,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
 
-        tx.Value = AccountBalance - GasCostOf.Transaction;
+        tx.Value = (ulong)(AccountBalance - GasCostOf.Transaction);
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
@@ -196,13 +196,13 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [Test]
     public void Balance_is_not_changed_on_call_and_restore()
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction
             .WithValue(AccountBalance - (UInt256)gasLimit)
             .WithGasPrice(1)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithNumber(1ul).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
@@ -212,14 +212,14 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [Test]
     public void Account_is_not_created_on_call_and_restore()
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction
             .WithValue(0.Ether)
             .WithGasPrice(1)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyD, eip155Enabled)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithNumber(1ul).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         Assert.That(_stateProvider.AccountExists(TestItem.PrivateKeyD.Address), Is.False);
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
@@ -229,20 +229,20 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [Test]
     public void Nonce_is_not_changed_on_call_and_restore()
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithValue(1.Ether - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithNumber(1ul).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(UInt256.Zero));
+        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(0ul));
     }
 
     [TestCase(true)]
     [TestCase(false)]
     public void Can_estimate_with_value(bool systemUser)
     {
-        long gasLimit = 100000;
-        Transaction tx = Build.A.Transaction.WithValue(UInt256.MaxValue).WithGasLimit(gasLimit)
+        ulong gasLimit = 100000ul;
+        Transaction tx = Build.A.Transaction.WithValue(ulong.MaxValue).WithGasLimit(gasLimit)
             .WithSenderAddress(systemUser ? Address.SystemUser : TestItem.AddressA).TestObject;
         Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
@@ -255,14 +255,14 @@ public class TransactionProcessorTests(bool eip155Enabled)
         }
         else
         {
-            Assert.That(tracer.GasSpent, Is.EqualTo(21000));
+            Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
         }
     }
 
     [TestCaseSource(nameof(EstimateWithHighTxValueTestCases))]
-    public long Should_not_estimate_tx_with_high_value(UInt256 txValue)
+    public ulong Should_not_estimate_tx_with_high_value(UInt256 txValue)
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
 
         Transaction tx = Build.A.Transaction
             .WithValue(txValue)
@@ -270,13 +270,13 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithNumber(1ul).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
         EstimateGasTracer tracer = new();
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
 
         if (txValue == AccountBalance)
         {
@@ -311,12 +311,12 @@ public class TransactionProcessorTests(bool eip155Enabled)
             yield return new TestCaseData(AccountBalance - GasCostOf.Transaction - gasLimit + 1)
             { TestName = "More than (account balance - tx cost)", ExpectedResult = GasCostOf.Transaction };
             yield return new TestCaseData(AccountBalance)
-            { TestName = "Exactly account balance", ExpectedResult = (long)GasCostOf.Transaction };
+            { TestName = "Exactly account balance", ExpectedResult = GasCostOf.Transaction };
 
             yield return new TestCaseData(AccountBalance + 1)
-            { TestName = "More than account balance", ExpectedResult = 0L };
-            yield return new TestCaseData(UInt256.MaxValue - gasLimit)
-            { TestName = "Max value possible", ExpectedResult = 0L };
+            { TestName = "More than account balance", ExpectedResult = 0ul };
+            yield return new TestCaseData((UInt256)ulong.MaxValue - gasLimit)
+            { TestName = "Max value possible", ExpectedResult = 0ul };
         }
     }
 
@@ -330,7 +330,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
 
-        long blockNumber = MainnetSpecProvider.LondonBlockNumber;
+        ulong blockNumber = MainnetSpecProvider.LondonBlockNumber;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);
         Assert.That(result.TransactionExecuted, Is.False);
@@ -339,7 +339,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [TestCase]
     public void Can_estimate_simple()
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
@@ -349,8 +349,8 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(21000));
-        Assert.That(estimator.Estimate(tx, block.Header, tracer, out string? err, 0), Is.EqualTo(21000));
+        Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
+        Assert.That(estimator.Estimate(tx, block.Header, tracer, out string? err, 0), Is.EqualTo(21000ul));
         Assert.That(err, Is.Null);
     }
 
@@ -367,10 +367,10 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .Op(Instruction.STOP)
             .Done;
 
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
-        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
@@ -382,13 +382,13 @@ public class TransactionProcessorTests(bool eip155Enabled)
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
         IReleaseSpec releaseSpec = Berlin.Instance;
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1));
-        Assert.That(tracer.GasSpent, Is.EqualTo(54764L));
-        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(75465L));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo((ulong)RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(54788ul));
+        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        Assert.That(estimate, Is.EqualTo(75489ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -405,11 +405,11 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .Call(contractAddress, 46179)
             .Op(Instruction.STOP).Done;
 
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
 
         Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
-        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
-        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1ul).TestObject;
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
@@ -422,18 +422,18 @@ public class TransactionProcessorTests(bool eip155Enabled)
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(24080));
-        Assert.That(tracer.GasSpent, Is.EqualTo(35228L));
-        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(54225));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(24080ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(35300ul));
+        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        Assert.That(estimate, Is.EqualTo(54297ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
     }
 
-    private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
+    private void ConfirmEnoughEstimate(Transaction tx, Block block, ulong estimate)
     {
         BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
 
@@ -456,10 +456,10 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .Op(Instruction.STOP)
             .Done;
 
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
-        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
@@ -472,12 +472,12 @@ public class TransactionProcessorTests(bool eip155Enabled)
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(2300));
-        Assert.That(tracer.GasSpent, Is.EqualTo(85669L));
-        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(87969L));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(2300ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(85981ul));
+        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        Assert.That(estimate, Is.EqualTo(88281ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -497,10 +497,10 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .Op(Instruction.STOP)
             .Done;
 
-        long gasLimit = 200000;
+        ulong gasLimit = 200000ul;
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
-        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
@@ -513,12 +513,12 @@ public class TransactionProcessorTests(bool eip155Enabled)
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend));
-        Assert.That(tracer.GasSpent, Is.EqualTo(87429L));
-        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(108130L));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo((ulong)RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend));
+        Assert.That(tracer.GasSpent, Is.EqualTo(87753ul));
+        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        Assert.That(estimate, Is.EqualTo(108454ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -535,11 +535,11 @@ public class TransactionProcessorTests(bool eip155Enabled)
         byte[] byteCode = Prepare.EvmCode
             .Call(contractAddress, 46179).Done;
 
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
 
         Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
-        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
-        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1ul).TestObject;
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
@@ -553,12 +553,12 @@ public class TransactionProcessorTests(bool eip155Enabled)
         BlocksConfig blocksConfig = new();
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
 
-        long actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
+        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(1));
-        Assert.That(tracer.GasSpent, Is.EqualTo(54224L));
-        long estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(54224L));
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(1ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(54284ul));
+        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        Assert.That(estimate, Is.EqualTo(54284ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -567,7 +567,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [TestCase]
     public void Disables_Eip158_for_system_transactions()
     {
-        long blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
+        ulong blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
 
         _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether);
         IReleaseSpec spec = _specProvider.GetSpec((ForkActivation)blockNumber);
@@ -587,7 +587,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [TestCase]
     public void Balance_is_changed_on_buildup_and_restored()
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithValue(0).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
@@ -602,7 +602,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [TestCase]
     public void Account_is_not_created_on_buildup_and_restore()
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction
             .WithValue(0.Ether)
             .WithGasPrice(1)
@@ -622,7 +622,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     [TestCase]
     public void Nonce_is_not_changed_on_buildup_and_restore()
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
         Transaction tx = Build.A.Transaction
             .WithValue(AccountBalance - (UInt256)gasLimit)
             .WithGasPrice(1)
@@ -633,21 +633,21 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         Snapshot state = _stateProvider.TakeSnapshot();
         _transactionProcessor.BuildUp(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo((UInt256)1));
+        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(1ul));
         _stateProvider.Restore(state);
-        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(UInt256.Zero));
+        Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(0ul));
     }
 
     [TestCase]
     public void State_changed_twice_in_buildup_should_have_correct_gas_cost()
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000ul;
         Transaction tx1 = Build.A.Transaction
             .WithValue(0).WithGasPrice(1).WithGasLimit(GasCostOf.Transaction)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
         Transaction tx2 = Build.A.Transaction
-            .WithValue(0).WithNonce(1).WithGasPrice(1).WithGasLimit(GasCostOf.Transaction)
+            .WithValue(0).WithNonce(1ul).WithGasPrice(1).WithGasLimit(GasCostOf.Transaction)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx1, tx2).WithGasLimit(gasLimit).TestObject;
@@ -720,7 +720,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
             .WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
-        UInt256 nonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
+        ulong nonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
 
         _transactionProcessor.Warmup(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 

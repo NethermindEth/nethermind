@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -115,6 +114,7 @@ public static partial class EvmInstructions
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
+
         if (typeof(TOpCall) == typeof(OpStaticCall))
         {
             // Static calls cannot transfer value.
@@ -149,7 +149,7 @@ public static partial class EvmInstructions
             : env.ExecutingAccount;
 
         // Add extra gas cost if value is transferred.
-        if (!transferValue.IsZero)
+        if (transferValue != 0UL)
         {
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
@@ -159,7 +159,7 @@ public static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
+        if (!TGasPolicy.UpdateGas(ref gas, (ulong)spec.GasCosts.CallCost) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
@@ -184,7 +184,7 @@ public static partial class EvmInstructions
         bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
             false => !state.AccountExists(target),
-            true => transferValue != 0 && state.IsDeadAccount(target),
+            true => !transferValue.IsZero && state.IsDeadAccount(target),
         };
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
@@ -203,22 +203,21 @@ public static partial class EvmInstructions
                 : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-        long gasLimitUl;
+        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        ulong gasLimitUl;
 
         if (spec.Use63Over64Rule)
         {
-            // EIP-150: cap is a non-negative long, so min(gasLimit, cap) fits without 256-bit math.
-            Debug.Assert(gasAvailable >= 0, "GetRemainingGas must be non-negative; (ulong)cap below would otherwise wrap.");
-            long cap = gasAvailable - gasAvailable / 64;
-            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= (ulong)cap
-                ? (long)gasLimit.u0
+            // EIP-150: cap fits in ulong, so min(gasLimit, cap) fits without 256-bit math.
+            ulong cap = gasAvailable - gasAvailable / 64;
+            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= cap
+                ? gasLimit.u0
                 : cap;
         }
         else
         {
-            if (!gasLimit.IsUint64 || gasLimit.u0 >= long.MaxValue) goto OutOfGas;
-            gasLimitUl = (long)gasLimit.u0;
+            if (!gasLimit.IsUint64) goto OutOfGas;
+            gasLimitUl = gasLimit.u0;
         }
 
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
@@ -265,7 +264,7 @@ public static partial class EvmInstructions
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
         // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, in transferValue, spec);
+        state.SubtractFromBalance(caller, in transferValue, spec, out _);
 
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)

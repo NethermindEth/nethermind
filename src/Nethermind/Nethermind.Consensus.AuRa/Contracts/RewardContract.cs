@@ -30,9 +30,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind);
     }
 
-    public sealed class RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : CallableContract(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IRewardContract
+    public sealed class RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ulong transitionBlock) : CallableContract(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IRewardContract
     {
-        public long Activation { get; } = transitionBlock;
+        public ulong Activation { get; } = transitionBlock;
 
         /// <summary>
         /// produce rewards for the given benefactors,

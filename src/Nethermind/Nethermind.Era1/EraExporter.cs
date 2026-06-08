@@ -22,7 +22,7 @@ public class EraExporter(
     ILogManager logManager)
     : IEraExporter
 {
-    private readonly string _networkName = (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+    private readonly string _networkName = string.IsNullOrWhiteSpace(eraConfig.NetworkName)
         ? throw new ArgumentException("Cannot be null or whitespace.", nameof(eraConfig.NetworkName))
         : eraConfig.NetworkName.Trim().ToLower();
 
@@ -34,13 +34,13 @@ public class EraExporter(
 
     public Task Export(
         string destinationPath,
-        long from,
-        long to,
+        ulong from,
+        ulong to,
         CancellationToken cancellation = default)
     {
         if (fileSystem.File.Exists(destinationPath)) throw new ArgumentException($"Destination already exist as a file.", nameof(destinationPath));
-        if (to == 0) to = blockTree.Head?.Number ?? 0;
-        if (to > (blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0}.");
+        if (to == 0) to = blockTree.Head?.Number ?? 0UL;
+        if (to > (blockTree.Head?.Number ?? 0UL)) throw new ArgumentException($"Cannot export to a block after head block {blockTree.Head?.Number ?? 0UL}.");
         if (from > to) throw new ArgumentException($"Start block ({from}) must be before end ({to}) block");
 
         return DoExport(destinationPath, from, to, cancellation: cancellation);
@@ -48,8 +48,8 @@ public class EraExporter(
 
     private async Task DoExport(
         string destinationPath,
-        long from,
-        long to,
+        ulong from,
+        ulong to,
         CancellationToken cancellation = default)
     {
         if (_logger.IsInfo) _logger.Info($"Exporting from block {from} to block {to} as Era files to {destinationPath}");
@@ -59,13 +59,20 @@ public class EraExporter(
         }
 
         ProgressLogger progress = new("Era export", logManager);
+        // Cast to long is safe: to - from + 1 is a block count used only as a progress display
+        // value; no realistic chain has more than long.MaxValue blocks.
         progress.Reset(0, to - from + 1);
         int totalProcessed = 0;
 
-        long startEpoch = from / _era1Size;
-        long epochCount = (long)Math.Ceiling((to - from + 1) / (decimal)_era1Size);
-        using ArrayPoolList<long> epochIdxs = new((int)epochCount);
-        for (long i = 0; i < epochCount; i++)
+        // Cast to long is safe: epoch numbers are small ordinals (thousands at most).
+        ulong era1Size = (ulong)_era1Size;
+        ulong startEpoch = from / era1Size;
+        // Ceiling division without floating point, all ulong.
+        ulong epochCount = (to - from + era1Size) / era1Size;
+
+        // Cast to int is safe: epochCount is bounded by chain length / era size, well within int range.
+        using ArrayPoolList<ulong> epochIdxs = new((int)epochCount);
+        for (ulong i = 0; i < epochCount; i++)
         {
             epochIdxs.Add(i);
         }
@@ -97,16 +104,17 @@ public class EraExporter(
 
         if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
 
-        async Task WriteEpoch(long epochIdx)
+        async Task WriteEpoch(ulong epochIdx)
         {
             // Yes, it offset a bit so a block that is at the end of an epoch would be at the start of another epoch
-            // if the start is not of module _era1Size. This seems to match geth's behaviour.
-            long epoch = startEpoch + epochIdx;
-            long startingIndex = from + epochIdx * _era1Size;
+            // if the start is not a multiple of _era1Size. This seems to match geth's behaviour.
+            ulong epoch = startEpoch + epochIdx;
+            ulong startingIndex = from + epochIdx * era1Size;
 
             string filePath = Path.Combine(
                 destinationPath,
-                EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
+                // Cast to long is safe: epoch ordinals are small and well within long range.
+                EraPathUtils.Filename(_networkName, (long)epoch, Keccak.Zero));
 
             ValueHash256 accumulator;
             ValueHash256 sha256;
@@ -114,7 +122,7 @@ public class EraExporter(
             // Scoped using so the writer is disposed before File.Move — Windows locks open files.
             using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider))
             {
-                for (long y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
+                for (ulong y = startingIndex; y < startingIndex + era1Size && y <= to; y++)
                 {
                     Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find a block with number {y}.");
@@ -135,7 +143,7 @@ public class EraExporter(
                     bool shouldLog = (Interlocked.Increment(ref totalProcessed) % 10000) == 0;
                     if (shouldLog)
                     {
-                        progress.Update(totalProcessed);
+                        progress.Update((ulong)totalProcessed);
                         progress.LogProgress();
                     }
                 }
@@ -143,12 +151,13 @@ public class EraExporter(
                 (accumulator, sha256) = await eraWriter.Finalize(cancellation);
             }
 
+            // Cast to int is safe: epochIdx is bounded by epochCount which was already cast to int above.
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
             fileNames[(int)epochIdx] = Path.GetFileName(filePath);
             string rename = Path.Combine(
                 destinationPath,
-                EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
+                EraPathUtils.Filename(_networkName, (long)epoch, new Hash256(accumulator)));
             // Retry to handle transient file locks on Windows (e.g. antivirus scanning).
             for (int attempt = 0; ; attempt++)
             {

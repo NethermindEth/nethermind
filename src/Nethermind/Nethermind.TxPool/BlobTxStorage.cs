@@ -111,7 +111,7 @@ public class BlobTxStorage : IBlobTxStorage
         _lightBlobTxsDb.Remove(hash.BytesAsSpan);
     }
 
-    public void AddBlobTransactionsFromBlock(long blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+    public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
     {
         if (blockBlobTransactions.Count == 0)
         {
@@ -121,7 +121,7 @@ public class BlobTxStorage : IBlobTxStorage
         EncodeAndSaveTxs(blockBlobTransactions, _processedBlobTxsDb, blockNumber);
     }
 
-    public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[]? blockBlobTransactions)
     {
         byte[]? bytes = _processedBlobTxsDb.Get(blockNumber);
 
@@ -136,7 +136,7 @@ public class BlobTxStorage : IBlobTxStorage
         return false;
     }
 
-    public void DeleteBlobTransactionsFromBlock(long blockNumber)
+    public void DeleteBlobTransactionsFromBlock(ulong blockNumber)
         => _processedBlobTxsDb.Delete(blockNumber);
 
     private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, out Transaction? transaction)
@@ -184,7 +184,7 @@ public class BlobTxStorage : IBlobTxStorage
         db.PutSpan(txHashPrefixed, rlpStream.AsSpan());
     }
 
-    private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, long blockNumber)
+    private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, ulong blockNumber)
     {
         using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(blockBlobTransactions!, RlpBehaviors.InMempoolForm);
         db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlpStream.AsSpan());

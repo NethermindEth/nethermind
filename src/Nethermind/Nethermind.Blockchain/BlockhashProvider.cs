@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain
         private Hash256[]? _hashes;
         private long _prefetchVersion;
 
-        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
             if (number < 0)
             {
@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain
                 return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
-            long depth = currentBlock.Number - number;
+            long depth = (long)(currentBlock.Number - number);
             Hash256[]? hashes = Volatile.Read(ref _hashes);
 
             return depth switch
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain
             };
         }
 
-        private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, long number)
+        private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, ulong number)
         {
             if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
             return null;

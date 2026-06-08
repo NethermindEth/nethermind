@@ -23,10 +23,11 @@ public sealed class ZeroTotalDifficultyStrategy : ITotalDifficultyStrategy
 
 public sealed class FixedTotalDifficultyStrategy(
     ITotalDifficultyStrategy strategy,
-    long fixesBlockNumber,
+    ulong fixesBlockNumber,
     UInt256 toTotalDifficulty
 ) : ITotalDifficultyStrategy
 {
+    // header.Number is ulong; fixesBlockNumber is ulong — no cast needed.
     public UInt256 ParentTotalDifficulty(BlockHeader header) => header.Number > 0 && header.Number - 1 == fixesBlockNumber
             ? toTotalDifficulty
             : strategy.ParentTotalDifficulty(header);

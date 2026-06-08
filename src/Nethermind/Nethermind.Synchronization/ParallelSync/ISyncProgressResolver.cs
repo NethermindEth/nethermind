@@ -10,9 +10,9 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public interface ISyncProgressResolver : IFullStateFinder
     {
-        long FindBestHeader();
+        ulong FindBestHeader();
 
-        long FindBestFullBlock();
+        ulong FindBestFullBlock();
 
         bool IsFastBlocksHeadersFinished();
 
@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         bool IsLoadingBlocksFromDb();
 
-        long FindBestProcessedBlock();
+        ulong FindBestProcessedBlock();
 
         UInt256 ChainDifficulty { get; }
 
@@ -32,6 +32,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         void RecalculateProgressPointers();
 
-        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; }
+        (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; }
     }
 }

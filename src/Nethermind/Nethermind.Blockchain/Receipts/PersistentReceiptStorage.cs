@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDb _defaultColumn;
         private readonly IDb _transactionDb;
         private static readonly Hash256 MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
-        private long _migratedBlockNumber;
+        private ulong _migratedBlockNumber;
         private readonly ReceiptArrayStorageDecoder _storageDecoder;
         private readonly IBlockTree _blockTree;
         private readonly IBlockStore _blockStore;
@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
-            long Get(Hash256 key, long defaultValue) => _defaultColumn.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+            ulong Get(Hash256 key, ulong defaultValue) => _defaultColumn.Get(key)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
 
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Receipts
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
-            _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
+            _migratedBlockNumber = Get(MigrationBlockNumberKey, ulong.MaxValue);
 
             KeyValuePair<byte[], byte[]>? firstValue = _receiptsDb.GetAll().FirstOrDefault();
             _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
@@ -82,9 +82,9 @@ namespace Nethermind.Blockchain.Receipts
                 Block newMain = e.Block;
 
                 // Delete old tx index
-                if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > _receiptConfig.TxLookupLimit.Value)
+                if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > (ulong)_receiptConfig.TxLookupLimit.Value)
                 {
-                    Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
+                    Block newOldTx = _blockTree.FindBlock(newMain.Number - (ulong)_receiptConfig.TxLookupLimit.Value);
                     if (newOldTx is not null)
                     {
                         RemoveBlockTx(newOldTx);
@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
 
-            long blockNum = new Rlp.ValueDecoderContext(blockHashData).DecodeLong();
+            ulong blockNum = new Rlp.ValueDecoderContext(blockHashData).DecodeULong();
             return _blockTree.FindBlockHash(blockNum);
         }
 
@@ -169,7 +169,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         [SkipLocalsInit]
-        private unsafe Span<byte> GetReceiptData(long blockNumber, Hash256 blockHash)
+        private unsafe Span<byte> GetReceiptData(ulong blockNumber, Hash256 blockHash)
         {
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             if (_legacyHashKey)
@@ -200,7 +200,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
+        private static void GetBlockNumPrefixedKey(ulong blockNumber, Hash256 blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);
@@ -213,9 +213,9 @@ namespace Nethermind.Blockchain.Receipts
             return Get(block, recover, false);
         }
 
-        public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
+        public bool CanGetReceiptsByHash(ulong blockNumber) => blockNumber >= MigratedBlockNumber;
 
-        public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
             if (_receiptsCache.TryGet(blockHash, out TxReceipt[] receipts))
             {
@@ -254,11 +254,11 @@ namespace Nethermind.Blockchain.Receipts
             return true;
         }
 
-        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
             => Insert(block, txReceipts, _specProvider.GetSpec(block.Header), ensureCanonical, writeFlags, lastBlockNumber);
 
         [SkipLocalsInit]
-        public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+        public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -272,7 +272,7 @@ namespace Nethermind.Blockchain.Receipts
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
 
-            long blockNumber = block.Number;
+            ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
             using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
@@ -298,7 +298,7 @@ namespace Nethermind.Blockchain.Receipts
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
 
-        public long MigratedBlockNumber
+        public ulong MigratedBlockNumber
         {
             get => _migratedBlockNumber;
             set
@@ -311,7 +311,7 @@ namespace Nethermind.Blockchain.Receipts
         internal void ClearCache() => _receiptsCache.Clear();
 
         [SkipLocalsInit]
-        public bool HasBlock(long blockNumber, Hash256 blockHash)
+        public bool HasBlock(ulong blockNumber, Hash256 blockHash)
         {
             if (_receiptsCache.Contains(blockHash)) return true;
 
@@ -352,14 +352,14 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private void EnsureCanonical(Block block, long? lastBlockNumber)
+        private void EnsureCanonical(Block block, ulong? lastBlockNumber)
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
 
-            lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+            lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;
 
             if (_receiptConfig.TxLookupLimit == -1) return;
-            if (_receiptConfig.TxLookupLimit != 0 && block.Number <= lastBlockNumber - _receiptConfig.TxLookupLimit) return;
+            if (_receiptConfig.TxLookupLimit != 0 && lastBlockNumber.Value >= (ulong)_receiptConfig.TxLookupLimit && block.Number <= lastBlockNumber.Value - (ulong)_receiptConfig.TxLookupLimit) return;
             if (_receiptConfig.CompactTxIndex)
             {
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;

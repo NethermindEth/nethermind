@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Ethash
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash) => true;
+        public bool CanSeal(ulong blockNumber, Hash256 parentHash) => true;
 
         public Address Address => _signer.Address;
 

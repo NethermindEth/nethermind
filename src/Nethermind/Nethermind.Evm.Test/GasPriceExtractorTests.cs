@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class GasPriceExtractorTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
 
         [Test]
         public void Block_header_rlp_size_assumption_is_correct()

@@ -9,7 +9,7 @@ namespace Nethermind.StateComposition.Data;
 
 internal readonly record struct StateCompositionStats
 {
-    public long BlockNumber { get; init; }
+    public ulong BlockNumber { get; init; }
     public Hash256? StateRoot { get; init; }
     public long AccountsTotal { get; init; }
     public long ContractsTotal { get; init; }

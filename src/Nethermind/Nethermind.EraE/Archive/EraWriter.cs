@@ -57,7 +57,7 @@ public sealed class EraWriter : IDisposable
 
     private readonly ArrayPoolList<UInt256> _totalDifficulties = new(MaxEraSize);
 
-    private long _startNumber;
+    private ulong _startNumber;
     private bool _firstBlock = true;
     private bool _finalized;
     private int _preMergeBlockCount;
@@ -110,10 +110,10 @@ public sealed class EraWriter : IDisposable
             _firstBlock = false;
             await _e2StoreWriter.WriteEntry(EntryTypes.Version, Memory<byte>.Empty, cancellation);
         }
-        else if (block.Number != _startNumber + _headers.Count)
+        else if (block.Number != _startNumber + (ulong)_headers.Count)
         {
             throw new ArgumentException(
-                $"Blocks must be added in sequential order. Expected block {_startNumber + _headers.Count}, got {block.Number}.",
+                $"Blocks must be added in sequential order. Expected block {_startNumber + (ulong)_headers.Count}, got {block.Number}.",
                 nameof(block));
         }
 
@@ -239,7 +239,7 @@ public sealed class EraWriter : IDisposable
             using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
             Span<byte> span = indexBytes.AsSpan();
 
-            WriteInt64(span, 0, _startNumber);
+            WriteInt64(span, 0, (long)_startNumber);
 
             for (int i = 0; i < blockCount; i++)
             {

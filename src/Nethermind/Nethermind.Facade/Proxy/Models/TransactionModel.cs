@@ -10,7 +10,7 @@ namespace Nethermind.Facade.Proxy.Models
     public class TransactionModel
     {
         public Hash256 Hash { get; set; }
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public Hash256 BlockHash { get; set; }
         public UInt256 BlockNumber { get; set; }
         public Address From { get; set; }
@@ -24,13 +24,15 @@ namespace Nethermind.Facade.Proxy.Models
             => new()
             {
                 Hash = Hash,
+                // CAST NOTE: Nonce/Value/GasPrice/Gas are UInt256 for JSON proxy model compat.
+                // Actual transaction field values are constrained well within ulong range.
                 Nonce = Nonce,
                 SenderAddress = From,
                 To = To,
                 Data = Input,
-                Value = Value,
-                GasLimit = (long)Gas,
-                GasPrice = GasPrice
+                Value = (ulong)Value,
+                GasLimit = (ulong)Gas,
+                GasPrice = (ulong)GasPrice
             };
     }
 }

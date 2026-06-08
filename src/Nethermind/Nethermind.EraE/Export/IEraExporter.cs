@@ -5,5 +5,5 @@ namespace Nethermind.EraE.Export;
 
 public interface IEraExporter
 {
-    Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default);
+    Task Export(string destinationPath, ulong from, ulong to, CancellationToken cancellation = default);
 }

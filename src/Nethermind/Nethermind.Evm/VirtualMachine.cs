@@ -263,7 +263,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                         // Refund the remaining gas from the completed call frame (success path).
                         TGasPolicy.Refund(ref _currentState.Gas, in previousState.Gas);
-                        long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
+                        ulong gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
 
                         // Process contract creation calls differently from regular calls.
                         if (isCreate)
@@ -386,14 +386,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected void HandleCreate(
         in CallResult callResult,
         VmState<TGasPolicy> previousState,
-        long gasAvailableForCodeDeposit,
+        ulong gasAvailableForCodeDeposit,
         ref bool previousStateSucceeded)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out long regularDepositCost, out long stateDepositCost))
+        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out ulong regularDepositCost, out ulong stateDepositCost))
         {
-            regularDepositCost = long.MaxValue;
-            stateDepositCost = long.MaxValue;
+            regularDepositCost = ulong.MaxValue;
+            stateDepositCost = ulong.MaxValue;
         }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
@@ -421,18 +421,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private void TryChargeAndDepositCode(
         VmState<TGasPolicy> previousState,
-        long gasAvailableForCodeDeposit,
+        ulong gasAvailableForCodeDeposit,
         ref bool previousStateSucceeded,
-        long regularDepositCost,
-        long stateDepositCost,
+        ulong regularDepositCost,
+        ulong stateDepositCost,
         bool invalidCode,
         ReadOnlyMemory<byte> code)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        long childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
-        long stateSpill = Math.Max(0, stateDepositCost - childStateReservoir);
+        ulong childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
+        ulong stateSpill = Math.Max(0, stateDepositCost - childStateReservoir);
         bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + stateSpill;
         bool chargedCodeDeposit = false;
 
@@ -627,8 +627,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // state_gas_used (originally drawn from gas_left) is still in the user's pocket.
         // Refund the full state_gas_used — reservoir-portion AND spilled-portion — to the
         // reservoir. The user is billed only the regular component.
-        long stateGasFloor = _currentState.InitialStateGasUsed;
-        long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
+        ulong stateGasFloor = _currentState.InitialStateGasUsed;
+        ulong revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
         if (revertedStateGas > stateGasFloor)
         {
             TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, stateGasFloor);
@@ -636,24 +636,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void CreditStateGasRefund(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
+    internal void CreditStateGasRefund(ref TGasPolicy gas, ulong amount, bool trackSpillRefund = true)
     {
-        if (!Spec.IsEip8037Enabled || amount <= 0)
+        if (!Spec.IsEip8037Enabled || amount == 0)
         {
             return;
         }
 
         VmState<TGasPolicy> vmState = VmState;
-        long stateGasFloor = vmState.InitialStateGasUsed;
-        long refundableStateGas = Math.Max(0, TGasPolicy.GetStateGasUsed(in gas) - stateGasFloor);
-        long appliedRefund = Math.Min(amount, refundableStateGas);
+        ulong stateGasFloor = vmState.InitialStateGasUsed;
+        ulong refundableStateGas = Math.Max(0, TGasPolicy.GetStateGasUsed(in gas) - stateGasFloor);
+        ulong appliedRefund = Math.Min(amount, refundableStateGas);
 
         if (appliedRefund > 0)
         {
             TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor, trackSpillRefund);
         }
 
-        long pendingRefund = amount - appliedRefund;
+        ulong pendingRefund = amount - appliedRefund;
         if (pendingRefund > 0)
         {
             // The restored state gas may have been paid by an ancestor frame. It is still
@@ -670,8 +670,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         if (childState.StateGasRefundPending > 0)
         {
-            long pendingRefund = childState.StateGasRefundPending;
-            long unappliedRefund = TGasPolicy.DiscardStateGas(
+            ulong pendingRefund = childState.StateGasRefundPending;
+            ulong unappliedRefund = TGasPolicy.DiscardStateGas(
                 ref _currentState.Gas,
                 pendingRefund,
                 _currentState.InitialStateGasUsed,
@@ -905,9 +905,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
-        long regularDepositCost = 0;
-        long stateDepositCost = 0;
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas);
+        ulong regularDepositCost = 0;
+        ulong stateDepositCost = 0;
+        ulong codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas);
         bool hasEnoughGasForCodeDeposit = true;
         if (currentState.ExecutionType.IsAnyCreate())
         {
@@ -929,14 +929,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         else if (callResult.ShouldRevert)
         {
             // For creation operations, subtract the code deposit cost from the available gas; otherwise, use full gas.
-            long gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
-            long reportedGas = currentState.ExecutionType.IsAnyCreate() ? gasAvailable - codeDepositGasCost : gasAvailable;
+            ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            ulong reportedGas = currentState.ExecutionType.IsAnyCreate() ? gasAvailable - codeDepositGasCost : gasAvailable;
             _txTracer.ReportActionRevert(reportedGas, outputBytes);
         }
         // Process contract creation flows.
         else if (currentState.ExecutionType.IsAnyCreate())
         {
-            long gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
             // If available gas is insufficient to cover the code deposit cost...
             if (!hasEnoughGasForCodeDeposit)
             {
@@ -1013,7 +1013,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
-            !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
+            !TGasPolicy.UpdateGas(ref gas, (ulong)(baseGasCost + dataGasCost)))
         {
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
@@ -1389,7 +1389,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
     }
 
-    private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
+    private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
         if (_txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
 
@@ -1416,7 +1416,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
+    private void StartInstructionTrace(Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue)
     {
         VmState<TGasPolicy> vmState = VmState;
         _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
@@ -1433,10 +1433,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void EndInstructionTrace(long gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);
+    internal void EndInstructionTrace(ulong gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
+    private void EndInstructionTraceError(ulong gasAvailable, EvmExceptionType evmExceptionType)
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);
@@ -1460,7 +1460,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (currentState.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
         {
             // Runtime check acceptable here — called once per frame entry, not per instruction.
-            if (Spec.IsEip7708Enabled && !currentState.Env.Value.IsZero && currentState.From != currentState.To)
+            if (Spec.IsEip7708Enabled && currentState.Env.Value != 0UL && currentState.From != currentState.To)
                 AddLog(TransferLog.CreateTransfer(currentState.From, currentState.To, currentState.Env.Value));
         }
     }

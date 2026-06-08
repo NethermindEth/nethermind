@@ -66,7 +66,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly bool _pastKeyTrackingEnabled = false;
 
     private bool _lastPersistedReachedReorgBoundary;
-    private long _toBePersistedBlockNumber = -1;
+    private ulong _toBePersistedBlockNumber = ulong.MinValue;
 
     private static readonly long IncompletePersistedPruneWarnIntervalTicks = Stopwatch.Frequency * 5 * 60;
     private long _incompletePersistedPruneWarnNextTicks;
@@ -117,7 +117,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private IScopedTrieStore GetTrieStoreForPruning(Hash256? address) => new ScopedTrieStore(new InPruningTrieStore(this), address);
 
-    public long LastPersistedBlockNumber
+    public ulong LastPersistedBlockNumber
     {
         get => _latestPersistedBlockNumber;
         private set
@@ -219,7 +219,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private TrieNode CommitAndInsertToDirtyNodes(long blockNumber, Hash256? address, ref TreePath path, TrieNode node)
+    private TrieNode CommitAndInsertToDirtyNodes(ulong blockNumber, Hash256? address, ref TreePath path, TrieNode node)
     {
         if (_logger.IsTrace) Trace(blockNumber, in node);
         if (!node.IsBoundaryProofNode)
@@ -241,7 +241,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return node;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(long blockNumber, in TrieNode node) => _logger.Trace($"Committing {node} at {blockNumber}");
+        void Trace(ulong blockNumber, in TrieNode node) => _logger.Trace($"Committing {node} at {blockNumber}");
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
@@ -296,7 +296,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         Hash256? address,
         ref TreePath path,
         TrieNode node,
-        long blockNumber)
+        ulong blockNumber)
     {
         TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, node.Keccak)];
         return SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
@@ -307,11 +307,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         Hash256? address,
         ref TreePath path,
         TrieNode node,
-        long blockNumber
+        ulong blockNumber
     )
     {
         TrieStoreDirtyNodesCache.Key key = new(address, path, node.Keccak);
-        TrieNode cachedNodeCopy = shard.GetOrAdd(in key, new TrieStoreDirtyNodesCache.NodeRecord(node, blockNumber)).Node;
+        TrieNode cachedNodeCopy = shard.GetOrAdd(in key, new TrieStoreDirtyNodesCache.NodeRecord(node, ToNodeRecordCommit(blockNumber))).Node;
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
             Metrics.ReplacedNodesCount++;
@@ -346,8 +346,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             if (_commitBuffer is null)
             {
-                long persistedBoundary = Interlocked.Read(ref _toBePersistedBlockNumber);
-                if (persistedBoundary == -1)
+                ulong persistedBoundary = Interlocked.Read(ref _toBePersistedBlockNumber);
+                if (persistedBoundary == ulong.MinValue)
                 {
                     // This can happen in the tiny time in between pruningLock was acquired but the exact block to
                     // persist was not determined yet.
@@ -445,7 +445,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return _currentBlockCommitter.GetTrieCommitter(address, root, writeFlags);
     }
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber)
+    public IBlockCommitter BeginBlockCommit(ulong blockNumber)
     {
         if (_currentBlockCommitter is not null) throw new InvalidOperationException("Cannot start a new block commit when an existing one is still not closed");
 
@@ -609,9 +609,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 // When `_pruningLock` is held, the begin commit will check for _toBePersistedBlockNumber in order
                 // to decide which block to be used as the boundary for the commit buffer. This number was re-set
-                // to -1 in `PersistAndPruneDirtyCache`. So we need to re-set it here, otherwise `BeginScope` will hang
-                // until the prune persisted node loop is completed.
-                _toBePersistedBlockNumber = LastPersistedBlockNumber;
+                // to MinValue in `PersistAndPruneDirtyCache`. So we need to re-set it here, otherwise `BeginScope`
+                // will hang until the prune persisted node loop is completed.
+                _toBePersistedBlockNumber = ToPersistedBlockBoundary(LastPersistedBlockNumber);
 
                 // `PrunePersistedNodes` only work on part of the partition at any one time. With commit buffer,
                 // it is possible that the commit buffer once flushed will immediately trigger another prune, which
@@ -639,7 +639,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
             finally
             {
-                _toBePersistedBlockNumber = -1;
+                _toBePersistedBlockNumber = ulong.MinValue;
             }
         }
     }
@@ -681,7 +681,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         finally
         {
-            _toBePersistedBlockNumber = -1;
+            _toBePersistedBlockNumber = ulong.MinValue;
         }
     }
 
@@ -692,7 +692,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         int count = _commitSetQueue?.Count ?? 0;
         if (count == 0) return;
 
-        (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(count);
+        (ArrayPoolList<BlockCommitSet> candidateSets, ulong? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(count);
         using ArrayPoolList<BlockCommitSet> _ = candidateSets;
 
         bool shouldTrackPastKey =
@@ -725,12 +725,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (candidateSets.Count > 0)
         {
-            long minToBePersistedBlock = long.MaxValue;
+            ulong minToBePersistedBlock = ulong.MaxValue;
             foreach (BlockCommitSet blockCommitSet in candidateSets)
             {
                 minToBePersistedBlock = Math.Min(minToBePersistedBlock, blockCommitSet.BlockNumber);
             }
-            _toBePersistedBlockNumber = minToBePersistedBlock;
+            _toBePersistedBlockNumber = ToPersistedBlockBoundary(minToBePersistedBlock);
         }
 
         Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : _persistedNodeRecorderNoop;
@@ -759,7 +759,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// </summary>
     /// <param name="count"></param>
     /// <returns>A tuple of the block to be committed and the canonical block number if known.</returns>
-    private (ArrayPoolList<BlockCommitSet>, long?) DetermineCommitSetToPersistInSnapshot(int count)
+    private (ArrayPoolList<BlockCommitSet>, ulong?) DetermineCommitSetToPersistInSnapshot(int count)
     {
         ArrayPoolList<BlockCommitSet> candidateSets = new(count);
         try
@@ -770,12 +770,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 return (candidateSets, null);
             }
 
-            long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
-            long pruningBoundaryBlockNumber = _commitSetQueue.MaxBlockNumber.Value - _maxDepth;
-            long effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlockNumber, finalizedBlockNumber);
-            effectiveFinalizedBlockNumber = Math.Max(0, effectiveFinalizedBlockNumber);
+            ulong finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
+            ulong pruningBoundaryBlockNumber = _commitSetQueue.MaxBlockNumber!.Value - (ulong)_maxDepth;
+            ulong effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlockNumber, Math.Max(0UL, finalizedBlockNumber));
 
-            if (effectiveFinalizedBlockNumber < _commitSetQueue.MinBlockNumber)
+            if (effectiveFinalizedBlockNumber < _commitSetQueue.MinBlockNumber!.Value)
             {
                 // Finalized block number far behind any commit. Persist everything so that it can be pruned, but not after
                 // pruning boundary point as snap sync need it.
@@ -797,7 +796,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             using ArrayPoolListRef<BlockCommitSet> commitSetsAtFinalizedBlock = _commitSetQueue.GetCommitSetsAtBlockNumber(effectiveFinalizedBlockNumber);
 
             BlockCommitSet? finalizedBlockCommitSet = null;
-            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(effectiveFinalizedBlockNumber);
+            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(ToPersistedBlockBoundary(effectiveFinalizedBlockNumber));
             if (finalizedStateRoot is not null)
             {
                 foreach (BlockCommitSet blockCommitSet in commitSetsAtFinalizedBlock)
@@ -1048,14 +1047,22 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private int _persistedNodesCount;
 
-    private long _latestPersistedBlockNumber;
+    private ulong _latestPersistedBlockNumber;
 
     private BlockCommitter? _currentBlockCommitter = null;
 
-    public long LatestCommittedBlockNumber { get; set; }
+    public ulong LatestCommittedBlockNumber { get; set; }
     public INodeStorage.KeyScheme Scheme => _nodeStorage.Scheme;
 
-    private void VerifyNewCommitSet(long blockNumber)
+    // Returns blockNumber unchanged. NodeRecord.LastCommit is ulong; this helper exists
+    // so call sites remain readable and the type is explicit.
+    private static ulong ToNodeRecordCommit(ulong blockNumber) => blockNumber;
+
+    // No-op: input is already ulong so no clamping is needed. Kept as a named helper
+    // for symmetry with call sites that previously clamped long->ulong.
+    private static ulong ToPersistedBlockBoundary(ulong blockNumber) => blockNumber;
+
+    private void VerifyNewCommitSet(ulong blockNumber)
     {
         if (_lastCommitSet is not null)
         {
@@ -1161,7 +1168,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     }
 
     private async Task PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
-        long blockNumber,
+        ulong blockNumber,
         Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder,
         WriteFlags writeFlags, Channel<INodeStorage.IWriteBatch> disposeQueue)
     {
@@ -1185,7 +1192,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         await disposeQueue.Writer.WriteAsync(writeBatch);
     }
 
-    private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, long blockNumber, INodeStorage.IWriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
+    private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, ulong blockNumber, INodeStorage.IWriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
     {
         ArgumentNullException.ThrowIfNull(currentNode);
 
@@ -1194,7 +1201,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache.Key key = new(address, path, currentNode.Keccak);
             // Unpersisted note may have lower commit number than its parent. This can when its child is created
             // on a different block than its parent.
-            GetDirtyNodeShard(key).GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(currentNode, blockNumber));
+            GetDirtyNodeShard(key).GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(currentNode, ToNodeRecordCommit(blockNumber)));
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
             writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.AsSpan(), writeFlags);
@@ -1208,8 +1215,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public bool IsNoLongerNeeded(long lastCommit) => lastCommit < LastPersistedBlockNumber
-               && lastCommit < LatestCommittedBlockNumber - _maxDepth;
+    // Non-trivial cast: NodeRecord.LastCommit is ulong, so callers that previously passed a
+    // long block number now receive a ulong. The only remaining call site in this file passes
+    // a genuine ulong block number, so no overflow is possible here. External call sites that
+    // stored a long block number must be audited to ensure they do not pass negative values.
+    public bool IsNoLongerNeeded(ulong lastCommit) =>
+        lastCommit < LastPersistedBlockNumber &&
+        LatestCommittedBlockNumber >= (ulong)_maxDepth &&
+        lastCommit < LatestCommittedBlockNumber - (ulong)_maxDepth;
 
     private void AnnounceReorgBoundaries()
     {
@@ -1229,7 +1242,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             // in such case we would try to continue at Head - 1200010
             // because head is loaded if there is no persistence checkpoint
             // so we need to force the persistence checkpoint
-            long baseBlock = Math.Max(0, LatestCommittedBlockNumber - 1);
+            ulong baseBlock = LatestCommittedBlockNumber > 0 ? LatestCommittedBlockNumber - 1 : 0;
             LastPersistedBlockNumber = baseBlock;
             shouldAnnounceReorgBoundary = true;
         }
@@ -1237,7 +1250,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             // even after we persist a block we do not really remember it as a safe checkpoint
             // until max reorgs blocks after
-            if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + _maxDepth)
+            if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + (ulong)_maxDepth)
             {
                 shouldAnnounceReorgBoundary = true;
             }
@@ -1254,7 +1267,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (_commitSetQueue.IsEmpty) return;
 
-        (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+        (ArrayPoolList<BlockCommitSet> candidateSets, ulong? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
         using ArrayPoolList<BlockCommitSet> _ = candidateSets;
         if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
         {
@@ -1421,15 +1434,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return true;
     }
 
-    public bool HasRoot(Hash256 stateRoot, long blockNumber)
+    public bool HasRoot(Hash256 stateRoot, ulong blockNumber)
     {
         if (!HasRoot(stateRoot)) return false;
 
         // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
         if (_deleteOldNodes)
         {
-            long lastPersisted = LastPersistedBlockNumber;
-            if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+            ulong lastPersisted = LastPersistedBlockNumber;
+            if (lastPersisted > 0 && blockNumber < lastPersisted - (ulong)_maxDepth)
             {
                 return false;
             }
@@ -1471,7 +1484,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private class PruningTrieStoreCommitter(
         BlockCommitter blockCommitter,
         TrieStore trieStore,
-        long blockNumber,
+        ulong blockNumber,
         Hash256? address,
         TrieNode? root
     ) : ICommitter
@@ -1631,9 +1644,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         private readonly ILogger _logger;
 
         public int CommitCount => _commitSetQueueBuffer.Count;
-        private long _minCommitBlockNumber;
 
-        public CommitBuffer(TrieStore trieStore, long minCommitBlockNumber)
+        // Sentinel ulong.MaxValue means "always newer than any real block boundary",
+        // i.e. nodes added via the commit buffer are always considered live.
+        // Previously this was encoded as long -1 before NodeRecord.LastCommit became ulong.
+        private ulong _minCommitBlockNumber;
+
+        public CommitBuffer(TrieStore trieStore, ulong minCommitBlockNumber)
         {
             _minCommitBlockNumber = minCommitBlockNumber;
             _trieStore = trieStore;
@@ -1645,7 +1662,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        public void Reset(long minCommitBlockNumber) => _minCommitBlockNumber = minCommitBlockNumber;
+        public void Reset(ulong minCommitBlockNumber) => _minCommitBlockNumber = minCommitBlockNumber;
 
         public void EnqueueCommitSet(BlockCommitSet set) => _commitSetQueueBuffer.Enqueue(set);
 
@@ -1672,7 +1689,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TreePath path, Hash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(path, keccak)];
 
-        public TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, in TrieNode node, long blockNumber)
+        public TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, in TrieNode node, ulong blockNumber)
         {
             // Change the shard to the one from commit buffer.
             TrieStoreDirtyNodesCache shard = GetDirtyNodeShard(path, node.Keccak);
@@ -1704,7 +1721,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     // in disk, or a node that will be deleted. We must never get a node that will be deleted.
                     if (nodeRecord.LastCommit >= _minCommitBlockNumber)
                     {
-                        bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                        // ulong.MaxValue sentinel: this node came from the commit buffer itself and has no
+                        // real block number. It is always considered live regardless of _minCommitBlockNumber.
+                        bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, ulong.MaxValue));
                         return nodeRecord.Node;
                     }
                 }
@@ -1712,7 +1731,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 {
                     // If it is not persisted, then its child is still referred directly.
                     // The child will not get unreferred until after later it and all its children was persisted.
-                    bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                    // ulong.MaxValue sentinel: same reasoning as above.
+                    bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, ulong.MaxValue));
                     return nodeRecord.Node;
                 }
             }

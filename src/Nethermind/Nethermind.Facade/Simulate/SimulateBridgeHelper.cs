@@ -35,7 +35,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
-        long blockNumber,
+        ulong blockNumber,
         IReleaseSpec releaseSpec)
     {
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
@@ -56,7 +56,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
-        long gasCapLimit,
+        ulong gasCapLimit,
         CancellationToken cancellationToken)
     {
         List<SimulateBlockResult<TTrace>> list = [];
@@ -97,7 +97,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
-        long gasCapLimit,
+        ulong gasCapLimit,
         CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
@@ -187,7 +187,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
-        long latestBlockNumber = latestBlock?.Number ?? 0;
+        ulong latestBlockNumber = latestBlock?.Number ?? 0;
 
         if (latestBlockNumber < parent.Number)
         {
@@ -196,10 +196,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
-        ulong lastKnown = (ulong)latestBlockNumber;
+        ulong lastKnown = latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
+            // CAST NOTE: firstBlock.BlockOverrides.Number is ulong and > 0, so subtracting 1 is safe.
+            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
             if (searchResult is not null)
             {
                 parent = searchResult.Header;
@@ -224,7 +225,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
-                    cachedNonce = test.Nonce.ToUInt64(null);
+                    cachedNonce = test.Nonce; // AccountStruct.Nonce is ulong
                 }
                 // else // Todo think if we shall create account here
             }

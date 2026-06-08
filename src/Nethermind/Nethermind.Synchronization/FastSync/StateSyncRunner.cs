@@ -122,17 +122,18 @@ public class StateSyncRunner(
     {
         await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
 
-        int totalSyncLag = syncConfig.StateMinDistanceFromHead + syncConfig.HeaderStateDistance;
+        ulong totalSyncLag = (ulong)syncConfig.StateMinDistanceFromHead + (ulong)syncConfig.HeaderStateDistance;
 
         while (!token.IsCancellationRequested)
         {
-            long header = syncProgressResolver.FindBestHeader();
-            long peerBlock = 0;
+            ulong header = syncProgressResolver.FindBestHeader();
+            ulong peerBlock = 0;
             foreach (PeerInfo p in syncPeerPool.InitializedPeers)
             {
-                if (p.HeadNumber > peerBlock) peerBlock = p.HeadNumber;
+                ulong peerHeadNumber = p.HeadNumber;
+                if (peerHeadNumber > peerBlock) peerBlock = peerHeadNumber;
             }
-            long targetBlock = beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
+            ulong targetBlock = beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
 
             if (targetBlock >= header && (targetBlock - header) <= totalSyncLag)
                 return;

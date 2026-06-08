@@ -6,14 +6,14 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat;
 
-public readonly record struct StateId(long BlockNumber, in ValueHash256 StateRoot) : IComparable<StateId>
+public readonly record struct StateId(ulong BlockNumber, in ValueHash256 StateRoot) : IComparable<StateId>
 {
-    public StateId(BlockHeader? header) : this(header?.Number ?? -1, header?.StateRoot ?? Keccak.EmptyTreeHash)
+    public StateId(BlockHeader? header) : this(header is null ? ulong.MaxValue : header.Number, header?.StateRoot ?? Keccak.EmptyTreeHash)
     {
     }
 
-    public static readonly StateId PreGenesis = new(-1, Keccak.EmptyTreeHash);
-    public static readonly StateId Sync = new(long.MinValue, Keccak.EmptyTreeHash);
+    public static readonly StateId PreGenesis = new(ulong.MaxValue, Keccak.EmptyTreeHash);
+    public static readonly StateId Sync = new(ulong.MinValue, Keccak.EmptyTreeHash);
 
     public int CompareTo(StateId other)
     {

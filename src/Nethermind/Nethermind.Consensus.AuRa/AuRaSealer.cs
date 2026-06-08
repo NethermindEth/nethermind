@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash)
+        public bool CanSeal(ulong blockNumber, Hash256 parentHash)
         {
             bool StepNotYetProduced(long step) => !_blockTree.Head.Header.AuRaStep.HasValue
                 ? throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'")

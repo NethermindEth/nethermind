@@ -55,7 +55,7 @@ public class HintBasedCacheTests
     {
         HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 200000, 200000);
-        Assert.That(hintBasedCache.Get((uint)(200000 / Ethash.EpochLength)), Is.Not.Null);
+        Assert.That(hintBasedCache.Get((uint)(200000UL / Ethash.EpochLength)), Is.Not.Null);
     }
 
     [Test]
@@ -82,7 +82,7 @@ public class HintBasedCacheTests
         await Task.WhenAll(a, b, c);
 
         Assert.That(hintBasedCache.CachedEpochsCount, Is.EqualTo(5));
-        for (uint i = (uint)(range / Ethash.EpochLength); i < (uint)((range + 120000) / Ethash.EpochLength); i++)
+        for (uint i = (uint)((ulong)range / Ethash.EpochLength); i < (uint)((ulong)(range + 120000) / Ethash.EpochLength); i++)
         {
             Assert.That(hintBasedCache.Get(i), Is.Not.Null);
         }

@@ -81,7 +81,7 @@ public class HeaderValidatorTests
     [TestCase(-1, true, TestName = "When_gas_limit_just_correct_high")]
     public void When_gas_limit_above_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
+        _block.Header.GasLimit = (ulong)((long)_parentBlock.Header.GasLimit + (long)_parentBlock.Header.GasLimit / 1024 + adjustment);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -93,7 +93,7 @@ public class HeaderValidatorTests
     [TestCase(0, false, TestName = "When_gas_limit_is_just_too_low")]
     public void When_gas_limit_below_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
+        _block.Header.GasLimit = (ulong)((long)_parentBlock.Header.GasLimit - (long)_parentBlock.Header.GasLimit / 1024 + adjustment);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -189,21 +189,21 @@ public class HeaderValidatorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(10000000, 4, 20000000, true)]
-    [TestCase(10000000, 4, 20019530, true)]
-    [TestCase(10000000, 4, 20019531, false)]
-    [TestCase(10000000, 4, 19980470, true)]
-    [TestCase(10000000, 4, 19980469, false)]
-    [TestCase(20000000, 5, 20000000, true)]
-    [TestCase(20000000, 5, 20019530, true)]
-    [TestCase(20000000, 5, 20019531, false)]
-    [TestCase(20000000, 5, 19980470, true)]
-    [TestCase(20000000, 5, 19980469, false)]
-    [TestCase(40000000, 5, 40039061, true)]
-    [TestCase(40000000, 5, 40039062, false)]
-    [TestCase(40000000, 5, 39960939, true)]
-    [TestCase(40000000, 5, 39960938, false)]
-    public void When_gaslimit_is_on_london_fork(long parentGasLimit, long blockNumber, long gasLimit, bool expectedResult)
+    [TestCase(10000000ul, 4ul, 20000000ul, true)]
+    [TestCase(10000000ul, 4ul, 20019530ul, true)]
+    [TestCase(10000000ul, 4ul, 20019531ul, false)]
+    [TestCase(10000000ul, 4ul, 19980470ul, true)]
+    [TestCase(10000000ul, 4ul, 19980469ul, false)]
+    [TestCase(20000000ul, 5ul, 20000000ul, true)]
+    [TestCase(20000000ul, 5ul, 20019530ul, true)]
+    [TestCase(20000000ul, 5ul, 20019531ul, false)]
+    [TestCase(20000000ul, 5ul, 19980470ul, true)]
+    [TestCase(20000000ul, 5ul, 19980469ul, false)]
+    [TestCase(40000000ul, 5ul, 40039061ul, true)]
+    [TestCase(40000000ul, 5ul, 40039062ul, false)]
+    [TestCase(40000000ul, 5ul, 39960939ul, true)]
+    [TestCase(40000000ul, 5ul, 39960938ul, false)]
+    public void When_gaslimit_is_on_london_fork(ulong parentGasLimit, ulong blockNumber, ulong gasLimit, bool expectedResult)
     {
         OverridableReleaseSpec spec = new(London.Instance)
         {
@@ -233,13 +233,13 @@ public class HeaderValidatorTests
     {
         _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _parentBlock = Build.A.Block.WithDifficulty(1)
-            .WithGasLimit(long.MaxValue)
+            .WithGasLimit(ulong.MaxValue)
             .WithNumber(5)
             .TestObject;
         _block = Build.A.Block.WithParent(_parentBlock)
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
-            .WithGasLimit(long.MaxValue)
+            .WithGasLimit(ulong.MaxValue)
             .WithNumber(_parentBlock.Number + 1)
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
@@ -251,11 +251,11 @@ public class HeaderValidatorTests
 
     private static IEnumerable<TestCaseData> NegativeFieldCases()
     {
-        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = -1))
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = unchecked((ulong)-1)))
             .SetName("When_block_number_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = -1))
+        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = unchecked((ulong)-1)))
             .SetName("When_gas_used_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = -1))
+        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = unchecked((ulong)-1)))
             .SetName("When_gas_limit_is_negative");
     }
 

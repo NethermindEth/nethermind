@@ -194,14 +194,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         ulong totalGasUsed = 0;
         int count = 0;
-        long currentBlockNumber = headBlock.Number;
+        ulong currentBlockNumber = headBlock.Number;
 
         while (count < _surgeConfig.L2GasUsageWindowSize && currentBlockNumber >= 0)
         {
             Block? block = _blockFinder.FindBlock(currentBlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block != null)
             {
-                totalGasUsed += (ulong)block.GasUsed;
+                totalGasUsed += block.GasUsed;
                 count++;
             }
             currentBlockNumber--;

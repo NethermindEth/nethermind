@@ -110,7 +110,7 @@ public class BloomFilterTests
         const int totalItems = 500;
         using Bloom bloom = NewBloom(capacity: totalItems);
 
-        for (ulong i = 0; i < (ulong)totalItems; i++) bloom.Add(i);
+        for (ulong i = 0; i < totalItems; i++) bloom.Add(i);
 
         Assert.That(bloom.Count, Is.EqualTo(totalItems));
         for (ulong i = 0; i < 50; i++)

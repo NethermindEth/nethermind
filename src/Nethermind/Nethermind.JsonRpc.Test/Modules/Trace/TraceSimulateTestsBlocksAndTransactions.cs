@@ -35,7 +35,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
     public async Task Test_trace_simulate_caps_gas_to_gas_cap()
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        long gasCap = 50_000;
+        ulong gasCap = 50_000;
         chain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns remaining gas

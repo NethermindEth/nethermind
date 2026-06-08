@@ -9,9 +9,9 @@ public class MaxBlockInCachePruneStrategy(IPruningStrategy baseStrategy, long ma
 
     public bool ShouldPruneDirtyNode(TrieStoreState state)
     {
-        long reorgBoundary = state.LatestCommittedBlock - pruneBoundary;
+        ulong reorgBoundary = state.LatestCommittedBlock - (ulong)pruneBoundary;
         // Persist snapshot if the last persisted block is too old. Prevent very long memory prune
-        if (reorgBoundary - state.LastPersistedBlock >= maxBlockFromPersisted) return true;
+        if (reorgBoundary - state.LastPersistedBlock >= (ulong)maxBlockFromPersisted) return true;
         return baseStrategy.ShouldPruneDirtyNode(state);
     }
 

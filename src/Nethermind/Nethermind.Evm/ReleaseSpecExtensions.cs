@@ -17,9 +17,9 @@ namespace Nethermind.Evm
                     ? Math.Min(blockProductionBlobLimit.Value, (int)spec.MaxBlobCount)
                     : (int)spec.MaxBlobCount;
 
-            public long GetBaseDataCost(Transaction tx) =>
+            public ulong GetBaseDataCost(Transaction tx) =>
                 tx.IsContractCreation && spec.IsEip3860Enabled
-                    ? EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
+                    ? (ulong)EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
                     : 0;
         }
     }

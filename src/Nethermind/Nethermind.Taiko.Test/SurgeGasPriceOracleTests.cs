@@ -81,13 +81,15 @@ public class SurgeGasPriceOracleTests
             _surgeConfig);
     }
 
-    private void SetupBlockFinderWithBlocks(long headBlockNumber, long gasUsed = 1000000)
+    private void SetupBlockFinderWithBlocks(ulong headBlockNumber, ulong gasUsed = 1000000)
     {
         Block headBlock = Build.A.Block.WithNumber(headBlockNumber).WithGasUsed(gasUsed).TestObject;
         _blockFinder.Head.Returns(headBlock);
 
-        for (long i = headBlockNumber; i >= Math.Max(0, headBlockNumber - _surgeConfig.L2GasUsageWindowSize + 1); i--)
+        for (ulong i = headBlockNumber; i >= Math.Max(0UL, headBlockNumber - (ulong)_surgeConfig.L2GasUsageWindowSize + 1UL); i--)
         {
+            // Safe: i is bounded to [headBlockNumber - windowSize + 1, headBlockNumber],
+            // which is always a valid non-negative block range for the test inputs used.
             _blockFinder.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)
                 .Returns(Build.A.Block.WithNumber(i).WithGasUsed(gasUsed).TestObject);
         }
@@ -314,12 +316,13 @@ public class SurgeGasPriceOracleTests
         SetupInboxContractMocks();
 
         // Scenario 1: Low gas usage blocks (average = 100k)
-        const long headBlockNumber1 = 10;
+        const ulong headBlockNumber1 = 10;
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(headBlockNumber1).WithGasUsed(100000).TestObject);
         for (int i = 0; i < _surgeConfig.L2GasUsageWindowSize; i++)
         {
-            _blockFinder.FindBlock(headBlockNumber1 - i, BlockTreeLookupOptions.RequireCanonical)
-                .Returns(Build.A.Block.WithNumber(headBlockNumber1 - i).WithGasUsed(100000).TestObject);
+            // Safe: i < L2GasUsageWindowSize (5) and headBlockNumber1 = 10, so result >= 5; no underflow.
+            _blockFinder.FindBlock(headBlockNumber1 - (ulong)i, BlockTreeLookupOptions.RequireCanonical)
+                .Returns(Build.A.Block.WithNumber(headBlockNumber1 - (ulong)i).WithGasUsed(100000).TestObject);
         }
 
         SurgeGasPriceOracle oracleLowGas = new(
@@ -327,12 +330,13 @@ public class SurgeGasPriceOracleTests
         UInt256 gasPriceLowUsage = await oracleLowGas.GetGasPriceEstimate();
 
         // Scenario 2: High gas usage blocks (average = 500k)
-        const long headBlockNumber2 = 20;
+        const ulong headBlockNumber2 = 20;
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(headBlockNumber2).WithGasUsed(500000).TestObject);
         for (int i = 0; i < _surgeConfig.L2GasUsageWindowSize; i++)
         {
-            _blockFinder.FindBlock(headBlockNumber2 - i, BlockTreeLookupOptions.RequireCanonical)
-                .Returns(Build.A.Block.WithNumber(headBlockNumber2 - i).WithGasUsed(500000).TestObject);
+            // Safe: i < L2GasUsageWindowSize (5) and headBlockNumber2 = 20, so result >= 15; no underflow.
+            _blockFinder.FindBlock(headBlockNumber2 - (ulong)i, BlockTreeLookupOptions.RequireCanonical)
+                .Returns(Build.A.Block.WithNumber(headBlockNumber2 - (ulong)i).WithGasUsed(500000).TestObject);
         }
 
         SurgeGasPriceOracle oracleHighGas = new(

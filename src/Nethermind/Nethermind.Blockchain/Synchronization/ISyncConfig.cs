@@ -51,7 +51,7 @@ public interface ISyncConfig : IConfig
     string PivotTotalDifficulty { get; }
 
     [ConfigItem(Description = "The number of the pivot block for the Fast sync mode.", DefaultValue = "0")]
-    long PivotNumber { get; set; }
+    ulong PivotNumber { get; set; }
 
     [ConfigItem(Description = "The hash of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string? PivotHash { get; set; }
@@ -71,10 +71,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientBodiesBarrier { get; set; }
+    public ulong AncientBodiesBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
+    public ulong AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
 
     [ConfigItem(Description = $$"""
         The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
@@ -85,10 +85,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientReceiptsBarrier { get; set; }
+    public ulong AncientReceiptsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+    public ulong AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
     [ConfigItem(Description = $$"""
         The earliest block access list downloaded with fast sync when `{{nameof(DownloadBlockAccessListsInFastSync)}}` is set to `true`.
@@ -100,10 +100,10 @@ public interface ISyncConfig : IConfig
 
         """,
         DefaultValue = "0")]
-    public long AncientBlockAccessListsBarrier { get; set; }
+    public ulong AncientBlockAccessListsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
+    public ulong AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
@@ -118,10 +118,10 @@ public interface ISyncConfig : IConfig
     public bool FixTotalDifficulty { get; set; }
 
     [ConfigItem(Description = "The first block to recalculate the total difficulty for.", DefaultValue = "1")]
-    public long FixTotalDifficultyStartingBlock { get; set; }
+    public ulong FixTotalDifficultyStartingBlock { get; set; }
 
     [ConfigItem(Description = "The last block to recalculate the total difficulty for. If not specified, the best known block is used.\n", DefaultValue = "null")]
-    public long? FixTotalDifficultyLastBlock { get; set; }
+    public ulong? FixTotalDifficultyLastBlock { get; set; }
 
     [ConfigItem(Description = "Whether to disable some optimizations and do a more extensive sync. Useful when sync state is corrupted.", DefaultValue = "false")]
     public bool StrictMode { get; set; }

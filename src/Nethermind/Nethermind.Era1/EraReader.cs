@@ -26,9 +26,8 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly E2StoreReader _fileReader = e2;
 
-    public long FirstBlock => _fileReader.First;
-    public long LastBlock => _fileReader.LastBlock;
-
+    public ulong FirstBlock => _fileReader.First;
+    public ulong LastBlock => _fileReader.LastBlock;
 
     public EraReader(string fileName) : this(new E2StoreReader(fileName))
     {
@@ -36,16 +35,16 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        foreach (long blockNumber in EnumerateBlockNumber())
+        foreach (ulong blockNumber in EnumerateBlockNumber())
         {
             EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
             yield return (result.Block, result.Receipts);
         }
     }
 
-    private IEnumerable<long> EnumerateBlockNumber()
+    private IEnumerable<ulong> EnumerateBlockNumber()
     {
-        long blockNumber = _fileReader.First;
+        ulong blockNumber = _fileReader.First;
         while (blockNumber <= _fileReader.LastBlock)
         {
             yield return blockNumber;
@@ -67,15 +66,15 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 
         ValueHash256 accumulator = ReadAccumulator();
 
-        long startBlock = _fileReader.First;
+        ulong startBlock = _fileReader.First;
         int blockCount = (int)_fileReader.BlockCount;
         using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
 
-        ConcurrentQueue<long> blockNumbers = new(EnumerateBlockNumber());
+        ConcurrentQueue<ulong> blockNumbers = new(EnumerateBlockNumber());
 
         using ArrayPoolList<Task> workers = Enumerable.Range(0, verifyConcurrency).Select((_) => Task.Run(async () =>
         {
-            while (blockNumbers.TryDequeue(out long blockNumber))
+            while (blockNumbers.TryDequeue(out ulong blockNumber))
             {
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
@@ -96,8 +95,9 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
                 }
 
-
                 // Note: Header.Hash is calculated by HeaderDecoder.
+                // Cast to int is safe: blockCount fits in int (checked above), and the difference
+                // between a block number and startBlock is bounded by blockCount.
                 blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
@@ -128,7 +128,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         return hash;
     }
 
-    public async Task<(Block, TxReceipt[])> GetBlockByNumber(long number, CancellationToken cancellation = default)
+    public async Task<(Block, TxReceipt[])> GetBlockByNumber(ulong number, CancellationToken cancellation = default)
     {
         if (number < _fileReader.First)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.First}. Number is {number}.");
@@ -138,7 +138,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         return (result.Block, result.Receipts);
     }
 
-    private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
+    private async Task<EntryReadResult> ReadBlockAndReceipts(ulong blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
         if (blockNumber < _fileReader.First
             || blockNumber > _fileReader.LastBlock)

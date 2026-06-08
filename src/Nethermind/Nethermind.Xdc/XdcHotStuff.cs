@@ -377,7 +377,7 @@ namespace Nethermind.Xdc
                 currentMasternodes = epochSwitchInfo.Masternodes;
             }
 
-            int currentLeaderIndex = (int)round % spec.EpochLength % currentMasternodes.Length;
+            int currentLeaderIndex = (int)(round % spec.EpochLength % (ulong)currentMasternodes.Length);
             return currentMasternodes[currentLeaderIndex];
         }
 

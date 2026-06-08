@@ -7,10 +7,10 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public interface IValidatorStore
     {
-        void SetValidators(long finalizingBlockNumber, Address[] validators);
+        void SetValidators(ulong finalizingBlockNumber, Address[] validators);
 
-        Address[] GetValidators(in long? blockNumber = null);
-        ValidatorInfo GetValidatorsInfo(in long? blockNumber = null);
+        Address[] GetValidators(in ulong? blockNumber = null);
+        ValidatorInfo GetValidatorsInfo(in ulong? blockNumber = null);
 
         PendingValidators PendingValidators { get; set; }
     }

@@ -61,7 +61,7 @@ internal class XdcSubnetBlockProducer(
         return headerCandidate;
     }
 
-    protected override XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, long gasLimit) => new XdcSubnetBlockHeader(
+    protected override XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, ulong gasLimit) => new XdcSubnetBlockHeader(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
                 blockAuthor,

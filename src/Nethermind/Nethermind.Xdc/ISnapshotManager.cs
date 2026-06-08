@@ -9,13 +9,13 @@ namespace Nethermind.Xdc;
 
 public interface ISnapshotManager : IDisposable
 {
-    static bool IsTimeForSnapshot(long blockNumber, IXdcReleaseSpec spec)
+    static bool IsTimeForSnapshot(ulong blockNumber, IXdcReleaseSpec spec)
     {
         if (blockNumber == spec.SwitchBlock)
             return true;
         return blockNumber % spec.EpochLength == spec.EpochLength - spec.Gap;
     }
-    Snapshot? GetSnapshotByGapNumber(long gapNumber);
-    Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec);
+    Snapshot? GetSnapshotByGapNumber(ulong gapNumber);
+    Snapshot? GetSnapshotByBlockNumber(ulong blockNumber, IXdcReleaseSpec spec);
     void StoreSnapshot(Snapshot snapshot);
 }

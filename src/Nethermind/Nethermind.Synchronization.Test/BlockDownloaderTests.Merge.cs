@@ -30,13 +30,13 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
-    [TestCase(16L, 32L, false, 32, 32)]
-    [TestCase(16L, 32L, false, 32, 29)]
-    [TestCase(16L, 32L, true, 0, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, true, 32, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, false, 32, 32)]
-    [TestCase(16L, SyncBatchSizeMax * 8, false, 32, SyncBatchSizeMax * 8 - 16L)]
-    public async Task Merge_Happy_path(long beaconPivot, long headNumber, bool enableFastSync, int fastSyncLag, long insertedBeaconBlocks)
+    [TestCase(16UL, 32UL, false, 32, 32UL)]
+    [TestCase(16UL, 32UL, false, 32, 29UL)]
+    [TestCase(16UL, 32UL, true, 0, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8, true, 32, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8, false, 32, 32UL)]
+    [TestCase(16UL, SyncBatchSizeMax * 8, false, 32, SyncBatchSizeMax * 8 - 16UL)]
+    public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, bool enableFastSync, int fastSyncLag, ulong insertedBeaconBlocks)
     {
         bool withReceipts = enableFastSync;
         int notSyncedTreeStartingBlockNumber = 3;
@@ -46,7 +46,7 @@ public partial class BlockDownloaderTests
             .GoesLikeThis()
             .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, (int)headNumber + 1, receiptStorage: receiptStorage)
             .InsertBeaconPivot(beaconPivot)
-            .InsertBeaconHeaders(notSyncedTreeStartingBlockNumber + 1, beaconPivot - 1)
+            .InsertBeaconHeaders((ulong)(notSyncedTreeStartingBlockNumber + 1), beaconPivot - 1)
             .InsertBeaconBlocks(beaconPivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree syncedTree = blockTrees.SyncedTree;
 
@@ -78,10 +78,10 @@ public partial class BlockDownloaderTests
         {
             await ctx.FastSyncUntilNoRequest(peerInfo);
             long expectedDownloadStart = notSyncedTreeStartingBlockNumber;
-            long expectedDownloadEnd = Math.Min(headNumber, insertedBeaconBlocks - fastSyncLag);
+            long expectedDownloadEnd = Math.Min((long)headNumber, (long)insertedBeaconBlocks - fastSyncLag);
 
-            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
-            Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(Math.Max(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max((ulong)notSyncedTreeStartingBlockNumber, (ulong)expectedDownloadEnd)));
+            Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(Math.Max((ulong)notSyncedTreeStartingBlockNumber, (ulong)expectedDownloadEnd)));
 
             int receiptCount = 0;
             for (long i = expectedDownloadStart; i < expectedDownloadEnd; i++)
@@ -93,7 +93,7 @@ public partial class BlockDownloaderTests
             }
 
             Assert.That(ctx.ReceiptStorage.Count, Is.EqualTo(withReceipts ? receiptCount : 0));
-            Assert.That(ctx.BeaconPivot.ProcessDestination?.Number, Is.EqualTo(Math.Max(insertedBeaconBlocks - fastSyncLag, beaconPivot)));
+            Assert.That(ctx.BeaconPivot.ProcessDestination?.Number, Is.EqualTo(Math.Max(insertedBeaconBlocks - (ulong)fastSyncLag, beaconPivot)));
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -110,7 +110,7 @@ public partial class BlockDownloaderTests
             .WithBlockTrees(4, (int)headNumber + 1, true, ttd)
             .InsertBeaconPivot(16)
             .InsertBeaconHeaders(4, 15)
-            .InsertBeaconBlocks(17, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+            .InsertBeaconBlocks(17, (ulong)headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
 
         BlockTree syncedTree = blockTrees.SyncedTree;
         await using IContainer container = CreateMergeNode(blockTrees, new MergeConfig()
@@ -120,7 +120,7 @@ public partial class BlockDownloaderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16UL, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
@@ -129,9 +129,9 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.PoSSwitcher.HasEverReachedTerminalBlock(), Is.True);
     }
 
-    [TestCase(32L, 16, false, 16)]
-    [TestCase(32L, 16, true, 3)] // No beacon header, so it does not sync
-    public async Task IfNoBeaconPivot_thenStopAtPoS(long headNumber, int ttdBlock, bool withBeaconPivot, int expectedBestKnownNumber)
+    [TestCase(32UL, 16, false, 16)]
+    [TestCase(32UL, 16, true, 3)] // No beacon header, so it does not sync
+    public async Task IfNoBeaconPivot_thenStopAtPoS(ulong headNumber, int ttdBlock, bool withBeaconPivot, int expectedBestKnownNumber)
     {
         UInt256 ttd = 10_000_000;
         int negativeTd = BlockHeaderBuilder.DefaultDifficulty.ToInt32(null);
@@ -155,7 +155,7 @@ public partial class BlockDownloaderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16UL, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
@@ -164,9 +164,9 @@ public partial class BlockDownloaderTests
         Assert.That(notSyncedTree.BestKnownNumber, Is.EqualTo(expectedBestKnownNumber));
     }
 
-    [TestCase(32L, 32L, 0, 32)]
-    [TestCase(32L, 32L, 10, 22)]
-    public async Task WillSkipBlocksToIgnore(long pivot, long headNumber, int blocksToIgnore, long expectedBestKnownNumber)
+    [TestCase(32UL, 32UL, 0, 32)]
+    [TestCase(32UL, 32UL, 10, 22)]
+    public async Task WillSkipBlocksToIgnore(ulong pivot, ulong headNumber, int blocksToIgnore, long expectedBestKnownNumber)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
@@ -272,11 +272,11 @@ public partial class BlockDownloaderTests
 
         // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
         // will only be fixed slightly later
-        long chainLength = headNumber + 1;
+        ulong chainLength = (ulong)headNumber + 1;
         SyncPeerMock syncPeerInternal = new(chainLength, true, responseOptions, true);
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
 
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)));
@@ -298,12 +298,12 @@ public partial class BlockDownloaderTests
         await ctx.FullSyncUntilNoRequest(peerInfo);
     }
 
-    [TestCase(2)]
-    [TestCase(6)]
-    [TestCase(34)]
-    [TestCase(129)]
-    [TestCase(1024)]
-    public void BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown(long pivot)
+    [TestCase(2UL)]
+    [TestCase(6UL)]
+    [TestCase(34UL)]
+    [TestCase(129UL)]
+    [TestCase(1024UL)]
+    public void BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown(ulong pivot)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
              .GoesLikeThis()
@@ -365,10 +365,10 @@ public partial class BlockDownloaderTests
         PeerPool
     )
     {
-        public void InsertBeaconHeaderFrom(SyncPeerMock syncPeer, long high, long low)
+        public void InsertBeaconHeaderFrom(SyncPeerMock syncPeer, ulong high, ulong low)
         {
             BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
-            for (long i = high; i >= low; --i)
+            for (ulong i = high; i >= low; --i)
             {
                 BlockHeader? beaconHeader = syncPeer.BlockTree.FindHeader(i, BlockTreeLookupOptions.None)!;
 
@@ -377,7 +377,7 @@ public partial class BlockDownloaderTests
             }
         }
 
-        public override void ShouldFastSyncedUntil(long blockNumber) =>
+        public override void ShouldFastSyncedUntil(ulong blockNumber) =>
             // With post merge, best suggested header always follow beacon pivot but not necessarily synced.
             // But BestSuggestedBody is updated, unlike PreMerge.
             // I don't make the rules

@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test;
 [Parallelizable(ParallelScope.Self)]
 public class CallDataLoadTests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     // Forces the OffFlag specialization of InstructionCallDataLoad; the default tracer

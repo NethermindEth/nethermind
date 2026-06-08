@@ -17,14 +17,14 @@ public class ReleaseSpec : IReleaseSpec
     public string Name { get; set; } = "Custom";
     public long MaximumExtraDataSize { get; set; }
     public long MaxCodeSize { get; set; }
-    public long MinGasLimit { get; set; }
+    public ulong MinGasLimit { get; set; }
     public long MinHistoryRetentionEpochs { get; set; }
     public long MinBalRetentionEpochs { get; set; }
-    public long GasLimitBoundDivisor { get; set; }
+    public ulong GasLimitBoundDivisor { get; set; }
     public UInt256 BlockReward { get; set; }
-    public long DifficultyBombDelay { get; set; }
-    public long DifficultyBoundDivisor { get; set; }
-    public long? FixedDifficulty { get; set; }
+    public ulong DifficultyBombDelay { get; set; }
+    public ulong DifficultyBoundDivisor { get; set; }
+    public ulong? FixedDifficulty { get; set; }
     public int MaximumUncleCount { get; set; }
     public bool IsTimeAdjustmentPostOlympic { get; set; }
     public bool IsEip2Enabled { get; set; }
@@ -66,7 +66,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip3541Enabled { get; set; }
     public bool ValidateChainId { get; set; }
     public bool ValidateReceipts { get; set; }
-    public long Eip1559TransitionBlock { get; set; }
+    public ulong Eip1559TransitionBlock { get; set; }
     public ulong WithdrawalTimestamp { get; set; }
     public ulong Eip4844TransitionTimestamp { get; set; }
     public Address? FeeCollector { get; set; }
@@ -129,7 +129,7 @@ public class ReleaseSpec : IReleaseSpec
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
     private SpecGasCosts? _gasCosts;
     public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);
-    public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
+    public ulong Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
         HashSet<AddressAsKey> cache =

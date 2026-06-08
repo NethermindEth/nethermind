@@ -61,7 +61,7 @@ public class TdxRpcModuleTests
     {
         _config.TdxEnabled.Returns(true);
         _tdxService.IsBootstrapped.Returns(true);
-        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
+        _blockFinder.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));
 
@@ -76,7 +76,7 @@ public class TdxRpcModuleTests
         _tdxService.IsBootstrapped.Returns(true);
 
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
-        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        _blockFinder.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
 
         TdxBlockHeaderSignature signature = new()
         {
@@ -101,7 +101,7 @@ public class TdxRpcModuleTests
         _tdxService.IsBootstrapped.Returns(true);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
+        _blockFinder.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
         _tdxService.SignBlockHeader(header).Returns(_ => throw new TdxException("Signing failed"));
 
         ResultWrapper<TdxBlockHeaderSignature> result = await _rpcModule.taiko_tdxSignBlockHeader(new BlockParameter(1));

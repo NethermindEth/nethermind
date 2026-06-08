@@ -165,7 +165,7 @@ public class LogIndexBuilderTests
     )
     {
         _config.MaxBatchSize = batchSize;
-        _syncConfig.AncientReceiptsBarrier = minBarrier;
+        _syncConfig.AncientReceiptsBarrier = (ulong)minBarrier;
         Assert.That(_syncConfig.AncientReceiptsBarrierCalc, Is.EqualTo(minBarrier));
 
         int expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier);
@@ -224,7 +224,7 @@ public class LogIndexBuilderTests
     {
         Assert.That(minBlock, Is.LessThanOrEqualTo(minBarrier));
 
-        _syncConfig.AncientReceiptsBarrier = minBarrier;
+        _syncConfig.AncientReceiptsBarrier = (ulong)minBarrier;
         LogIndexBuilder builder = GetService(new FailingLogIndexStorage(0, new("Should not set new receipts."))
         {
             MinBlockNumber = minBlock,
@@ -252,9 +252,9 @@ public class LogIndexBuilderTests
         throwingTree.SyncPivot.Returns(realTree.SyncPivot);
         throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
         throwingTree
-            .FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(ci => Interlocked.Increment(ref findCalls) == 1
-                ? realTree.FindBlock(ci.ArgAt<long>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                ? realTree.FindBlock(ci.ArgAt<ulong>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
                 : throw exception);
 
         return throwingTree;

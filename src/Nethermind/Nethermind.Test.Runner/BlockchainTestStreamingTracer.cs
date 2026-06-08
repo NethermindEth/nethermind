@@ -31,7 +31,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
     // Track metrics for test end marker
     private int _transactionCount;
     private int _blockCount;
-    private long _totalGasUsed;
+    private ulong _totalGasUsed;
 
     public bool IsTracingRewards => false;
 

@@ -14,18 +14,18 @@ public static class Eip8037BlockGasInclusionCheck
     public enum Outcome { Ok, RegularDimensionExceeded, StateDimensionExceeded }
 
     public static Outcome Validate(
-        long blockGasLimit,
-        long cumulativeBlockRegular,
-        long cumulativeBlockState,
-        long txGas,
-        long intrinsicRegular,
-        long intrinsicState)
+        ulong blockGasLimit,
+        ulong cumulativeBlockRegular,
+        ulong cumulativeBlockState,
+        ulong txGas,
+        ulong intrinsicRegular,
+        ulong intrinsicState)
     {
-        long regularAvailable = blockGasLimit - cumulativeBlockRegular;
-        long stateAvailable = blockGasLimit - cumulativeBlockState;
+        ulong regularAvailable = blockGasLimit - cumulativeBlockRegular;
+        ulong stateAvailable = blockGasLimit - cumulativeBlockState;
 
         // Keep below-intrinsic txs from producing a negative worst-case regular dimension.
-        long worstCaseRegular = Math.Max(0, txGas - intrinsicState);
+        ulong worstCaseRegular = txGas > intrinsicState ? txGas - intrinsicState : 0UL;
         if (worstCaseRegular > Eip7825Constants.DefaultTxGasLimitCap)
             worstCaseRegular = Eip7825Constants.DefaultTxGasLimitCap;
         if (worstCaseRegular > regularAvailable)
@@ -33,23 +33,23 @@ public static class Eip8037BlockGasInclusionCheck
 
         // The state dimension has no per-tx equivalent of EIP-7825's DefaultTxGasLimitCap;
         // state-heavy work may be funded by the state reservoir above that regular-dimension cap.
-        long worstCaseState = Math.Max(0, txGas - intrinsicRegular);
+        ulong worstCaseState = txGas > intrinsicRegular ? txGas - intrinsicRegular : 0UL;
         if (worstCaseState > stateAvailable)
             return Outcome.StateDimensionExceeded;
 
         return Outcome.Ok;
     }
 
-    public static long CalculateBlockRegularGas(
-        long intrinsicRegularGas,
-        long initialRegularGas,
-        long remainingRegularGas,
-        long stateGasSpill,
-        long stateGasSpillReclassified,
-        long floorGas)
+    public static ulong CalculateBlockRegularGas(
+        ulong intrinsicRegularGas,
+        ulong initialRegularGas,
+        ulong remainingRegularGas,
+        ulong stateGasSpill,
+        ulong stateGasSpillReclassified,
+        ulong floorGas)
     {
-        long executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
-        long blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
+        ulong executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
+        ulong blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
         return Math.Max(blockRegularGas, floorGas);
     }
 }

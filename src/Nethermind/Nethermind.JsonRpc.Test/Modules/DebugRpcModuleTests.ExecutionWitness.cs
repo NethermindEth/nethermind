@@ -31,7 +31,7 @@ public partial class DebugRpcModuleTests
 {
     [Test]
     [TestCaseSource(nameof(ExecutionWitnessSource))]
-    public async Task Debug_executionWitness_can_be_used_for_stateless_execution_for_multiple_blocks(long blockNumber)
+    public async Task Debug_executionWitness_can_be_used_for_stateless_execution_for_multiple_blocks(ulong blockNumber)
     {
         using Context ctx = await Context.Create();
         TestRpcBlockchain blockchain = ctx.Blockchain;
@@ -157,7 +157,7 @@ public partial class DebugRpcModuleTests
     /// </summary>
     private static async Task<Address> DeployAndCallContractWithStorage(TestRpcBlockchain blockchain, UInt256 storageSlot)
     {
-        UInt256 deployNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong deployNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         byte[] runtimeCode = Prepare.EvmCode
             .PushData(1)             // value
@@ -177,7 +177,7 @@ public partial class DebugRpcModuleTests
         await blockchain.AddBlock(deployTx);
 
         // Call the contract to execute the SSTORE and commit storage to the trie
-        UInt256 callNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong callNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction callTx = Build.A.Transaction
             .WithNonce(callNonce)
             .To(contractAddress)
@@ -227,7 +227,7 @@ public partial class DebugRpcModuleTests
         Address contractAddress = await CreateDeployTx(blockchain, transferBlock.Number);
 
         // Call the deployed contract to generate a witness
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
             new { to = contractAddress.ToString(), gas = "0x30D40" },
             $"0x{blockNumber:x}");
@@ -253,7 +253,7 @@ public partial class DebugRpcModuleTests
         Block transferBlock = await CreateTransferTx(blockchain);
         Address contractAddress = await CreateDeployTx(blockchain, transferBlock.Number);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
 
         // With gas explicitly passed — the control case.
         JsonRpcResponse withGas = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
@@ -285,13 +285,13 @@ public partial class DebugRpcModuleTests
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
     {
         // 7 blocks in the test where this test case source is used
-        for (long blockNumber = 0; blockNumber < 7; blockNumber++)
+        for (ulong blockNumber = 0; blockNumber < 7; blockNumber++)
             yield return new TestCaseData(blockNumber);
     }
 
     private static async Task<Block> CreateTransferTx(TestRpcBlockchain blockchain)
     {
-        UInt256 transferNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong transferNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction transferTx = Build.A.Transaction
             .WithNonce(transferNonce)
@@ -303,9 +303,9 @@ public partial class DebugRpcModuleTests
         return await blockchain.AddBlock(transferTx);
     }
 
-    private static async Task<Address> CreateDeployTx(TestRpcBlockchain blockchain, long blockWhoseHashToGet)
+    private static async Task<Address> CreateDeployTx(TestRpcBlockchain blockchain, ulong blockWhoseHashToGet)
     {
-        UInt256 deployNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong deployNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         byte[] runtimeCode = Prepare.EvmCode
             .PushData(0)
             .PushData(32)
@@ -337,7 +337,7 @@ public partial class DebugRpcModuleTests
 
     private static async Task CreateContractCallTx(TestRpcBlockchain blockchain, Address contractAddress)
     {
-        UInt256 callNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong callNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
 
         Transaction callTx = Build.A.Transaction
             .WithNonce(callNonce)

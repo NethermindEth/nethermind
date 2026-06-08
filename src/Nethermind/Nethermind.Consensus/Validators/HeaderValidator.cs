@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Validators
 
         protected readonly ISealValidator _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
         protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        private readonly long? _daoBlockNumber = specProvider.DaoBlockNumber;
+        private readonly ulong? _daoBlockNumber = specProvider.DaoBlockNumber;
         protected readonly ILogger _logger = logManager?.GetClassLogger<HeaderValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
@@ -211,42 +211,19 @@ namespace Nethermind.Consensus.Validators
             return result;
         }
 
-        protected virtual bool ValidateFieldLimit(BlockHeader blockHeader, ref string? error)
-        {
-            // Note, these are out of spec. Technically, there could be a block with field with very high value that is
-            // valid when using ulong, but wrapped to negative value when using long. However, switching to ulong
-            // at this point can cause other unexpected error. So we just won't support it for now.
-
-            error = blockHeader switch
-            {
-                { Number: < 0 } => BlockErrorMessages.NegativeBlockNumber,
-                { GasLimit: < 0 } => BlockErrorMessages.NegativeGasLimit,
-                { GasUsed: < 0 } => BlockErrorMessages.NegativeGasUsed,
-                _ => null
-            };
-
-            if (error is null) return true;
-
-            if (_logger.IsWarn)
-                _logger.Warn($"Invalid block header ({blockHeader.Hash}) - {blockHeader switch
-                {
-                    { Number: < 0 } => $"Block number is negative {blockHeader.Number}",
-                    { GasLimit: < 0 } => $"Block GasLimit is negative {blockHeader.GasLimit}",
-                    { GasUsed: < 0 } => $"Block GasUsed is negative {blockHeader.GasUsed}",
-                    _ => error
-                }}");
-
-            return false;
-
-        }
+        protected virtual bool ValidateFieldLimit(BlockHeader blockHeader, ref string? error) =>
+            // Number, GasLimit and GasUsed are ulong — they can never be negative.
+            // This method is kept for subclass extensibility; no checks are needed at this level.
+            true;
 
         protected virtual bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
         {
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                    && (isUncle
                                        || _daoBlockNumber is null
-                                       || header.Number < _daoBlockNumber
-                                       || header.Number >= _daoBlockNumber + 10
+                                       // Safe cast: DaoBlockNumber is a known small constant (~1.9M), always fits ulong
+                                       || header.Number < (ulong)_daoBlockNumber.Value
+                                       || header.Number >= (ulong)(_daoBlockNumber.Value + 10)
                                        || Bytes.AreEqual(header.ExtraData, DaoExtraData));
             if (!extraDataValid)
             {
@@ -263,15 +240,15 @@ namespace Nethermind.Consensus.Validators
             // Gas-limit-vs-parent comparisons don't apply at genesis, so skip them.
             if (parent is null) return true;
 
-            long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
-            long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
+            ulong adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
+            ulong maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
-            long maxNextGasLimit = adjustedParentGasLimit + maxGasLimitDifference;
-            bool notToHighWithOverflow = long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit;
-            // The edge case used in hive tests. If adjustedParentGasLimit + maxGasLimitDifference >=  long.MaxValue,
-            // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
-            // In hive we have tests that using long.MaxValue in the genesis block
-            // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than long.MaxValue
+            ulong maxNextGasLimit = adjustedParentGasLimit + maxGasLimitDifference;
+            bool notToHighWithOverflow = ulong.MaxValue - maxGasLimitDifference < adjustedParentGasLimit;
+            // The edge case used in hive tests. If adjustedParentGasLimit + maxGasLimitDifference >= ulong.MaxValue,
+            // we can check for ulong.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
+            // In hive we have tests that using ulong.MaxValue in the genesis block
+            // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than ulong.MaxValue
             bool gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
 
             if (!gasLimitNotTooHigh)

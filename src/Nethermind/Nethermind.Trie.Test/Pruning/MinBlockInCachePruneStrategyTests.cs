@@ -27,8 +27,8 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void ShouldPruneDirtyNode_should_return_false_when_block_difference_is_less_than_min_block_from_persisted()
         {
-            long latestCommittedBlock = 100;
-            long lastPersistedBlock = latestCommittedBlock - PruneBoundary - MinBlockFromPersisted + 1;
+            ulong latestCommittedBlock = 100;
+            ulong lastPersistedBlock = latestCommittedBlock - (ulong)PruneBoundary - (ulong)MinBlockFromPersisted + 1;
             TrieStoreState state = new(100, 200, latestCommittedBlock, lastPersistedBlock);
 
             _baseStrategy.ShouldPruneDirtyNode(state).Returns(true);
@@ -38,8 +38,8 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void ShouldPruneDirtyNode_should_delegate_to_base_strategy_when_block_difference_is_greater_than_or_equal_to_min_block_from_persisted()
         {
-            long latestCommittedBlock = 100;
-            long lastPersistedBlock = latestCommittedBlock - PruneBoundary - MinBlockFromPersisted;
+            ulong latestCommittedBlock = 100;
+            ulong lastPersistedBlock = latestCommittedBlock - (ulong)PruneBoundary - (ulong)MinBlockFromPersisted;
             TrieStoreState state = new(100, 200, latestCommittedBlock, lastPersistedBlock);
 
             _baseStrategy.ShouldPruneDirtyNode(state).Returns(true);

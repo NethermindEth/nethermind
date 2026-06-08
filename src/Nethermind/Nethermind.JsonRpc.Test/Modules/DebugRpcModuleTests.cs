@@ -150,7 +150,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceCall_caps_gas_to_gas_cap()
     {
         using Context ctx = await Context.Create();
-        long gasCap = 50_000;
+        ulong gasCap = 50_000;
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
@@ -166,9 +166,9 @@ public partial class DebugRpcModuleTests
             new { stateOverrides = stateOverride }
         );
 
-        long gasAvailable = (long)ParseReturnValue(response).ToUInt256();
+        ulong gasAvailable = (ulong)ParseReturnValue(response).ToUInt256();
         Assert.That(gasAvailable, Is.LessThan(gasCap));
-        Assert.That(gasAvailable, Is.GreaterThan(0));
+        Assert.That(gasAvailable, Is.GreaterThan(0UL));
     }
 
     [Test]
@@ -176,8 +176,8 @@ public partial class DebugRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
-        long gasCap = blockGasLimit * 10;
+        ulong blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        ulong gasCap = blockGasLimit * 10;
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 

@@ -9,6 +9,6 @@ namespace Nethermind.Xdc;
 
 public interface ISigningTxCache
 {
-    Transaction[] GetSigningTransactions(Hash256 blockHash, long blockNumber, IXdcReleaseSpec spec);
+    Transaction[] GetSigningTransactions(Hash256 blockHash, ulong blockNumber, IXdcReleaseSpec spec);
     void SetSigningTransactions(Hash256 blockHash, Transaction[] transactions);
 }

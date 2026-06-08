@@ -39,7 +39,7 @@ public class OptimismOptimismRpcModule(
 
         L2Block block = await l2Api.GetBlockByNumber(blockNumber);
 
-        AccountProof? proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], (long)block.Number);
+        AccountProof? proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], block.Number);
         if (proof == null)
         {
             return ResultWrapper<OptimismOutputAtBlock>.Fail("Failed to get proof");

@@ -104,8 +104,8 @@ public class BlockForRpc
     public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
-    public long GasLimit { get; set; }
-    public long GasUsed { get; set; }
+    public ulong GasLimit { get; set; }
+    public ulong GasUsed { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Hash256? Hash { get; set; }
@@ -121,7 +121,7 @@ public class BlockForRpc
     public byte[]? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? Number { get; set; }
+    public ulong? Number { get; set; }
     public Hash256 ParentHash { get; set; }
     public Hash256 ReceiptsRoot { get; set; }
     public Hash256 Sha3Uncles { get; set; }

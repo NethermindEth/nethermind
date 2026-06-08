@@ -26,7 +26,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return _preMergeSealer.SealBlock(block, cancellationToken);
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash)
+        public bool CanSeal(ulong blockNumber, Hash256 parentHash)
         {
             if (_poSSwitcher.HasEverReachedTerminalBlock())
             {

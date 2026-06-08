@@ -34,7 +34,7 @@ public class EraImporter(
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
     private readonly int _maxEra1Size = eraConfig.MaxEra1Size;
 
-    public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
+    public async Task Import(string src, ulong from, ulong to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
             throw new ArgumentException($"Import directory {src} does not exist");
@@ -49,18 +49,18 @@ public class EraImporter(
 
         using IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
 
-        long lastBlockInStore = eraStore.LastBlock;
-        if (to == 0) to = long.MaxValue;
-        if (to != long.MaxValue && lastBlockInStore < to)
+        ulong lastBlockInStore = eraStore.LastBlock;
+        if (to == 0) to = ulong.MaxValue;
+        if (to != ulong.MaxValue && lastBlockInStore < to)
         {
             throw new EraImportException($"The directory given for import '{src}' have highest block number {lastBlockInStore} which is lower then last requested block {to}.");
         }
-        if (to == long.MaxValue)
+        if (to == ulong.MaxValue)
         {
             to = lastBlockInStore;
         }
 
-        long firstBlockInStore = eraStore.FirstBlock;
+        ulong firstBlockInStore = eraStore.FirstBlock;
         if (from == 0 && firstBlockInStore != 0)
         {
             from = firstBlockInStore;
@@ -72,7 +72,8 @@ public class EraImporter(
         if (from > to && to != 0)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to})");
 
-        long headp1 = (blockTree.Head?.Number ?? 0) + 1;
+        // blockTree.Head?.Number is now ulong; +1 is safe as head will never be ulong.MaxValue.
+        ulong headp1 = (blockTree.Head?.Number ?? 0UL) + 1UL;
         if (from > headp1)
         {
             throw new ArgumentException($"Start block ({from}) must not be after block after head ({headp1})");
@@ -93,8 +94,8 @@ public class EraImporter(
     }
 
     private async Task ImportInternal(
-        long from,
-        long to,
+        ulong from,
+        ulong to,
         IEraStore eraStore,
         CancellationToken cancellation)
     {
@@ -103,23 +104,25 @@ public class EraImporter(
         using IEraStore _ = eraStore;
 
         ProgressLogger progressLogger = new("Era import", logManager);
-        progressLogger.Reset(0, to - from + 1);
-        long blocksProcessed = 0;
+        // to - from + 1 is safe: from <= to is guaranteed by the caller.
+        progressLogger.Reset(0, to - from + 1UL);
+        ulong blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
-        long blockNumber = from;
+        using BlockTreeSuggestPacer pacer = new(blockTree, (ulong)eraConfig.ImportBlocksBufferSize, (ulong)(eraConfig.ImportBlocksBufferSize - 1024));
+        ulong blockNumber = from;
 
-        long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
-        if (syncConfig.FastSync && suggestFromBlock == 1)
+        // blockTree.Head?.Number is ulong; +1 is safe (head never reaches ulong.MaxValue in practice).
+        ulong suggestFromBlock = (blockTree.Head?.Number ?? 0UL) + 1UL;
+        if (syncConfig.FastSync && suggestFromBlock == 1UL)
         {
             // Its syncing right now. So no state.
-            suggestFromBlock = long.MaxValue;
+            suggestFromBlock = ulong.MaxValue;
         }
 
         // I wish I could say that EraStore can be run used in parallel in any way you like but I could not make it so.
-        // This make the `blockNumber` aligned to era file boundary so that when running parallel, each thread does not
+        // This makes the `blockNumber` aligned to era file boundary so that when running parallel, each thread does not
         // work on the same era file as other thread.
-        long nextEraStart = eraStore.NextEraStart(blockNumber);
+        ulong nextEraStart = eraStore.NextEraStart(blockNumber);
         if (nextEraStart <= to)
         {
             for (; blockNumber < nextEraStart; blockNumber++)
@@ -129,10 +132,10 @@ public class EraImporter(
         }
 
         // Earlier part can be parallelized
-        long partitionSize = _maxEra1Size;
+        ulong partitionSize = (ulong)_maxEra1Size;
         if (blockNumber + partitionSize < suggestFromBlock)
         {
-            ConcurrentQueue<long> partitionStartBlocks = new();
+            ConcurrentQueue<ulong> partitionStartBlocks = new();
             for (; blockNumber + partitionSize < suggestFromBlock && blockNumber + partitionSize < to; blockNumber += partitionSize)
             {
                 partitionStartBlocks.Enqueue(blockNumber);
@@ -142,9 +145,9 @@ public class EraImporter(
             {
                 return Task.Run(async () =>
                 {
-                    while (partitionStartBlocks.TryDequeue(out long partitionStartBlock))
+                    while (partitionStartBlocks.TryDequeue(out ulong partitionStartBlock))
                     {
-                        for (long i = 0; i < partitionSize; i++)
+                        for (ulong i = 0; i < partitionSize; i++)
                         {
                             await ImportBlock(i + partitionStartBlock);
                         }
@@ -163,7 +166,7 @@ public class EraImporter(
 
         if (_logger.IsInfo) _logger.Info($"Finished history import from {from} to {to}");
 
-        async Task ImportBlock(long blockNumber)
+        async Task ImportBlock(ulong blockNumber)
         {
             if (_logger.IsTrace) _logger.Trace($"Importing block {blockNumber}");
             cancellation.ThrowIfCancellationRequested();
@@ -177,6 +180,7 @@ public class EraImporter(
             {
                 throw new EraImportException($"Unable to find receipt for block {blockNumber}");
             }
+            // block.Number is ulong; no cast needed.
             if (block.Number != blockNumber)
             {
                 throw new EraImportException($"Unexpected block number. Expected {blockNumber}. Got {block.Number}");
@@ -200,7 +204,7 @@ public class EraImporter(
             else
                 InsertBlockAndReceipts(block, receipt, to);
 
-            long processed = Interlocked.Increment(ref blocksProcessed);
+            ulong processed = Interlocked.Increment(ref blocksProcessed);
             if (processed % 10000 == 0)
             {
                 progressLogger.Update(processed);
@@ -209,7 +213,7 @@ public class EraImporter(
         }
     }
 
-    private void InsertBlockAndReceipts(Block b, TxReceipt[] r, long lastBlockNumber)
+    private void InsertBlockAndReceipts(Block b, TxReceipt[] r, ulong lastBlockNumber)
     {
         if (blockTree.FindBlock(b.Number) is null)
             blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);

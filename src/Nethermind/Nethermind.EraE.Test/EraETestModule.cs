@@ -61,7 +61,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
                 // Post-merge blocks have TotalDifficulty=0, which never satisfies
                 // HeadImprovementRequirementsSatisfied (0 < MainnetTTD). Force-update head
                 // so the exporter can resolve blockTree.Head correctly.
-                Block? lastBlock = blockTreeBuilder.BlockTree.FindBlock(length - 1, BlockTreeLookupOptions.None);
+                Block? lastBlock = blockTreeBuilder.BlockTree.FindBlock((ulong)(length - 1), BlockTreeLookupOptions.None);
                 if (lastBlock is not null)
                     blockTreeBuilder.BlockTree.UpdateMainChain(new[] { lastBlock }, true, forceUpdateHeadBlock: true);
             });
@@ -71,7 +71,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
     public static ManualTimestamper PostMerge =>
         new(DateTimeOffset.FromUnixTimeSeconds((long)PostMergeGenesisTimestamp).UtcDateTime);
 
-    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, long from = 0, long to = 0)
+    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, ulong from = 0, ulong to = 0)
     {
         IContainer testCtx = BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
         await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), from, to);
@@ -82,7 +82,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
     {
         IContainer testCtx = BuildContainerBuilderWithPostMergeBlockTreeOfLength(chainLength).Build();
         // Start from block 1: genesis is pre-merge in all block trees.
-        await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), from: 1, to: 0);
+        await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), from: 1UL, to: 0UL);
         return testCtx;
     }
 

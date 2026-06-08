@@ -27,7 +27,7 @@ public class SnapshotRepositoryTests
         _repository = new SnapshotRepository(LimboLogs.Instance);
     }
 
-    private StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    private StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
@@ -44,7 +44,7 @@ public class SnapshotRepositoryTests
         return snapshot;
     }
 
-    private Snapshot AddSnapshotToRepository(long fromBlock, long toBlock, bool compacted = false, bool withData = false)
+    private Snapshot AddSnapshotToRepository(ulong fromBlock, ulong toBlock, bool compacted = false, bool withData = false)
     {
         StateId from = CreateStateId(fromBlock);
         StateId to = CreateStateId(toBlock);
@@ -64,10 +64,10 @@ public class SnapshotRepositoryTests
         return snapshot;
     }
 
-    private List<Snapshot> BuildSnapshotChain(long startBlock, long endBlock)
+    private List<Snapshot> BuildSnapshotChain(ulong startBlock, ulong endBlock)
     {
         List<Snapshot> snapshots = [];
-        for (long i = startBlock; i < endBlock; i++)
+        for (ulong i = startBlock; i < endBlock; i++)
         {
             snapshots.Add(AddSnapshotToRepository(i, i + 1));
         }
@@ -290,9 +290,9 @@ public class SnapshotRepositoryTests
         states.Dispose();
     }
 
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void GetSnapshotBeforeStateId_NegativeBlockNumber_ReturnsEmpty(long blockNumber)
+    [TestCase(ulong.MaxValue)]
+    [TestCase(ulong.MinValue)]
+    public void GetSnapshotBeforeStateId_BoundaryBlockNumber_ReturnsEmpty(ulong blockNumber)
     {
         _repository.AddStateId(CreateStateId(1));
 

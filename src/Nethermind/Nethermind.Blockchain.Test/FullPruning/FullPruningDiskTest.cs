@@ -179,7 +179,7 @@ public class FullPruningDiskTest
         PruningTriggerEventArgs args = new();
         chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
         if (args.Status != PruningStatus.Starting) return;
-        for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
+        for (ulong i = 0ul; i < Reorganization.MaxDepth + 2ul; i++)
         {
             await chain.AddBlock();
         }

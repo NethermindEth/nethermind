@@ -29,7 +29,7 @@ public partial class DebugRpcModuleTests
         Address? from = null,
         Address? to = null,
         UInt256? value = null,
-        long gas = GasCostOf.Transaction) =>
+        ulong gas = GasCostOf.Transaction) =>
         new()
         {
             From = from ?? TestItem.AddressD,
@@ -197,13 +197,13 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle(int secondBundleOffset)
     {
         using Context ctx = await CreateContext();
-        long headNumber = ctx.Blockchain.BlockTree.Head!.Number;
+        ulong headNumber = ctx.Blockchain.BlockTree.Head!.Number;
 
         TransactionBundle first = CreateBundle(CreateTransaction());
-        first.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + 1) };
+        first.BlockOverride = new BlockOverride { Number = headNumber + 1 };
 
         TransactionBundle second = CreateBundle(CreateTransaction(to: TestItem.AddressD));
-        second.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + secondBundleOffset) };
+        second.BlockOverride = new BlockOverride { Number = headNumber + (ulong)secondBundleOffset };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
@@ -216,7 +216,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceCallMany_caps_gas_to_gas_cap()
     {
         using Context ctx = await CreateContext();
-        long gasCap = 50_000;
+        ulong gasCap = 50_000;
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
@@ -225,7 +225,7 @@ public partial class DebugRpcModuleTests
         byte[] runtimeCode = Bytes.FromHexString("5a60005260206000f3");
         byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
 
-        UInt256 nonce = ctx.Blockchain.StateReader.GetNonce(ctx.Blockchain.BlockTree.Head!.Header, TestItem.AddressD);
+        ulong nonce = ctx.Blockchain.StateReader.GetNonce(ctx.Blockchain.BlockTree.Head!.Header, TestItem.AddressD);
         Address contractAddress = ContractAddress.From(TestItem.AddressD, nonce);
 
         Transaction deployTx = Build.A.Transaction
@@ -241,9 +241,9 @@ public partial class DebugRpcModuleTests
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
         byte[] returnValue = Bytes.FromHexString((string)result[0][0]!["returnValue"]!);
-        long gasAvailable = (long)returnValue.ToUInt256();
+        ulong gasAvailable = (ulong)returnValue.ToUInt256();
         Assert.That(gasAvailable, Is.LessThan(gasCap));
-        Assert.That(gasAvailable, Is.GreaterThan(0));
+        Assert.That(gasAvailable, Is.GreaterThan(0UL));
     }
 
     [Test]
@@ -251,8 +251,8 @@ public partial class DebugRpcModuleTests
     {
         using Context ctx = await CreateContext();
 
-        long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
-        long gasCap = blockGasLimit * 10;
+        ulong blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
+        ulong gasCap = blockGasLimit * 10;
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 

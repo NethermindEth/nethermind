@@ -59,15 +59,18 @@ public class SnapshotCompactor(
 
     public SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot)
     {
-        long blockNumber = snapshot.To.BlockNumber;
+        ulong blockNumber = snapshot.To.BlockNumber;
         int compactSize = _schedule.GetCompactSize(blockNumber);
         if (compactSize <= 1) return SnapshotPooledList.Empty();
         bool isFullCompaction = compactSize == _compactSize;
 
         if (!isFullCompaction)
         {
-            // Save memory by removing the compacted state from previous compaction
-            foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize))
+            // Save memory by removing the compacted state from previous compaction.
+            // Cast _compactSize (int) to ulong: safe because config guarantees _compactSize > 0
+            // and blockNumber >= (ulong)_compactSize in any valid sync state (we only compact
+            // already-downloaded blocks). No underflow is possible in practice.
+            foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - (ulong)_compactSize))
             {
                 if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
                 {
@@ -75,7 +78,10 @@ public class SnapshotCompactor(
             }
         }
 
-        long startingBlockNumber = blockNumber - compactSize;
+        // Cast compactSize (int) to ulong: safe because compactSize > 1 is already verified
+        // above and blockNumber is always >= compactSize (compaction only runs once blocks
+        // are available). No underflow possible.
+        ulong startingBlockNumber = blockNumber - (ulong)compactSize;
         SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
 
         bool snapshotsOk = false;
@@ -83,6 +89,7 @@ public class SnapshotCompactor(
         {
             if (snapshots.Count == 0) return SnapshotPooledList.Empty();
 
+            // Both sides are now ulong — no ambiguous operator.
             if (snapshots[0].From.BlockNumber != startingBlockNumber)
             {
                 // Could happen especially at start where the block may not be aligned, but not a big problem.

@@ -33,12 +33,12 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            long blockNumber = eip3198Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
-            (Block block, Transaction transaction) = PrepareTx((blockNumber, 0), 100000, code);
+            ulong blockNumber = eip3198Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
+            (Block block, Transaction transaction) = PrepareTx((blockNumber, 0UL), 100000UL, code);
             block.Header.BaseFeePerGas = (UInt256)baseFee;
             if (send1559Tx)
             {
-                transaction.DecodedMaxFeePerGas = (UInt256)baseFee;
+                transaction.DecodedMaxFeePerGas = (ulong)baseFee;
                 transaction.Type = TxType.EIP1559;
             }
             else

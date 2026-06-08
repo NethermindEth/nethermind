@@ -94,18 +94,18 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         => _innerWorldState.GetOriginal(storageCell);
 
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
-        UInt256? currentNonce = GetNonceCurrent(address);
+        ulong? currentNonce = GetNonceCurrent(address);
         _innerWorldState.IncrementNonce(address, delta, out oldNonce);
         oldNonce = currentNonce ?? oldNonce;
-        _generatingBlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
+        _generatingBlockAccessList.AddNonceChange(address, oldNonce + delta);
     }
 
-    public void SetNonce(Address address, in UInt256 nonce)
+    public void SetNonce(Address address, in ulong nonce)
     {
         _innerWorldState.SetNonce(address, nonce);
-        _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
+        _generatingBlockAccessList.AddNonceChange(address, nonce);
     }
 
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -134,7 +134,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return ref _innerWorldState.GetBalance(address);
     }
 
-    public UInt256 GetNonce(Address address)
+    public ulong GetNonce(Address address)
     {
         AddAccountRead(address);
         return GetNonceInternal(address);
@@ -184,13 +184,13 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         _innerWorldState.DeleteAccount(address);
     }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
         _innerWorldState.CreateAccount(address, balance, nonce);
     }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
         _innerWorldState.CreateAccountIfNotExists(address, balance, nonce);
@@ -282,10 +282,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => _innerWorldState.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
-    public void CommitTree(long blockNumber)
+    public void CommitTree(ulong blockNumber)
         => _innerWorldState.CommitTree(blockNumber);
 
-    public void DecrementNonce(Address address, UInt256 delta)
+    public void DecrementNonce(Address address, ulong delta)
         => _innerWorldState.DecrementNonce(address, delta);
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges()
@@ -318,10 +318,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return accountChanges?.BalanceChange?.Value;
     }
 
-    private UInt256 GetNonceInternal(Address address)
+    private ulong GetNonceInternal(Address address)
         => GetNonceCurrent(address) ?? _innerWorldState.GetNonce(address);
 
-    private UInt256? GetNonceCurrent(Address address)
+    private ulong? GetNonceCurrent(Address address)
     {
         AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         return accountChanges?.NonceChange?.Value;
@@ -394,16 +394,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return null;
     }
 
-    private void RecordCreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    private void RecordCreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         AddAccountRead(address);
         if (!balance.IsZero)
         {
             _generatingBlockAccessList.AddBalanceChange(address, 0, balance);
         }
-        if (!nonce.IsZero)
+        if (nonce != 0)
         {
-            _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
+            _generatingBlockAccessList.AddNonceChange(address, nonce);
         }
     }
 

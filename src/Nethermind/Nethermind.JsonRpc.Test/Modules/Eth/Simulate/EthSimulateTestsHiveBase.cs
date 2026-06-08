@@ -105,7 +105,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
     [Combinatorial]
     public async Task TestSimulate_TimestampIsComputedCorrectly_WhenNoTimestampOverride(
         [Values(2, 12)] int secondsPerSlot,
-        [Values(0, 1, 2, 5)] int blockNumber)
+        [Values(0u, 1u, 2u, 5u)] uint blockNumber)
     {
         string data = $$"""
                               {

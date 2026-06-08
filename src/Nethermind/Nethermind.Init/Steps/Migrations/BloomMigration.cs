@@ -28,12 +28,12 @@ namespace Nethermind.Init.Steps.Migrations
         IBloomConfig bloomConfig,
         ILogManager logManager) : IDatabaseMigration
     {
-        private static readonly BlockHeader EmptyHeader = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []);
+        private static readonly BlockHeader EmptyHeader = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0UL, 0UL, 0UL, []);
 
         private readonly ILogger _logger = logManager.GetClassLogger<BloomMigration>();
         private Stopwatch? _stopwatch;
         private readonly ProgressLogger _progressLogger = new("Bloom migration ", logManager);
-        private long _migrateCount;
+        private ulong _migrateCount;
         private Average[]? _averages;
         private readonly StringBuilder _builder = new();
         private readonly IBloomConfig _bloomConfig = bloomConfig;
@@ -70,23 +70,23 @@ namespace Nethermind.Init.Steps.Migrations
 
         private static bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
-        private long MinBlockNumber =>
-            bloomStorage.MinBlockNumber == long.MaxValue
+        private ulong MinBlockNumber =>
+            bloomStorage.MinBlockNumber == ulong.MaxValue
                 ? blockTree.BestKnownNumber
                 : bloomStorage.MinBlockNumber - 1;
 
         private void RunBloomMigration(CancellationToken token)
         {
-            BlockHeader GetMissingBlockHeader(long i)
+            BlockHeader GetMissingBlockHeader(ulong i)
             {
                 if (_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Header for block {i} not found. Logs will not be searchable for this block."));
                 return EmptyHeader;
             }
 
             IBloomStorage storage = bloomStorage;
-            long to = MinBlockNumber;
-            long synced = storage.MigratedBlockNumber + 1;
-            long from = synced;
+            ulong to = MinBlockNumber;
+            ulong synced = storage.MigratedBlockNumber + 1;
+            ulong from = synced;
             _migrateCount = to + 1;
             _averages = bloomStorage.Averages.ToArray();
 
@@ -113,7 +113,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 IEnumerable<BlockHeader> GetHeadersForMigration()
                 {
-                    bool TryGetMainChainBlockHashFromLevel(long number, out Hash256? blockHash)
+                    bool TryGetMainChainBlockHashFromLevel(ulong number, out Hash256? blockHash)
                     {
                         using BatchWrite batch = chainLevelInfoRepository.StartBatch();
                         ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(number);
@@ -138,7 +138,7 @@ namespace Nethermind.Init.Steps.Migrations
                         }
                     }
 
-                    for (long i = from; i <= to; i++)
+                    for (ulong i = from; i <= to; i++)
                     {
                         if (token.IsCancellationRequested)
                         {

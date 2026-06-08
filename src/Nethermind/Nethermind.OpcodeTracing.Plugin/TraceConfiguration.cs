@@ -74,12 +74,12 @@ public sealed record TraceConfiguration
     /// <summary>
     /// Gets the effective start block after resolving configuration.
     /// </summary>
-    public long EffectiveStartBlock { get; init; }
+    public ulong EffectiveStartBlock { get; init; }
 
     /// <summary>
     /// Gets the effective end block after resolving configuration.
     /// </summary>
-    public long EffectiveEndBlock { get; init; }
+    public ulong EffectiveEndBlock { get; init; }
 
     /// <summary>
     /// Gets the list of warnings generated during configuration resolution.
@@ -111,22 +111,22 @@ public sealed record TraceConfiguration
             config.MaxDegreeOfParallelism);
 
         // Resolve effective block range
-        long effectiveStart;
-        long effectiveEnd;
+        ulong effectiveStart;
+        ulong effectiveEnd;
         List<string> warnings = [];
 
         // Check for conflicting parameters
         if (config.StartBlock.HasValue && config.EndBlock.HasValue && config.RecentBlocks.HasValue)
         {
             warnings.Add("Both explicit range (StartBlock/EndBlock) and RecentBlocks specified. Using explicit range, ignoring RecentBlocks.");
-            effectiveStart = config.StartBlock.Value;
-            effectiveEnd = config.EndBlock.Value;
+            effectiveStart = (ulong)config.StartBlock.Value;
+            effectiveEnd = (ulong)config.EndBlock.Value;
         }
         else if (config.StartBlock.HasValue && config.EndBlock.HasValue)
         {
             // Explicit range
-            effectiveStart = config.StartBlock.Value;
-            effectiveEnd = config.EndBlock.Value;
+            effectiveStart = (ulong)config.StartBlock.Value;
+            effectiveEnd = (ulong)config.EndBlock.Value;
         }
         else if (config.RecentBlocks.HasValue)
         {
@@ -135,16 +135,18 @@ public sealed record TraceConfiguration
             if (mode == TracingMode.RealTime)
             {
                 // RealTime: next N blocks starting from current chain tip + 1
-                effectiveStart = currentChainTip + 1;
-                effectiveEnd = currentChainTip + config.RecentBlocks.Value;
+                effectiveStart = (ulong)currentChainTip + 1;
+                effectiveEnd = (ulong)currentChainTip + (ulong)config.RecentBlocks.Value;
             }
             else
             {
                 // Retrospective and RetrospectiveExecution: recent N blocks from chain tip
-                effectiveEnd = currentChainTip;
-                effectiveStart = Math.Max(0, currentChainTip - config.RecentBlocks.Value + 1);
+                effectiveEnd = (ulong)currentChainTip;
+                effectiveStart = currentChainTip >= config.RecentBlocks.Value - 1
+                    ? (ulong)(currentChainTip - config.RecentBlocks.Value + 1)
+                    : 0;
 
-                if (effectiveStart == 0 && config.RecentBlocks.Value > currentChainTip + 1)
+                if (effectiveStart == 0 && config.RecentBlocks.Value > currentChainTip + 1L)
                 {
                     warnings.Add($"Requested {config.RecentBlocks.Value} blocks but only {currentChainTip + 1} available. Tracing all available blocks.");
                 }
@@ -153,15 +155,15 @@ public sealed record TraceConfiguration
         else if (config.StartBlock.HasValue)
         {
             // Start block only, use current chain tip as end
-            effectiveStart = config.StartBlock.Value;
-            effectiveEnd = currentChainTip;
+            effectiveStart = (ulong)config.StartBlock.Value;
+            effectiveEnd = (ulong)currentChainTip;
             warnings.Add($"Only StartBlock specified, using current chain tip ({currentChainTip}) as EndBlock.");
         }
         else if (config.EndBlock.HasValue)
         {
             // End block only, use 0 as start
             effectiveStart = 0;
-            effectiveEnd = config.EndBlock.Value;
+            effectiveEnd = (ulong)config.EndBlock.Value;
             warnings.Add("Only EndBlock specified, using 0 as StartBlock.");
         }
         else

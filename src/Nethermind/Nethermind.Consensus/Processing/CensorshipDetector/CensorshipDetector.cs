@@ -19,14 +19,14 @@ namespace Nethermind.Consensus.Processing.CensorshipDetector;
 public interface ICensorshipDetector
 {
     IEnumerable<BlockNumberHash> GetCensoredBlocks();
-    bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash);
+    bool BlockPotentiallyCensored(ulong blockNumber, ValueHash256 blockHash);
 }
 
 public class NoopCensorshipDetector : ICensorshipDetector
 {
     public IEnumerable<BlockNumberHash> GetCensoredBlocks() => [];
 
-    public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => false;
+    public bool BlockPotentiallyCensored(ulong blockNumber, ValueHash256 blockHash) => false;
 }
 
 public class CensorshipDetector : IDisposable, ICensorshipDetector
@@ -189,6 +189,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                 if (isCensored)
                 {
                     Metrics.NumberOfPotentiallyCensoredBlocks++;
+                    // Safe cast: block numbers fit well within long range for any realistic chain
                     Metrics.LastPotentiallyCensoredBlockNumber = block.Number;
                     DetectMultiBlockCensorship(blockNumberHash, blockCensorshipInfo);
                 }
@@ -212,6 +213,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         {
             _censoredBlocks.Add(block);
             Metrics.NumberOfCensoredBlocks++;
+            // Safe cast: block numbers fit well within long range for any realistic chain
             Metrics.LastCensoredBlockNumber = block.Number;
             if (_logger.IsInfo) _logger.Info($"Censorship detected for block {block.Number} with hash {block.Hash!}");
         }
@@ -221,7 +223,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             // Censorship is detected if potential censorship is flagged for the last _blockCensorshipThreshold blocks including the latest.
             if (block.Number >= _blockCensorshipThreshold)
             {
-                long blockNumber = block.Number - 1;
+                ulong blockNumber = block.Number - 1;
                 ValueHash256 parentHash = blockCensorshipInfo.ParentHash!.Value;
                 for (int i = 1; i < _blockCensorshipThreshold; i++)
                 {
@@ -245,14 +247,14 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
 
     public IEnumerable<BlockNumberHash> GetCensoredBlocks() => _censoredBlocks;
 
-    public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => _potentiallyCensoredBlocks.Contains(new BlockNumberHash(blockNumber, blockHash));
+    public bool BlockPotentiallyCensored(ulong blockNumber, ValueHash256 blockHash) => _potentiallyCensoredBlocks.Contains(new BlockNumberHash(blockNumber, blockHash));
 
     public void Dispose() => _blockProcessor.BlockProcessing -= OnBlockProcessing;
 }
 
 public readonly record struct BlockCensorshipInfo(bool IsCensored, ValueHash256? ParentHash);
 
-public readonly record struct BlockNumberHash(long Number, ValueHash256 Hash) : IEquatable<BlockNumberHash>
+public readonly record struct BlockNumberHash(ulong Number, ValueHash256 Hash) : IEquatable<BlockNumberHash>
 {
     public BlockNumberHash(Block block) : this(block.Number, block.Hash ?? block.CalculateHash()) { }
 }

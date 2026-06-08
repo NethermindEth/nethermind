@@ -12,7 +12,7 @@ namespace Nethermind.State.Flat;
 public sealed class CompactionSchedule : ICompactionSchedule
 {
     private readonly int _compactSize;
-    private readonly long _offset;
+    private readonly ulong _offset;
 
     public CompactionSchedule(
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
@@ -28,30 +28,59 @@ public sealed class CompactionSchedule : ICompactionSchedule
         _offset = ResolveOffset(metadataDb, config, logger);
     }
 
-    public long Offset => _offset;
+    // Changed from long → ulong to match the backing field type.
+    // Callers that previously compared this to a long block-number should
+    // now compare against a ulong block-number (BlockHeader.Number is ulong).
+    public ulong Offset => _offset;
 
-    public int GetCompactSize(long blockNumber)
+    public int GetCompactSize(ulong blockNumber)
     {
         if (_compactSize <= 1 || blockNumber == 0) return 1;
-        long shifted = blockNumber + _offset;
-        return (int)Math.Min(shifted & -shifted, _compactSize);
+        ulong shifted = blockNumber + _offset;
+
+        // C# has no unary minus for ulong, so we use the two's-complement
+        // identity  x & -x  ≡  x & (~x + 1)  to isolate the lowest set bit.
+        // No overflow risk: if shifted == 0 the guard above already returned.
+        ulong lowestBit = shifted & (~shifted + 1UL);
+
+        // Cast to int is safe: _compactSize is a power-of-2 int, so
+        // Math.Min can never return a value larger than int.MaxValue.
+        return (int)Math.Min(lowestBit, (ulong)_compactSize);
     }
 
-    public long NextFullCompactionAfter(long from)
+    // Changed return type from long → ulong.
+    // The sentinel "no compaction needed" value is now ulong.MaxValue instead
+    // of long.MaxValue; callers should be updated accordingly.
+    public ulong NextFullCompactionAfter(ulong from)
     {
-        if (_compactSize <= 1) return long.MaxValue;
-        long mod = (from + _offset) % _compactSize;
-        long distance = mod == 0 ? _compactSize : _compactSize - mod;
+        if (_compactSize <= 1) return ulong.MaxValue;
+
+        if (from == ulong.MaxValue)
+        {
+            long fromSigned = -1;
+            long offsetSigned = (long)_offset;
+            long sizeSigned = (long)_compactSize;
+            long modSigned = (fromSigned + offsetSigned) % sizeSigned;
+            long distanceSigned = modSigned == 0 ? sizeSigned : sizeSigned - modSigned;
+            return (ulong)(fromSigned + distanceSigned);
+        }
+
+        ulong size = (ulong)_compactSize;          // _compactSize is a small power-of-2, always fits
+        ulong mod = (from + _offset) % size;      // all operands are ulong — no ambiguity
+        ulong distance = mod == 0 ? size : size - mod;
         return from + distance;
     }
 
-    private long ResolveOffset(IDb metadataDb, IFlatDbConfig config, ILogger logger)
+    // Changed return type from long → ulong so that _offset can be assigned
+    // without a cast.  The on-disk RLP format is still encoded as long for
+    // backward-compatibility with existing databases.
+    private ulong ResolveOffset(IDb metadataDb, IFlatDbConfig config, ILogger logger)
     {
         if (_compactSize <= 1) return 0;
 
         if (config.RegenerateCompactionOffset)
         {
-            long regenerated = GenerateAndPersist(metadataDb);
+            ulong regenerated = GenerateAndPersist(metadataDb);
             if (logger.IsInfo) logger.Info($"Regenerated FlatDb compaction offset {regenerated} (RegenerateCompactionOffset=true)");
             return regenerated;
         }
@@ -59,11 +88,13 @@ public sealed class CompactionSchedule : ICompactionSchedule
         byte[]? stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset);
         if (stored is null)
         {
-            long generated = GenerateAndPersist(metadataDb);
+            ulong generated = GenerateAndPersist(metadataDb);
             if (logger.IsInfo) logger.Info($"Generated new FlatDb compaction offset {generated}");
             return generated;
         }
 
+        // The persisted value was written as a long (see GenerateAndPersist).
+        // Decode it as long first so we can detect corruption (negative values).
         long decoded = stored.AsRlpValueContext().DecodeLong();
         if (decoded < 0)
         {
@@ -72,13 +103,20 @@ public sealed class CompactionSchedule : ICompactionSchedule
         }
 
         if (logger.IsInfo) logger.Info($"Loaded FlatDb compaction offset {decoded}");
-        return decoded;
+        // Safe cast: we verified decoded >= 0 immediately above.
+        return (ulong)decoded;
     }
 
-    private long GenerateAndPersist(IDb metadataDb)
+    private ulong GenerateAndPersist(IDb metadataDb)
     {
+        // Generate in the range [0, int.MaxValue) so the value fits in a
+        // non-negative long AND the resulting ulong is well within range.
         long offset = Random.Shared.NextInt64(0, int.MaxValue);
+
+        // Keep the on-disk encoding as long (RLP) for database compatibility.
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset).Bytes);
-        return offset;
+
+        // Safe cast: NextInt64(0, int.MaxValue) is always in [0, 2^31 − 1].
+        return (ulong)offset;
     }
 }

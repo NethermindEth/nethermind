@@ -55,9 +55,9 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     protected IMasternodeVotingContract VotingContract => _votingContract;
 
     // Explicit interface implementation to return base Snapshot type
-    Snapshot? ISnapshotManager.GetSnapshotByGapNumber(long gapNumber) => GetSnapshotByGapNumber(gapNumber);
+    Snapshot? ISnapshotManager.GetSnapshotByGapNumber(ulong gapNumber) => GetSnapshotByGapNumber(gapNumber);
 
-    Snapshot? ISnapshotManager.GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec) => GetSnapshotByBlockNumber(blockNumber, spec);
+    Snapshot? ISnapshotManager.GetSnapshotByBlockNumber(ulong blockNumber, IXdcReleaseSpec spec) => GetSnapshotByBlockNumber(blockNumber, spec);
 
     void ISnapshotManager.StoreSnapshot(Snapshot snapshot)
     {
@@ -71,7 +71,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         }
     }
 
-    public TSnapshot? GetSnapshotByGapNumber(long gapNumber)
+    public TSnapshot? GetSnapshotByGapNumber(ulong gapNumber)
     {
         if (_blockTree.FindHeader(gapNumber) is not XdcBlockHeader gapBlockHeader)
             return null;
@@ -103,9 +103,10 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         return snapshot;
     }
 
-    public TSnapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
+    public TSnapshot? GetSnapshotByBlockNumber(ulong blockNumber, IXdcReleaseSpec spec)
     {
-        long gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+        ulong epochBase = blockNumber - blockNumber % spec.EpochLength;
+        ulong gapBlockNum = epochBase >= spec.Gap ? epochBase - spec.Gap : 0UL;
         return GetSnapshotByGapNumber(gapBlockNum);
     }
 

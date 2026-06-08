@@ -36,16 +36,16 @@ public class BloomStorageBenchmark
                 {
                     Bloom bloom = new();
                     bloom.Set(i % Bloom.BitLength);
-                    storage.Store(i, bloom);
+                    storage.Store((ulong)i, bloom);
                 });
 
-            IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
+            IBloomEnumeration blooms = storage.GetBlooms(0, (ulong)maxBlock);
 
             int i = 0;
             foreach (Bloom _ in blooms)
             {
                 i++;
-                blooms.TryGetBlockNumber(out long _);
+                blooms.TryGetBlockNumber(out ulong _);
             }
 
             return i;

@@ -10,9 +10,9 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class FastBlocksAllocationStrategy(TransferSpeedType speedType, long? minNumber, bool priority) : IPeerAllocationStrategy
+    public class FastBlocksAllocationStrategy(TransferSpeedType speedType, ulong? minNumber, bool priority) : IPeerAllocationStrategy
     {
-        private readonly long? _minNumber = minNumber;
+        private readonly ulong? _minNumber = minNumber;
         private readonly bool _priority = priority;
         private readonly IPeerAllocationStrategy _slowest = new BySpeedStrategy(speedType, false);
         private readonly IPeerAllocationStrategy _fastest = new BySpeedStrategy(speedType, true);

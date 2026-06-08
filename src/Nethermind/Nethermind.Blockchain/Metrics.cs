@@ -51,11 +51,11 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
-    public static long GasUsed { get; set; }
+    public static ulong GasUsed { get; set; }
 
     [GaugeMetric]
     [Description("Gas Limit for processed blocks")]
-    public static long GasLimit { get; set; }
+    public static ulong GasLimit { get; set; }
 
     [GaugeMetric]
     [Description("Total difficulty on the chain")]
@@ -83,7 +83,7 @@ public static class Metrics
     [GaugeMetric]
     [Description("The estimated highest block available.")]
     [DataMember(Name = "ethereum_best_known_block_number")]
-    public static long BestKnownBlockNumber { get; set; }
+    public static ulong BestKnownBlockNumber { get; set; }
 
     [GaugeMetric]
     [Description("Number of invalid blocks.")]

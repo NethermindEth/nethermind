@@ -27,7 +27,7 @@ public class BasicTestBlockchain : TestBlockchain
 
     public async Task BuildSomeBlocks(int numOfBlocks)
     {
-        UInt256 nonce = WorldStateManager.GlobalStateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
+        ulong nonce = (ulong)WorldStateManager.GlobalStateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
         for (int i = 0; i < numOfBlocks; i++)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(BlockTree.Head!.Header);

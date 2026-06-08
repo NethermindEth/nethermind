@@ -77,11 +77,11 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
         length += EncodeLong(stream, item.Stats.ContractsWithStorage);
         length += EncodeLong(stream, item.Stats.EmptyAccounts);
 
-        length += EncodeLong(stream, item.BlockNumber);
+        length += EncodeULong(stream, item.BlockNumber);
         stream?.Encode(item.StateRoot);
         length += Rlp.LengthOf(item.StateRoot);
         length += EncodeInt(stream, item.DiffsSinceBaseline);
-        length += EncodeLong(stream, item.ScanBlockNumber);
+        length += EncodeULong(stream, item.ScanBlockNumber);
 
         // Depth stats: present only if seeded. Stored as a leading marker long
         // (1 = present, 0 = absent) followed by 146 longs (9×16 + 2 scalars)
@@ -126,6 +126,8 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
         stream?.Encode(value);
         return Rlp.LengthOf(value);
     }
+
+    private static int EncodeULong(RlpStream? stream, ulong value) => EncodeLong(stream, (long)value);
 
     private static int EncodeInt(RlpStream? stream, int value)
     {
@@ -191,10 +193,10 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
             ContractsWithStorage: ctx.DecodeLong(),
             EmptyAccounts: ctx.DecodeLong());
 
-        long blockNumber = ctx.DecodeLong();
+        ulong blockNumber = ctx.DecodeULong();
         Hash256 stateRoot = ctx.DecodeKeccak()!;
         int diffsSinceBaseline = ctx.DecodeInt();
-        long scanBlockNumber = ctx.DecodeLong();
+        ulong scanBlockNumber = ctx.DecodeULong();
 
         // Depth stats: marker long followed by 146 longs when present. The
         // decoder always materializes an instance — an unseeded one when the

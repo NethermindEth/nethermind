@@ -40,7 +40,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => baseScope.StartWriteBatch(estimatedAccountNum);
 
-        public void Commit(long blockNumber)
+        public void Commit(ulong blockNumber)
         {
             long start = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);

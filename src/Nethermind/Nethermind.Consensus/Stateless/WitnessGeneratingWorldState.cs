@@ -215,13 +215,13 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         inner.DeleteAccount(address);
     }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordEmptySlots(address);
         inner.CreateAccount(address, in balance, in nonce);
     }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordEmptySlots(address);
         inner.CreateAccountIfNotExists(address, in balance, in nonce);
@@ -257,19 +257,19 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         inner.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
         RecordEmptySlots(address);
         inner.IncrementNonce(address, delta, out oldNonce);
     }
 
-    public void DecrementNonce(Address address, UInt256 delta)
+    public void DecrementNonce(Address address, ulong delta)
     {
         RecordEmptySlots(address);
         inner.DecrementNonce(address, delta);
     }
 
-    public void SetNonce(Address address, in UInt256 nonce)
+    public void SetNonce(Address address, in ulong nonce)
     {
         RecordEmptySlots(address);
         inner.SetNonce(address, nonce);
@@ -281,7 +281,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) =>
         inner.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
-    public void CommitTree(long blockNumber) => inner.CommitTree(blockNumber);
+    public void CommitTree(ulong blockNumber) => inner.CommitTree(blockNumber);
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => inner.GetAccountChanges();
 

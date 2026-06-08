@@ -18,7 +18,7 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder() => TestObjectInternal = new T
         {
             GasPrice = 1,
-            GasLimit = Transaction.BaseTxGasCost,
+            GasLimit = Transaction.BaseTxGasCost, // BaseTxGasCost must also be ulong after broader migration
             To = Address.Zero,
             Nonce = 0,
             Value = 1,
@@ -26,7 +26,8 @@ namespace Nethermind.Core.Test.Builders
             Timestamp = 0,
         };
 
-        public TransactionBuilder<T> WithNonce(UInt256 nonce)
+        // Nonce is ulong — nonces are non-negative and fit well within ulong range
+        public TransactionBuilder<T> WithNonce(ulong nonce)
         {
             TestObjectInternal.Nonce = nonce;
             return this;
@@ -77,7 +78,8 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithGasLimit(long gasLimit)
+        // GasLimit is ulong — gas limits are never negative
+        public TransactionBuilder<T> WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;
             return this;

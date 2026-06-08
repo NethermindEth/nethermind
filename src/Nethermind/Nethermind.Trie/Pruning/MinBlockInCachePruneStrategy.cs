@@ -9,9 +9,9 @@ public class MinBlockInCachePruneStrategy(IPruningStrategy baseStrategy, long mi
 
     public bool ShouldPruneDirtyNode(TrieStoreState state)
     {
-        long reorgBoundary = state.LatestCommittedBlock - pruneBoundary;
+        ulong reorgBoundary = state.LatestCommittedBlock - (ulong)pruneBoundary;
         // Never persist snapshot if too little block in cache. Prevent taking snapshot too often.
-        if (reorgBoundary - state.LastPersistedBlock < minBlockFromPersisted) return false;
+        if (reorgBoundary - state.LastPersistedBlock < (ulong)minBlockFromPersisted) return false;
         return baseStrategy.ShouldPruneDirtyNode(state);
     }
 

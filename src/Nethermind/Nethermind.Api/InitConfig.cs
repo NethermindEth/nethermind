@@ -35,7 +35,7 @@ namespace Nethermind.Api
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
         public INodeStorage.KeyScheme StateDbKeyScheme { get; set; } = INodeStorage.KeyScheme.Current;
-        public long? ExitOnBlockNumber { get; set; } = null;
+        public ulong? ExitOnBlockNumber { get; set; } = null;
         public bool ExitOnInvalidBlock { get; set; } = false;
         public int BackgroundTaskConcurrency { get; set; } = 2;
         public int BackgroundTaskMaxNumber { get; set; } = 2048;

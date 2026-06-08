@@ -46,13 +46,13 @@ public sealed class EraExporter(
     private const int ProgressLogInterval = 10000;
     private const int RetryDelayMs = 100;
 
-    public Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default)
+    public Task Export(string destinationPath, ulong from, ulong to, CancellationToken cancellation = default)
     {
         if (fileSystem.File.Exists(destinationPath))
             throw new ArgumentException("Destination already exists as a file.", nameof(destinationPath));
-        if (to == 0) to = blockTree.Head?.Number ?? 0;
-        if (to > (blockTree.Head?.Number ?? 0))
-            throw new ArgumentException($"Cannot export beyond head block {blockTree.Head?.Number ?? 0}.");
+        if (to == 0) to = blockTree.Head?.Number ?? 0UL;
+        if (to > (blockTree.Head?.Number ?? 0UL))
+            throw new ArgumentException($"Cannot export beyond head block {blockTree.Head?.Number ?? 0UL}.");
         if (from > to)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to}).");
 
@@ -62,7 +62,7 @@ public sealed class EraExporter(
         return DoExport(destinationPath, from, to, cancellation);
     }
 
-    private async Task DoExport(string destinationPath, long from, long to, CancellationToken cancellation)
+    private async Task DoExport(string destinationPath, ulong from, ulong to, CancellationToken cancellation)
     {
         int concurrency = CalculateConcurrency(eraConfig.Concurrency);
         if (_logger.IsInfo) _logger.Info($"Exporting EraE blocks {from}–{to} to {destinationPath} (concurrency={concurrency})");
@@ -74,12 +74,12 @@ public sealed class EraExporter(
         progress.Reset(0, to - from + 1);
         int totalProcessed = 0;
 
-        long startEpoch = from / _eraSize;
-        long endEpoch = to / _eraSize;
-        long epochCount = endEpoch - startEpoch + 1;
+        ulong startEpoch = from / (ulong)_eraSize;
+        ulong endEpoch = to / (ulong)_eraSize;
+        ulong epochCount = endEpoch - startEpoch + 1;
 
         using ArrayPoolList<long> epochIdxs = new((int)epochCount);
-        for (long i = 0; i < epochCount; i++) epochIdxs.Add(i);
+        for (long i = 0; i < (long)epochCount; i++) epochIdxs.Add(i);
 
         using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
@@ -115,17 +115,17 @@ public sealed class EraExporter(
         async Task WriteEpoch(long epochIdx, CancellationToken cancel)
         {
             int idx = (int)epochIdx;
-            long epoch = startEpoch + epochIdx;
+            ulong epoch = startEpoch + (ulong)epochIdx;
             // Each epoch covers [epoch * eraSize, epoch * eraSize + eraSize - 1].
             // Clamp to [from, to] to handle partial first and last epochs.
-            long epochBlockStart = epoch * _eraSize;
-            long writeFrom = Math.Max(epochBlockStart, from);
-            long writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
+            ulong epochBlockStart = epoch * (ulong)_eraSize;
+            ulong writeFrom = Math.Max(epochBlockStart, from);
+            ulong writeTo = Math.Min(epochBlockStart + (ulong)_eraSize - 1, to);
 
             if (TrySkipExistingEpoch(destinationPath, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
                 return;
 
-            string placeholderPath = Path.Combine(destinationPath, EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
+            string placeholderPath = Path.Combine(destinationPath, EraPathUtils.Filename(_networkName, (long)epoch, Keccak.Zero));
 
             ValueHash256 accumulator;
             ValueHash256 sha256;
@@ -133,7 +133,7 @@ public sealed class EraExporter(
 
             using (EraWriter eraWriter = new(fileSystem.File.Create(placeholderPath), specProvider, beaconRootsProvider))
             {
-                for (long blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
+                for (ulong blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
                 {
                     Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
@@ -163,7 +163,7 @@ public sealed class EraExporter(
 
                     if (Interlocked.Increment(ref totalProcessed) % ProgressLogInterval == 0)
                     {
-                        progress.Update(totalProcessed);
+                        progress.Update((ulong)totalProcessed);
                         progress.LogProgress();
                     }
                 }
@@ -176,7 +176,7 @@ public sealed class EraExporter(
             accumulators[idx] = accumulator;
             checksums[idx] = sha256;
             // Filename uses the last block hash as the epoch identifier — same convention as go-ethereum execdb.
-            string finalName = EraPathUtils.Filename(_networkName, epoch, lastBlockHash);
+            string finalName = EraPathUtils.Filename(_networkName, (long)epoch, lastBlockHash);
             fileNames[idx] = finalName;
 
             string finalPath = Path.Combine(destinationPath, finalName);
@@ -216,10 +216,10 @@ public sealed class EraExporter(
 
     private bool TrySkipExistingEpoch(
         string destinationPath,
-        long epoch,
+        ulong epoch,
         int idx,
-        long writeFrom,
-        long writeTo,
+        ulong writeFrom,
+        ulong writeTo,
         ArrayPoolList<ValueHash256> accumulators,
         ArrayPoolList<ValueHash256> checksums,
         ArrayPoolList<string> fileNames,

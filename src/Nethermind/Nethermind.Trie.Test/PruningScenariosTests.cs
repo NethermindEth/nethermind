@@ -227,7 +227,7 @@ namespace Nethermind.Trie.Test
                 _pruningStrategy = pruningStrategy;
 
                 _pruningConfig = pruningConfig ?? new PruningConfig() { TrackPastKeys = false };
-                _finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
+                _finalizedStateProvider = new TestFinalizedStateProvider((ulong)_pruningConfig.PruningBoundary);
 
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _finalizedStateProvider, _pruningConfig, _logManager);
                 _finalizedStateProvider.TrieStore = _trieStore;
@@ -430,7 +430,7 @@ namespace Nethermind.Trie.Test
             {
                 _worldStateCloser!.Dispose();
                 _trieStore.Dispose();
-                TestFinalizedStateProvider finalizedStateProvider = new(_pruningConfig.PruningBoundary);
+                TestFinalizedStateProvider finalizedStateProvider = new((ulong)_pruningConfig.PruningBoundary);
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(
                     new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
@@ -1059,7 +1059,7 @@ namespace Nethermind.Trie.Test
         [NonParallelizable]
         public void When_Reorg_OldValueIsNotRemoved()
         {
-            long previousMaxDepth = Reorganization.MaxDepth;
+            ulong previousMaxDepth = Reorganization.MaxDepth;
             Reorganization.MaxDepth = 2;
 
             try

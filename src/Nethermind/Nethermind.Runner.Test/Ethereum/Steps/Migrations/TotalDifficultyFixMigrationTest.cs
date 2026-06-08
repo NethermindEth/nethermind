@@ -27,13 +27,13 @@ public class TotalDifficultyFixMigrationTest
     [TestCase(4, 1, -1)]
     public async Task Should_fix_td_when_broken(long? lastBlock, long brokenLevel, long expectedTd)
     {
-        long numberOfBlocks = 10;
-        long firstBlock = 3;
+        ulong numberOfBlocks = 10;
+        ulong firstBlock = 3;
         // Setup headers
         BlockHeader[] headers = new BlockHeader[numberOfBlocks];
         Dictionary<Hash256, BlockHeader> hashesToHeaders = [];
         headers[0] = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
-        for (int i = 1; i < numberOfBlocks; ++i)
+        for (ulong i = 1; i < numberOfBlocks; ++i)
         {
             headers[i] = Core.Test.Builders.Build.A.BlockHeader.WithParent(headers[i - 1]).WithDifficulty((UInt256)i + 1).TestObject;
             hashesToHeaders.Add(headers[i].Hash!, headers[i]);
@@ -41,7 +41,7 @@ public class TotalDifficultyFixMigrationTest
 
         // Setup db
         ChainLevelInfo[] levels = new ChainLevelInfo[numberOfBlocks];
-        for (int i = 0; i < numberOfBlocks; ++i)
+        for (ulong i = 0; i < numberOfBlocks; ++i)
         {
             levels[i] = new ChainLevelInfo(true, new BlockInfo(headers[i].Hash!, (UInt256)((i + 1) * (i + 2)) / 2));
         }
@@ -54,29 +54,41 @@ public class TotalDifficultyFixMigrationTest
         blockTree.BestKnownNumber.Returns(numberOfBlocks);
 
         IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
-        chainLevelInfoRepository.LoadLevel(Arg.Any<long>()).Returns(info => levels[(long)info[0]]);
+        chainLevelInfoRepository.LoadLevel(Arg.Any<ulong>()).Returns(info => levels[(ulong)info[0]]);
         chainLevelInfoRepository
-            .When(x => x.PersistLevel(Arg.Any<long>(), Arg.Any<ChainLevelInfo>()))
-            .Do(x => persistedLevels[(long)x[0]] = (ChainLevelInfo)x[1]);
+            .When(x => x.PersistLevel(Arg.Any<ulong>(), Arg.Any<ChainLevelInfo>()))
+            .Do(x => persistedLevels[(ulong)x[0]] = (ChainLevelInfo)x[1]);
 
         SyncConfig syncConfig = new()
         {
             FixTotalDifficulty = true,
             FixTotalDifficultyStartingBlock = firstBlock,
-            FixTotalDifficultyLastBlock = lastBlock
+            // lastBlock is long? from TestCase; null means "no upper bound", negative means sentinel for "broken level out of range"
+            // Safe cast: test cases only pass non-negative values or null here when meaningful
+            FixTotalDifficultyLastBlock = lastBlock.HasValue ? (ulong?)lastBlock.Value : null
         };
         TotalDifficultyFixMigration migration = new(chainLevelInfoRepository, blockTree, syncConfig, new TestLogManager());
 
-        // Break level
-        levels[brokenLevel].BlockInfos[0].TotalDifficulty = 9999;
+        // Break level — brokenLevel is long from TestCase; safe to cast since array is sized by ulong numberOfBlocks
+        // and brokenLevel is always within [0, numberOfBlocks) in valid test cases
+        ulong brokenLevelUlong = (ulong)brokenLevel;
+        levels[brokenLevelUlong].BlockInfos[0].TotalDifficulty = 9999;
 
         // Run
         await migration.Run(CancellationToken.None);
 
         // Check level fixed
-        for (long i = 0; i < numberOfBlocks; ++i)
+        for (ulong i = 0; i < numberOfBlocks; ++i)
         {
-            if (i == brokenLevel && firstBlock <= brokenLevel && brokenLevel <= (lastBlock ?? numberOfBlocks))
+            // brokenLevel may be a sentinel negative value in some test cases (meaning "not in range"),
+            // so compare as long to handle that gracefully
+            ulong? lastBlockUlong = lastBlock.HasValue ? (ulong?)lastBlock.Value : null;
+            bool isBroken = brokenLevel >= 0
+                && i == brokenLevelUlong
+                && firstBlock <= brokenLevelUlong
+                && brokenLevelUlong <= (lastBlockUlong ?? numberOfBlocks);
+
+            if (isBroken)
             {
                 Assert.That(persistedLevels[i].BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)expectedTd));
             }
@@ -127,14 +139,14 @@ public class TotalDifficultyFixMigrationTest
         // Setup mocks
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindHeader(Arg.Any<Hash256>()).Returns(info => hashesToHeaders[(Hash256)info[0]]);
-        blockTree.BestKnownNumber.Returns(5);
+        blockTree.BestKnownNumber.Returns(5UL);
 
         ChainLevelInfo[] persistedLevels = new ChainLevelInfo[5];
         IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
-        chainLevelInfoRepository.LoadLevel(Arg.Any<long>()).Returns(info => levels[(long)info[0]]);
+        chainLevelInfoRepository.LoadLevel(Arg.Any<ulong>()).Returns(info => levels[(ulong)info[0]]);
         chainLevelInfoRepository
-            .When(x => x.PersistLevel(Arg.Any<long>(), Arg.Any<ChainLevelInfo>()))
-            .Do(x => persistedLevels[(long)x[0]] = (ChainLevelInfo)x[1]);
+            .When(x => x.PersistLevel(Arg.Any<ulong>(), Arg.Any<ChainLevelInfo>()))
+            .Do(x => persistedLevels[(ulong)x[0]] = (ChainLevelInfo)x[1]);
 
         SyncConfig syncConfig = new()
         {

@@ -31,8 +31,8 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
     {
         Current = new()
         {
-            FromBlock = storage.MinBlockNumber,
-            ToBlock = storage.MaxBlockNumber
+            FromBlock = (ulong?)storage.MinBlockNumber,
+            ToBlock = (ulong?)storage.MaxBlockNumber
         },
         Target = new()
         {
@@ -46,5 +46,5 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
     });
 
     private long? GetBlockNumber(BlockParameter parameter) =>
-        parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number;
+        (long?)(parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number);
 }

@@ -22,9 +22,9 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
-        Block block2 = XdcBlock(2, block1.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
+        Block block2 = XdcBlock(2UL, block1.Hash!);
 
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
@@ -41,9 +41,9 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
-        Block block2 = XdcBlock(2, block1.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
+        Block block2 = XdcBlock(2UL, block1.Hash!);
 
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
@@ -52,7 +52,7 @@ internal class XdcBlockTreeTests
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
-        Block unknown = XdcBlock(1, genesis.Hash!, nonce: 1);
+        Block unknown = XdcBlock(1UL, genesis.Hash!, nonce: 1UL);
         Assert.That(blockTree.SuggestBlock(unknown), Is.EqualTo(AddBlockResult.InvalidBlock));
     }
 
@@ -61,10 +61,10 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
-        Block block2 = XdcBlock(2, block1.Hash!);
-        Block block3 = XdcBlock(3, block2.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
+        Block block2 = XdcBlock(2UL, block1.Hash!);
+        Block block3 = XdcBlock(3UL, block2.Hash!);
 
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
@@ -74,7 +74,7 @@ internal class XdcBlockTreeTests
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
-        Block block3Alt = XdcBlock(3, block2.Hash!, nonce: 1);
+        Block block3Alt = XdcBlock(3UL, block2.Hash!, nonce: 1UL);
         Assert.That(blockTree.SuggestBlock(block3Alt), Is.EqualTo(AddBlockResult.Added));
     }
 
@@ -83,14 +83,14 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
-        Block block2 = XdcBlock(2, block1.Hash!);
-        Block block3 = XdcBlock(3, block2.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
+        Block block2 = XdcBlock(2UL, block1.Hash!);
+        Block block3 = XdcBlock(3UL, block2.Hash!);
 
         // block2Fork forks at height 2 — same height as the finalized block
-        Block block2Fork = XdcBlock(2, block1.Hash!, nonce: 1);
-        Block block3Fork = XdcBlock(3, block2Fork.Hash!);
+        Block block2Fork = XdcBlock(2UL, block1.Hash!, nonce: 1UL);
+        Block block3Fork = XdcBlock(3UL, block2Fork.Hash!);
 
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
@@ -109,19 +109,19 @@ internal class XdcBlockTreeTests
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
-        Block genesis = XdcBlock(0, Keccak.Zero);
-        Block block1 = XdcBlock(1, genesis.Hash!);
+        Block genesis = XdcBlock(0UL, Keccak.Zero);
+        Block block1 = XdcBlock(1UL, genesis.Hash!);
         blockTree.SuggestBlock(genesis);
         blockTree.SuggestBlock(block1);
         blockTree.UpdateHeadBlock(block1.Hash!);
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block1.Hash!, 1, block1.Number));
 
-        Block disconnected = XdcBlock(2, Keccak.Compute("other"));
+        Block disconnected = XdcBlock(2UL, Keccak.Compute("other"));
         Assert.That(blockTree.SuggestBlock(disconnected), Is.EqualTo(AddBlockResult.UnknownParent));
     }
 
-    private static Block XdcBlock(long number, Hash256 parentHash, ulong nonce = 0)
+    private static Block XdcBlock(ulong number, Hash256 parentHash, ulong nonce = 0)
     {
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithNumber(number)

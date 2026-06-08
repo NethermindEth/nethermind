@@ -20,11 +20,11 @@ public class GethTxTraceEntry
     [JsonPropertyName("op")]
     public string? Opcode { get; set; }
 
-    [JsonConverter(typeof(LongRawJsonConverter))]
-    public long Gas { get; set; }
+    [JsonConverter(typeof(ULongRawJsonConverter))]
+    public ulong Gas { get; set; }
 
-    [JsonConverter(typeof(LongRawJsonConverter))]
-    public long GasCost { get; set; }
+    [JsonConverter(typeof(ULongRawJsonConverter))]
+    public ulong GasCost { get; set; }
 
     public int Depth { get; set; }
 

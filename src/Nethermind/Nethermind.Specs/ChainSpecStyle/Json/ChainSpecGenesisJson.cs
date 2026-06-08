@@ -17,7 +17,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong Timestamp { get; set; }
         public Hash256 ParentHash { get; set; }
         public byte[] ExtraData { get; set; }
-        public UInt256 GasLimit { get; set; }
+        public ulong GasLimit { get; set; }
 
         public UInt256? BaseFeePerGas { get; set; }
 

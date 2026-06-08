@@ -25,7 +25,7 @@ public sealed class AdminEraService(
             return ResultWrapper<string>.Fail("An export job is already running.");
 
         _ = EraJobRunner.RunProtected(
-            ct => eraExporter.Export(destination, from, to, ct),
+            ct => eraExporter.Export(destination, (ulong)from, (ulong)to, ct),
             $"EraE export was cancelled. Archives in '{destination}' may be incomplete.",
             "EraE export error",
             _logger,
@@ -41,7 +41,7 @@ public sealed class AdminEraService(
             return ResultWrapper<string>.Fail("An import job is already running.");
 
         _ = EraJobRunner.RunProtected(
-            ct => eraImporter.Import(source, from, to, accumulatorFile, ct),
+            ct => eraImporter.Import(source, (ulong)from, (ulong)to, accumulatorFile, ct),
             $"EraE import was cancelled. State from '{source}' may be incomplete.",
             "EraE import error",
             _logger,

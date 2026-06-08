@@ -36,7 +36,7 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 MissingReceiptsFixVisitor visitor = new(
                     syncConfig.AncientReceiptsBarrierCalc,
-                    blockTree.Head?.Number - 2 ?? 0,
+                    blockTree.Head?.Number - 2 ?? 0UL,
                     receiptStorage,
                     logManager,
                     syncPeerPool,
@@ -60,8 +60,8 @@ namespace Nethermind.Init.Steps.Migrations
         }
 
         private class MissingReceiptsFixVisitor(
-            long startLevel,
-            long endLevel,
+            ulong startLevel,
+            ulong endLevel,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             ISyncPeerPool syncPeerPool,

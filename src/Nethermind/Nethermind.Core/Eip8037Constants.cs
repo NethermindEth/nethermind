@@ -5,8 +5,8 @@ namespace Nethermind.Core;
 
 public static class Eip8037Constants
 {
-    public const long SystemCallBaseGasLimit = 30_000_000L;
-    public const long SystemMaxSstoresPerCall = 16;
-    public const long SystemCallStateReservoir = GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall;
-    public const long SystemCallGasLimit = SystemCallBaseGasLimit + SystemCallStateReservoir;
+    public const ulong SystemCallBaseGasLimit = 30_000_000;
+    public const ulong SystemMaxSstoresPerCall = 16;
+    public const ulong SystemCallStateReservoir = GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall;
+    public const ulong SystemCallGasLimit = SystemCallBaseGasLimit + SystemCallStateReservoir;
 }

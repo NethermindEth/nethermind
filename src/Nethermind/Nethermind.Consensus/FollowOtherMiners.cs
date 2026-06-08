@@ -10,10 +10,10 @@ namespace Nethermind.Consensus
     {
         private readonly ISpecProvider _specProvider = specProvider;
 
-        public long GetGasLimit(BlockHeader parentHeader)
+        public ulong GetGasLimit(BlockHeader parentHeader)
         {
-            long gasLimit = parentHeader.GasLimit;
-            long newBlockNumber = parentHeader.Number + 1;
+            ulong gasLimit = parentHeader.GasLimit;
+            ulong newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
             gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);
             return gasLimit;

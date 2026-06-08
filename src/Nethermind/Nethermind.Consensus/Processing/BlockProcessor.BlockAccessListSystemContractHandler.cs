@@ -32,7 +32,7 @@ public partial class BlockProcessor
         public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
             => balManager.ApplyBlockhashStateChanges(blockHeader, spec);
 
-        public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber, IReleaseSpec spec)
+        public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, ulong requiredBlockNumber, IReleaseSpec spec)
             => blockHashStore.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
 
         public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)

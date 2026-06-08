@@ -162,7 +162,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
         ClearReadOnlyBundleCache();
-        ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
+        ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached((ulong)currentPersistedStateId.BlockNumber)); // Safe: PreGenesis (-1) is filtered above
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
@@ -330,7 +330,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (_logger.IsTrace) _logger.Trace($"Registering {startingBlock.BlockNumber} to {endBlock.BlockNumber}");
         StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
-        if (endBlock.BlockNumber <= persistedStateId.BlockNumber)
+        if (persistedStateId != StateId.PreGenesis && endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
             return;
@@ -417,7 +417,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId persistedState = _persistenceManager.FlushToPersistence();
 
         if (cancellationToken.IsCancellationRequested) return;
-        if (persistedState.BlockNumber < 0) return;
+        if (persistedState == StateId.PreGenesis) return;
 
         _snapshotRepository.RemoveStatesUntil(persistedState);
 

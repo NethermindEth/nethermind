@@ -93,13 +93,13 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
 
             if (pruningConfig.Mode.IsMemory())
             {
-                ulong totalWriteBufferMb = rocksDbConfig.WriteBufferNumber!.Value * rocksDbConfig.WriteBufferSize!.Value / (ulong)1.MB;
+                ulong totalWriteBufferMb = rocksDbConfig.WriteBufferNumber!.Value * rocksDbConfig.WriteBufferSize!.Value / 1UL.MB;
                 double minimumWriteBufferMb = 0.2 * pruningConfig.DirtyCacheMb;
                 if (totalWriteBufferMb < minimumWriteBufferMb)
                 {
                     ulong minimumWriteBufferSize = (ulong)Math.Ceiling((minimumWriteBufferMb * 1.MB) / rocksDbConfig.WriteBufferNumber!.Value);
 
-                    if (_logger.IsInfo) _logger.Info($"Adjust state DB write buffer size to {minimumWriteBufferSize / (ulong)1.MB} MB to account for pruning cache.");
+                    if (_logger.IsInfo) _logger.Info($"Adjust state DB write buffer size to {minimumWriteBufferSize / 1UL.MB} MB to account for pruning cache.");
 
                     rocksDbConfig = new AdjustedRocksdbConfig(
                         rocksDbConfig,

@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Data
         public long? TransactionIndex { get; set; }
         public Hash256 TransactionHash { get; set; }
         public Hash256 BlockHash { get; set; }
-        public long? BlockNumber { get; set; }
+        public ulong? BlockNumber { get; set; }
         public ulong? BlockTimestamp { get; set; }
         public Address Address { get; set; }
         public byte[] Data { get; set; }

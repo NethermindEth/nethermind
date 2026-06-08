@@ -21,42 +21,42 @@ namespace Nethermind.Blockchain.Test.Bloom;
 public class BloomStorageTests
 {
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(0, 0)]
-    [TestCase(1, 1)]
-    [TestCase(0, 10)]
-    [TestCase(10, 12)]
-    public void Empty_storage_does_not_contain_blocks(long from, long to)
+    [TestCase(0ul, 0ul)]
+    [TestCase(1ul, 1ul)]
+    [TestCase(0ul, 10ul)]
+    [TestCase(10ul, 12ul)]
+    public void Empty_storage_does_not_contain_blocks(ulong from, ulong to)
     {
         BloomStorage storage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         Assert.That(storage.ContainsRange(from, to), Is.False);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(0, 0, ExpectedResult = false)]
-    [TestCase(1, 1, ExpectedResult = true)]
-    [TestCase(0, 10, ExpectedResult = false)]
-    [TestCase(1, 10, ExpectedResult = true)]
-    [TestCase(10, 12, ExpectedResult = false)]
-    public bool Initialized_storage_contain_blocks_as_db(long from, long to)
+    [TestCase(0ul, 0ul, ExpectedResult = false)]
+    [TestCase(1ul, 1ul, ExpectedResult = true)]
+    [TestCase(0ul, 10ul, ExpectedResult = false)]
+    [TestCase(1ul, 10ul, ExpectedResult = true)]
+    [TestCase(10ul, 12ul, ExpectedResult = false)]
+    public bool Initialized_storage_contain_blocks_as_db(ulong from, ulong to)
     {
         MemDb memColumnsDb = new();
-        memColumnsDb.Set(BloomStorage.MinBlockNumberKey, 1L.ToBigEndianByteArrayWithoutLeadingZeros());
-        memColumnsDb.Set(BloomStorage.MaxBlockNumberKey, 11L.ToBigEndianByteArrayWithoutLeadingZeros());
+        memColumnsDb.Set(BloomStorage.MinBlockNumberKey, 1UL.ToBigEndianByteArrayWithoutLeadingZeros());
+        memColumnsDb.Set(BloomStorage.MaxBlockNumberKey, 11UL.ToBigEndianByteArrayWithoutLeadingZeros());
         BloomStorage storage = new(new BloomConfig(), memColumnsDb, new InMemoryDictionaryFileStoreFactory());
         return storage.ContainsRange(from, to);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(0, 0, ExpectedResult = false)]
-    [TestCase(1, 1, ExpectedResult = true)]
-    [TestCase(0, 10, ExpectedResult = false)]
-    [TestCase(1, 10, ExpectedResult = true)]
-    [TestCase(10, 12, ExpectedResult = false)]
-    public bool Contain_blocks_after_store(long from, long to)
+    [TestCase(0ul, 0ul, ExpectedResult = false)]
+    [TestCase(1ul, 1ul, ExpectedResult = true)]
+    [TestCase(0ul, 10ul, ExpectedResult = false)]
+    [TestCase(1ul, 10ul, ExpectedResult = true)]
+    [TestCase(10ul, 12ul, ExpectedResult = false)]
+    public bool Contain_blocks_after_store(ulong from, ulong to)
     {
         BloomStorage storage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
 
-        for (long i = 1; i < 11; i++)
+        for (ulong i = 1; i < 11; i++)
         {
             storage.Store(i, Core.Bloom.Empty);
         }
@@ -68,39 +68,39 @@ public class BloomStorageTests
     {
         get
         {
-            static IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int)expectedFound).Select(static i => (long)i);
+            static IEnumerable<ulong> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int)expectedFound).Select(static i => (ulong)i);
             int searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier * LevelMultiplier + LevelMultiplier * LevelMultiplier * LevelMultiplier;
 
             int bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
             int count = bucketItems * Buckets;
             int maxIndex = count - 1;
-            yield return new TestCaseData(0, maxIndex, false, Enumerable.Empty<long>(), Buckets)
+            yield return new TestCaseData(0UL, (ulong)maxIndex, false, Enumerable.Empty<ulong>(), Buckets)
                 .SetName("Returns_no_blocks_when_blooms_do_not_match");
-            yield return new TestCaseData(0, maxIndex, true, GetRange(count), Buckets * searchesPerBucket)
+            yield return new TestCaseData(0UL, (ulong)maxIndex, true, GetRange(count), Buckets * searchesPerBucket)
                 .SetName("Returns_all_blocks_when_all_blooms_match");
-            yield return new TestCaseData(5, 49, true, GetRange(45, 5), 4 + 45)
+            yield return new TestCaseData(5UL, 49UL, true, GetRange(45, 5), 4 + 45)
                 .SetName("Returns_range_after_level_one_lookup");
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1)
+            yield return new TestCaseData(0UL, (ulong)(LevelMultiplier * LevelMultiplier * LevelMultiplier - 1), true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier), searchesPerBucket - 1)
                 .SetName("Returns_single_bucket_without_highest_level_lookup");
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2)
+            yield return new TestCaseData(0UL, (ulong)(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2 - 1), true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 2), (searchesPerBucket - 1) * 2)
                 .SetName("Returns_two_buckets_without_highest_level_lookup");
-            yield return new TestCaseData(0, LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1, true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3)
+            yield return new TestCaseData(0UL, (ulong)(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3 - 1), true, GetRange(LevelMultiplier * LevelMultiplier * LevelMultiplier * 3), searchesPerBucket * 3)
                 .SetName("Returns_three_buckets_with_highest_level_lookup");
         }
     }
 
     [TestCaseSource(nameof(GetBloomsTestCases))]
-    public void Returns_proper_blooms_after_store(long from, long to, bool isMatch, IEnumerable<long> expectedBlocks, long expectedBloomsChecked)
+    public void Returns_proper_blooms_after_store(ulong from, ulong to, bool isMatch, IEnumerable<ulong> expectedBlocks, long expectedBloomsChecked)
     {
         BloomStorage storage = CreateBloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } });
         long bloomsChecked = 0;
 
         IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
-        IList<long> ranges = [];
+        IList<ulong> ranges = [];
         foreach (Core.Bloom unused in bloomEnumeration)
         {
             bloomsChecked++;
-            if (isMatch && bloomEnumeration.TryGetBlockNumber(out long blockNumber))
+            if (isMatch && bloomEnumeration.TryGetBlockNumber(out ulong blockNumber))
             {
                 ranges.Add(blockNumber);
             }
@@ -111,22 +111,22 @@ public class BloomStorageTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1, 10, new long[] { 4 }, new[] { 4 })]
-    [TestCase(0, 4, new long[] { 4 }, new[] { 4 })]
-    [TestCase(1, 10, new long[] { 1, 4, 6, 8 }, new[] { 4 })]
-    [TestCase(1, 10, new long[] { 4, 6, 8 }, new[] { 4, 4 })]
-    [TestCase(1, 10, new long[] { 4, 8, 16, 32 }, new[] { 4, 4 })]
-    [TestCase(1, 48, new long[] { 4, 8, 16, 32 }, new[] { 4, 4 })]
-    [TestCase(5, 60, new long[] { 4, 8, 49 }, new[] { 8, 3 })]
-    [TestCase(1, 120, new long[] { 4, 8, 64, 65 }, new[] { 4, 4, 4 })]
-    [TestCase(0, 120, new long[] { 0, 1, 2, 3, 5, 7, 11, 120 }, new[] { 9, 3 })]
-    public void Can_find_bloom_with_fromBlock_offset(long from, long to, long[] blocksSet, int[] levels)
+    [TestCase(1UL, 10UL, new ulong[] { 4 }, new[] { 4 })]
+    [TestCase(0UL, 4UL, new ulong[] { 4 }, new[] { 4 })]
+    [TestCase(1UL, 10UL, new ulong[] { 1, 4, 6, 8 }, new[] { 4 })]
+    [TestCase(1UL, 10UL, new ulong[] { 4, 6, 8 }, new[] { 4, 4 })]
+    [TestCase(1UL, 10UL, new ulong[] { 4, 8, 16, 32 }, new[] { 4, 4 })]
+    [TestCase(1UL, 48UL, new ulong[] { 4, 8, 16, 32 }, new[] { 4, 4 })]
+    [TestCase(5UL, 60UL, new ulong[] { 4, 8, 49 }, new[] { 8, 3 })]
+    [TestCase(1UL, 120UL, new ulong[] { 4, 8, 64, 65 }, new[] { 4, 4, 4 })]
+    [TestCase(0UL, 120UL, new ulong[] { 0, 1, 2, 3, 5, 7, 11, 120 }, new[] { 9, 3 })]
+    public void Can_find_bloom_with_fromBlock_offset(ulong from, ulong to, ulong[] blocksSet, int[] levels)
     {
         BloomStorage storage = CreateBloomStorage(new BloomConfig { IndexLevelBucketSizes = levels });
         Core.Bloom bloom = new();
         byte[] bytes = { 1, 2, 3 };
         bloom.Set(bytes);
-        foreach (long blockNumber in blocksSet)
+        foreach (ulong blockNumber in blocksSet)
         {
             if (blockNumber > storage.MaxBlockNumber + 1)
             {
@@ -136,16 +136,16 @@ public class BloomStorageTests
         }
 
         IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
-        IList<long> foundBlocks = new List<long>(blocksSet.Length);
+        IList<ulong> foundBlocks = new List<ulong>(blocksSet.Length);
         foreach (Core.Bloom b in bloomEnumeration)
         {
-            if (b.Matches(bytes) && bloomEnumeration.TryGetBlockNumber(out long block))
+            if (b.Matches(bytes) && bloomEnumeration.TryGetBlockNumber(out ulong block))
             {
                 foundBlocks.Add(block);
             }
         }
 
-        long[] expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
+        ulong[] expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
         TestContext.Out.WriteLine($"Expected found blocks: {string.Join(", ", expectedFoundBlocks)}");
         Assert.That(foundBlocks, Is.EqualTo(expectedFoundBlocks));
     }
@@ -158,7 +158,7 @@ public class BloomStorageTests
         BloomStorage storage = new(bloomConfig ?? new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         int bucketItems = storage.MaxBucketSize * Buckets;
 
-        for (long i = 0; i < bucketItems; i++)
+        for (ulong i = 0; i < (ulong)bucketItems; i++)
         {
             storage.Store(i, Core.Bloom.Empty);
         }
@@ -180,7 +180,7 @@ public class BloomStorageTests
             {
                 Core.Bloom bloom = new();
                 bloom.Set(i % Core.Bloom.BitLength);
-                storage.Store(i, bloom);
+                storage.Store((ulong)i, bloom);
             });
     });
 
@@ -192,12 +192,12 @@ public class BloomStorageTests
     [TestCase(ushort.MaxValue * 128 + 127, Explicit = true)]
     public void Can_safely_insert_in_batch(int maxBlock) => RunInsertAndVerify(maxBlock, (storage, count) =>
     {
-        using ArrayPoolList<(long, Core.Bloom)> bloomInsertions = new(count);
+        using ArrayPoolList<(ulong, Core.Bloom)> bloomInsertions = new(count);
         for (int i = 0; i < count; i++)
         {
             Core.Bloom bloom = new();
             bloom.Set(i % Core.Bloom.BitLength);
-            bloomInsertions.Add((i, bloom));
+            bloomInsertions.Add(((ulong)i, bloom));
         }
         storage.Store(bloomInsertions);
     });
@@ -214,14 +214,14 @@ public class BloomStorageTests
 
             insertAction(storage, maxBlock + 1);
 
-            IBloomEnumeration blooms = storage.GetBlooms(0, maxBlock);
+            IBloomEnumeration blooms = storage.GetBlooms(0, (ulong)maxBlock);
             int j = 0;
             foreach (Core.Bloom bloom in blooms)
             {
                 j++;
-                (long FromBlock, long ToBlock) = blooms.CurrentIndices;
+                (ulong FromBlock, ulong ToBlock) = blooms.CurrentIndices;
                 int fromBlock = (int)(FromBlock % Core.Bloom.BitLength);
-                int toBlock = (int)(Math.Min(ToBlock, maxBlock) % Core.Bloom.BitLength);
+                int toBlock = (int)(Math.Min(ToBlock, (ulong)maxBlock) % Core.Bloom.BitLength);
                 Core.Bloom expectedBloom = new();
                 for (int i = fromBlock; i <= toBlock; i++)
                 {

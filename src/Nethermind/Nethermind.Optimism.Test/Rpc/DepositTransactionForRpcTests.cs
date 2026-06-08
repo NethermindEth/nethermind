@@ -104,7 +104,7 @@ public class DepositTransactionForRpcTests
         Assert.That(toTransaction, Throws.Nothing);
     }
 
-    private static DepositTransactionForRpc DepositTxWithGas(long? gas) => new()
+    private static DepositTransactionForRpc DepositTxWithGas(ulong? gas) => new()
     {
         SourceHash = Hash256.Zero,
         From = Address.Zero,
@@ -113,12 +113,12 @@ public class DepositTransactionForRpcTests
         Gas = gas,
     };
 
-    [TestCase(5_000L, null, 5_000L)]
-    [TestCase(5_000L, 0L, 5_000L)]
-    [TestCase(5_000L, 1_000L, 1_000L)]
-    [TestCase(5_000L, 10_000L, 5_000L)]
-    [TestCase(null, 1_000L, 1_000L)]
-    public void ToTransaction_caps_and_defaults_gas(long? gas, long? gasCap, long expectedGasLimit)
+    [TestCase(5_000UL, null, 5_000UL)]
+    [TestCase(5_000UL, 0UL, 5_000UL)]
+    [TestCase(5_000UL, 1_000UL, 1_000UL)]
+    [TestCase(5_000UL, 10_000UL, 5_000UL)]
+    [TestCase(null, 1_000UL, 1_000UL)]
+    public void ToTransaction_caps_and_defaults_gas(ulong? gas, ulong? gasCap, ulong expectedGasLimit)
     {
         DepositTransactionForRpc rpcTx = DepositTxWithGas(gas);
 
@@ -128,8 +128,8 @@ public class DepositTransactionForRpcTests
     }
 
     [TestCase(null, null)]
-    [TestCase(null, 0L)]
-    public void ToTransaction_throws_when_gas_missing_and_no_cap(long? gas, long? gasCap)
+    [TestCase(null, 0UL)]
+    public void ToTransaction_throws_when_gas_missing_and_no_cap(ulong? gas, ulong? gasCap)
     {
         DepositTransactionForRpc rpcTx = DepositTxWithGas(gas);
 

@@ -82,8 +82,8 @@ public class WorldStateManagerTests
         IConfigProvider configProvider = new ConfigProvider();
         int reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
         IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
-        manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);
-        manualFinalizedStateProvider.GetFinalizedStateRootAt(lastBlock - reorgDepth)
+        manualFinalizedStateProvider.FinalizedBlockNumber.Returns((ulong)(lastBlock - reorgDepth));
+        manualFinalizedStateProvider.GetFinalizedStateRootAt((ulong)(lastBlock - reorgDepth))
             .Returns(new Hash256("0xec6063a04d48f4b2258f36efaef76a23ba61875f5303fcf8ede2f5d160def35d"));
 
         {
@@ -109,20 +109,20 @@ public class WorldStateManagerTests
             {
                 BlockHeader baseBlock = Build.A.BlockHeader
                     .WithStateRoot(stateRoot)
-                    .WithNumber(i - 1)
+                    .WithNumber((ulong)(i - 1))
                     .TestObject;
 
                 using (worldState.BeginScope(baseBlock))
                 {
                     worldState.IncrementNonce(TestItem.AddressA, 1);
                     worldState.Commit(Cancun.Instance);
-                    worldState.CommitTree(i);
+                    worldState.CommitTree((ulong)i);
                     stateRoot = worldState.StateRoot;
                 }
             }
         }
 
-        blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
+        blockTree.Received().BestPersistedState = (ulong?)(lastBlock - reorgDepth);
     }
 
     [Test]

@@ -38,7 +38,7 @@ public sealed class EraImporter(
 
     private const int ProgressLogInterval = 10000;
 
-    public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
+    public async Task Import(string src, ulong from, ulong to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
         {
@@ -60,8 +60,8 @@ public sealed class EraImporter(
 
         using IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
 
-        (long firstBlockInStore, long lastBlockInStore) = eraStore.BlockRange;
-        if (to is 0 or long.MaxValue)
+        (ulong firstBlockInStore, ulong lastBlockInStore) = eraStore.BlockRange;
+        if (to is 0 or ulong.MaxValue)
             to = lastBlockInStore;
         else if (to > lastBlockInStore)
             throw new EraImportException($"Store highest block {lastBlockInStore} is lower than requested end {to}.");
@@ -87,7 +87,7 @@ public sealed class EraImporter(
         }
     }
 
-    private async Task ImportInternal(long from, long to, IEraStore eraStore, CancellationToken cancellation)
+    private async Task ImportInternal(ulong from, ulong to, IEraStore eraStore, CancellationToken cancellation)
     {
         if (_logger.IsInfo) _logger.Info($"Starting EraE import from {from} to {to}");
 
@@ -95,15 +95,15 @@ public sealed class EraImporter(
         progressLogger.Reset(0, to - from + 1);
         long blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
-        long blockNumber = from;
+        using BlockTreeSuggestPacer pacer = new(blockTree, (ulong)eraConfig.ImportBlocksBufferSize, (ulong)(eraConfig.ImportBlocksBufferSize - 1024));
+        ulong blockNumber = from;
 
-        long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
+        ulong suggestFromBlock = (blockTree.Head?.Number ?? 0UL) + 1;
         if (syncConfig.FastSync && suggestFromBlock == 1)
-            suggestFromBlock = long.MaxValue;
+            suggestFromBlock = ulong.MaxValue;
 
         // Align to era boundary for parallel section
-        long nextEraStart = eraStore.NextEraStart(blockNumber);
+        ulong nextEraStart = eraStore.NextEraStart(blockNumber);
         if (nextEraStart <= to)
         {
             for (; blockNumber < nextEraStart; blockNumber++)
@@ -111,10 +111,10 @@ public sealed class EraImporter(
         }
 
         // Parallel historical import (blocks without state)
-        long partitionSize = _maxEraSize;
+        ulong partitionSize = (ulong)_maxEraSize;
         if (blockNumber + partitionSize < suggestFromBlock)
         {
-            ConcurrentQueue<long> partitionStartBlocks = new();
+            ConcurrentQueue<ulong> partitionStartBlocks = new();
             for (; blockNumber + partitionSize < suggestFromBlock && blockNumber + partitionSize < to; blockNumber += partitionSize)
                 partitionStartBlocks.Enqueue(blockNumber);
 
@@ -124,9 +124,9 @@ public sealed class EraImporter(
             {
                 workers[i] = Task.Run(async () =>
                 {
-                    while (partitionStartBlocks.TryDequeue(out long partStart))
+                    while (partitionStartBlocks.TryDequeue(out ulong partStart))
                     {
-                        for (long j = 0; j < partitionSize; j++)
+                        for (ulong j = 0; j < partitionSize; j++)
                         {
                             await ImportBlock(partStart + j);
                         }
@@ -144,7 +144,7 @@ public sealed class EraImporter(
         progressLogger.LogProgress();
         if (_logger.IsInfo) _logger.Info($"Finished EraE import from {from} to {to}");
 
-        async Task ImportBlock(long number)
+        async Task ImportBlock(ulong number)
         {
             if (_logger.IsTrace) _logger.Trace($"Importing EraE block {number}");
             cancellation.ThrowIfCancellationRequested();
@@ -175,13 +175,13 @@ public sealed class EraImporter(
             long processed = Interlocked.Increment(ref blocksProcessed);
             if (processed % ProgressLogInterval == 0)
             {
-                progressLogger.Update(processed);
+                progressLogger.Update((ulong)processed);
                 progressLogger.LogProgress();
             }
         }
     }
 
-    private void InsertBlockAndReceipts(Block block, TxReceipt[] receipts, long lastBlockNumber)
+    private void InsertBlockAndReceipts(Block block, TxReceipt[] receipts, ulong lastBlockNumber)
     {
         Block? existing = blockTree.FindBlock(block.Number);
         if (existing is null)

@@ -14,7 +14,7 @@ namespace Nethermind.Core.Specs
         /// Gas target and base fee, and fee burning.
         /// </summary>
         bool IsEip1559Enabled { get; }
-        public long Eip1559TransitionBlock { get; }
+        public ulong Eip1559TransitionBlock { get; }
         // Collects for both EIP-1559 and EIP-4844-Pectra
         public Address? FeeCollector => null;
         public UInt256? Eip1559BaseFeeMinValue => null;
@@ -27,7 +27,7 @@ namespace Nethermind.Core.Specs
     public sealed class OverridableEip1559Spec(IEip1559Spec spec) : IEip1559Spec
     {
         public bool IsEip1559Enabled { get; init; } = spec.IsEip1559Enabled;
-        public long Eip1559TransitionBlock { get; init; } = spec.Eip1559TransitionBlock;
+        public ulong Eip1559TransitionBlock { get; init; } = spec.Eip1559TransitionBlock;
         public Address? FeeCollector { get; init; } = spec.FeeCollector;
         public UInt256? Eip1559BaseFeeMinValue { get; init; } = spec.Eip1559BaseFeeMinValue;
         public UInt256 ForkBaseFee { get; init; } = spec.ForkBaseFee;

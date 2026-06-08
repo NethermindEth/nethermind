@@ -35,8 +35,8 @@ public class SyncingResultJsonConverter : JsonConverter<SyncingResult>
 
     private struct Result
     {
-        public long StartingBlock { get; set; }
-        public long CurrentBlock { get; set; }
-        public long HighestBlock { get; set; }
+        public ulong StartingBlock { get; set; }
+        public ulong CurrentBlock { get; set; }
+        public ulong HighestBlock { get; set; }
     }
 }

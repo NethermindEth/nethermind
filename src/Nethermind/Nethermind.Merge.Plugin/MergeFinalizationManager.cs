@@ -40,7 +40,7 @@ namespace Nethermind.Merge.Plugin
 
         public Hash256 LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
 
-        public virtual long LastFinalizedBlockLevel
+        public virtual ulong LastFinalizedBlockLevel
         {
             get
             {
@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin
                     return _manualBlockFinalizationManager.LastFinalizedBlockLevel;
                 }
 
-                return 0;
+                return 0UL;
             }
         }
 

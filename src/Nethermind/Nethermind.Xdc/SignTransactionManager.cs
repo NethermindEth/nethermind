@@ -41,7 +41,7 @@ internal class SignTransactionManager(
 
     public Task SubmitTransactionSign(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
-        UInt256 nonce = _txPool.Value.GetLatestPendingNonce(_signer.Value.Address);
+        ulong nonce = _txPool.Value.GetLatestPendingNonce(_signer.Value.Address);
         Transaction transaction = CreateTxSign((UInt256)header.Number, header.Hash ?? header.CalculateHash().ToHash256(), nonce, spec.BlockSignerContract, _signer.Value.Address);
 
         if (!_signer.Value.TrySign(transaction))
@@ -95,7 +95,7 @@ internal class SignTransactionManager(
     private static bool IsMasternode(Snapshot snapshot, Address signerAddress) =>
         snapshot.NextEpochCandidates.AsSpan().IndexOf(signerAddress) != -1;
 
-    internal static Transaction CreateTxSign(UInt256 number, Hash256 hash, UInt256 nonce, Address blockSignersAddress, Address sender)
+    internal static Transaction CreateTxSign(UInt256 number, Hash256 hash, ulong nonce, Address blockSignersAddress, Address sender)
     {
         byte[] inputData = [.. XdcConstants.SignMethod, .. number.PaddedBytes(32), .. hash.Bytes.PadLeft(32)];
 

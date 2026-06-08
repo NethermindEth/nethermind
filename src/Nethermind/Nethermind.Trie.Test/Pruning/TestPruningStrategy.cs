@@ -14,7 +14,7 @@ namespace Nethermind.Trie.Test.Pruning
         public bool DeleteObsoleteKeys => deleteObsoleteKeys;
         public bool ShouldPruneDirtyNode(TrieStoreState state)
         {
-            if (pruneInterval is not null && state.LatestCommittedBlock % pruneInterval == 0)
+            if (pruneInterval is not null && state.LatestCommittedBlock % (ulong)pruneInterval.Value == 0)
             {
                 return true;
             }

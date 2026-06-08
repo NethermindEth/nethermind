@@ -9,7 +9,7 @@ namespace Nethermind.Trie.Pruning
 
         public static NoPersistence Instance { get; } = new();
 
-        public bool ShouldPersist(long blockNumber) => false;
+        public bool ShouldPersist(ulong blockNumber) => false;
 
         public bool IsFullPruning => false;
     }

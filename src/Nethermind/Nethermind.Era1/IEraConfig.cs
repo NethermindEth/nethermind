@@ -14,10 +14,10 @@ public interface IEraConfig : IConfig
     string? ExportDirectory { get; set; }
 
     [ConfigItem(Description = "Block number to import/export from.", DefaultValue = "0", HiddenFromDocs = false)]
-    long From { get; set; }
+    ulong From { get; set; }
 
     [ConfigItem(Description = "Block number to import/export to.", DefaultValue = "0", HiddenFromDocs = false)]
-    long To { get; set; }
+    ulong To { get; set; }
 
     [ConfigItem(Description = "Accumulator file to be used for trusting era files.", DefaultValue = "null", HiddenFromDocs = false)]
     string? TrustedAccumulatorFile { get; set; }

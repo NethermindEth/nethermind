@@ -441,7 +441,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .Done;
         GethLikeTxTrace traces = Execute(new GethLikeTxMemoryTracer(Build.A.Transaction.TestObject, GethTraceOptions.Default), code, MainnetSpecProvider.CancunActivation).BuildResult();
 
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 0), "gas");
+        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)((data.Length + 31) / 32) + GasCostOf.Memory * 0UL), "gas");
     }
 
     [Test]
@@ -462,7 +462,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         string copied = traces.Entries.Last().Memory[0];
         string origin = traces.Entries.Last().Memory[1];
 
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 1), "gas");
+        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)((data.Length + 31) / 32) + GasCostOf.Memory * 1UL), "gas");
         Assert.That(origin, Is.EqualTo(copied));
     }
 
@@ -485,7 +485,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         string result = traces.Entries.Last().Memory[0];
 
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
+        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)(SLICE_SIZE + 31) / 32), "gas");
         Assert.That(result, Is.EqualTo("0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
     }
 
@@ -504,7 +504,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32)), "gas");
+        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)((data.Length + 31) / 32)), "gas");
         Assert.That(traces.Entries.Last().Memory.Count, Is.EqualTo(1));
     }
 
@@ -539,7 +539,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         string result = traces.Entries.Last().Memory[0];
 
-        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
+        Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)(SLICE_SIZE + 31) / 32), "gas");
         Assert.That(result, Is.EqualTo("0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
     }
 

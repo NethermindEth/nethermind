@@ -97,9 +97,9 @@ public class TransactionTests
         {
             Assert.That(transaction.Value, Is.EqualTo(validTest.Value), "value");
             Assert.That(transaction.Data.AsArray(), Is.EqualTo(validTest.Data), "data");
-            Assert.That(transaction.GasLimit, Is.EqualTo(validTest.GasLimit.ToInt64(null)), "gasLimit");
+            Assert.That(transaction.GasLimit, Is.EqualTo((ulong)validTest.GasLimit), "gasLimit");
             Assert.That(transaction.GasPrice, Is.EqualTo(validTest.GasPrice), "gasPrice");
-            Assert.That(transaction.Nonce, Is.EqualTo(validTest.Nonce), "nonce");
+            Assert.That(transaction.Nonce, Is.EqualTo((ulong)validTest.Nonce), "nonce");
             Assert.That(transaction.To, Is.EqualTo(validTest.To), "to");
             Assert.That(validator.IsWellFormed(transaction, spec), Is.True);
 

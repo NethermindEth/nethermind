@@ -74,7 +74,7 @@ namespace Nethermind.Trie.Pruning
 
         [GaugeMetric]
         [Description("Last persisted block number (snapshot).")]
-        public static long LastPersistedBlockNumber { get; set; }
+        public static ulong LastPersistedBlockNumber { get; set; }
 
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]

@@ -18,14 +18,14 @@ namespace Nethermind.Specs.Test
         public string Name => "OverridableReleaseSpec";
         public long MaximumExtraDataSize { get; set; } = spec.MaximumExtraDataSize;
         public long MaxCodeSize { get; set; } = spec.MaxCodeSize;
-        public long MinGasLimit { get; set; } = spec.MinGasLimit;
+        public ulong MinGasLimit { get; set; } = spec.MinGasLimit;
         public long MinHistoryRetentionEpochs { get; set; } = spec.MinHistoryRetentionEpochs;
         public long MinBalRetentionEpochs { get; set; } = spec.MinBalRetentionEpochs;
-        public long GasLimitBoundDivisor { get; set; } = spec.GasLimitBoundDivisor;
+        public ulong GasLimitBoundDivisor { get; set; } = spec.GasLimitBoundDivisor;
         public UInt256 BlockReward { get; set; } = spec.BlockReward;
-        public long DifficultyBombDelay { get; set; } = spec.DifficultyBombDelay;
-        public long DifficultyBoundDivisor { get; set; } = spec.DifficultyBoundDivisor;
-        public long? FixedDifficulty { get; set; } = spec.FixedDifficulty;
+        public ulong DifficultyBombDelay { get; set; } = spec.DifficultyBombDelay;
+        public ulong DifficultyBoundDivisor { get; set; } = spec.DifficultyBoundDivisor;
+        public ulong? FixedDifficulty { get; set; } = spec.FixedDifficulty;
         public int MaximumUncleCount { get; set; } = spec.MaximumUncleCount;
         public bool IsTimeAdjustmentPostOlympic { get; set; } = spec.IsTimeAdjustmentPostOlympic;
         public bool IsEip2Enabled { get; set; } = spec.IsEip2Enabled;
@@ -82,7 +82,7 @@ namespace Nethermind.Specs.Test
         public UInt256? Eip1559BaseFeeMinValue { get; set; } = spec.Eip1559BaseFeeMinValue;
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
         public Address? Eip158IgnoredAccount { get; set; } = spec.Eip158IgnoredAccount;
-        public long Eip1559TransitionBlock { get; set; } = spec.Eip1559TransitionBlock;
+        public ulong Eip1559TransitionBlock { get; set; } = spec.Eip1559TransitionBlock;
         public Address? FeeCollector { get; set; } = spec.FeeCollector;
         public ulong Eip4844TransitionTimestamp { get; set; } = spec.Eip4844TransitionTimestamp;
         public ulong TargetBlobCount { get; set; } = spec.TargetBlobCount;
@@ -96,7 +96,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip4895Enabled { get; set; } = spec.IsEip4895Enabled;
         public ulong WithdrawalTimestamp { get; set; } = spec.WithdrawalTimestamp;
         public bool IsEip5656Enabled { get; set; } = spec.IsEip5656Enabled;
-        public long Eip2935RingBufferSize { get; set; } = spec.Eip2935RingBufferSize;
+        public ulong Eip2935RingBufferSize { get; set; } = spec.Eip2935RingBufferSize;
         public bool IsEip6780Enabled { get; set; } = spec.IsEip6780Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;

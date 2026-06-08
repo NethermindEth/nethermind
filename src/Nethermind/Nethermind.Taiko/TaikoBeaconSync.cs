@@ -43,16 +43,17 @@ public sealed class TaikoBeaconSync(
         BlockHeader? lowestInsertedBeaconHeader = blockTree.LowestInsertedBeaconHeader;
         if (lowestInsertedBeaconHeader is null) return true;
 
-        long suggested = blockTree.BestSuggestedHeader?.Number ?? long.MinValue;
-        long head = blockTree.Head?.Number ?? long.MinValue;
-        long bestKnownNumber = Math.Max(suggested, head);
-        // Mirror the original `?? long.MaxValue` sentinel: with no header at all the
+        ulong suggested = blockTree.BestSuggestedHeader?.Number ?? 0UL;
+        ulong head = blockTree.Head?.Number ?? 0UL;
+        ulong bestKnownNumber = Math.Max(suggested, head);
+        // Mirror the original `?? ulong.MaxValue` sentinel: with no header at all the
         // numeric comparison should pass trivially so chainMerged is gated only by IsKnownBlock.
-        if (bestKnownNumber == long.MinValue) bestKnownNumber = long.MaxValue;
+        if (bestKnownNumber == 0UL) bestKnownNumber = ulong.MaxValue;
 
         bool reachedDestination = lowestInsertedBeaconHeader.Number <= beaconPivot.PivotDestinationNumber;
 
         bool chainMerged = !syncConfig.StrictMode
+            && lowestInsertedBeaconHeader.Number > 0UL
             && (lowestInsertedBeaconHeader.Number - 1) <= bestKnownNumber
             && blockTree.IsKnownBlock(lowestInsertedBeaconHeader.Number - 1, lowestInsertedBeaconHeader.ParentHash!);
 
@@ -82,7 +83,7 @@ public sealed class TaikoBeaconSync(
     public bool MergeTransitionFinished => inner.MergeTransitionFinished;
 
     /// <inheritdoc/>
-    public long? GetTargetBlockHeight() => inner.GetTargetBlockHeight();
+    public ulong? GetTargetBlockHeight() => inner.GetTargetBlockHeight();
 
     /// <inheritdoc/>
     public Hash256? GetFinalizedHash() => inner.GetFinalizedHash();

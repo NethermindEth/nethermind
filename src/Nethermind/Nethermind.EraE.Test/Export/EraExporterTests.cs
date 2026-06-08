@@ -18,13 +18,13 @@ namespace Nethermind.EraE.Test.Export;
 
 public class EraExporterTests
 {
-    [TestCase(1, 0, 0, 1, 1)]
-    [TestCase(3, 0, 2, 1, 3)]
-    [TestCase(16, 0, 15, 16, 1)]
-    [TestCase(32, 0, 31, 16, 2)]
-    [TestCase(48, 8, 39, 16, 3)]
+    [TestCase(1, 0UL, 0UL, 1, 1)]
+    [TestCase(3, 0UL, 2UL, 1, 3)]
+    [TestCase(16, 0UL, 15UL, 16, 1)]
+    [TestCase(32, 0UL, 31UL, 16, 2)]
+    [TestCase(48, 8UL, 39UL, 16, 3)]
     public async Task Export_WithVaryingChainLength_CreatesCorrectNumberOfEpochFiles(
-        int chainLength, int from, int to, int eraSize, int expectedEraFiles)
+        int chainLength, ulong from, ulong to, int eraSize, int expectedEraFiles)
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .AddSingleton<IEraEConfig>(new EraEConfig
@@ -51,7 +51,7 @@ public class EraExporterTests
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
 
         string tmpDirectory = container.ResolveTempDirPath();
-        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0UL, 0UL);
 
         Assert.That(System.IO.File.Exists(System.IO.Path.Combine(tmpDirectory, fileName)), Is.True);
     }
@@ -62,7 +62,7 @@ public class EraExporterTests
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
 
         string tmpDirectory = container.ResolveTempDirPath();
-        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0UL, 0UL);
 
         string[] lines = await System.IO.File.ReadAllLinesAsync(
             System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsSHA256FileName));
@@ -82,7 +82,7 @@ public class EraExporterTests
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(16).Build();
 
         string tmpDirectory = container.ResolveTempDirPath();
-        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0UL, 0UL);
 
         string[] eraFiles = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
         Assert.That(eraFiles, Is.Not.Empty);
@@ -100,7 +100,7 @@ public class EraExporterTests
         string tmpDirectory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, 999), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, 999UL), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -111,7 +111,7 @@ public class EraExporterTests
         string tmpDirectory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
 
-        Assert.That(() => sut.Export(tmpDirectory, 20, 10), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.Export(tmpDirectory, 20UL, 10UL), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -128,7 +128,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, 1), Throws.TypeOf<EraException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, 1UL), Throws.TypeOf<EraException>());
     }
 
     [Test]
@@ -138,7 +138,7 @@ public class EraExporterTests
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
 
         string tmpDirectory = container.ResolveTempDirPath();
-        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, to: 0);
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 0UL, to: 0UL);
 
         string[] eraFiles = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
         Assert.That(eraFiles, Is.Not.Empty, "exporting to 0 should default to head");
@@ -153,7 +153,7 @@ public class EraExporterTests
         System.IO.File.WriteAllText(tmpFile, "existing");
 
         IEraExporter sut = container.Resolve<IEraExporter>();
-        Assert.That(() => sut.Export(tmpFile, 0, 0), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.Export(tmpFile, 0UL, 0UL), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -164,7 +164,7 @@ public class EraExporterTests
 
         string tmpDirectory = container.ResolveTempDirPath();
         // Export from block 1: genesis is pre-merge in all block trees, so starting at 1 ensures a pure post-merge epoch.
-        await container.Resolve<IEraExporter>().Export(tmpDirectory, 1, 0);
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 1UL, 0UL);
 
         string[] eraFiles = Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
         Assert.That(eraFiles, Has.Length.EqualTo(1), "one epoch for blocks 1-15");
@@ -190,7 +190,7 @@ public class EraExporterTests
         string tmpDirectory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
 
-        Assert.That(() => sut.Export(tmpDirectory, 0, 10), Throws.TypeOf<InvalidOperationException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0UL, 10UL), Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -201,7 +201,7 @@ public class EraExporterTests
             .Build();
 
         string tmpDirectory = container.ResolveTempDirPath();
-        await container.Resolve<IEraExporter>().Export(tmpDirectory, 16, 31);
+        await container.Resolve<IEraExporter>().Export(tmpDirectory, 16UL, 31UL);
 
         string[] eraFiles = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
         Assert.That(eraFiles.Length, Is.EqualTo(1), "only one epoch covers blocks 16-31");

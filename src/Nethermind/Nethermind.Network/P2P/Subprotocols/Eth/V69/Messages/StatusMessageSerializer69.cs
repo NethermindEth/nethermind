@@ -56,8 +56,8 @@ public class StatusMessageSerializer69 :
             NetworkId = ctx.DecodeUInt256(),
             GenesisHash = ctx.DecodeKeccak() ?? Hash256.Zero,
             ForkId = DecodeForkId(ref ctx),
-            EarliestBlock = ctx.DecodeLong(),
-            LatestBlock = ctx.DecodeLong(),
+            EarliestBlock = ctx.DecodeULong(),
+            LatestBlock = ctx.DecodeULong(),
             LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
         };
     }

@@ -15,7 +15,7 @@ namespace Nethermind.Xdc.Test;
 public class XdcPoolTests
 {
     private static BlockRoundInfo MakeBlockInfo(ulong round = 1) =>
-        new(Hash256.Zero, round, (long)round);
+        new(Hash256.Zero, round, round);
 
     private static Vote BuildVote(BlockRoundInfo info, PrivateKey key, ulong gap = 0)
         => XdcTestHelper.BuildSignedVote(info, gap, key);
@@ -89,7 +89,7 @@ public class XdcPoolTests
 
         pool.Add(voteRound1);
         pool.Add(voteRound2);
-        pool.EndRound(1);
+        pool.EndRound(1UL);
 
         Assert.That(pool.GetCount(voteRound1), Is.EqualTo(0));
         Assert.That(pool.GetCount(voteRound2), Is.EqualTo(1));

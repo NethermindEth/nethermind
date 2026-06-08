@@ -13,16 +13,16 @@ namespace Nethermind.Synchronization.FastBlocks;
 
 public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvider, ILogger logger) : ActivatedSyncFeed<T>
 {
-    protected abstract long? LowestInsertedNumber { get; }
+    protected abstract ulong? LowestInsertedNumber { get; }
     protected abstract int BarrierWhenStartedMetadataDbKey { get; }
-    protected abstract long SyncConfigBarrierCalc { get; }
+    protected abstract ulong SyncConfigBarrierCalc { get; }
     protected abstract Func<bool> HasPivot { get; }
 
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logger;
-    protected long _barrier;
-    protected long _pivotNumber;
-    protected long? _barrierWhenStarted;
+    protected ulong _barrier;
+    protected ulong _pivotNumber;
+    protected ulong? _barrierWhenStarted;
 
     protected readonly IDb _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
 
@@ -31,16 +31,16 @@ public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvi
         if (!HasPivot())
         {
             _barrierWhenStarted = SyncConfigBarrierCalc;
-            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, ((long)_barrierWhenStarted.Value).ToBigEndianByteArrayWithoutLeadingZeros());
         }
         else if (_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
         {
-            _barrierWhenStarted = _metadataDb.Get(BarrierWhenStartedMetadataDbKey).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            _barrierWhenStarted = (ulong)_metadataDb.Get(BarrierWhenStartedMetadataDbKey).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
         }
         else
         {
             _barrierWhenStarted = _barrier;
-            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, ((long)_barrierWhenStarted.Value).ToBigEndianByteArrayWithoutLeadingZeros());
         }
     }
 }

@@ -238,7 +238,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 ws.IncrementNonce(TestItem.AddressA, 1, out _);
             }),
             (Action<TracedAccessWorldState>)(tws =>
-                Assert.That(tws.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1))))
+                Assert.That(tws.GetNonce(TestItem.AddressA), Is.EqualTo(1UL))))
             .SetName("GetNonce_RecordsAccountRead");
 
         yield return new TestCaseData(
@@ -332,7 +332,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             }
             if (expectedNonceChanges > 0)
             {
-                Assert.That(ac!.NonceChange!.Value.Value, Is.EqualTo((ulong)nonce));
+                Assert.That(ac!.NonceChange!.Value.Value, Is.EqualTo(nonce));
             }
         }
     }
@@ -441,14 +441,14 @@ public class TracedAccessWorldStateTests(bool parallel)
             ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            tws.IncrementNonce(TestItem.AddressA, 1, out UInt256 oldNonce1);
-            tws.IncrementNonce(TestItem.AddressA, 1, out UInt256 oldNonce2);
+            tws.IncrementNonce(TestItem.AddressA, 1, out ulong oldNonce1);
+            tws.IncrementNonce(TestItem.AddressA, 1, out ulong oldNonce2);
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(oldNonce1, Is.EqualTo((UInt256)0), "first old nonce from inner");
-                Assert.That(oldNonce2, Is.EqualTo((UInt256)1), "second old nonce from BAL");
+                Assert.That(oldNonce1, Is.EqualTo(0UL), "first old nonce from inner");
+                Assert.That(oldNonce2, Is.EqualTo(1UL), "second old nonce from BAL");
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.NonceChange, Is.Not.Null);
                 Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(2ul));

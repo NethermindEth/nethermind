@@ -13,12 +13,12 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip2028Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
         protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
         [TestCase(true, GasCostOf.TxDataNonZeroEip2028, Description = "After Istanbul non-zero cost is 16")]
         [TestCase(false, GasCostOf.TxDataNonZero, Description = "Before Istanbul non-zero cost is 68")]
-        public void Non_zero_transaction_data_cost(bool isIstanbul, long expectedNonZeroCost)
+        public void Non_zero_transaction_data_cost(bool isIstanbul, ulong expectedNonZeroCost)
         {
             IReleaseSpec spec = isIstanbul
                 ? Istanbul.Instance

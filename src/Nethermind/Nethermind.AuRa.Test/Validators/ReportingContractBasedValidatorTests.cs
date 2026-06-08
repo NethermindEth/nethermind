@@ -42,7 +42,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [Test]
-        public void Report_benign_sends_transaction([Values(0, 5)] long blockNumber)
+        public void Report_benign_sends_transaction([Values(0UL, 5UL)] ulong blockNumber)
         {
             TestContext context = new(true);
             Transaction transaction = Build.A.Transaction.TestObject;
@@ -52,7 +52,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [Test]
-        public void Resend_malicious_transactions([Values(0, 5, 15)] int validatorsToReport, [Values(1, 4)] long blockNumber)
+        public void Resend_malicious_transactions([Values(0, 5, 15)] int validatorsToReport, [Values(1UL, 4UL)] ulong blockNumber)
         {
             ReportingContractBasedValidator.Cache cache = new();
             byte[] proof = TestItem.KeccakA.BytesToArray();
@@ -61,7 +61,7 @@ namespace Nethermind.AuRa.Test.Validators
             for (ulong i = 5; i < 20; i++)
             {
                 context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, i, proof).Returns(transaction);
-                context.Validator.ReportMalicious(MaliciousMinerAddress, (long)i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
+                context.Validator.ReportMalicious(MaliciousMinerAddress, i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
             }
 
             context = new TestContext(false, cache);
@@ -76,10 +76,10 @@ namespace Nethermind.AuRa.Test.Validators
                 .ShouldValidatorReport(Arg.Is<BlockHeader>(h => h.Number == blockNumber - 1), NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>())
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
 
-            context.ContractBasedValidator.BlockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, blockNumber: Arg.Any<long>())
+            context.ContractBasedValidator.BlockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, blockNumber: Arg.Any<ulong>())
                 .Returns(Build.A.BlockHeader.WithNumber(blockNumber - 1).TestObject);
 
-            bool isPosDao = blockNumber >= context.PosdaoTransition;
+            bool isPosDao = blockNumber >= (ulong)context.PosdaoTransition;
 
             // resend transactions
             context.Validator.OnBlockProcessingEnd(block, []);
@@ -94,7 +94,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [Test]
-        public void Adds_transactions_to_block([Values(0, 5, 15)] int validatorsToReport, [Values(0, 2, 10, 20)] long parentBlockNumber, [Values(false, true)] bool emitInitChangeCallable)
+        public void Adds_transactions_to_block([Values(0, 5, 15)] int validatorsToReport, [Values(0UL, 2UL, 10UL, 20UL)] ulong parentBlockNumber, [Values(false, true)] bool emitInitChangeCallable)
         {
             TestContext context = new(true);
             byte[] proof = TestItem.KeccakA.BytesToArray();
@@ -104,11 +104,11 @@ namespace Nethermind.AuRa.Test.Validators
             for (ulong i = startReportBlockNumber; i < startReportBlockNumber + (ulong)validatorsToReport; i++)
             {
                 context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, i, proof).Returns(transaction);
-                context.Validator.ReportMalicious(MaliciousMinerAddress, (long)i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
+                context.Validator.ReportMalicious(MaliciousMinerAddress, i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
             }
 
             BlockHeader parent = Build.A.BlockHeader.WithNumber(parentBlockNumber).TestObject;
-            bool isPosDao = parentBlockNumber + 1 >= context.PosdaoTransition;
+            bool isPosDao = parentBlockNumber + 1 >= (ulong)context.PosdaoTransition;
             context.ContractBasedValidator.ValidatorContract
                 .ShouldValidatorReport(parent, NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>())
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
@@ -119,7 +119,13 @@ namespace Nethermind.AuRa.Test.Validators
             context.ContractBasedValidator.ValidatorContract.EmitInitiateChange().Returns(initChangeTransaction);
 
             Transaction[] transactions = context.Validator.GetTransactions(parent, 3000000).ToArray();
-            int addedMaliciousTransactions = (int)Math.Min(validatorsToReport, Math.Max(0, parentBlockNumber - (long)startReportBlockNumber));
+            // parentBlockNumber - startReportBlockNumber is ulong; Math.Max needs a common type.
+            // Both operands unified as ulong; result cast to int is safe because it is bounded
+            // above by validatorsToReport which is a small non-negative int.
+            ulong gap = parentBlockNumber >= startReportBlockNumber
+                ? parentBlockNumber - startReportBlockNumber
+                : 0UL;
+            int addedMaliciousTransactions = (int)Math.Min((ulong)validatorsToReport, gap);
             Assert.That(transactions.Length, Is.EqualTo(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? addedMaliciousTransactions : 0) + (initChangeTransactionAdded ? 1 : 0)));
             if (initChangeTransactionAdded)
             {
@@ -170,7 +176,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         public class TestContext
         {
-            public readonly int PosdaoTransition = 3;
+            public readonly ulong PosdaoTransition = 3;
             public ReportingContractBasedValidator Validator { get; }
             public ITxSender TxSender { get; }
             public IReportingValidatorContract ReportingValidatorContract { get; }
@@ -205,7 +211,8 @@ namespace Nethermind.AuRa.Test.Validators
                 ITxPool txPool = Substitute.For<ITxPool>();
                 IWorldState stateProvider = Substitute.For<IWorldState>();
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(UInt256.One);
+                // GetNonce now returns ulong; use 1UL instead of UInt256.One.
+                stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(1UL);
 
                 Validator = new ReportingContractBasedValidator(
                     ContractBasedValidator,

@@ -11,15 +11,15 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public partial class ContractBasedValidator : ITxSource
     {
-        private readonly long _posdaoTransition;
+        private readonly ulong _posdaoTransition;
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
             if (ForSealing)
             {
-                long newBlockNumber = parent.Number + 1;
+                ulong newBlockNumber = parent.Number + 1;
                 if (newBlockNumber < _posdaoTransition)
                 {
                     if (_logger.IsTrace) _logger.Trace("Skipping a call to emitInitiateChange");

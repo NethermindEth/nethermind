@@ -39,7 +39,7 @@ public sealed class OpcodeTraceRecorder(
     private Stopwatch? _stopwatch;
     private CancellationTokenSource? _cts;
     private Task? _tracingTask;
-    private long _lastProcessedBlock;
+    private ulong _lastProcessedBlock;
     private bool _isComplete;
     private ISyncModeSelector? _syncModeSelector;
     private bool _syncModeWarningLogged;
@@ -59,7 +59,7 @@ public sealed class OpcodeTraceRecorder(
         try
         {
             // Get current chain tip
-            long currentChainTip = api.BlockTree?.Head?.Number ?? 0;
+            long currentChainTip = (long)(api.BlockTree?.Head?.Number ?? 0UL);
 
             // Parse mode for validation
             TracingMode mode = TracingMode.RealTime;
@@ -105,7 +105,7 @@ public sealed class OpcodeTraceRecorder(
 
             // Initialize progress tracker
             _progress = new TracingProgress(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
-            _lastProcessedBlock = _traceConfig.EffectiveStartBlock - 1;
+            _lastProcessedBlock = _traceConfig.EffectiveStartBlock > 0 ? _traceConfig.EffectiveStartBlock - 1 : 0;
 
             if (_logger.IsInfo)
             {
@@ -172,21 +172,21 @@ public sealed class OpcodeTraceRecorder(
 
             // For RealTime mode with Blocks parameter, recalculate range based on current chain tip
             // This ensures we trace the NEXT N blocks from when the tracer attaches, not from init time
-            long effectiveStart = _traceConfig.EffectiveStartBlock;
-            long effectiveEnd = _traceConfig.EffectiveEndBlock;
+            long effectiveStart = (long)_traceConfig.EffectiveStartBlock;
+            long effectiveEnd = (long)_traceConfig.EffectiveEndBlock;
 
             if (_config.RecentBlocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
             {
-                long currentTip = api.BlockTree?.Head?.Number ?? 0;
+                long currentTip = (long)(api.BlockTree?.Head?.Number ?? 0UL);
                 effectiveStart = currentTip + 1;
                 effectiveEnd = currentTip + _config.RecentBlocks.Value;
 
                 // Update progress tracker and trace config with new range
-                _progress = new TracingProgress(effectiveStart, effectiveEnd);
+                _progress = new TracingProgress((ulong)effectiveStart, (ulong)effectiveEnd);
                 _traceConfig = _traceConfig with
                 {
-                    EffectiveStartBlock = effectiveStart,
-                    EffectiveEndBlock = effectiveEnd
+                    EffectiveStartBlock = (ulong)effectiveStart,
+                    EffectiveEndBlock = (ulong)effectiveEnd
                 };
 
                 if (_logger.IsInfo)
@@ -195,7 +195,7 @@ public sealed class OpcodeTraceRecorder(
                 }
             }
 
-            BlockRange range = new(effectiveStart, effectiveEnd);
+            BlockRange range = new((ulong)effectiveStart, (ulong)effectiveEnd);
             _realTimeTracer = new RealTimeTracer(
                 _counter,
                 range,
@@ -315,7 +315,7 @@ public sealed class OpcodeTraceRecorder(
 
         _tracingTask = Task.Run(async () =>
         {
-            long[]? skippedBlocks = null;
+            ulong[]? skippedBlocks = null;
 
             try
             {
@@ -349,7 +349,7 @@ public sealed class OpcodeTraceRecorder(
 
                     await executionTracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
 
-                    long[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
+                    ulong[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
                     if (skippedSnapshot.Length > 0)
                     {
                         Array.Sort(skippedSnapshot);
@@ -406,7 +406,7 @@ public sealed class OpcodeTraceRecorder(
         return _tracingTask;
     }
 
-    private void OnBlockCompletedRealTime(long blockNumber)
+    private void OnBlockCompletedRealTime(ulong blockNumber)
     {
         _lastProcessedBlock = blockNumber;
         _progress?.UpdateProgress(blockNumber);
@@ -424,7 +424,7 @@ public sealed class OpcodeTraceRecorder(
         }
     }
 
-    private async Task WriteOutputAsync(long[]? skippedBlocks = null)
+    private async Task WriteOutputAsync(ulong[]? skippedBlocks = null)
     {
         if (_traceConfig is null)
         {

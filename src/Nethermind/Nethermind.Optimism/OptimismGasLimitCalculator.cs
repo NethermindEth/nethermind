@@ -9,6 +9,6 @@ namespace Nethermind.Optimism;
 
 public class OptimismGasLimitCalculator : IGasLimitCalculator
 {
-    public long GetGasLimit(BlockHeader parentHeader) =>
+    public ulong GetGasLimit(BlockHeader parentHeader) =>
         throw new InvalidOperationException("GasLimit in Optimism should come from payload attributes.");
 }

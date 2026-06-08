@@ -17,7 +17,7 @@ internal enum EthStatsIncomingMessageType
     NodePong
 }
 
-internal readonly record struct EthStatsHistoryRequest(long Min, long Max);
+internal readonly record struct EthStatsHistoryRequest(ulong Min, ulong Max);
 
 internal readonly record struct EthStatsNodeTiming(long? ClientTime);
 
@@ -191,8 +191,8 @@ internal static class EthStatsMessageParser
     private static bool TryReadHistoryRequest(ref Utf8JsonReader reader, out EthStatsHistoryRequest historyRequest)
     {
         historyRequest = default;
-        long? min = null;
-        long? max = null;
+        ulong? min = null;
+        ulong? max = null;
 
         while (reader.Read())
         {
@@ -216,7 +216,7 @@ internal static class EthStatsMessageParser
 
             if (isMin)
             {
-                if (!TryReadInt64(ref reader, out long value))
+                if (!TryReadUInt64(ref reader, out ulong value))
                 {
                     return false;
                 }
@@ -224,7 +224,7 @@ internal static class EthStatsMessageParser
             }
             else if (isMax)
             {
-                if (!TryReadInt64(ref reader, out long value))
+                if (!TryReadUInt64(ref reader, out ulong value))
                 {
                     return false;
                 }
@@ -281,6 +281,21 @@ internal static class EthStatsMessageParser
         return new EthStatsNodeTiming(clientTime);
     }
 
+    private static bool TryReadUInt64(ref Utf8JsonReader reader, out ulong value)
+    {
+        value = 0;
+
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.Number:
+                return reader.TryGetUInt64(out value);
+            case JsonTokenType.String:
+                return TryParseUInt64String(ref reader, out value);
+            default:
+                return false;
+        }
+    }
+
     private static bool TryReadInt64(ref Utf8JsonReader reader, out long value)
     {
         value = 0;
@@ -294,6 +309,30 @@ internal static class EthStatsMessageParser
             default:
                 return false;
         }
+    }
+
+    private static bool TryParseUInt64String(ref Utf8JsonReader reader, out ulong value)
+    {
+        // An unsigned 64-bit integer is at most 20 ASCII bytes ("18446744073709551615")
+        const int maxUInt64Digits = 20;
+
+        if (reader.HasValueSequence)
+        {
+            long sequenceLength = reader.ValueSequence.Length;
+            if (sequenceLength > maxUInt64Digits)
+            {
+                value = 0;
+                return false;
+            }
+
+            Span<byte> sequenceBuffer = stackalloc byte[maxUInt64Digits];
+            reader.ValueSequence.CopyTo(sequenceBuffer);
+            ReadOnlySpan<byte> sequenceRaw = sequenceBuffer[..(int)sequenceLength];
+            return Utf8Parser.TryParse(sequenceRaw, out value, out int sequenceConsumed) && sequenceConsumed == sequenceRaw.Length;
+        }
+
+        ReadOnlySpan<byte> raw = reader.ValueSpan;
+        return Utf8Parser.TryParse(raw, out value, out int consumed) && consumed == raw.Length;
     }
 
     private static bool TryParseInt64String(ref Utf8JsonReader reader, out long value)

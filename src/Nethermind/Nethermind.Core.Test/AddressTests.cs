@@ -163,9 +163,9 @@ public class AddressTests
         Assert.That(Byzantium.Instance.IsPrecompile(address), Is.EqualTo(isPrecompile));
     }
 
-    [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
-    [TestCase(1, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
-    public void Of_contract(long nonce, string expectedAddress)
+    [TestCase(0UL, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
+    [TestCase(1UL, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
+    public void Of_contract(ulong nonce, string expectedAddress)
     {
         Address address = ContractAddress.From(TestItem.AddressA, (UInt256)nonce);
         Assert.That(new Address(expectedAddress), Is.EqualTo(address));

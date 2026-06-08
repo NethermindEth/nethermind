@@ -116,7 +116,7 @@ namespace Nethermind.TxPool.Test.Collections
         }
 
         [TestCaseSource(nameof(VisitBucketCases))]
-        public void VisitBucket_visits_expected_nonces(int[] insertNonces, int stopAfterNonce, int[] expectedVisited)
+        public void VisitBucket_visits_expected_nonces(ulong[] insertNonces, int stopAfterNonce, int[] expectedVisited)
         {
             InsertNonces(TestItem.AddressA, insertNonces);
 
@@ -139,12 +139,12 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(act, Throws.TypeOf<ArgumentNullException>());
         }
 
-        private void InsertNonces(Address sender, ReadOnlySpan<int> nonces)
+        private void InsertNonces(Address sender, ReadOnlySpan<ulong> nonces)
         {
-            foreach (int nonce in nonces)
+            foreach (ulong nonce in nonces)
             {
                 Transaction tx = Build.A.Transaction
-                    .WithNonce((UInt256)nonce)
+                    .WithNonce(nonce)
                     .WithSenderAddress(sender)
                     .TestObject;
                 tx.Hash = tx.CalculateHash();

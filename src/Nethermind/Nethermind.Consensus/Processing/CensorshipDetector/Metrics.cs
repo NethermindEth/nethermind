@@ -18,9 +18,9 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Number of last potentially censored block.")]
-    public static long LastPotentiallyCensoredBlockNumber;
+    public static ulong LastPotentiallyCensoredBlockNumber;
 
     [GaugeMetric]
     [Description("Number of last known censored block.")]
-    public static long LastCensoredBlockNumber;
+    public static ulong LastCensoredBlockNumber;
 }

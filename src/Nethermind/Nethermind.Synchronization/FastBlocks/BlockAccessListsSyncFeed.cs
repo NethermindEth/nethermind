@@ -27,13 +27,14 @@ namespace Nethermind.Synchronization.FastBlocks;
 
 public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatch?>
 {
-    protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
+    protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
-    protected override long SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
+    protected override ulong SyncConfigBarrierCalc => (ulong)_syncConfig.AncientBlockAccessListsBarrierCalc;
     protected override Func<bool> HasPivot =>
         () =>
         {
-            (long pivotNumber, Hash256 pivotHash) = _blockTree.SyncPivot;
+            // SyncPivot.BlockNumber is ulong.
+            (ulong pivotNumber, Hash256 pivotHash) = _blockTree.SyncPivot;
             BlockHeader? pivotHeader = _blockTree.FindHeader(pivotHash, blockNumber: pivotNumber);
             return pivotHeader is not null &&
                    (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotNumber, pivotHash));
@@ -52,7 +53,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private SyncStatusList _syncStatusList;
 
     private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || AllDownloaded;
-    private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? long.MaxValue) <= _barrier;
+    private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? ulong.MaxValue) <= _barrier;
 
     public override bool IsFinished => AllDownloaded;
     public override string FeedName => nameof(BlockAccessListsSyncFeed);
@@ -82,21 +83,21 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
         }
 
-        _pivotNumber = -1; // First reset in `InitializeFeed`.
+        _pivotNumber = 0; // First reset in `InitializeFeed`.
     }
 
     public override void InitializeFeed()
     {
-        if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientBlockAccessListsBarrierCalc)
+        if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != (ulong)_syncConfig.AncientBlockAccessListsBarrierCalc)
         {
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-            _barrier = _syncConfig.AncientBlockAccessListsBarrierCalc;
+            _barrier = (ulong)_syncConfig.AncientBlockAccessListsBarrierCalc;
             if (_logger.IsInfo) _logger.Info($"Changed pivot in block access lists sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
             ResetSyncStatusList();
             InitializeMetadataDb();
         }
         base.InitializeFeed();
-        _syncReport.FastBlockAccessLists.Reset(0, _pivotNumber - _syncConfig.AncientBlockAccessListsBarrierCalc);
+        _syncReport.FastBlockAccessLists.Reset(0, _pivotNumber - (ulong)_syncConfig.AncientBlockAccessListsBarrierCalc);
     }
 
     private void ResetSyncStatusList() =>
@@ -104,7 +105,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             _blockTree,
             _pivotNumber,
             _syncPointers.LowestInsertedBlockAccessListBlockNumber,
-            _syncConfig.AncientBlockAccessListsBarrier);
+            (ulong)_syncConfig.AncientBlockAccessListsBarrier);
 
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.FastBlockAccessLists & ~SyncMode.FastBlocks;
@@ -287,7 +288,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport) : IBlockDownloadStrategy
     {
-        private long _lowestQueriedBlockWithAccessLists = long.MaxValue;
+        private ulong _lowestQueriedBlockWithAccessLists = ulong.MaxValue;
 
         public bool ShouldDownloadBlock(BlockInfo info)
         {
@@ -304,10 +305,10 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
             if (header.BlockAccessListHash is not null)
             {
-                long currentLowest = Interlocked.Read(ref _lowestQueriedBlockWithAccessLists);
+                ulong currentLowest = Interlocked.Read(ref _lowestQueriedBlockWithAccessLists);
                 while (info.BlockNumber < currentLowest)
                 {
-                    long previousLowest = Interlocked.CompareExchange(ref _lowestQueriedBlockWithAccessLists, info.BlockNumber, currentLowest);
+                    ulong previousLowest = Interlocked.CompareExchange(ref _lowestQueriedBlockWithAccessLists, info.BlockNumber, currentLowest);
                     if (previousLowest == currentLowest)
                     {
                         break;

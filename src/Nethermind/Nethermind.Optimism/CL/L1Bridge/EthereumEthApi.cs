@@ -20,7 +20,7 @@ public class EthereumEthApi(string l1EthApiEndpoint, IJsonSerializer jsonSeriali
 
     public Task<L1Block?> GetBlockByHash(Hash256 blockHash, bool fullTxs) => _ethRpcClient.Post<L1Block?>("eth_getBlockByHash", new object[] { blockHash, fullTxs });
 
-    public Task<L1Block?> GetBlockByNumber(ulong blockNumber, bool fullTxs) => _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", new BlockParameter((long)blockNumber), fullTxs);
+    public Task<L1Block?> GetBlockByNumber(ulong blockNumber, bool fullTxs) => _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", new BlockParameter(blockNumber), fullTxs);
 
     public Task<L1Block?> GetHead(bool fullTxs) => _ethRpcClient.Post<L1Block?>("eth_getBlockByNumber", BlockParameter.Latest, fullTxs);
 

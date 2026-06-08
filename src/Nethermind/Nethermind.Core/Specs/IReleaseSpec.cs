@@ -16,14 +16,14 @@ namespace Nethermind.Core.Specs
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
-        long MinGasLimit { get; }
+        ulong MinGasLimit { get; }
         long MinHistoryRetentionEpochs { get; }
         long MinBalRetentionEpochs { get; }
-        long GasLimitBoundDivisor { get; }
+        ulong GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
-        long DifficultyBombDelay { get; }
-        long DifficultyBoundDivisor { get; }
-        long? FixedDifficulty { get; }
+        ulong DifficultyBombDelay { get; }
+        ulong DifficultyBoundDivisor { get; }
+        ulong? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
 
         /// <summary>
@@ -309,7 +309,7 @@ namespace Nethermind.Core.Specs
         /// EIP-2935 ring buffer size for historical block hash storage.
         /// Defaults to 8,191 blocks for Ethereum mainnet.
         /// </summary>
-        public long Eip2935RingBufferSize { get; }
+        public ulong Eip2935RingBufferSize { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction

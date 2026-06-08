@@ -43,7 +43,7 @@ public partial class DebugRpcModuleTests
         Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        long blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number;
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, 0, options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
@@ -192,14 +192,14 @@ public partial class DebugRpcModuleTests
             {
                 "jsonrpc": "2.0",
                 "result": {
-                    "gas": 55278,
+                    "gas": 55302,
                     "failed": false,
                     "returnValue": "0x",
                     "structLogs": [
                         {
                             "pc": 0,
                             "op": "PUSH1",
-                            "gas": 46928,
+                            "gas": 46904,
                             "gasCost": 3,
                             "depth": 1,
                             "error": null,
@@ -209,7 +209,7 @@ public partial class DebugRpcModuleTests
                         {
                             "pc": 2,
                             "op": "PUSH1",
-                            "gas": 46925,
+                            "gas": 46901,
                             "gasCost": 3,
                             "depth": 1,
                             "error": null,
@@ -221,7 +221,7 @@ public partial class DebugRpcModuleTests
                         {
                             "pc": 4,
                             "op": "SSTORE",
-                            "gas": 46922,
+                            "gas": 46898,
                             "gasCost": 2200,
                             "depth": 1,
                             "error": null,
@@ -234,7 +234,7 @@ public partial class DebugRpcModuleTests
                         {
                             "pc": 5,
                             "op": "STOP",
-                            "gas": 44722,
+                            "gas": 44698,
                             "gasCost": 0,
                             "depth": 1,
                             "error": null,
@@ -252,7 +252,7 @@ public partial class DebugRpcModuleTests
         yield return new TestCaseData(
             contractTransaction,
             new GethTraceOptions { Tracer = "{gasUsed: [], step: function(log) { this.gasUsed.push(log.getGas()); }, result: function() { return this.gasUsed; }, fault: function(){}}" },
-            """{"jsonrpc":"2.0","result":[46928,46925,46922,44722],"id":67}"""
+            """{"jsonrpc":"2.0","result":[46904,46901,46898,44698],"id":67}"""
         )
         { TestName = "Contract with javaScriptTracer" };
 
@@ -275,7 +275,7 @@ public partial class DebugRpcModuleTests
                     "to": "0x0ffd3e46594919c04bcfd4e146203c8255670828",
                     "value": "0x1",
                     "gas": "0x186a0",
-                    "gasUsed": "0xd7ee",
+                    "gasUsed": "0xd806",
                     "input": "0x600060205500"
                 },
                 "id": 67

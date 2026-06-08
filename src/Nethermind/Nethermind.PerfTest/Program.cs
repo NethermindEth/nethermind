@@ -85,7 +85,7 @@ namespace Nethermind.PerfTest
             public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => await _blockTree.Accept(blockTreeVisitor, cancellationToken);
 
             public ChainLevelInfo FindLevel(long number) => _blockTree.FindLevel(number);
-            public BlockInfo FindCanonicalBlockInfo(long blockNumber) => throw new NotImplementedException();
+            public BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => throw new NotImplementedException();
 
             public AddBlockResult Insert(Block block) => _blockTree.Insert(block);
 
@@ -107,15 +107,15 @@ namespace Nethermind.PerfTest
 
             public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockHash, options);
 
-            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockNumber, options);
+            public Block FindBlock(ulong blockNumber, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockNumber, options);
 
-            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockNumber, options);
+            public BlockHeader FindHeader(ulong blockNumber, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockNumber, options);
 
-            public Keccak FindBlockHash(long blockNumber) => _blockTree.FindBlockHash(blockNumber);
+            public Keccak FindBlockHash(ulong blockNumber) => _blockTree.FindBlockHash(blockNumber);
 
             public bool IsMainChain(BlockHeader blockHeader) => _blockTree.IsMainChain(blockHeader);
 
-            public Keccak FindHash(long blockNumber) => _blockTree.FindHash(blockNumber);
+            public Keccak FindHash(ulong blockNumber) => _blockTree.FindHash(blockNumber);
 
             public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 

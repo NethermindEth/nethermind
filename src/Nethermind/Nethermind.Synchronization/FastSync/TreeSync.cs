@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
-        private long _blockNumber;
+        private ulong _blockNumber;
 
         public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, ITreeSyncStore store, IBlockTree blockTree, IStateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -401,11 +401,12 @@ namespace Nethermind.Synchronization.FastSync
             }
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
+            // headerForState.Number is ulong; ResetStateRoot takes long. Cast is safe for realistic chain heights.
             ResetStateRoot(headerForState.Number, headerForState.StateRoot!);
             return headerForState;
         }
 
-        private void ResetStateRoot(long blockNumber, Hash256 stateRoot)
+        private void ResetStateRoot(ulong blockNumber, Hash256 stateRoot)
         {
             _lastResetRoot = DateTime.UtcNow;
             Interlocked.Exchange(ref _hintsToResetRoot, 0);

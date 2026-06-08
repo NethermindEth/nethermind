@@ -8,5 +8,5 @@ namespace Nethermind.Blockchain.Headers;
 
 public interface IHeaderFinder
 {
-    BlockHeader? Get(Hash256 blockHash, long? blockNumber = null);
+    BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null);
 }

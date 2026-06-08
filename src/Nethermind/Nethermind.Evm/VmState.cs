@@ -26,14 +26,14 @@ public class VmState<TGasPolicy> : IDisposable
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
-    public long InitialStateGasUsed;
-    public long StateGasRefundPending;
+    public ulong InitialStateGasUsed;
+    public ulong StateGasRefundPending;
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
-    public long StateGasRefundAdvanced;
+    public ulong StateGasRefundAdvanced;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
-    public long Refund { get; set; }
+    public ulong Refund { get; set; }
     public int DataStackHead;
     public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
