@@ -194,7 +194,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create();
+        // Simulates pruned/missing patricia state (clears StateDb, persists the pruning trie store); flat has no equivalent.
+        using Context ctx = await Context.Create(useFlatDb: false);
         LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
@@ -891,7 +892,8 @@ public partial class EthRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
         object? blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson);
 
-        using Context ctx = await Context.Create();
+        // Pin to flat to validate the block-override fix under flat's (number, root)-keyed state addressing.
+        using Context ctx = await Context.Create(useFlatDb: true);
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 
