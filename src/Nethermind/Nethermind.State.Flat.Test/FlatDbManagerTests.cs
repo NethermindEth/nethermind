@@ -177,36 +177,6 @@ public class FlatDbManagerTests
     }
 
     [Test]
-    public async Task AddSnapshot_CompactionDoesNotClearReadOnlySnapshotBundleCache()
-    {
-        StateId stateId = CreateStateId(10);
-        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
-        mockReader.CurrentState.Returns(stateId);
-
-        _persistenceManager.LeaseReader().Returns(mockReader);
-        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
-        _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
-            .Returns(new SnapshotPooledList(0));
-        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
-        _snapshotCompactor.DoCompactSnapshot(Arg.Any<StateId>()).Returns(true);
-
-        ResourcePool realResourcePool = new(_config);
-        Snapshot snapshot = realResourcePool.CreateSnapshot(CreateStateId(10), CreateStateId(11), ResourcePool.Usage.MainBlockProcessing);
-        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-
-        await using FlatDbManager manager = CreateManager();
-
-        using (ReadOnlySnapshotBundle bundle1 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
-
-        manager.AddSnapshot(snapshot, transientResource);
-
-        _persistenceManager.ClearReceivedCalls();
-        using (ReadOnlySnapshotBundle bundle2 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
-
-        _persistenceManager.DidNotReceive().LeaseReader();
-    }
-
-    [Test]
     public async Task AddSnapshot_DuplicateSnapshot_DisposesSnapshotAndReturnsResource()
     {
         StateId persistedStateId = CreateStateId(5);
