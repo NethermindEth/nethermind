@@ -10,7 +10,11 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime)
+public class PrewarmerEnvFactory(
+    IWorldStateManager worldStateManager,
+    ILogManager logManager,
+    ILifetimeScope parentLifetime,
+    PrewarmerWriteHintCache writeHintCache)
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
@@ -18,7 +22,8 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
             worldStateManager.CreateResettableWorldState(),
             preBlockCaches,
             logManager,
-            isPrewarmer: true
+            isPrewarmer: true,
+            writeHintCache: writeHintCache
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
