@@ -397,7 +397,13 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
 
-    public string? FlatStorageNodesDbRocksDbOptions { get; set; } = "";
+    public string? FlatStorageNodesDbRocksDbOptions { get; set; } =
+        FlatDbCommonTrieOptions +
+        // Slight increase to account for high writes
+        "max_bytes_for_level_base=350000000;" +
+        "write_buffer_size=64000000;" +
+        "max_write_buffer_number=8;" +
+        "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatFallbackNodesDbRocksDbOptions { get; set; } =

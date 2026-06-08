@@ -7,7 +7,7 @@ namespace Nethermind.Db;
 
 public interface IFlatDbConfig : IConfig
 {
-    [ConfigItem(Description = "Block cache size budget", DefaultValue = "2147483648")]
+    [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     long BlockCacheSizeBudget { get; set; }
 
     [ConfigItem(Description = "Compact size", DefaultValue = "2048")]
