@@ -8,7 +8,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Optimism.Precompiles;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.Precompiles;
@@ -35,10 +34,10 @@ public class OptimismPrecompileProviderTests
         {
             const int pairSize = 192; // BN254.PairSize
             IPrecompile precompile = Resolve<BN254PairingCheckPrecompile>();
-            IReleaseSpec preFork = new Prague();
-            IReleaseSpec granite = new Prague { IsOpGraniteEnabled = true };
-            IReleaseSpec jovian = new Prague { IsOpGraniteEnabled = true, IsOpJovianEnabled = true };
-            IReleaseSpec karst = new Prague { IsOpGraniteEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
+            IReleaseSpec preFork = new OptimismReleaseSpec();
+            IReleaseSpec granite = new OptimismReleaseSpec { IsOpGraniteEnabled = true };
+            IReleaseSpec jovian = new OptimismReleaseSpec { IsOpGraniteEnabled = true, IsOpJovianEnabled = true };
+            IReleaseSpec karst = new OptimismReleaseSpec { IsOpGraniteEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
 
             yield return new(precompile, preFork, 587 * pairSize, true) { TestName = "BN254 PreFork over Granite limit" };
             yield return new(precompile, preFork, 57_599, false) { TestName = "BN254 PreFork not a multiple of pair size" };
@@ -55,10 +54,10 @@ public class OptimismPrecompileProviderTests
         {
             const int itemSize = Bls12381G1MsmPrecompile.ItemSize;
             IPrecompile precompile = Resolve<Bls12381G1MsmPrecompile>();
-            IReleaseSpec preFork = new Prague();
-            IReleaseSpec isthmus = new Prague { IsOpIsthmusEnabled = true };
-            IReleaseSpec jovian = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true };
-            IReleaseSpec karst = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
+            IReleaseSpec preFork = new OptimismReleaseSpec();
+            IReleaseSpec isthmus = new OptimismReleaseSpec { IsOpIsthmusEnabled = true };
+            IReleaseSpec jovian = new OptimismReleaseSpec { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true };
+            IReleaseSpec karst = new OptimismReleaseSpec { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
 
             yield return new(precompile, preFork, 3_212 * itemSize, true) { TestName = "BLS G1MSM PreFork over Isthmus limit" };
             yield return new(precompile, preFork, itemSize - 1, false) { TestName = "BLS G1MSM PreFork not a multiple of item size" };
@@ -74,10 +73,10 @@ public class OptimismPrecompileProviderTests
         {
             const int itemSize = Bls12381G2MsmPrecompile.ItemSize;
             IPrecompile precompile = Resolve<Bls12381G2MsmPrecompile>();
-            IReleaseSpec preFork = new Prague();
-            IReleaseSpec isthmus = new Prague { IsOpIsthmusEnabled = true };
-            IReleaseSpec jovian = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true };
-            IReleaseSpec karst = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
+            IReleaseSpec preFork = new OptimismReleaseSpec();
+            IReleaseSpec isthmus = new OptimismReleaseSpec { IsOpIsthmusEnabled = true };
+            IReleaseSpec jovian = new OptimismReleaseSpec { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true };
+            IReleaseSpec karst = new OptimismReleaseSpec { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
 
             yield return new(precompile, preFork, 1_697 * itemSize, true) { TestName = "BLS G2MSM PreFork over Isthmus limit" };
             yield return new(precompile, preFork, itemSize - 1, false) { TestName = "BLS G2MSM PreFork not a multiple of item size" };
@@ -93,10 +92,10 @@ public class OptimismPrecompileProviderTests
         {
             const int pairSize = 384; // Bls12381PairingCheckPrecompile.PairSize
             IPrecompile precompile = Resolve<Bls12381PairingCheckPrecompile>();
-            IReleaseSpec preFork = new Prague();
-            IReleaseSpec isthmus = new Prague { IsOpIsthmusEnabled = true };
-            IReleaseSpec jovian = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true };
-            IReleaseSpec karst = new Prague { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
+            IReleaseSpec preFork = new OptimismReleaseSpec();
+            IReleaseSpec isthmus = new OptimismReleaseSpec { IsOpIsthmusEnabled = true };
+            IReleaseSpec jovian = new OptimismReleaseSpec { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true };
+            IReleaseSpec karst = new OptimismReleaseSpec { IsOpIsthmusEnabled = true, IsOpJovianEnabled = true, IsOpKarstEnabled = true };
 
             yield return new(precompile, preFork, 613 * pairSize, true) { TestName = "BLS pairing PreFork over Isthmus limit" };
             yield return new(precompile, preFork, pairSize - 1, false) { TestName = "BLS pairing PreFork not a multiple of pair size" };

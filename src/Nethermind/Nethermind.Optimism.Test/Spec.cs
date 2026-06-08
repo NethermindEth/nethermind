@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.Optimism.Test;
@@ -38,7 +37,7 @@ public static class Spec
 
         foreach (BlockHeader header in headers)
         {
-            ReleaseSpec spec = Substitute.For<ReleaseSpec>();
+            OptimismReleaseSpec spec = Substitute.For<OptimismReleaseSpec>();
 
             spec.IsEip4844Enabled = true;
             spec.IsOpHoloceneEnabled = Instance.IsHolocene(header);
@@ -59,7 +58,7 @@ public static class Spec
 
         foreach (ulong timestamp in timestamps)
         {
-            ReleaseSpec spec = Substitute.For<ReleaseSpec>();
+            OptimismReleaseSpec spec = Substitute.For<OptimismReleaseSpec>();
 
             spec.IsEip4844Enabled = true;
             spec.IsOpHoloceneEnabled = timestamp >= HoloceneTimeStamp;

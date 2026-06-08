@@ -39,6 +39,7 @@ using Nethermind.Optimism.Precompiles;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.Optimism;
 
@@ -194,7 +195,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
             .AddSingleton<ICostHelper, OptimismCostHelper>()
 
+            .AddSingleton<ISpecProvider, OptimismChainSpecBasedSpecProvider>()
             .AddSingleton<IPrecompileProvider, OptimismPrecompileProvider>()
+            .AddSingleton<IRpcCapabilitiesProvider, OptimismEngineRpcCapabilitiesProvider>()
 
             .AddSingleton<OptimismBlockProducerFactory>()
             .Bind<IBlockProducerFactory, OptimismBlockProducerFactory>()
