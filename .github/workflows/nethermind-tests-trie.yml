@@ -106,7 +106,10 @@ jobs:
           - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
