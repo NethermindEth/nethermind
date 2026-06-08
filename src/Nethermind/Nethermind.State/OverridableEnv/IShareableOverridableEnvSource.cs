@@ -15,5 +15,9 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public interface IShareableOverridableEnvSource<T> : IDisposable
 {
-    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);
+    /// <remarks>
+    /// When <paramref name="blockOverride"/> is supplied it is applied to <paramref name="header"/> <b>in place</b>;
+    /// see <see cref="IOverridableEnv.BuildAndOverride"/>. Callers must pass a header they own (e.g. a clone).
+    /// </remarks>
+    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
 }

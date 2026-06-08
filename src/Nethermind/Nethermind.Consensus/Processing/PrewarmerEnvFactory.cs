@@ -18,7 +18,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
             worldStateManager.CreateResettableWorldState(),
             preBlockCaches,
             logManager,
-            populatePreBlockCache: true
+            isPrewarmer: true
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
