@@ -31,7 +31,7 @@ namespace Nethermind.Db.FullPruning
 
         // current pruning context, secondary DB that the state will be written to, as well as state trie will be copied to
         // this will be null if no full pruning is in progress
-        private PruningContext? _pruningContext;
+        private volatile PruningContext? _pruningContext;
         private Lock _startLock = new();
 
         public FullPruningDb(DbSettings settings, IDbFactory dbFactory, Action? updateDuplicateWriteMetrics = null)
@@ -53,9 +53,10 @@ namespace Nethermind.Db.FullPruning
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             byte[]? value = _currentDb.Get(key, flags); // we are reading from the main DB
-            if (value is not null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            PruningContext? pruningContext = _pruningContext;
+            if (value is not null && pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
             {
-                Duplicate(_pruningContext.CloningDb, key, value, WriteFlags.None);
+                Duplicate(pruningContext.CloningDb, key, value, WriteFlags.None);
             }
 
             return value;
@@ -64,9 +65,10 @@ namespace Nethermind.Db.FullPruning
         public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             Span<byte> value = _currentDb.GetSpan(key, flags); // we are reading from the main DB
-            if (!value.IsNull() && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            PruningContext? pruningContext = _pruningContext;
+            if (!value.IsNull() && pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
             {
-                Duplicate(_pruningContext.CloningDb, key, value, WriteFlags.None);
+                Duplicate(pruningContext.CloningDb, key, value, WriteFlags.None);
             }
 
             return value;
@@ -75,9 +77,10 @@ namespace Nethermind.Db.FullPruning
         public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             MemoryManager<byte>? memoryManager = _currentDb.GetOwnedMemory(key, flags);
-            if (memoryManager is not null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            PruningContext? pruningContext = _pruningContext;
+            if (memoryManager is not null && pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
             {
-                Duplicate(_pruningContext.CloningDb, key, memoryManager.GetSpan(), WriteFlags.None);
+                Duplicate(pruningContext.CloningDb, key, memoryManager.GetSpan(), WriteFlags.None);
             }
 
             return memoryManager;
@@ -122,10 +125,13 @@ namespace Nethermind.Db.FullPruning
         }
 
         // we also need to duplicate writes that are in batches
-        public IWriteBatch StartWriteBatch() =>
-            _pruningContext is null
+        public IWriteBatch StartWriteBatch()
+        {
+            IDb? cloningDb = _pruningContext?.CloningDb;
+            return cloningDb is null
                 ? _currentDb.StartWriteBatch()
-                : new DuplicatingWriteBatch(_currentDb.StartWriteBatch(), _pruningContext.CloningDb.StartWriteBatch(), this);
+                : new DuplicatingWriteBatch(_currentDb.StartWriteBatch(), cloningDb.StartWriteBatch(), this);
+        }
 
         public void Dispose()
         {
