@@ -17,21 +17,13 @@ namespace Nethermind.Optimism.Precompiles;
 /// execution time. The limit depends on the active fork, so it is supplied as a function of the
 /// <see cref="IReleaseSpec"/>; a <c>null</c> result means no OP-Stack specific limit applies for that spec.
 /// </remarks>
-public sealed class InputSizeLimitedPrecompile(IPrecompile inner, Func<IReleaseSpec, int?> maxInputSize) : IPrecompile
+public sealed class InputSizeLimitedPrecompile(IPrecompile inner, Func<IReleaseSpec, int?> maxInputSize) : PrecompileDecorator(inner)
 {
-    public bool SupportsCaching => inner.SupportsCaching;
-
-    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => inner.NormalizeInput(inputData);
-
-    public long BaseGasCost(IReleaseSpec releaseSpec) => inner.BaseGasCost(releaseSpec);
-
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inner.DataGasCost(inputData, releaseSpec);
-
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public override Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int? limit = maxInputSize(releaseSpec);
         return limit is not null && inputData.Length > limit
             ? Errors.InvalidInputLength
-            : inner.Run(inputData, releaseSpec);
+            : base.Run(inputData, releaseSpec);
     }
 }
