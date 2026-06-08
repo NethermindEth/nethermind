@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Logging;
 using System.Collections.Generic;
 using System.IO;
@@ -200,6 +201,14 @@ public class PersistedSnapshotCompactorTests
     private static UInt256 DistinctPrefixSlot(int id) => new((ulong)id << 16);
     private static byte[] DistinctPrefixSlotValue(int id) => [(byte)(id % 255 + 1)];
 
+    // Distinct 20-byte address carrying the id big-endian in the last 4 bytes.
+    private static Address DistinctAddress(int id)
+    {
+        byte[] b = new byte[20];
+        BinaryPrimitives.WriteUInt32BigEndian(b.AsSpan(16), (uint)id);
+        return new Address(b);
+    }
+
     /// <summary>
     /// End-to-end of the partitioned slot HSST (IndexType 0x08) on the BASE build path: one
     /// snapshot with 200 distinct slot prefixes (~6 KiB of 30-byte keys, above the 4 KiB
@@ -304,6 +313,99 @@ public class PersistedSnapshotCompactorTests
                     Assert.That(compacted!.TryGetSlot(TestItem.AddressA, DistinctPrefixSlot(id), ref slot), Is.True, $"slot {id} missing after compaction");
                     Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(DistinctPrefixSlotValue(id)).AsReadOnlySpan.ToArray()), $"slot {id} value mismatch after compaction");
                 }
+            }
+            finally { compacted!.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir)) Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// End-to-end of the partitioned ADDRESS column (key-after-value 0x0A / 0x0B) on the
+    /// COMPACTION path. A low address-partition threshold + zero hashtable-min (both reuse the
+    /// slot-options config) forces the merged 64-address column through
+    /// <c>NWayMergePartitioned</c> into a hashtable-bearing partitioned layout. Every account
+    /// and slot must read back through the compacted snapshot's real reader, and the column's
+    /// tail byte must be a partitioned index type — confirming the merge actually partitioned
+    /// rather than silently degrading to a plain 0x01.
+    /// </summary>
+    [Test]
+    public void Compact_PartitionedAddressColumn_RoundTrips_ThroughPartitionedHsst()
+    {
+        const int n = 8;                 // power of 2 ≥ minCompactSize (CompactSize*2 = 8) ⇒ one merge
+        const int addrsPerSnapshot = 8;  // 8 × 8 = 64 distinct addresses ⇒ 1280 key bytes ≫ threshold
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 4 * 1024 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Persisted);
+            // Low partition threshold + zero hashtable-min ⇒ the address column partitions and
+            // every partition carries a hashtable (0x0A multi / 0x0B single).
+            FlatDbConfig config = new()
+            {
+                CompactSize = 4,
+                MinCompactSize = 2,
+                PersistedSnapshotSlotPartitionThresholdBytes = 200,
+                PersistedSnapshotSlotHashtableMinBytes = 0,
+            };
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), config, new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            repo.LoadFromCatalog();
+
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            for (int i = 1; i <= n; i++)
+            {
+                StateId next = new(i, Keccak.Compute($"s{i}"));
+                SnapshotContent c = new();
+                for (int k = 0; k < addrsPerSnapshot; k++)
+                {
+                    int id = (i - 1) * addrsPerSnapshot + k + 1;
+                    Address addr = DistinctAddress(id);
+                    c.Accounts[addr] = Build.An.Account.WithBalance((UInt256)id).TestObject;
+                    c.Storages[(addr, DistinctPrefixSlot(id))] = new SlotValue(DistinctPrefixSlotValue(id));
+                }
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                prev = next;
+            }
+
+            compactor.DoCompactSnapshot(prev);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            try
+            {
+                // The address column must be a partitioned layout, not a plain 0x01 BTree.
+                using (WholeReadSession session = compacted!.BeginWholeReadSession())
+                {
+                    WholeReadSessionReader reader = session.GetReader();
+                    Assert.That(PersistedSnapshotReader.TryGetAddressColumnBound<WholeReadSessionReader, NoOpPin>(
+                        in reader, out Bound addrCol), Is.True);
+                    Span<byte> tail = stackalloc byte[1];
+                    Assert.That(reader.TryRead(addrCol.Offset + addrCol.Length - 1, tail), Is.True);
+                    Assert.That((IndexType)tail[0],
+                        Is.EqualTo(IndexType.PartitionedBTree).Or.EqualTo(IndexType.SinglePartitionHashtableBTree),
+                        "compacted address column must be partitioned (0x0A/0x0B)");
+                }
+
+                for (int id = 1; id <= n * addrsPerSnapshot; id++)
+                {
+                    Address addr = DistinctAddress(id);
+                    Assert.That(compacted!.TryGetAccount(addr, out Account? acc), Is.True, $"account {id} missing after compaction");
+                    Assert.That(acc!.Balance, Is.EqualTo((UInt256)id), $"account {id} balance mismatch");
+                    SlotValue slot = default;
+                    Assert.That(compacted.TryGetSlot(addr, DistinctPrefixSlot(id), ref slot), Is.True, $"slot {id} missing after compaction");
+                    Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(DistinctPrefixSlotValue(id)).AsReadOnlySpan.ToArray()), $"slot {id} value mismatch");
+                }
+                // An address that was never written must be absent.
+                Assert.That(compacted!.TryGetAccount(DistinctAddress(n * addrsPerSnapshot + 1000), out _), Is.False);
             }
             finally { compacted!.Dispose(); }
         }
