@@ -182,6 +182,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         Account? account = _snapshotBundle.GetAccount(address);
 
+        HintPrewarm(address);
+
         if (_configuration.VerifyWithTrie)
         {
             Account? accTrie = _stateTree.Get(address);
@@ -194,9 +196,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return account;
     }
 
-    public void HintGet(Address address, Account? account) => _snapshotBundle.CacheAccount(address, account);
+    public void HintGet(Address address, Account? account)
+    {
+        _snapshotBundle.CacheAccount(address, account);
+        HintPrewarm(address);
+    }
 
-    private void HintAccountUpdate(Address address)
+    private void HintPrewarm(Address address)
     {
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
@@ -455,7 +461,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             _dirtyAccounts[key] = account;
             scope._snapshotBundle.SetAccount(key, account);
-            scope.HintAccountUpdate(key);
 
             if (account is null)
             {
@@ -493,10 +498,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     account = account.WithChangedStorageRoot(storageRoot);
                     _dirtyAccounts[key] = account;
 
-                    Address address = key.Value;
                     scope._snapshotBundle.SetAccount(key, account);
-                    scope.HintAccountUpdate(address);
 
+                    Address address = key.Value;
                     OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
