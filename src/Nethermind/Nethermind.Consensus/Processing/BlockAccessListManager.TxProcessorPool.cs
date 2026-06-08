@@ -388,6 +388,10 @@ public partial class BlockAccessListManager
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
+            // Witness mode must record every code access, so it uses the non-caching CodeInfoRepository.
+            // EthereumCodeInfoRepository wraps a CacheCodeInfoRepository whose process-wide static code
+            // cache serves hits without reading through the (traced) WorldState, so cached code accesses
+            // would be missing from the generated witness.
             ICodeInfoRepository codeInfoRepository = witnessMode
                 ? new CodeInfoRepository(WorldState, new EthereumPrecompileProvider())
                 : new EthereumCodeInfoRepository(WorldState);
