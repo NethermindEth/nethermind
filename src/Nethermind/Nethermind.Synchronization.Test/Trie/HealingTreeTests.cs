@@ -141,6 +141,8 @@ public class HealingTreeTests
         IContainer CreateNode()
         {
             ConfigProvider configProvider = new();
+            // Trie node healing is a patricia state-sync repair mechanism with no flat equivalent.
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
             configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.Full;
             configProvider.GetConfig<IInitConfig>().StateDbKeyScheme = keyScheme;
             return new ContainerBuilder()
