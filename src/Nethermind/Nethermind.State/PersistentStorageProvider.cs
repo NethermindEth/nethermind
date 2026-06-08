@@ -316,8 +316,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private sealed class DefaultableDictionary()
     {
+        // Heavy reads (e.g. an eth_call Multicall3 touching thousands of distinct slots) grow this
+        // per-contract change map one entry at a time. Starting at capacity 0 makes a freshly
+        // allocated map cascade through Dictionary.Resize copies — the top CPU self-time and the
+        // top allocation in live-node profiling. Pre-sizing the floor removes those for the common
+        // case; pooled maps already retain their grown capacity across Clear().
+        private const int InitialSlotCapacity = 256;
+
         private bool _missingAreDefault;
-        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(InitialSlotCapacity, Comparer.Instance);
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
         public int Capacity => _dictionary.Capacity;

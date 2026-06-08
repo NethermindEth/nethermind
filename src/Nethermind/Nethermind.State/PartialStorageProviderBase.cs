@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
@@ -17,7 +18,15 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase(ILogManager? logManager)
     {
-        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = [];
+        // A heavy eth_call (large Multicall3) touches far more distinct storage cells than the
+        // default pool holds, so the per-cell StackList<int> registries spill to fresh allocations
+        // (a top-5 allocation in live-node profiling). Raise the cap so big calls reuse pooled
+        // registries instead of allocating new ones.
+        private const int StorageRegistryCellCapacity = 16384;
+
+        static PartialStorageProviderBase() => StaticPool<StackList<int>>.SetMaxPooledCount(StorageRegistryCellCapacity);
+
+        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new(Resettable.StartCapacity);
         protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = [];
