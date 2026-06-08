@@ -61,7 +61,7 @@ jobs:
             hash: 4de8c219c36d6e1ea4dd75a1746ef350f053b0abdd151c63f0a7efb3bf2a44fc
           - input: 25273718.ssz
             hash: 903166a9c107393cf59539de89c31fa36b45152430556a60b141231e48bea25c
-          - input: 25273718.ssz
+          - input: 25274052.ssz
             hash: 9ed88ee7fd20a1e04e3b2ae1f00c51803266c02d0475909782a715c16b8afbfe
     steps:
       - name: Check out repository
