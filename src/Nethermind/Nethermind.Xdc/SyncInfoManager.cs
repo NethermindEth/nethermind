@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Xdc.Errors;
+using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Types;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
@@ -17,6 +20,20 @@ internal class SyncInfoManager(
     ILogManager logManager) : ISyncInfoManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SyncInfoManager>();
+    private readonly object _syncInfoCacheLock = new();
+
+    private readonly Dictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> _syncInfoCache = [];
+
+    public IDictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> GetReceivedSyncInfos()
+    {
+        lock (_syncInfoCacheLock)
+        {
+            return new Dictionary<(ulong Round, Hash256 Hash), SyncInfoTypes>(_syncInfoCache);
+        }
+    }
+
+    public SyncInfo GetSyncInfo() => new(xdcContext.HighestQC, xdcContext.HighestTC);
+
     public void ProcessSyncInfo(SyncInfo syncInfo)
     {
         try
@@ -29,6 +46,38 @@ internal class SyncInfoManager(
             //We can get SyncInfo while syncing
             if (_logger.IsDebug)
                 _logger.Debug($"Couldn't find {nameof(SyncInfo)} block {e.IncomingBlockHash.ToShortString()} #{e.IncomingBlockNumber} ");
+        }
+        finally
+        {
+            (ulong _, Hash256 Hash) key = syncInfo.GetSyncInfoKey();
+            lock (_syncInfoCacheLock)
+            {
+                _syncInfoCache[key] = new SyncInfoTypes
+                {
+                    Hash = key.Hash,
+                    QCSigners = syncInfo.HighestQuorumCert?.Signatures?.Length ?? 0,
+                    TCSigners = syncInfo.HighestTimeoutCert?.Signatures?.Length ?? 0
+                };
+                HygieneSyncInfoCache();
+            }
+        }
+    }
+
+    private void HygieneSyncInfoCache()
+    {
+        ulong currentRound = xdcContext.CurrentRound;
+        if (currentRound <= XdcConstants.PoolHygieneRound)
+        {
+            return;
+        }
+
+        ulong lowerBoundRound = currentRound - XdcConstants.PoolHygieneRound;
+        foreach ((ulong Round, Hash256 Hash) key in _syncInfoCache.Keys)
+        {
+            if (key.Round < lowerBoundRound)
+            {
+                _syncInfoCache.Remove(key);
+            }
         }
     }
 
