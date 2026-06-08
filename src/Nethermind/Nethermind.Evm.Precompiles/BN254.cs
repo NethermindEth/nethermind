@@ -92,15 +92,11 @@ internal static unsafe class BN254
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (pairCount == 1)
-                return CheckPairingSingle(output, data);
-
-            if (pairCount <= MaxStackPairCount)
+            return pairCount switch
             {
-                return CheckPairingVector(output, data, pairCount);
-            }
-
-            return CheckPairingScalar(output, data, pairCount);
+                1 => CheckPairingSingle(output, data),
+                _ => CheckPairingVector(output, data, pairCount),
+            };
         }
     }
 
@@ -126,26 +122,54 @@ internal static unsafe class BN254
         return true;
     }
 
-    private static bool CheckPairingScalar(byte[] output, byte* data, int pairCount)
+    private static bool CheckPairingVector(byte[] output, byte* data, int pairCount)
     {
+        // Process the pairs in chunks of at most MaxStackPairCount so the scratch buffers stay a fixed,
+        // input-independent size on the stack (the >MaxStackPairCount case never grows the allocation),
+        // while still feeding the vectorized multi-Miller-loop for every pair rather than falling back to
+        // a per-pair scalar loop. Each chunk's Miller-loop product is multiplied into a running GT
+        // accumulator and a single final exponentiation is applied at the end — finalExp(∏ ML) is invariant
+        // to how the product is batched.
+        // Allocate in bytes so the buffer size matches the write stride (sizeof) exactly, regardless of struct padding.
+        int chunkCapacity = Math.Min(pairCount, MaxStackPairCount);
+        byte* g1Bytes = stackalloc byte[chunkCapacity * sizeof(mclBnG1)];
+        byte* g2Bytes = stackalloc byte[chunkCapacity * sizeof(mclBnG2)];
+
         Unsafe.SkipInit(out mclBnGT ml);
         Unsafe.SkipInit(out mclBnGT acc);
         bool hasMl = false;
 
-        for (int i = 0; i < pairCount; i++)
+        for (int chunkStart = 0; chunkStart < pairCount; chunkStart += MaxStackPairCount)
         {
-            int inputOffset = i * PairSize;
+            int chunkEnd = Math.Min(chunkStart + MaxStackPairCount, pairCount);
+            int nonZeroInChunk = 0;
 
-            if (!DeserializeG1(data + inputOffset, out mclBnG1 g1, out bool g1IsZero))
-                return false;
+            for (int i = chunkStart; i < chunkEnd; i++)
+            {
+                int inputOffset = i * PairSize;
 
-            if (!DeserializeG2(data + inputOffset + 64, out mclBnG2 g2, out bool g2IsZero))
-                return false;
+                if (!DeserializeG1(data + inputOffset, out mclBnG1 g1, out bool g1IsZero))
+                    return false;
 
-            if (g1IsZero || g2IsZero)
+                if (!DeserializeG2(data + inputOffset + 64, out mclBnG2 g2, out bool g2IsZero))
+                    return false;
+
+                if (g1IsZero || g2IsZero)
+                    continue;
+
+                Unsafe.AsRef<mclBnG1>(g1Bytes + nonZeroInChunk * sizeof(mclBnG1)) = g1;
+                Unsafe.AsRef<mclBnG2>(g2Bytes + nonZeroInChunk * sizeof(mclBnG2)) = g2;
+                nonZeroInChunk++;
+            }
+
+            if (nonZeroInChunk == 0)
                 continue;
 
-            mclBn_millerLoop(ref hasMl ? ref ml : ref acc, g1, g2);
+            mclBn_millerLoopVec(
+                ref hasMl ? ref ml : ref acc,
+                in Unsafe.AsRef<mclBnG1>(g1Bytes),
+                in Unsafe.AsRef<mclBnG2>(g2Bytes),
+                (nuint)nonZeroInChunk);
 
             if (hasMl)
             {
@@ -157,56 +181,12 @@ internal static unsafe class BN254
             }
         }
 
+        // All pairs had a zero element -> valid
         if (!hasMl)
         {
             output[31] = 1;
             return true;
         }
-
-        mclBn_finalExp(ref acc, acc);
-
-        output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
-        return true;
-    }
-
-    private static bool CheckPairingVector(byte[] output, byte* data, int pairCount)
-    {
-        // Allocate in bytes so the buffer size matches the write stride (sizeof) exactly, regardless of struct padding.
-        byte* g1Bytes = stackalloc byte[pairCount * sizeof(mclBnG1)];
-        byte* g2Bytes = stackalloc byte[pairCount * sizeof(mclBnG2)];
-
-        int nonZeroPairCount = 0;
-
-        for (int i = 0; i < pairCount; i++)
-        {
-            int inputOffset = i * PairSize;
-
-            if (!DeserializeG1(data + inputOffset, out mclBnG1 g1, out bool g1IsZero))
-                return false;
-
-            if (!DeserializeG2(data + inputOffset + 64, out mclBnG2 g2, out bool g2IsZero))
-                return false;
-
-            if (g1IsZero || g2IsZero)
-                continue;
-
-            Unsafe.AsRef<mclBnG1>(g1Bytes + nonZeroPairCount * sizeof(mclBnG1)) = g1;
-            Unsafe.AsRef<mclBnG2>(g2Bytes + nonZeroPairCount * sizeof(mclBnG2)) = g2;
-            nonZeroPairCount++;
-        }
-
-        if (nonZeroPairCount == 0)
-        {
-            output[31] = 1;
-            return true;
-        }
-
-        Unsafe.SkipInit(out mclBnGT acc);
-        mclBn_millerLoopVec(
-            ref acc,
-            in Unsafe.AsRef<mclBnG1>(g1Bytes),
-            in Unsafe.AsRef<mclBnG2>(g2Bytes),
-            (nuint)nonZeroPairCount);
 
         mclBn_finalExp(ref acc, acc);
 

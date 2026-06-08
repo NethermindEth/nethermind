@@ -57,10 +57,11 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
     public void Test(string input, string output, bool status) => RunTest(input, output, status);
 
     // Coverage for the pair-count dispatch in BN254.CheckPairing. The method routes 1 pair to a single-pairing
-    // fast path, 2..32 pairs (MaxStackPairCount) through the vectorized mclBn_millerLoopVec, and >32 pairs through
-    // the scalar accumulation fallback. The inline [TestCase] vectors above only reach 8 pairs, so these cases
-    // exercise the 32-pair vector boundary and the >32 scalar fallback using inputs whose pairing product is known
-    // analytically, guarding against the paths diverging.
+    // fast path and >=2 pairs through the vectorized mclBn_millerLoopVec, processed in chunks of at most
+    // MaxStackPairCount (32) so the stack scratch stays bounded; each chunk's Miller-loop product is combined in
+    // GT before a single final exponentiation. The inline [TestCase] vectors above only reach 8 pairs (a single
+    // chunk), so these cases exercise the 32-pair chunk boundary and the multi-chunk accumulation for >32 pairs
+    // using inputs whose pairing product is known analytically, guarding against the chunks combining incorrectly.
 
     // EIP-197 two-point match: e(P, Q) * e(-P, Q) == 1, so repeating the block keeps the product equal to one.
     private const string TwoPairsProductOne = "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed275dc4a288d1afb3cbb1ac09187524c7db36395df7be3b99e673b13a075a65ec1d9befcd05a5323e6da4d435f3b617cdb3af83285c2df711ef39c01571827f9d";
@@ -85,24 +86,26 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
 
     private static IEnumerable<TestCaseData> MultiPairBoundaryCases()
     {
-        // 4 pairs <= MaxStackPairCount: vectorized path whose product is not one (guards against an always-one vector result).
+        // 4 pairs (single chunk): vectorized path whose product is not one (guards against an always-one vector result).
         yield return new TestCaseData(TwoPairsProductOne + OnePairNotOne + InfinityPairs(1), ResultNotOne, true)
-            .SetName("CheckPairing_4_pairs_product_not_one_vector_path");
-        // 32 pairs == MaxStackPairCount: vectorized path; 16 cancelling blocks multiply to one.
+            .SetName("CheckPairing_4_pairs_product_not_one_single_chunk");
+        // 32 pairs == MaxStackPairCount: exactly one full chunk; 16 cancelling blocks multiply to one.
         yield return new TestCaseData(Repeat(TwoPairsProductOne, 16), ResultOne, true)
-            .SetName("CheckPairing_32_pairs_product_one_vector_path");
-        // 33 pairs > MaxStackPairCount: scalar fallback; trailing point at infinity is skipped, product stays one.
+            .SetName("CheckPairing_32_pairs_product_one_chunk_boundary");
+        // 33 pairs > MaxStackPairCount: two chunks (32 + 1); the trailing point at infinity leaves the second chunk
+        // empty, so it is skipped and the product stays one.
         yield return new TestCaseData(Repeat(TwoPairsProductOne, 16) + InfinityPairs(1), ResultOne, true)
-            .SetName("CheckPairing_33_pairs_with_infinity_scalar_path");
-        // 34 pairs > MaxStackPairCount: scalar fallback, all pairs non-zero, product is one.
+            .SetName("CheckPairing_33_pairs_with_infinity_multi_chunk");
+        // 34 pairs > MaxStackPairCount: two chunks (32 + 2), all pairs non-zero, both chunk products are one.
         yield return new TestCaseData(Repeat(TwoPairsProductOne, 17), ResultOne, true)
-            .SetName("CheckPairing_34_pairs_product_one_scalar_path");
-        // 33 pairs > MaxStackPairCount: scalar fallback whose product is not one (guards against an always-one result).
+            .SetName("CheckPairing_34_pairs_product_one_multi_chunk");
+        // 33 pairs > MaxStackPairCount: two chunks (32 + 1); the second chunk's pair makes the cross-chunk product
+        // not one (guards against the chunk combination collapsing to an always-one result).
         yield return new TestCaseData(Repeat(TwoPairsProductOne, 16) + OnePairNotOne, ResultNotOne, true)
-            .SetName("CheckPairing_33_pairs_product_not_one_scalar_path");
-        // 33 pairs > MaxStackPairCount: every pair is a point at infinity, so all are skipped and the result is one.
+            .SetName("CheckPairing_33_pairs_product_not_one_multi_chunk");
+        // 33 pairs > MaxStackPairCount: every pair is a point at infinity, so all chunks are empty and the result is one.
         yield return new TestCaseData(InfinityPairs(33), ResultOne, true)
-            .SetName("CheckPairing_33_pairs_all_infinity_scalar_path");
+            .SetName("CheckPairing_33_pairs_all_infinity_multi_chunk");
     }
 
     [TestCaseSource(nameof(MultiPairBoundaryCases))]
