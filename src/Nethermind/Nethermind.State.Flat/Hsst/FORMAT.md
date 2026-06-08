@@ -262,13 +262,17 @@ read dispatches the whole blob, and a directory floor-seek reuses the ordinary
 plus the inner root's prefix bytes:
 
 ```
-[InnerRootOffset: 6 LE][InnerScopeEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCount: u24][InnerRootPrefixLen: u8][InnerRootPrefix: InnerRootPrefixLen bytes]
+[InnerRootOffset: 6 LE][InnerBufferEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCount: u24][InnerRootPrefixLen: u8][InnerRootPrefix: InnerRootPrefixLen bytes]
 ```
 
 - **`InnerRootOffset`** — byte-0-relative start of the partition's inner B-tree
   root node (its flag byte). The reader descends from here on a hashtable miss.
-- **`InnerScopeEnd`** — byte-0-relative end of the partition's Inner Index
-  Region (the upper edge available to that partition's nodes).
+- **`InnerBufferEnd`** — byte-0-relative ceiling for the inner B-tree walk's
+  speculative node pins: the reader clamps each pin window to this so a read never
+  runs past the readable region. It is *not* a semantic node boundary — nodes
+  self-size from their headers, so a window spilling into the following bytes (the
+  partition's hashtable, the next partition) is harmless. In practice it equals the
+  end of the partition's Inner Index Region.
 - **`HashtableOffset`** — byte-0-relative, 64-byte-aligned start of the
   partition's hashtable. Only meaningful when `HashtableBucketCount > 0`.
 - **`DataRegionStart`** — byte-0-relative start of the partition's data section
@@ -330,7 +334,7 @@ scan all 8 tags with one 128-bit equality compare:
    `bound.Offset + DataRegionStart + Offset` and verify the full key; on the first
    verified match the lookup is done.
 3. On any hashtable miss (absent table, no tag match, or key mismatch), descend
-   the inner B-tree from `InnerRootOffset` (bounded above by `InnerScopeEnd`,
+   the inner B-tree from `InnerRootOffset` (bounded above by `InnerBufferEnd`,
    seeded with `InnerRootPrefix`).
 
 Floor lookups and iteration skip the hashtable entirely: the directory + each
@@ -368,7 +372,7 @@ The Data Region, Inner Index Region, and Hashtable are byte-for-byte the same as
 single `0x08` partition (all offsets byte-0-relative; hashtable ways and bucket
 layout identical). `Metadata` is the same 28-byte record a `0x08` directory would
 have stored as the partition's value —
-`[InnerRootOffset: 6 LE][InnerScopeEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCount: u24][InnerRootPrefixLen: u8]`
+`[InnerRootOffset: 6 LE][InnerBufferEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCount: u24][InnerRootPrefixLen: u8]`
 (`DataRegionStart` = 0 here) — and `InnerRootPrefix` carries the inner root's
 common-prefix bytes. The prefix is placed **before** the fixed record so a reader
 scanning from the tail reads the 28-byte record first (at `HSST_end − 2 − 28`),
@@ -377,7 +381,7 @@ learns `InnerRootPrefixLen`, then reads the prefix (at
 
 **Lookup procedure** (exact match): read the trailer metadata, then — identical to
 the `0x08` per-partition steps — probe the hashtable bucket and, on a miss, descend
-the inner B-tree from `InnerRootOffset` (bounded by `InnerScopeEnd`, seeded with
+the inner B-tree from `InnerRootOffset` (bounded by `InnerBufferEnd`, seeded with
 `InnerRootPrefix`). There is no directory walk. Floor lookups and iteration skip the
 hashtable and walk the inner B-tree directly (it holds every entry in key order).
 

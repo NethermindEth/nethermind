@@ -54,7 +54,7 @@ internal static class HsstPartitionedBTreeReader
         Span<byte> rec = stackalloc byte[HsstPartitionHashtable.DirRecordFixedSize];
         if (!reader.TryRead(metaBound.Offset, rec)) return false;
         long innerRootOffset = ReadU48(rec);
-        long innerScopeEnd = ReadU48(rec[6..]);
+        long innerBufferEnd = ReadU48(rec[6..]);
         long hashtableOffset = ReadU48(rec[12..]);
         long dataRegionStart = ReadU48(rec[18..]);
         int bucketCount = ReadU24(rec[24..]);
@@ -70,7 +70,7 @@ internal static class HsstPartitionedBTreeReader
         }
 
         return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyFirst, keyLength,
-            innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix, out resultBound);
+            innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix, out resultBound);
     }
 
     /// <summary>
@@ -87,12 +87,12 @@ internal static class HsstPartitionedBTreeReader
         resultBound = default;
         Span<byte> prefixBuf = stackalloc byte[256];
         if (!ReadSinglePartitionTrailer<TReader, TPin>(in reader, bound, out int keyLength,
-                out long innerRootOffset, out long innerScopeEnd, out long hashtableOffset,
+                out long innerRootOffset, out long innerBufferEnd, out long hashtableOffset,
                 out long dataRegionStart, out int bucketCount, prefixBuf, out int rootPrefixLen))
             return false;
 
         return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyFirst, keyLength,
-            innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, prefixBuf[..rootPrefixLen], out resultBound);
+            innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, prefixBuf[..rootPrefixLen], out resultBound);
     }
 
     /// <summary>
@@ -104,14 +104,14 @@ internal static class HsstPartitionedBTreeReader
     [SkipLocalsInit]
     internal static bool ReadSinglePartitionTrailer<TReader, TPin>(
         scoped in TReader reader, Bound bound,
-        out int keyLength, out long innerRootOffset, out long innerScopeEnd,
+        out int keyLength, out long innerRootOffset, out long innerBufferEnd,
         out long hashtableOffset, out long dataRegionStart, out int bucketCount,
         scoped Span<byte> rootPrefixDest, out int rootPrefixLen)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         keyLength = 0;
-        innerRootOffset = innerScopeEnd = hashtableOffset = dataRegionStart = 0;
+        innerRootOffset = innerBufferEnd = hashtableOffset = dataRegionStart = 0;
         bucketCount = rootPrefixLen = 0;
 
         int recSize = HsstPartitionHashtable.DirRecordFixedSize;
@@ -125,7 +125,7 @@ internal static class HsstPartitionedBTreeReader
         Span<byte> rec = stackalloc byte[HsstPartitionHashtable.DirRecordFixedSize];
         if (!reader.TryRead(recPos, rec)) return false;
         innerRootOffset = ReadU48(rec);
-        innerScopeEnd = ReadU48(rec[6..]);
+        innerBufferEnd = ReadU48(rec[6..]);
         hashtableOffset = ReadU48(rec[12..]);
         dataRegionStart = ReadU48(rec[18..]);
         bucketCount = ReadU24(rec[24..]);
@@ -147,7 +147,7 @@ internal static class HsstPartitionedBTreeReader
     [SkipLocalsInit]
     private static bool ProbeAndFallback<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key, bool exactMatch, bool keyFirst,
-        int keyLength, long innerRootOffset, long innerScopeEnd, long hashtableOffset,
+        int keyLength, long innerRootOffset, long innerBufferEnd, long hashtableOffset,
         long dataRegionStart, int bucketCount, scoped ReadOnlySpan<byte> rootPrefix, out Bound resultBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
@@ -183,8 +183,8 @@ internal static class HsstPartitionedBTreeReader
 
         // Fallback: walk the partition's inner B-tree from the recorded root.
         long rootStartAbs = bound.Offset + innerRootOffset;
-        long scopeEndAbs = bound.Offset + innerScopeEnd;
-        return HsstBTreeReader.TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStartAbs, scopeEndAbs,
+        long bufferEndAbs = bound.Offset + innerBufferEnd;
+        return HsstBTreeReader.TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStartAbs, bufferEndAbs,
             rootPrefix, keyLength, key, exactMatch, keyFirst, out resultBound);
     }
 

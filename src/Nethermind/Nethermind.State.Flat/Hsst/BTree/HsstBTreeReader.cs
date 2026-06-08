@@ -72,15 +72,15 @@ internal static class HsstBTreeReader
 
         long trailerLen = 5L + rootPrefixLen;
         long rootStart = bound.Offset + bound.Length - trailerLen - rootSize;
-        long scopeEnd = bound.Offset + bound.Length - trailerLen;
+        long bufferEnd = bound.Offset + bound.Length - trailerLen;
 
-        return TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStart, scopeEnd,
+        return TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStart, bufferEnd,
             rootPrefix, trailerKeyLength, key, exactMatch, keyFirst, out resultBound);
     }
 
     /// <summary>
     /// Walk-only variant of <see cref="TrySeek"/> for callers that have already resolved the
-    /// BTree's root descriptor (start offset, scope end, root prefix bytes, trailer key length)
+    /// BTree's root descriptor (start offset, buffer end, root prefix bytes, trailer key length)
     /// — typically because they cache it for the life of their backing container. Skips the
     /// two trailer-region reads that <see cref="TrySeek"/> issues to recover the same values
     /// and jumps straight into the node-walk loop.
@@ -88,15 +88,18 @@ internal static class HsstBTreeReader
     /// <remarks>
     /// <paramref name="rootStart"/> is the absolute byte offset of the root node's flag byte
     /// (the same value <see cref="TrySeek"/> computes as
-    /// <c>bound.Offset + bound.Length - trailerLen - rootSize</c>). <paramref name="scopeEnd"/>
-    /// is the absolute upper edge available to nodes — the trailer's lower edge. The bound is
-    /// still required because <see cref="DecodeEntry"/> uses it to derive entry-region offsets
-    /// and validate value lengths against the HSST's total span.
+    /// <c>bound.Offset + bound.Length - trailerLen - rootSize</c>). <paramref name="bufferEnd"/>
+    /// is the absolute ceiling for speculative node pins (see <see cref="TryLoadNode"/>): it only
+    /// bounds how far ahead a node read may pin so it cannot run past the readable region — it is
+    /// not a semantic node extent. Nodes self-size from their headers, so a pin window spilling
+    /// across following data (hashtable, sibling partitions) is harmless; any value at or before
+    /// the reader's length works. The bound is still required because <see cref="DecodeEntry"/>
+    /// uses it to derive entry-region offsets and validate value lengths against the HSST's span.
     /// </remarks>
     [SkipLocalsInit]
     public static bool TrySeekFromRoot<TReader, TPin>(
         scoped in TReader reader, Bound bound,
-        long rootStart, long scopeEnd,
+        long rootStart, long bufferEnd,
         scoped ReadOnlySpan<byte> rootPrefix,
         int trailerKeyLength,
         scoped ReadOnlySpan<byte> key,
@@ -137,7 +140,7 @@ internal static class HsstBTreeReader
             reader.Prefetch(currentAbsStart);
 
             // Leaf or Intermediate — parse as a BTreeNode node.
-            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
+            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, bufferEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;
             using (pin)
             {
@@ -245,10 +248,17 @@ internal static class HsstBTreeReader
     /// the node fits inside the speculative window we keep that pin instead of re-pinning
     /// precisely. The forward layout means the prefetcher pulls keys/values during the header
     /// read. Cold path (oversized leaves) disposes the speculative pin and re-pins exactly.
+    ///
+    /// <paramref name="bufferEnd"/> is purely a buffer-availability ceiling: the speculative
+    /// window is clamped to <c>bufferEnd - absStart</c> so the pin can never run past the
+    /// readable region (<see cref="IHsstByteReader{TPin}.PinBuffer"/> throws on overflow rather
+    /// than clamping). It does not delimit the node — the node's size comes from its own header,
+    /// so a window that reads into following bytes (a trailing hashtable, the next partition) is
+    /// harmless. It need only be ≤ the reader's length and ≥ the node's true end.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryLoadNode<TReader, TPin>(
-        scoped in TReader reader, long absStart, long scopeEnd,
+        scoped in TReader reader, long absStart, long bufferEnd,
         ReadOnlySpan<byte> parentSeparator,
         out BTreeNodeReader node, out TPin pin)
         where TPin : struct, IBufferPin, allows ref struct
@@ -257,7 +267,7 @@ internal static class HsstBTreeReader
         node = default;
         pin = default;
 
-        long available = scopeEnd - absStart;
+        long available = bufferEnd - absStart;
         // 12 = fixed header bytes.
         if (available < 12) return false;
 

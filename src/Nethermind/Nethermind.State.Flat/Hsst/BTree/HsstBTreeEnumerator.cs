@@ -108,8 +108,8 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// <see cref="IndexType.PartitionedBTreeKeyFirst"/> blob: the root descriptor comes
     /// from the directory metadata, not a per-partition trailer. <paramref name="scopeStart"/>
     /// is the whole partitioned-blob byte 0 (the base every byte-0-relative child offset is
-    /// added to), <paramref name="scopeEnd"/> the partition's inner-index end (the upper edge
-    /// for node loads — there is no trailer to subtract), <paramref name="rootAbsStart"/> the
+    /// added to), <paramref name="scopeEnd"/> the partition's <c>InnerBufferEnd</c> (the pin
+    /// ceiling for node loads — there is no trailer to subtract), <paramref name="rootAbsStart"/> the
     /// absolute start of the partition's inner root node, and <paramref name="rootPrefix"/>
     /// its common-key-prefix bytes.
     /// </summary>
@@ -173,7 +173,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     {
         long currentStart = absStart;
         int depth = depthHint;
-        long scopeEndMinusTrailer = _scopeEnd - _trailerLen;
+        long bufferEnd = _scopeEnd - _trailerLen;
         Span<byte> flagBuf = stackalloc byte[1];
         while (depth < MaxDepth)
         {
@@ -194,7 +194,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             }
 
             ReadOnlySpan<byte> parentSeparator = depth == 0 ? _rootPrefix : default;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, scopeEndMinusTrailer, parentSeparator, out BTreeNodeReader node, out TPin pin))
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, bufferEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;
 
             using (pin)
@@ -285,7 +285,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// </summary>
     private bool AscendAndDescend(scoped in TReader reader)
     {
-        long scopeEndMinusTrailer = _scopeEnd - _trailerLen;
+        long bufferEnd = _scopeEnd - _trailerLen;
         while (_depth > 0)
         {
             _depth--;
@@ -293,7 +293,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             anc.LastIdx++;
 
             ReadOnlySpan<byte> parentSeparator = _depth == 0 ? _rootPrefix : default;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, scopeEndMinusTrailer, parentSeparator, out BTreeNodeReader parent, out TPin parentPin))
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, bufferEnd, parentSeparator, out BTreeNodeReader parent, out TPin parentPin))
             {
                 _depth = -2;
                 return false;

@@ -97,7 +97,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // "no entry" without bothering with the BTree at all.
     private readonly Bound _addressBtreeBound;
     private readonly long _addressBtreeRootStart;
-    private readonly long _addressBtreeScopeEnd;
+    private readonly long _addressBtreeBufferEnd;
     private readonly byte[] _addressBtreeRootPrefix = [];
     // True when the address column is a partitioned HSST (PartitionedBTree 0x0A /
     // SinglePartitionHashtableBTree 0x0B) rather than a plain key-after-value BTree (0x01).
@@ -230,7 +230,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                             long trailerLen = 5L + rootPrefixLen;
                             _addressBtreeBound = addrColBound;
                             _addressBtreeRootStart = addrColBound.Offset + addrColBound.Length - trailerLen - rootSize;
-                            _addressBtreeScopeEnd = addrColBound.Offset + addrColBound.Length - trailerLen;
+                            _addressBtreeBufferEnd = addrColBound.Offset + addrColBound.Length - trailerLen;
                             _addressBtreeRootPrefix = rootPrefix;
                         }
                     }
@@ -390,7 +390,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 return false;
         }
         else if (!HsstBTreeReader.TrySeekFromRoot<ArenaByteReader, NoOpPin>(
-                in reader, _addressBtreeBound, _addressBtreeRootStart, _addressBtreeScopeEnd,
+                in reader, _addressBtreeBound, _addressBtreeRootStart, _addressBtreeBufferEnd,
                 _addressBtreeRootPrefix, PersistedSnapshotTags.AddressKeyLength,
                 address.Bytes, exactMatch: true, keyFirst: false, out addressBound))
             return false;

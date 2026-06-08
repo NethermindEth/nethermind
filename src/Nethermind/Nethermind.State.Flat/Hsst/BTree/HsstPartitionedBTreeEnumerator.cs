@@ -72,7 +72,7 @@ internal sealed class HsstPartitionedBTreeEnumerator<TReader, TPin>
         Span<byte> rec = stackalloc byte[HsstPartitionHashtable.DirRecordFixedSize];
         if (!reader.TryRead(metaBound.Offset, rec)) return EmptyPartition();
         long innerRootOffset = ReadU48(rec);
-        long innerScopeEnd = ReadU48(rec[6..]);
+        long innerBufferEnd = ReadU48(rec[6..]);
         int rootPrefixLen = rec[27];
 
         byte[] rootPrefix = [];
@@ -84,7 +84,7 @@ internal sealed class HsstPartitionedBTreeEnumerator<TReader, TPin>
         }
 
         return new HsstBTreeEnumerator<TReader, TPin>(
-            _scopeStart, _scopeStart + innerScopeEnd, _scopeStart + innerRootOffset, rootPrefix, _keyLength, keyFirst: _keyFirst);
+            _scopeStart, _scopeStart + innerBufferEnd, _scopeStart + innerRootOffset, rootPrefix, _keyLength, keyFirst: _keyFirst);
     }
 
     // A malformed/short metadata record yields an empty partition rather than throwing mid-walk;

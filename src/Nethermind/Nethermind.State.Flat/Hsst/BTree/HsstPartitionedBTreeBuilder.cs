@@ -51,7 +51,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     private int _lastRootSize;
     private int _lastRootPrefixLen;
     private bool _lastHadHashtable;
-    private long _lastInnerScopeEnd;
+    private long _lastInnerBufferEnd;
     private long _lastHashtableOffset;
     private int _lastBucketCount;
     private long _lastDataRegionStart;
@@ -84,7 +84,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _lastRootSize = 0;
         _lastRootPrefixLen = 0;
         _lastHadHashtable = false;
-        _lastInnerScopeEnd = 0;
+        _lastInnerBufferEnd = 0;
         _lastHashtableOffset = 0;
         _lastBucketCount = 0;
         _lastDataRegionStart = 0;
@@ -234,7 +234,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         Span<byte> tail = _writer.GetSpan(trailerLen);
         if (prefixLen > 0) _buffers.RootPrefixScratch.AsSpan(0, prefixLen).CopyTo(tail);
         Span<byte> rec = tail.Slice(prefixLen, recSize);
-        WriteRecord(rec, _lastRootOffset, _lastInnerScopeEnd, _lastHashtableOffset, _lastDataRegionStart, _lastBucketCount, prefixLen);
+        WriteRecord(rec, _lastRootOffset, _lastInnerBufferEnd, _lastHashtableOffset, _lastDataRegionStart, _lastBucketCount, prefixLen);
         tail[prefixLen + recSize] = (byte)_keyLength;
         tail[prefixLen + recSize + 1] = (byte)indexType;
         _writer.Advance(trailerLen);
@@ -265,7 +265,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     {
         Span<byte> rootPrefix = stackalloc byte[256];
         int rootPrefixLen = _inner.BuildIndexOnly(out long innerRootOffset, out int innerRootSize, rootPrefix);
-        long innerScopeEnd = _writer.Written - _hsstBase; // byte-0-relative end of the inner index region
+        long innerBufferEnd = _writer.Written - _hsstBase; // byte-0-relative end of the inner index region
         long dataRegionStart = _partitionStartAbs - _hsstBase; // byte-0-relative start of this partition's data section
         _inner.Dispose();
 
@@ -296,7 +296,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
             _writer.Advance(regionSize);
         }
 
-        EncodeDirValue(innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix[..rootPrefixLen]);
+        EncodeDirValue(innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix[..rootPrefixLen]);
 
         // Stash this partition's descriptor for the single-partition fast paths in Build().
         _lastRootOffset = innerRootOffset;
@@ -304,7 +304,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _lastRootPrefixLen = rootPrefixLen;
         rootPrefix[..rootPrefixLen].CopyTo(_buffers.RootPrefixScratch);
         _lastHadHashtable = bucketCount > 0;
-        _lastInnerScopeEnd = innerScopeEnd;
+        _lastInnerBufferEnd = innerBufferEnd;
         _lastHashtableOffset = hashtableOffset;
         _lastBucketCount = bucketCount;
         _lastDataRegionStart = dataRegionStart;
@@ -324,10 +324,10 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _writer.Advance(pad);
     }
 
-    private void EncodeDirValue(long innerRootOffset, long innerScopeEnd, long hashtableOffset, long dataRegionStart, int bucketCount, scoped ReadOnlySpan<byte> rootPrefix)
+    private void EncodeDirValue(long innerRootOffset, long innerBufferEnd, long hashtableOffset, long dataRegionStart, int bucketCount, scoped ReadOnlySpan<byte> rootPrefix)
     {
         Span<byte> rec = stackalloc byte[HsstPartitionHashtable.DirRecordFixedSize];
-        WriteRecord(rec, innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix.Length);
+        WriteRecord(rec, innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix.Length);
         _buffers.DirValues.AddRange(rec);
         if (rootPrefix.Length > 0) _buffers.DirValues.AddRange(rootPrefix);
         _buffers.DirValueLengths.Add(HsstPartitionHashtable.DirRecordFixedSize + rootPrefix.Length);
@@ -335,12 +335,12 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Write the 28-byte partition metadata record (shared by the directory value and the 0x09
-    /// trailer): <c>[InnerRootOffset 6][InnerScopeEnd 6][HashtableOffset 6][DataRegionStart 6][HashtableBucketCount u24][InnerRootPrefixLen u8]</c>.
+    /// trailer): <c>[InnerRootOffset 6][InnerBufferEnd 6][HashtableOffset 6][DataRegionStart 6][HashtableBucketCount u24][InnerRootPrefixLen u8]</c>.
     /// </summary>
-    private static void WriteRecord(Span<byte> rec, long innerRootOffset, long innerScopeEnd, long hashtableOffset, long dataRegionStart, int bucketCount, int rootPrefixLen)
+    private static void WriteRecord(Span<byte> rec, long innerRootOffset, long innerBufferEnd, long hashtableOffset, long dataRegionStart, int bucketCount, int rootPrefixLen)
     {
         WriteU48(rec, innerRootOffset);
-        WriteU48(rec[6..], innerScopeEnd);
+        WriteU48(rec[6..], innerBufferEnd);
         WriteU48(rec[12..], hashtableOffset);
         WriteU48(rec[18..], dataRegionStart);
         WriteU24(rec[24..], bucketCount);

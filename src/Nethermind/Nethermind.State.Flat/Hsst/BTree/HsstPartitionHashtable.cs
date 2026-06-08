@@ -47,7 +47,7 @@ internal static class HsstPartitionHashtable
     /// <summary>
     /// Fixed size of a directory / single-partition metadata record (before the inner-root
     /// prefix bytes):
-    /// <c>[InnerRootOffset: 6][InnerScopeEnd: 6][HashtableOffset: 6][DataRegionStart: 6][HashtableBucketCount: u24][InnerRootPrefixLen: u8]</c>.
+    /// <c>[InnerRootOffset: 6][InnerBufferEnd: 6][HashtableOffset: 6][DataRegionStart: 6][HashtableBucketCount: u24][InnerRootPrefixLen: u8]</c>.
     /// </summary>
     internal const int DirRecordFixedSize = 28;
 
