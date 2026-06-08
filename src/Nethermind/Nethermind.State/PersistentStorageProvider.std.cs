@@ -47,9 +47,7 @@ internal sealed partial class PersistentStorageProvider
 
         if (storages.Count == 0) return;
 
-        // Sort heaviest contracts first: HEFT-style head start for the slowest work items, so
-        // the tail of the parallel loop isn't a single long task waiting on a free worker.
-        // ParallelUnbalancedWork's work-stealing absorbs imbalance from there.
+        // Schedule larger changes first to help balance the work
         storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
         ParallelUnbalancedWork.For(
