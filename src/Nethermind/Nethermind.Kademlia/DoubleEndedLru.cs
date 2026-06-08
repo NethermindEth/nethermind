@@ -5,24 +5,24 @@ using NonBlocking;
 
 namespace Nethermind.Kademlia;
 
-public class DoubleEndedLru<TNode, TKadKey>(int capacity)
-    where TNode : notnull
-    where TKadKey : notnull
+public class DoubleEndedLru<TKey, TValue>(int capacity)
+    where TKey : notnull
+    where TValue : notnull
 {
     private readonly object _lock = new();
 
-    private readonly LinkedList<(TKadKey, TNode)> _queue = new();
-    private readonly ConcurrentDictionary<TKadKey, LinkedListNode<(TKadKey, TNode)>> _hashMapping = new();
+    private readonly LinkedList<(TKey Key, TValue Value)> _queue = new();
+    private readonly ConcurrentDictionary<TKey, LinkedListNode<(TKey Key, TValue Value)>> _index = new();
     public int Count => _queue.Count;
 
-    public BucketAddResult AddOrRefresh(in TKadKey hash, TNode node)
+    public BucketAddResult AddOrRefresh(in TKey key, TValue value)
     {
         lock (_lock)
         {
-            if (_hashMapping.TryGetValue(hash, out LinkedListNode<(TKadKey, TNode)>? listNode))
+            if (_index.TryGetValue(key, out LinkedListNode<(TKey Key, TValue Value)>? listNode))
             {
                 _queue.Remove(listNode);
-                listNode.Value = (hash, node);
+                listNode.Value = (key, value);
                 _queue.AddFirst(listNode);
                 return BucketAddResult.Refreshed;
             }
@@ -32,54 +32,54 @@ public class DoubleEndedLru<TNode, TKadKey>(int capacity)
                 return BucketAddResult.Full;
             }
 
-            listNode = _queue.AddFirst((hash, node));
-            _hashMapping.TryAdd(hash, listNode);
+            listNode = _queue.AddFirst((key, value));
+            _index.TryAdd(key, listNode);
             return BucketAddResult.Added;
         }
     }
 
-    public bool TryPopHead(out TKadKey hash, out TNode? node)
+    public bool TryPopHead(out TKey key, out TValue? value)
     {
         lock (_lock)
         {
-            LinkedListNode<(TKadKey, TNode)>? front = _queue.First;
+            LinkedListNode<(TKey Key, TValue Value)>? front = _queue.First;
             if (front == null)
             {
-                hash = default!;
-                node = default;
+                key = default!;
+                value = default;
                 return false;
             }
 
             _queue.Remove(front);
-            hash = front.Value.Item1;
-            node = front.Value.Item2;
-            _hashMapping.TryRemove(front.Value.Item1, out front);
+            key = front.Value.Key;
+            value = front.Value.Value;
+            _index.TryRemove(front.Value.Key, out front);
 
             return true;
         }
     }
 
-    public bool TryGetLast(out TNode? last)
+    public bool TryGetLast(out TValue? last)
     {
         lock (_lock)
         {
-            LinkedListNode<(TKadKey, TNode)>? lastNode = _queue.Last;
+            LinkedListNode<(TKey Key, TValue Value)>? lastNode = _queue.Last;
             if (lastNode == null)
             {
                 last = default;
                 return false;
             }
 
-            last = lastNode.Value.Item2;
+            last = lastNode.Value.Value;
             return true;
         }
     }
 
-    public bool Remove(TKadKey hash)
+    public bool Remove(TKey key)
     {
         lock (_lock)
         {
-            if (_hashMapping.TryRemove(hash, out LinkedListNode<(TKadKey, TNode)>? listNode))
+            if (_index.TryRemove(key, out LinkedListNode<(TKey Key, TValue Value)>? listNode))
             {
                 _queue.Remove(listNode);
                 return true;
@@ -89,35 +89,35 @@ public class DoubleEndedLru<TNode, TKadKey>(int capacity)
         }
     }
 
-    public TNode[] GetAll()
+    public TValue[] GetAll()
     {
         lock (_lock)
         {
-            TNode[] result = new TNode[_queue.Count];
+            TValue[] result = new TValue[_queue.Count];
             int i = 0;
-            foreach ((TKadKey, TNode node) entry in _queue) result[i++] = entry.node;
+            foreach ((TKey Key, TValue Value) entry in _queue) result[i++] = entry.Value;
             return result;
         }
     }
 
-    public (TKadKey, TNode)[] GetAllWithHash()
+    public (TKey Key, TValue Value)[] GetAllWithKey()
     {
         lock (_lock)
         {
-            (TKadKey, TNode)[] result = new (TKadKey, TNode)[_queue.Count];
+            (TKey Key, TValue Value)[] result = new (TKey Key, TValue Value)[_queue.Count];
             int i = 0;
-            foreach ((TKadKey, TNode) entry in _queue) result[i++] = entry;
+            foreach ((TKey Key, TValue Value) entry in _queue) result[i++] = entry;
             return result;
         }
     }
 
-    public bool Contains(in TKadKey hash) => _hashMapping.ContainsKey(hash);
+    public bool Contains(in TKey key) => _index.ContainsKey(key);
 
-    public TNode? GetByHash(TKadKey hash)
+    public TValue? GetByKey(TKey key)
     {
-        if (_hashMapping.TryGetValue(hash, out LinkedListNode<(TKadKey, TNode)>? listNode))
+        if (_index.TryGetValue(key, out LinkedListNode<(TKey Key, TValue Value)>? listNode))
         {
-            return listNode.Value.Item2;
+            return listNode.Value.Value;
         }
 
         return default;
