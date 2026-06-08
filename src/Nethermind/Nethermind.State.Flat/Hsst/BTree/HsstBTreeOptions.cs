@@ -84,13 +84,14 @@ public sealed record HsstBTreeOptions
     /// boundary and a fresh one starts. 4 MiB.</summary>
     public const long DefaultPartitionThresholdBytes = 4L * 1024 * 1024;
 
-    /// <summary>Hard cap on a single partition's on-disk span for the partitioned
-    /// builder. The per-partition hashtable stores each entry as a backward
-    /// <c>u32</c> distance from the hashtable start, so every entry must sit below
-    /// 4 GiB before its partition's hashtable; 2 GiB leaves headroom for the inner
-    /// index + alignment that follow the data region. This is a correctness bound,
-    /// not a tuning knob.</summary>
-    public const long DefaultPartitionMaxSpanBytes = 2L * 1024 * 1024 * 1024;
+    /// <summary>Hard cap on a single partition's data section for the partitioned
+    /// builder. The per-partition hashtable stores each entry as a <c>u24</c> forward
+    /// distance from the data-section start, so the data section (entries + inline
+    /// leaves) must stay under 16 MiB; the builder closes a partition once its data
+    /// span reaches this. The inner index sits after the data section and is not
+    /// addressed by the hashtable, so it does not count. A correctness bound, not a
+    /// tuning knob.</summary>
+    public const long DefaultPartitionMaxSpanBytes = 16L * 1024 * 1024;
 
     /// <summary>Default minimum partition key-bytes below which the partitioned
     /// builder skips the per-partition hashtable entirely — a one- or two-level

@@ -98,7 +98,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 Span<byte> prefixBuf = stackalloc byte[256];
                 if (HsstPartitionedBTreeReader.ReadSinglePartitionTrailer<TReader, TPin>(in reader, scope,
                         out int spKeyLength, out long spRootOffset, out long spScopeEnd,
-                        out long _, out int _, prefixBuf, out int spPrefixLen))
+                        out long _, out long _, out int _, prefixBuf, out int spPrefixLen))
                 {
                     byte[] rootPrefix = spPrefixLen > 0 ? prefixBuf[..spPrefixLen].ToArray() : [];
                     _btree = new HsstBTreeEnumerator<TReader, TPin>(

@@ -18,30 +18,38 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// </summary>
 /// <remarks>
 /// A hashtable is an array of cache-line buckets. Each bucket is <see cref="BucketBytes"/>
-/// (64) bytes laid out struct-of-arrays so the tags can be scanned with one SIMD compare:
-/// <c>[Tag_0..Tag_7: 8×u32 LE][Offset_0..Offset_7: 8×u32 LE]</c> (tags in <c>[0,32)</c>,
-/// offsets in <c>[32,64)</c>). <c>Tag == 0</c> marks an empty way; live placements force the
-/// tag to be ≥ 1, so the equality scan never matches an empty way. <c>Offset_i</c> is the
-/// entry's flag-byte position stored as the backward distance from the hashtable start
-/// (<c>Offset = HashtableOffset − EntryOffset</c>), recovered as
-/// <c>entry_abs = hashtable_abs − Offset</c>. The table is best-effort: a key whose bucket
-/// already holds 8 live tags is dropped, and the reader falls back to the partition's inner
-/// B-tree.
+/// (64) bytes holding <see cref="WaysPerBucket"/> (12) ways struct-of-arrays so the tags can
+/// be scanned with one SIMD compare:
+/// <c>[Tag_0..Tag_11: 12×u16 LE][Offset_0..Offset_11: 12×u24 LE]</c> (tags in <c>[0,24)</c>,
+/// offsets in <c>[24,60)</c>, 4 pad bytes). <c>Tag == 0</c> marks an empty way; live
+/// placements force the tag to be ≥ 1, so the equality scan never matches an empty way.
+/// <c>Offset_i</c> is the entry's flag-byte position stored as the <b>forward</b> distance
+/// from the partition's data-section start (<c>Offset = EntryOffset − DataRegionStart</c>),
+/// recovered as <c>entry_abs = bound.Offset + DataRegionStart + Offset</c>. The 3-byte offset
+/// bounds a partition's data section to <see cref="MaxOffset"/> + 1 (16 MiB) — the inner index
+/// sits after the data section so it does not consume offset budget. The table is best-effort:
+/// a key whose bucket already holds 12 live tags is dropped, and the reader falls back to the
+/// partition's inner B-tree.
 /// </remarks>
 internal static class HsstPartitionHashtable
 {
     internal const int BucketBytes = 64;
-    internal const int WaysPerBucket = 8;
-    /// <summary>Byte width of a tag / an offset slot (both u32).</summary>
-    internal const int SlotBytes = 4;
-    /// <summary>Byte offset of the offsets section within a bucket (the tags fill <c>[0, 32)</c>).</summary>
-    internal const int OffsetsSectionStart = WaysPerBucket * SlotBytes;
+    internal const int WaysPerBucket = 12;
+    /// <summary>Byte width of a tag slot (u16).</summary>
+    internal const int TagBytes = 2;
+    /// <summary>Byte width of an offset slot (u24).</summary>
+    internal const int OffsetBytes = 3;
+    /// <summary>Byte offset of the offsets section within a bucket (the tags fill <c>[0, 24)</c>).</summary>
+    internal const int OffsetsSectionStart = WaysPerBucket * TagBytes;
+    /// <summary>Largest forward offset that fits the u24 offset slot (⇒ data section &lt; 16 MiB).</summary>
+    internal const int MaxOffset = (1 << 24) - 1;
 
     /// <summary>
-    /// Fixed size of a directory metadata record (before the inner-root prefix bytes):
-    /// <c>[InnerRootOffset: 6][InnerScopeEnd: 6][HashtableOffset: 6][HashtableBucketCountLog2: u8][InnerRootPrefixLen: u8]</c>.
+    /// Fixed size of a directory / single-partition metadata record (before the inner-root
+    /// prefix bytes):
+    /// <c>[InnerRootOffset: 6][InnerScopeEnd: 6][HashtableOffset: 6][DataRegionStart: 6][HashtableBucketCountLog2: u8][InnerRootPrefixLen: u8]</c>.
     /// </summary>
-    internal const int DirRecordFixedSize = 20;
+    internal const int DirRecordFixedSize = 26;
 
     /// <summary>Hard cap on the bucket-count log2 (16M buckets ≈ 1 GiB) — a runaway guard;
     /// real partitions are bounded by the key-bytes / span thresholds well below this.</summary>
@@ -53,8 +61,8 @@ internal static class HsstPartitionHashtable
     /// lookup-time bucket selection (<see cref="BucketIndex"/>) is unaffected.</summary>
     internal const int TargetUtilizationPercent = 75;
 
-    /// <summary>Target keys per 8-way bucket implied by <see cref="TargetUtilizationPercent"/>
-    /// (= <see cref="WaysPerBucket"/> × 75% = 6).</summary>
+    /// <summary>Target keys per <see cref="WaysPerBucket"/>-way bucket implied by
+    /// <see cref="TargetUtilizationPercent"/> (= 12 × 75% = 9).</summary>
     internal const int TargetKeysPerBucket = WaysPerBucket * TargetUtilizationPercent / 100;
 
     /// <summary>Byte size of a hashtable with <paramref name="bucketCountLog2"/> buckets.</summary>
@@ -63,7 +71,7 @@ internal static class HsstPartitionHashtable
 
     /// <summary>
     /// Pick the bucket-count log2 for a partition of <paramref name="keyCount"/> keys: the
-    /// smallest power of two whose 8-way capacity meets the <see cref="TargetUtilizationPercent"/>
+    /// smallest power of two whose 12-way capacity meets the <see cref="TargetUtilizationPercent"/>
     /// load (buckets ≈ ceil(keyCount / <see cref="TargetKeysPerBucket"/>)). Always ≥ 1 (so
     /// NumBuckets ≥ 2, keeping log2 = 0 free as the "no hashtable" sentinel), capped at
     /// <see cref="MaxBucketCountLog2"/>. The divide here is build-time sizing only; lookup-time
@@ -77,7 +85,7 @@ internal static class HsstPartitionHashtable
     }
 
     /// <summary>64-bit mixing hash of <paramref name="key"/>; the bucket index is its low
-    /// bits and the way tag its high 32 bits. Identical on the write and read sides.</summary>
+    /// bits and the way tag its high 16 bits. Identical on the write and read sides.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong Hash(scoped ReadOnlySpan<byte> key)
     {
@@ -113,30 +121,33 @@ internal static class HsstPartitionHashtable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int BucketIndex(ulong hash, int bucketCountLog2) => (int)(hash & ((1UL << bucketCountLog2) - 1));
 
-    /// <summary>Way tag for <paramref name="hash"/> — the high 32 bits, forced to ≥ 1 so 0 stays the empty marker.</summary>
+    /// <summary>Way tag for <paramref name="hash"/> — the high 16 bits, forced to ≥ 1 so 0 stays the empty marker.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static uint Tag(ulong hash)
+    internal static ushort Tag(ulong hash)
     {
-        uint tag = (uint)(hash >> 32);
-        return tag == 0 ? 1u : tag;
+        ushort tag = (ushort)(hash >> 48);
+        return tag == 0 ? (ushort)1 : tag;
     }
 
     /// <summary>
-    /// Insert <paramref name="backwardOffset"/> (= HashtableOffset − EntryOffset, must fit
-    /// u32) into <paramref name="buckets"/> for <paramref name="hash"/>. Returns false on
-    /// bucket overflow (8 live tags) — the caller drops the key (best-effort).
+    /// Insert <paramref name="offset"/> (= EntryOffset − DataRegionStart, the forward distance
+    /// from the partition's data-section start) into <paramref name="buckets"/> for
+    /// <paramref name="hash"/>. Returns false on bucket overflow (12 live tags) or on a u24
+    /// offset overflow (defensive — never under the 16 MiB split) — the caller drops the key
+    /// (best-effort, reader falls back to the inner B-tree).
     /// </summary>
-    internal static bool TryInsert(Span<byte> buckets, int bucketCountLog2, ulong hash, long backwardOffset)
+    internal static bool TryInsert(Span<byte> buckets, int bucketCountLog2, ulong hash, long offset)
     {
+        if (offset < 0 || offset > MaxOffset) return false;
         int bucket = BucketIndex(hash, bucketCountLog2);
-        uint tag = Tag(hash);
+        ushort tag = Tag(hash);
         Span<byte> b = buckets.Slice(bucket * BucketBytes, BucketBytes);
         for (int way = 0; way < WaysPerBucket; way++)
         {
-            Span<byte> tagSlot = b.Slice(way * SlotBytes, SlotBytes);
-            if (BinaryPrimitives.ReadUInt32LittleEndian(tagSlot) != 0) continue; // occupied
-            BinaryPrimitives.WriteUInt32LittleEndian(tagSlot, tag);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(OffsetsSectionStart + way * SlotBytes, SlotBytes), (uint)backwardOffset);
+            Span<byte> tagSlot = b.Slice(way * TagBytes, TagBytes);
+            if (BinaryPrimitives.ReadUInt16LittleEndian(tagSlot) != 0) continue; // occupied
+            BinaryPrimitives.WriteUInt16LittleEndian(tagSlot, tag);
+            WriteU24(b.Slice(OffsetsSectionStart + way * OffsetBytes, OffsetBytes), (uint)offset);
             return true;
         }
         return false;
@@ -144,28 +155,41 @@ internal static class HsstPartitionHashtable
 
     /// <summary>
     /// Bit mask of the ways in <paramref name="bucket"/> whose tag equals <paramref name="tag"/>
-    /// (bit <c>i</c> set ⇒ way <c>i</c> matches). Scans all 8 tags with a single 256-bit
-    /// equality compare where supported; empty ways (tag 0) never match a live tag (≥ 1).
+    /// (bit <c>i</c> set ⇒ way <c>i</c> matches). Scans all 12 tags with a single 256-bit
+    /// equality compare where supported (masking off the 4 lanes that overlap the offsets
+    /// section); empty ways (tag 0) never match a live tag (≥ 1).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static uint MatchMask(scoped ReadOnlySpan<byte> bucket, uint tag) =>
+    internal static uint MatchMask(scoped ReadOnlySpan<byte> bucket, ushort tag) =>
         Vector256.IsHardwareAccelerated && BitConverter.IsLittleEndian
-            ? Vector256.Equals(Vector256.LoadUnsafe(ref MemoryMarshal.GetReference(bucket)).AsUInt32(), Vector256.Create(tag))
-                .ExtractMostSignificantBits()
+            ? Vector256.Equals(Vector256.LoadUnsafe(ref MemoryMarshal.GetReference(bucket)).AsUInt16(), Vector256.Create(tag))
+                .ExtractMostSignificantBits() & ((1u << WaysPerBucket) - 1)
             : MatchMaskScalar(bucket, tag);
 
     /// <summary>Endian-correct scalar equivalent of <see cref="MatchMask"/> (fallback + test cross-check).</summary>
-    internal static uint MatchMaskScalar(scoped ReadOnlySpan<byte> bucket, uint tag)
+    internal static uint MatchMaskScalar(scoped ReadOnlySpan<byte> bucket, ushort tag)
     {
         uint mask = 0;
         for (int way = 0; way < WaysPerBucket; way++)
-            if (BinaryPrimitives.ReadUInt32LittleEndian(bucket.Slice(way * SlotBytes, SlotBytes)) == tag)
+            if (BinaryPrimitives.ReadUInt16LittleEndian(bucket.Slice(way * TagBytes, TagBytes)) == tag)
                 mask |= 1u << way;
         return mask;
     }
 
-    /// <summary>Backward offset stored for way <paramref name="way"/> of a 64-byte <paramref name="bucket"/>.</summary>
+    /// <summary>Forward offset stored for way <paramref name="way"/> of a 64-byte <paramref name="bucket"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static uint OffsetAt(scoped ReadOnlySpan<byte> bucket, int way) =>
-        BinaryPrimitives.ReadUInt32LittleEndian(bucket.Slice(OffsetsSectionStart + way * SlotBytes, SlotBytes));
+        ReadU24(bucket.Slice(OffsetsSectionStart + way * OffsetBytes, OffsetBytes));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint ReadU24(scoped ReadOnlySpan<byte> src) =>
+        (uint)(src[0] | (src[1] << 8) | (src[2] << 16));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteU24(Span<byte> dest, uint value)
+    {
+        dest[0] = (byte)value;
+        dest[1] = (byte)(value >> 8);
+        dest[2] = (byte)(value >> 16);
+    }
 }

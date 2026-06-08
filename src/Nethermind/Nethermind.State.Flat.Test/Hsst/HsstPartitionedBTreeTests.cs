@@ -268,7 +268,8 @@ public class HsstPartitionedBTreeTests
     public void BucketCount_Targets_Configured_Utilization()
     {
         Assert.That(HsstPartitionHashtable.TargetUtilizationPercent, Is.EqualTo(75));
-        Assert.That(HsstPartitionHashtable.TargetKeysPerBucket, Is.EqualTo(6));
+        Assert.That(HsstPartitionHashtable.TargetKeysPerBucket, Is.EqualTo(9));
+        Assert.That(HsstPartitionHashtable.WaysPerBucket, Is.EqualTo(12));
 
         foreach (int keyCount in new[] { 7, 48, 49, 137, 1000, 100_000 })
         {
@@ -280,21 +281,22 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // The struct-of-arrays bucket (8 tags then 8 offsets) round-trips through TryInsert /
+    // The struct-of-arrays bucket (12 tags then 12 u24 offsets) round-trips through TryInsert /
     // MatchMask / OffsetAt, the SIMD and scalar match masks agree, tag collisions surface all
-    // matching ways, and a 9th insert overflows.
+    // matching ways, the u24 forward offset round-trips to its 16 MiB ceiling, and a 13th insert
+    // (or an over-u24 offset) is dropped.
     [Test]
     public void Hashtable_Bucket_Codec_RoundTrips()
     {
-        static ulong H(uint tag) => (ulong)tag << 32; // bucketCountLog2 = 0 ⇒ bucket 0; Tag(h) = tag (≥1)
+        static ulong H(ushort tag) => (ulong)tag << 48; // bucketCountLog2 = 0 ⇒ bucket 0; Tag(h) = tag (≥1)
 
         Span<byte> bucket = stackalloc byte[HsstPartitionHashtable.BucketBytes];
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(5), 100), Is.True); // way 0, tag 5
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(9), 200), Is.True); // way 1, tag 9
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(5), 300), Is.True); // way 2, tag 5 (collision)
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(5), 100), Is.True);       // way 0, tag 5
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(9), 200), Is.True);       // way 1, tag 9
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(5), 0xFFFFFF), Is.True);  // way 2, tag 5 (collision), max u24 offset
 
         // SIMD path agrees with the scalar reference.
-        foreach (uint probe in new uint[] { 5, 9, 1234 })
+        foreach (ushort probe in new ushort[] { 5, 9, 1234 })
             Assert.That(HsstPartitionHashtable.MatchMask(bucket, probe), Is.EqualTo(HsstPartitionHashtable.MatchMaskScalar(bucket, probe)), $"mask mismatch for {probe}");
 
         // tag 5 → ways 0 and 2; tag 9 → way 1; absent tag → no match.
@@ -302,15 +304,20 @@ public class HsstPartitionedBTreeTests
         Assert.That(HsstPartitionHashtable.MatchMask(bucket, 9), Is.EqualTo(0b010u));
         Assert.That(HsstPartitionHashtable.MatchMask(bucket, 1234), Is.EqualTo(0u));
 
-        // Offsets read back from the matched ways.
+        // Forward (u24) offsets read back, including the 16 MiB ceiling.
         Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 0), Is.EqualTo(100u));
         Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 1), Is.EqualTo(200u));
-        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 2), Is.EqualTo(300u));
+        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 2), Is.EqualTo(0xFFFFFFu));
 
-        // Fill to 8 ways, then the 9th overflows (best-effort drop).
-        for (uint i = 0; i < 5; i++)
-            Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(20 + i), 400 + i), Is.True);
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(99), 999), Is.False, "9th insert into a full bucket must overflow");
+        // Fill to 12 ways, then the 13th overflows (best-effort drop).
+        for (ushort i = 0; i < 9; i++)
+            Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H((ushort)(20 + i)), 300 + i), Is.True);
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 0, H(99), 999), Is.False, "13th insert into a full bucket must overflow");
+
+        // u24 offset guard: an offset beyond MaxOffset is rejected; the ceiling itself fits.
+        Span<byte> b2 = stackalloc byte[HsstPartitionHashtable.BucketBytes];
+        Assert.That(HsstPartitionHashtable.TryInsert(b2, 0, H(7), HsstPartitionHashtable.MaxOffset + 1L), Is.False, "offset > u24 must be rejected");
+        Assert.That(HsstPartitionHashtable.TryInsert(b2, 0, H(7), HsstPartitionHashtable.MaxOffset), Is.True, "offset at the u24 ceiling fits");
     }
 
     // The bucket index must be a power-of-two mask of the hash, never an integer division/modulo.
