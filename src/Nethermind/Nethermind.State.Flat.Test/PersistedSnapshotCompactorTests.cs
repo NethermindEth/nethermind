@@ -194,6 +194,125 @@ public class PersistedSnapshotCompactorTests
         }
     }
 
+    // A storage slot whose first-30-byte prefix is distinct per id (id in the low limb, above
+    // the 2-byte suffix), so N ids yield N distinct slot-prefix groups — the input shape that
+    // drives the slot-prefix HSST past the hashtable threshold into the 0x08 partitioned layout.
+    private static UInt256 DistinctPrefixSlot(int id) => new((ulong)id << 16);
+    private static byte[] DistinctPrefixSlotValue(int id) => [(byte)(id % 255 + 1)];
+
+    /// <summary>
+    /// End-to-end of the partitioned slot HSST (IndexType 0x08) on the BASE build path: one
+    /// snapshot with 200 distinct slot prefixes (~6 KiB of 30-byte keys, above the 4 KiB
+    /// hashtable threshold) forces a hashtable-bearing partitioned blob, then every slot is
+    /// read back through the real mmap reader stack via <c>TryGetSlot</c>.
+    /// </summary>
+    [Test]
+    public void Base_ManyDistinctSlotPrefixes_RoundTrips_ThroughPartitionedHsst()
+    {
+        const int slotCount = 200;
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 4 * 1024 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Persisted);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            repo.LoadFromCatalog();
+
+            SnapshotContent c = new();
+            c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
+            for (int id = 1; id <= slotCount; id++)
+                c.Storages[(TestItem.AddressA, DistinctPrefixSlot(id))] = new SlotValue(DistinctPrefixSlotValue(id));
+
+            PersistedSnapshot baseSnap = repo.ConvertSnapshotToPersistedSnapshot(
+                new Snapshot(new StateId(0, Keccak.EmptyTreeHash), new StateId(1, Keccak.Compute("s1")), c, _pool, ResourcePool.Usage.MainBlockProcessing));
+            try
+            {
+                for (int id = 1; id <= slotCount; id++)
+                {
+                    SlotValue slot = default;
+                    Assert.That(baseSnap.TryGetSlot(TestItem.AddressA, DistinctPrefixSlot(id), ref slot), Is.True, $"slot {id} missing");
+                    Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(DistinctPrefixSlotValue(id)).AsReadOnlySpan.ToArray()), $"slot {id} value mismatch");
+                }
+                // A slot that was never written must be absent.
+                SlotValue absent = default;
+                Assert.That(baseSnap.TryGetSlot(TestItem.AddressA, DistinctPrefixSlot(slotCount + 1000), ref absent), Is.False);
+            }
+            finally { baseSnap.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir)) Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// End-to-end of the partitioned slot HSST on the COMPACTION path: four base snapshots each
+    /// write a disjoint 50-slot distinct-prefix range on AddressA (each base stays sub-threshold
+    /// → 0x07), but the merged 200-prefix output crosses the hashtable threshold, so
+    /// <c>NWayMergeKeyFirstPartitioned</c> emits a 0x08 blob. Every slot must survive and read
+    /// back through the compacted snapshot's real reader.
+    /// </summary>
+    [Test]
+    public void Compact_ManyDistinctSlotPrefixes_RoundTrips_ThroughPartitionedHsst()
+    {
+        // n is a power of 2 ≥ minCompactSize (CompactSize*2 = 8) so a single merge fires (mirrors
+        // TryCompactPersistedSnapshots_MergesNBaseSnapshots). 8 × 25 = 200 distinct merged prefixes
+        // → > 4 KiB of 30-byte keys → the merged slot HSST is the 0x08 partitioned layout.
+        const int n = 8;
+        const int slotsPerSnapshot = 25;
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 4 * 1024 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Persisted);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            repo.LoadFromCatalog();
+
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config,
+                ScheduleHelper.CreateWithOffset(config, 0),
+                LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            for (int i = 1; i <= n; i++)
+            {
+                StateId next = new(i, Keccak.Compute($"s{i}"));
+                SnapshotContent c = new();
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
+                for (int k = 0; k < slotsPerSnapshot; k++)
+                {
+                    int id = (i - 1) * slotsPerSnapshot + k + 1;
+                    c.Storages[(TestItem.AddressA, DistinctPrefixSlot(id))] = new SlotValue(DistinctPrefixSlotValue(id));
+                }
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                prev = next;
+            }
+
+            compactor.DoCompactSnapshot(prev);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            try
+            {
+                for (int id = 1; id <= n * slotsPerSnapshot; id++)
+                {
+                    SlotValue slot = default;
+                    Assert.That(compacted!.TryGetSlot(TestItem.AddressA, DistinctPrefixSlot(id), ref slot), Is.True, $"slot {id} missing after compaction");
+                    Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(DistinctPrefixSlotValue(id)).AsReadOnlySpan.ToArray()), $"slot {id} value mismatch after compaction");
+                }
+            }
+            finally { compacted!.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir)) Directory.Delete(testDir, recursive: true);
+        }
+    }
+
     /// <summary>
     /// Regression for the matchCount==1 byte-copy fast path in NWayMergePerAddressColumn.
     /// Each successful <c>HsstReader.TrySeek</c> narrows the reader's internal bound to

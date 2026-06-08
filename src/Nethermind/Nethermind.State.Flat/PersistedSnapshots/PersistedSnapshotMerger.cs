@@ -140,11 +140,11 @@ public static class PersistedSnapshotMerger
     /// three generic parameters are the WRITER-side trio threaded through to the inner
     /// DenseByteIndex builder and the nested slot-prefix merger. Per-source reader factories
     /// come via the cursor (<c>cursor.CreateMinReader</c>, <c>cursor.Sources</c>).
-    /// The shared <see cref="HsstBTreeBuilderBuffers"/> arena (re-used across every emitted
-    /// address) is held via <see cref="HsstBTreeBuilderBuffersContainer"/> — a class handle
-    /// that hides the ref-to-ref-struct workaround.</remarks>
+    /// The shared partitioned-builder arena (re-used across every emitted address) is held
+    /// via <see cref="HsstPartitionedBTreeBuilderBuffersContainer"/> — a class handle that
+    /// hides the ref-to-ref-struct workaround.</remarks>
     private readonly struct PerAddressColumnValueMerger<TWriter, TReader, TPin>(
-        BloomFilter bloom, HsstBTreeBuilderBuffersContainer slotPrefixBuffers)
+        BloomFilter bloom, HsstPartitionedBTreeBuilderBuffersContainer slotPrefixBuffers)
         : IHsstBTreeValueMerger<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory>
         where TWriter : IByteBufferWriterWithReader<TReader, TPin>
         where TReader : IHsstByteReader<TPin>, allows ref struct
@@ -260,7 +260,7 @@ public static class PersistedSnapshotMerger
                         default(TailDispatchEnumeratorFactory));
 
                 ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
-                HsstBTreeMerger.NWayMergeKeyFirst<
+                HsstBTreeMerger.NWayMergeKeyFirstPartitioned<
                     TWriter, TReader, TPin,
                     WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory,
                     SlotPrefixValueMerger>(
@@ -800,7 +800,7 @@ public static class PersistedSnapshotMerger
         // contained buffers live across every merged address — the prefix builder is created
         // once per address and the suffix builder once per prefix group per address, so
         // amortising the rentals matters.
-        using HsstBTreeBuilderBuffersContainer slotPrefixBuffers = new();
+        using HsstPartitionedBTreeBuilderBuffersContainer slotPrefixBuffers = new();
         using ArrayPoolList<HsstEnumerator> enumeratorsList = new(n, n);
         Span<HsstEnumerator> enumerators = enumeratorsList.AsSpan();
 
