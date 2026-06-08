@@ -176,7 +176,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     {
         IAuRaBlockHeaderHandler handler = AuRaBlockHeaderHandler.Instance
             ?? throw new System.InvalidOperationException("AuRa plugin not loaded; reference Nethermind.Consensus.AuRa from the test project.");
-        TestObjectInternal = handler.SetSeal(TestObjectInternal, step, signature ?? []);
+        TestObjectInternal = handler.SetSeal(TestObjectInternal, step, signature);
         return this;
     }
 

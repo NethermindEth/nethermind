@@ -164,20 +164,24 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
 
-            AuRaBlockHeader auraHeader = header.AsAuRa();
-            AuRaBlockHeader auraParent = parent.AsAuRa();
-            bool areThereSkipped = auraHeader.AuRaStep > auraParent.AuRaStep + 1;
+            long? headerStep = header.GetAuRaStep();
+            long? parentStep = parent.GetAuRaStep();
+            if (headerStep is null || parentStep is null)
+            {
+                return;
+            }
+            bool areThereSkipped = headerStep > parentStep + 1;
             bool firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)
             {
                 Address[] validators = Validators;
 
                 if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap indicating skipped steps. " +
-                                                   $"Current step: {auraHeader.AuRaStep} at block {header.Number}, parent step: {auraParent.AuRaStep} at block {parent.Number}. " +
+                                                   $"Current step: {headerStep} at block {header.Number}, parent step: {parentStep} at block {parent.Number}. " +
                                                    $"CurrentValidators [{(string.Join(", ", validators.AsEnumerable()))}");
 
                 ISet<Address> reported = new HashSet<Address>();
-                for (long step = auraParent.AuRaStep!.Value + 1; step < auraHeader.AuRaStep!.Value; step++)
+                for (long step = parentStep.Value + 1; step < headerStep.Value; step++)
                 {
                     Address? skippedValidator = validators.GetItemRoundRobin(step);
                     if (skippedValidator is not null)

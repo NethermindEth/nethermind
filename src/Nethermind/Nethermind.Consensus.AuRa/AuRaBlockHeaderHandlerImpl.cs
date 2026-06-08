@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -13,13 +14,21 @@ namespace Nethermind.Consensus.AuRa;
 /// can build AuRa headers without depending on this plugin.
 /// </summary>
 /// <remarks>
-/// Registration happens in <see cref="AuRaPlugin"/>'s static constructor — touching the
-/// <see cref="AuRaPlugin"/> type (e.g. via the embedded plugins list in the runner) triggers
-/// it well before any chainspec or wire-format decoding runs.
+/// Registration runs in a <see cref="ModuleInitializerAttribute">module initializer</see>,
+/// so any assembly that references <c>Nethermind.Consensus.AuRa</c> wires the handler at
+/// load time — well before <c>ChainSpecLoader</c> or <c>HeaderDecoder</c> can encounter
+/// an AuRa-shaped header. Test projects that exercise AuRa wire-format / chainspec paths
+/// must reference this assembly to opt into the registration.
 /// </remarks>
 internal sealed class AuRaBlockHeaderHandlerImpl : IAuRaBlockHeaderHandler
 {
     public static readonly AuRaBlockHeaderHandlerImpl Instance = new();
+
+#pragma warning disable CA2255 // ModuleInitializer is the documented mechanism for guaranteed
+    // load-time registration of an inter-assembly bridge.
+    [ModuleInitializer]
+    internal static void Register() => AuRaBlockHeaderHandler.Register(Instance);
+#pragma warning restore CA2255
 
     public BlockHeader CreateBlockHeader(
         Hash256? parentHash,
@@ -71,7 +80,7 @@ internal sealed class AuRaBlockHeaderHandlerImpl : IAuRaBlockHeaderHandler
         };
     }
 
-    public BlockHeader SetSeal(BlockHeader header, long step, byte[] signature)
+    public BlockHeader SetSeal(BlockHeader header, long step, byte[]? signature)
     {
         AuRaBlockHeader aura = (AuRaBlockHeader)UpgradeToAuRa(header);
         aura.AuRaStep = step;

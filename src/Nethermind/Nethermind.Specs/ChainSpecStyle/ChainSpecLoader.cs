@@ -356,7 +356,10 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
         chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
 
-        bool isAuRaGenesis = auRaSignature is not null || step is not null;
+        // Detect AuRa via the genesis seal first; fall back to the engine section so that
+        // a chainspec declaring an AuRa engine without an explicit genesis seal still
+        // produces an AuRaBlockHeader (the seal section in the genesis JSON is optional).
+        bool isAuRaGenesis = auRaSignature is not null || step is not null || IsAuRaEngine(chainSpecJson);
         BlockHeader genesisHeader = isAuRaGenesis
             ? (AuRaBlockHeaderHandler.Instance ?? throw new InvalidDataException(
                     "Chainspec genesis carries AuthorityRound seal data but the AuRa plugin assembly is not loaded."))
@@ -429,6 +432,17 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 ? new Block(genesisHeader)
                 : new Block(genesisHeader, [], [], []))
             : new Block(genesisHeader, [], [], [], new());
+    }
+
+    private static bool IsAuRaEngine(ChainSpecJson chainSpecJson)
+    {
+        if (chainSpecJson.Engine?.CustomEngineData is null) return false;
+        foreach (string key in chainSpecJson.Engine.CustomEngineData.Keys)
+        {
+            if (string.Equals(key, "authorityRound", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

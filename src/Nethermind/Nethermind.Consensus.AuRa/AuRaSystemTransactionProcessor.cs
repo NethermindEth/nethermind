@@ -36,6 +36,10 @@ public sealed class AuRaSystemTransactionProcessor<TGasPolicy>(
 {
     protected override bool ShouldSuppressSystemAccountReads(Transaction tx) => false;
 
+    // Intentional asymmetry: we materialise SYSTEM_ADDRESS only for non-genesis blocks (it
+    // already exists in the genesis state allocation), but GetSpec disables EIP-158 even at
+    // genesis (AuRa system contracts depend on the SYSTEM_ADDRESS not being garbage-collected
+    // by the spec, regardless of block number).
     protected override void OnBeforeSystemTransaction()
     {
         if (!VirtualMachine.BlockExecutionContext.IsGenesis)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -36,15 +37,22 @@ public interface IAuRaBlockHeaderHandler
 
     /// <summary>
     /// Upgrade a base <see cref="BlockHeader"/> to the AuRa-typed subclass, copying all fields
-    /// across. Returns the same instance if already AuRa-typed.
+    /// across.
     /// </summary>
+    /// <remarks>
+    /// Identity-preserving when the input is already an AuRa header: returns the same instance
+    /// (no clone) so callers can subsequently mutate fields without losing changes. Pass a
+    /// freshly-constructed header when callers must not see later mutations.
+    /// </remarks>
     BlockHeader UpgradeToAuRa(BlockHeader header);
 
     /// <summary>
     /// Set the AuRa seal on a header (upgrading via <see cref="UpgradeToAuRa"/> if needed).
     /// </summary>
+    /// <remarks>A <c>null</c> signature is preserved — callers (notably block builders that
+    /// fill the signature in later) can stamp only the step.</remarks>
     /// <returns>The AuRa-typed header carrying the seal.</returns>
-    BlockHeader SetSeal(BlockHeader header, long step, byte[] signature);
+    BlockHeader SetSeal(BlockHeader header, long step, byte[]? signature);
 
     /// <summary>
     /// Read the AuRa seal fields off a header. Returns false for non-AuRa headers.
@@ -62,5 +70,27 @@ public static class AuRaBlockHeaderHandler
     /// been loaded. Code on the AuRa hot path can require this to be non-null; code on
     /// generic paths should null-check and fall back.
     /// </summary>
-    public static IAuRaBlockHeaderHandler? Instance { get; set; }
+    public static IAuRaBlockHeaderHandler? Instance { get; private set; }
+
+    /// <summary>
+    /// Registers the AuRa handler exactly once. Subsequent calls with the same instance
+    /// are tolerated (idempotent), but a different instance throws — the AuRa header shape
+    /// is a global RLP invariant that two implementations cannot disagree on at runtime.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A different handler has already been registered.</exception>
+    public static void Register(IAuRaBlockHeaderHandler handler)
+    {
+        IAuRaBlockHeaderHandler? existing = Instance;
+        if (existing is null)
+        {
+            Instance = handler;
+            return;
+        }
+
+        if (!ReferenceEquals(existing, handler))
+        {
+            throw new InvalidOperationException(
+                $"An AuRa header handler ({existing.GetType().FullName}) is already registered; cannot replace with {handler.GetType().FullName}.");
+        }
+    }
 }

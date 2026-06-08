@@ -307,9 +307,7 @@ public partial class BlockProcessor(
                 bh.Number,
                 bh.GasLimit,
                 bh.Timestamp,
-                bh.ExtraData,
-                bh.BlobGasUsed,
-                bh.ExcessBlobGas);
+                bh.ExtraData);
         headerForProcessing.Bloom = Bloom.Empty;
         headerForProcessing.Author = bh.Author;
         headerForProcessing.Hash = bh.Hash;

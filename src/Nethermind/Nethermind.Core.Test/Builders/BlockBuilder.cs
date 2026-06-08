@@ -225,7 +225,7 @@ namespace Nethermind.Core.Test.Builders
         {
             IAuRaBlockHeaderHandler handler = AuRaBlockHeaderHandler.Instance
                 ?? throw new System.InvalidOperationException("AuRa plugin not loaded; reference Nethermind.Consensus.AuRa from the test project.");
-            BlockHeader auraHeader = handler.SetSeal(TestObjectInternal.Header, step, signature ?? []);
+            BlockHeader auraHeader = handler.SetSeal(TestObjectInternal.Header, step, signature);
             TestObjectInternal = TestObjectInternal.WithReplacedHeader(auraHeader);
             return this;
         }

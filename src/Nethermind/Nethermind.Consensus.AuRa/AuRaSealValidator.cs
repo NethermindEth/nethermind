@@ -41,8 +41,18 @@ namespace Nethermind.Consensus.AuRa
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             const long rejectedStepDrift = 4;
-            AuRaBlockHeader auraHeader = header.AsAuRa();
-            AuRaBlockHeader auraParent = parent.AsAuRa();
+
+            if (header is not AuRaBlockHeader auraHeader)
+            {
+                if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is not an AuRa header.");
+                return false;
+            }
+
+            if (parent is not AuRaBlockHeader auraParent)
+            {
+                if (_logger.IsError) _logger.Error($"Parent block {parent.Number}, hash {parent.Hash} of {header.Number} is not an AuRa header.");
+                return false;
+            }
 
             if (auraHeader.AuRaSignature is null)
             {
@@ -154,7 +164,9 @@ namespace Nethermind.Consensus.AuRa
 
         private Address GetSealer(BlockHeader header)
         {
-            Signature signature = new(header.AsAuRa().AuRaSignature);
+            if (header is not AuRaBlockHeader auraHeader)
+                throw new InvalidOperationException($"GetSealer called on a non-AuRa header (block {header.Number}, hash {header.Hash}).");
+            Signature signature = new(auraHeader.AuRaSignature);
             signature.V += Signature.VOffset;
             ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);
             return _ecdsa.RecoverAddress(signature, in message);
