@@ -88,9 +88,15 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # Synchronization.Test on ARM/macOS is chunked (see include block) — its unchunked variant hits the 15-min wall.
+        exclude: # On ARM these are chunked (see include block) — their unchunked variants hit the 15-min wall (worse under flat).
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
+            chunk: ''
+          - runner: ubuntu-24.04-arm
+            project: Nethermind.Merge.Plugin.Test
+            chunk: ''
+          - runner: ubuntu-24.04-arm
+            project: Nethermind.Merge.AuRa.Test
             chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
           - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
@@ -110,6 +116,14 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 4of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
