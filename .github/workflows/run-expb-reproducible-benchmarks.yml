@@ -639,7 +639,7 @@ jobs:
             | xargs -r docker image rm -f || true
           docker image prune -f || true
           docker pull "${NETHERMIND_IMAGE}"
-          docker image inspect "${NETHERMIND_IMAGE}" --format 'Pulled {{.Id}} {{join .RepoDigests ", "}}'
+          docker image inspect "${NETHERMIND_IMAGE}" --format 'Pulled {{.Id}} {{json .RepoDigests}}'
 
       - name: Run expb scenarios
         id: run-expb
@@ -1713,7 +1713,7 @@ jobs:
             | xargs -r docker image rm -f || true
           docker image prune -f || true
           docker pull "${NETHERMIND_IMAGE}"
-          docker image inspect "${NETHERMIND_IMAGE}" --format 'Pulled {{.Id}} {{join .RepoDigests ", "}}'
+          docker image inspect "${NETHERMIND_IMAGE}" --format 'Pulled {{.Id}} {{json .RepoDigests}}'
 
       - name: Run expb scenarios
         id: run-expb
