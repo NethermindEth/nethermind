@@ -20,9 +20,9 @@ namespace Nethermind.Core.Collections;
 ///   in way 0 scatter to different sets in way 1, virtually eliminating conflict misses.
 ///
 /// Hash bit partitioning (64-bit hash):
-///   Bits  0-13: way 0 set index (14 bits)
+///   Bits  0-14: way 0 set index (15 bits)
 ///   Bits 22-41: hash signature stored in header (20 bits)
-///   Bits 42-55: way 1 set index (14 bits, independent from way 0)
+///   Bits 42-56: way 1 set index (15 bits, independent from way 0)
 ///
 /// Header layout (64-bit):
 /// [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
@@ -32,7 +32,7 @@ namespace Nethermind.Core.Collections;
 /// - Seq   (bits  1-16): per-entry sequence counter (16 bits) - increments on every successful write
 /// - Occ   (bit   0): occupied flag - set when slot contains valid data (value may still be null)
 ///
-/// Array layout: [way0_set0..way0_set16383, way1_set0..way1_set16383] (split, not interleaved).
+/// Array layout: [way0_set0..way0_set32767, way1_set0..way1_set32767] (split, not interleaved).
 /// </summary>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
 /// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
@@ -42,9 +42,9 @@ public sealed class SeqlockCache<TKey, TValue>
 {
     /// <summary>
     /// Number of sets. Must be a power of 2 for mask operations.
-    /// 16384 sets × 2 ways = 32768 total entries.
+    /// 32768 sets x 2 ways = 65536 total entries.
     /// </summary>
-    private const int Sets = 1 << 14; // 16384
+    private const int Sets = 1 << 15; // 32768
     private const int SetMask = Sets - 1;
 
     // Header bit layout:
@@ -68,11 +68,11 @@ public sealed class SeqlockCache<TKey, TValue>
     // Mask for checking if an entry is live in the current epoch.
     private const long EpochOccMask = EpochMask | OccupiedBit;
 
-    // With 14-bit set index (bits 0-13) for way 0, hash signature needs independent bits.
+    // With 15-bit set index (bits 0-14) for way 0, hash signature needs independent bits.
     // HashShift=5 maps header bits 17-36 to original bits 22-41, avoiding overlap with both ways.
     private const int HashShift = 5;
 
-    // Way 1 uses bits 42-55 of the original hash (completely independent from way 0's bits 0-13).
+    // Way 1 uses bits 42-56 of the original hash (completely independent from way 0's bits 0-14).
     private const int Way1Shift = 42;
 
     /// <summary>
@@ -117,7 +117,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
 
-        // Prefetch way 1 while we check way 0 — hides L2/L3 latency for skew layout.
+        // Prefetch way 1 while we check way 0; this hides L2/L3 latency for skew layout.
         if (Sse.IsSupported)
         {
             Sse.PrefetchNonTemporal(Unsafe.AsPointer(ref Unsafe.Add(ref entries, idx1)));
