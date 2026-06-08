@@ -21,53 +21,6 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
-    internal static void ConvertToSsz(string filename)
-    {
-        ReadOnlySpan<byte> data = File.ReadAllBytes(filename);
-        ulong dataLen = BinaryPrimitives.ReadUInt64LittleEndian(data);
-        data = data.Slice(sizeof(ulong), checked((int)dataLen));
-
-        (Block block, Witness witness, ulong chainId) = InputSerializer.Deserialize(data);
-
-        NewPayloadRequest<SszExecutionPayloadV3> request = NewPayloadRequest<SszExecutionPayloadV3>.From(block);
-        StatelessInput<SszExecutionPayloadV3> input;
-
-        using (witness)
-        {
-            input = new()
-            {
-                NewPayloadRequest = request,
-                Witness = ExecutionWitness.From(witness),
-                ChainConfig = new()
-                {
-                    ChainId = chainId
-                },
-                PublicKeys = RecoverPublicKeys(block.Transactions, chainId)
-            };
-        }
-
-        byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
-        byte[] versioned = new byte[encoded.Length + sizeof(ushort)];
-
-        BinaryPrimitives.WriteUInt16BigEndian(versioned, 0);
-        Buffer.BlockCopy(encoded, 0, versioned, sizeof(ushort), encoded.Length);
-
-        {
-            int rem = versioned.Length % sizeof(ulong);
-            int len = sizeof(ulong) + versioned.Length + (rem == 0 ? 0 : (sizeof(ulong) - rem));
-            byte[] framedData = new byte[len];
-
-            BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)versioned.Length);
-            Buffer.BlockCopy(versioned, 0, framedData, sizeof(ulong), versioned.Length);
-            encoded = framedData;
-        }
-
-        string dir = Path.GetDirectoryName(filename) ?? string.Empty;
-        filename = $"{Path.GetFileNameWithoutExtension(filename)}.ssz";
-
-        File.WriteAllBytes(Path.Join(dir, filename), encoded);
-    }
-
     internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
