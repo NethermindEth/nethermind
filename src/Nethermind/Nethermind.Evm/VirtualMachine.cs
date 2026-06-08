@@ -102,6 +102,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
+
+    // Sentinel stored in ReturnData by RETURN/REVERT to signal "frame halted, the payload is in
+    // ReturnDataBuffer" without allocating a per-call byte[] copy (the ToArray it replaces was a
+    // top CPU + allocation hotspot in profiling). It is non-null (so the loop's `ReturnData is not
+    // null` stop/route checks still fire) and is neither byte[] nor VmState (so result handling
+    // falls through to the ReturnDataBuffer path). The bytes live in a reusable per-VM buffer;
+    // every consumer that *retains* the payload (CREATE code deposit, top-level tx output) copies
+    // it, so overwriting the buffer on the next RETURN/REVERT is safe.
+    internal static readonly object ReturnDataInBuffer = new();
+    private byte[] _returnDataReuseBuffer = [];
+
+    internal void SetReturnDataFromMemory(scoped ReadOnlySpan<byte> data)
+    {
+        int length = data.Length;
+        if (length == 0)
+        {
+            ReturnDataBuffer = ReadOnlyMemory<byte>.Empty;
+        }
+        else
+        {
+            if (_returnDataReuseBuffer.Length < length)
+                _returnDataReuseBuffer = GC.AllocateUninitializedArray<byte>(length);
+            data.CopyTo(_returnDataReuseBuffer);
+            ReturnDataBuffer = new ReadOnlyMemory<byte>(_returnDataReuseBuffer, 0, length);
+        }
+        ReturnData = ReturnDataInBuffer;
+    }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
 
@@ -409,7 +436,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         return new TransactionSubstate(
-            callResult.Output,
+            // The top-level output escapes the VM (becomes the tx/eth_call result), so it must be a
+            // stable copy independent of the reusable return buffer. Once per transaction.
+            callResult.Output.ToArray(),
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
             _currentState.AccessTracker.Logs,
@@ -428,6 +457,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         bool invalidCode,
         ReadOnlyMemory<byte> code)
     {
+        // The init-code's return data is deployed as the contract's code and cached long-term, so it
+        // must be a stable copy — the return payload now lives in a reusable buffer that the next
+        // RETURN/REVERT overwrites. CREATE is rare, so this copy is not on a hot path.
+        code = code.ToArray();
+
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
@@ -1372,7 +1406,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     Revert:
         // Return a CallResult indicating a revert.
-        return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
+        return new CallResult(ReturnDataBuffer, null, shouldRevert: true, exceptionType);
 
     OutOfGas:
         TGasPolicy.SetOutOfGas(ref gas);
