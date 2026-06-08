@@ -75,15 +75,27 @@ namespace Nethermind.Facade.Find
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<BlockHeader?> blocks, CancellationToken cancellationToken)
+        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<BlockHeader?> blocks, CancellationToken cancellationToken, bool tryParallel = true) =>
+            RunParallel(blocks, cancellationToken, tryParallel, block => FindLogsInBlock(filter, block, cancellationToken));
+
+        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, CancellationToken cancellationToken, bool tryParallel = true) =>
+            RunParallel(blockNumbers, cancellationToken, tryParallel,
+                number => FindLogsInBlock(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken));
+
+        private IEnumerable<FilterLog> RunParallel<T>(IEnumerable<T> source, CancellationToken cancellationToken, bool tryParallel, Func<T, IEnumerable<FilterLog>> worker)
         {
-            static IEnumerable<BlockHeader?> ParallelizeWithLock(IEnumerable<BlockHeader?> source, bool runParallel, CancellationToken ct)
+            if (!tryParallel)
+            {
+                return source.SelectMany(worker);
+            }
+
+            static IEnumerable<T> ReleaseLockOnDispose(IEnumerable<T> source, bool runParallel, CancellationToken ct)
             {
                 try
                 {
-                    foreach (BlockHeader? block in source)
+                    foreach (T item in source)
                     {
-                        yield return block;
+                        yield return item;
                         ct.ThrowIfCancellationRequested();
                     }
                 }
@@ -103,12 +115,12 @@ namespace Nethermind.Facade.Find
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
             bool canRunParallel = parallelLock == 0;
 
-            IEnumerable<BlockHeader?> filterBlocks = ParallelizeWithLock(blocks, canRunParallel, cancellationToken);
+            IEnumerable<T> wrapped = ReleaseLockOnDispose(source, canRunParallel, cancellationToken);
 
             if (canRunParallel)
             {
                 if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
-                filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
+                wrapped = wrapped.AsParallel() // can yield big performance improvements
                     .AsOrdered() // we want to keep block order
                     .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads
             }
@@ -117,8 +129,7 @@ namespace Nethermind.Facade.Find
                 if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
             }
 
-            return filterBlocks
-                .SelectMany(block => FindLogsInBlock(filter, block, cancellationToken));
+            return wrapped.SelectMany(worker);
         }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
@@ -127,7 +138,7 @@ namespace Nethermind.Facade.Find
             {
                 int count = 0;
                 long currentNumber = fromBlock.Number;
-                long targetNumber = toBlock?.Number ?? fromBlock.Number;
+                long targetNumber = toBlock.Number;
 
                 while (count < maxBlockDepth && currentNumber <= targetNumber)
                 {
@@ -140,7 +151,9 @@ namespace Nethermind.Facade.Find
                 }
             }
 
-            return FilterLogsInBlocksParallel(filter, GetHeaders(), cancellationToken);
+            long rangeSize = Math.Min(maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
+            bool tryParallel = rangeSize >= _rpcConfigGetLogsThreads;
+            return FilterLogsInBlocksParallel(filter, GetHeaders(), cancellationToken, tryParallel);
         }
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>

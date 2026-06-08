@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
@@ -47,11 +46,10 @@ public class IndexedLogFinder(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        IEnumerable<BlockHeader?> indexHeaders = _logIndexStorage
-            .EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to)
-            .Select(n => FindHeaderOrLogError(n, cancellationToken));
+        IEnumerable<long> indexBlockNumbers = _logIndexStorage
+            .EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to);
 
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexHeaders, cancellationToken))
+        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken))
         {
             yield return log;
         }
