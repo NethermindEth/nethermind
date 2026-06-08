@@ -19,7 +19,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int MaxInFlightCompactJob { get; set; } = 32;
     public int MaxReorgDepth { get; set; } = 256;
     public int MinReorgDepth { get; set; } = 128;
-    public int TrieWarmerWorkerCount { get; set; } = 4;
+    public int TrieWarmerWorkerCount { get; set; } = -1;
     public long BlockCacheSizeBudget { get; set; } = 2.GiB;
     public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
 }
