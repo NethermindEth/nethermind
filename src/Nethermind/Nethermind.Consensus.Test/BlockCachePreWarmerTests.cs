@@ -422,11 +422,11 @@ public class BlockCachePreWarmerTests
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         using (mainWorldState.BeginScope(parent))
         {
-            Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)
-                ? mainWorldState.HintBal(block.BlockAccessList)
-                : null;
             preWarmer.PreWarmCaches(block, parent, spec).GetAwaiter().GetResult();
-            hintBalTask?.GetAwaiter().GetResult();
+            if (block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec))
+            {
+                mainWorldState.HintBal(block.BlockAccessList).GetAwaiter().GetResult();
+            }
         }
         return Task.CompletedTask;
     }
