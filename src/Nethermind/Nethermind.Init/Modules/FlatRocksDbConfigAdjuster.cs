@@ -51,12 +51,23 @@ internal class FlatRocksDbConfigAdjuster(
 
             ulong cacheCapacity = GetColumnBlockCacheCapacity(flatDbConfig.BlockCacheSizeBudget, columnName);
             IntPtr? cacheHandle = null;
-            if (cacheCapacity != 0 && !HasBlockCacheOption(config))
+            if (cacheCapacity != 0)
             {
-                if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB):N0} MB of block cache to {columnName}");
-                HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
-                cacheHandle = cacheWrapper.Handle;
-                disposeStack.Push(cacheWrapper);
+                if (columnName == nameof(FlatDbColumns.StorageNodes))
+                {
+                    if (!HasBlockCacheOption(config))
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB):N0} MB of block cache to {columnName}");
+                        additionalConfig += $"{BlockCacheOptionName}={cacheCapacity};";
+                    }
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / (ulong)1.MiB):N0} MB of block cache to {columnName}");
+                    HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
+                    cacheHandle = cacheWrapper.Handle;
+                    disposeStack.Push(cacheWrapper);
+                }
             }
 
             config = new AdjustedRocksdbConfig(config, additionalConfig, config.WriteBufferSize.GetValueOrDefault(), cacheHandle);
