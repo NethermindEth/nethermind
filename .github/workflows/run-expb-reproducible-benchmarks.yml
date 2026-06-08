@@ -225,8 +225,8 @@ jobs:
             exit 1
           fi
 
-          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+$ ]]; then
-            echo "delay_seconds must be an integer, got '${delay_seconds}'."
+          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "delay_seconds must be a number (integer or decimal seconds, e.g. 0.25), got '${delay_seconds}'."
             exit 1
           fi
 
