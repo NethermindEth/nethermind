@@ -62,8 +62,9 @@ public static class Wait
         }
     }
 
-    /// <summary>Polls <paramref name="condition"/> until it returns true or the timeout elapses.</summary>
+    /// <summary>Polls <paramref name="condition"/> until it returns true, the timeout elapses, or <paramref name="cancellationToken"/> is signaled.</summary>
     /// <returns><c>true</c> if the condition was met within the timeout; <c>false</c> on timeout.</returns>
+    /// <exception cref="OperationCanceledException">Thrown if <paramref name="cancellationToken"/> is signaled before the condition is met.</exception>
     public static async Task<bool> ForCondition(
         Func<bool> condition,
         TimeSpan timeout,
