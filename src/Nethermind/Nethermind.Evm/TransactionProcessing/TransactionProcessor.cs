@@ -1050,7 +1050,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256 blobGas = BlobGasCalculator.CalculateBlobGas(tx);
 
                 // Add blob fee cap to balance check.
-                if (UInt256.MultiplyOverflow(blobGas, (UInt256)tx.MaxFeePerBlobGas, out UInt256 maxBlobGasFee)
+                if (UInt256.MultiplyOverflow(blobGas, (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee)
                     || UInt256.AddOverflow(balanceCheck, maxBlobGasFee, out balanceCheck))
                 {
                     TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
@@ -1060,7 +1060,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 // Compute actual blob fee and add to mgval.
                 if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
                 {
-                    TraceLogInvalidTx(tx, $"INVALID_BLOB_BASE_FEE: ({tx.SenderAddress})_BALANCE = {balance}");
+                    TraceLogInvalidTx(tx, $"BLOB_BASE_FEE_OVERFLOW: ({tx.SenderAddress})_BALANCE = {balance}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
 
