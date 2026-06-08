@@ -88,7 +88,7 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # On ARM these are chunked (see include block) — their unchunked variants hit the 15-min wall (worse under flat).
+        exclude: # On ARM/Windows these are chunked (see include block) — their unchunked variants hit the 15-min wall (worse under flat).
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
@@ -96,6 +96,12 @@ jobs:
             project: Nethermind.Merge.Plugin.Test
             chunk: ''
           - runner: ubuntu-24.04-arm
+            project: Nethermind.Merge.AuRa.Test
+            chunk: ''
+          - runner: windows-latest
+            project: Nethermind.Merge.Plugin.Test
+            chunk: ''
+          - runner: windows-latest
             project: Nethermind.Merge.AuRa.Test
             chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
@@ -124,6 +130,14 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.Merge.Plugin.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.Merge.Plugin.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.Merge.Plugin.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.Merge.Plugin.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.Merge.AuRa.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
