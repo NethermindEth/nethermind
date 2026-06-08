@@ -198,21 +198,10 @@ internal static class InputGenerator
         EthereumEcdsa ecdsa = new(chainId);
         SszPublicKeys[] publicKeys = new SszPublicKeys[transactions.Length];
 
-        static ValueHash256 ComputeSignatureHash(Transaction tx, ulong chainId)
-        {
-            ulong sigChainId = tx.Signature!.ChainId ?? chainId;
-            bool applyEip155 = tx.Type == TxType.Legacy && tx.Signature.ChainId.HasValue;
-
-            KeccakRlpStream stream = new();
-            TxDecoder.Instance.EncodeTx(stream, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, sigChainId);
-            return stream.GetValueHash();
-        }
-
         for (int i = 0; i < transactions.Length; i++)
         {
             Transaction tx = transactions[i];
-            ValueHash256 hash = ComputeSignatureHash(tx, chainId);
-            PublicKey publicKey = ecdsa.RecoverPublicKey(tx.Signature!, in hash)
+            PublicKey publicKey = ecdsa.RecoverPublicKey(tx)
                 ?? throw new InvalidOperationException($"Failed to recover public key for transaction {tx.Hash}");
 
             publicKeys[i] = new()
