@@ -344,9 +344,10 @@ namespace Nethermind.Synchronization
 
             sb.Append($", sent by {syncPeer:s}");
 
-            if (block.Header?.AuRaStep is not null)
+            if (block.Header is not null && AuRaBlockHeaderHandler.Instance is { } auraHandler
+                && auraHandler.TryGetSeal(block.Header, out long auraStep, out _))
             {
-                sb.Append($", with AuRa step {block.Header.AuRaStep.Value}");
+                sb.Append($", with AuRa step {auraStep}");
             }
 
             if (_logger.IsDebug)

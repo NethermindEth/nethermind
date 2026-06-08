@@ -507,7 +507,7 @@ public class ContractBasedValidatorTests
 
             _block.Header.Number = blockNumber;
             _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
-            _block.Header.AuRaStep = blockNumber;
+            _block.Header.AsAuRa().AuRaStep = blockNumber;
             _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
             _block.Header.ParentHash = blockNumber == test.StartBlockNumber ? Keccak.Zero : Keccak.Compute((blockNumber - 1 + hashSeeds[blockNumber - 1]).ToString());
 

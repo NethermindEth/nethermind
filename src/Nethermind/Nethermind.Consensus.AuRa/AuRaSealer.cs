@@ -55,16 +55,16 @@ namespace Nethermind.Consensus.AuRa
                 if (_logger.IsWarn) _logger.Warn($"AuRa signer {_signer.Address} could not sign block {block.Number} — skipping seal.");
                 return null;
             }
-            block.Header.AuRaSignature = signature.BytesWithRecovery;
+            block.Header.AsAuRa().AuRaSignature = signature.BytesWithRecovery;
 
             return block;
         }
 
         public bool CanSeal(long blockNumber, Hash256 parentHash)
         {
-            bool StepNotYetProduced(long step) => !_blockTree.Head.Header.AuRaStep.HasValue
-                ? throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'")
-                : _blockTree.Head.Header.AuRaStep.Value < step;
+            bool StepNotYetProduced(long step) => _blockTree.Head.Header.GetAuRaStep() is { } headStep
+                ? headStep < step
+                : throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'");
 
             bool IsThisNodeTurn(long step)
             {

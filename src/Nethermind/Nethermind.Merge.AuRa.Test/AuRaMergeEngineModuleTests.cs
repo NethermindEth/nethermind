@@ -163,11 +163,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                         provider.SealEngine = SealEngineType;
                     return specProvider;
                 })
-                .WithGenesisPostProcessor((block, _) =>
-                {
-                    block.Header.AuRaStep = 0;
-                    block.Header.AuRaSignature = new byte[65];
-                })
+                // Genesis is exempt from AuRa seal validation, so no seal needs to be stamped here.
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                 // as normally, test blockchain don't use INethermindApi at all.

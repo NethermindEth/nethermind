@@ -69,8 +69,6 @@ public class BlockHeader
     public ulong Nonce { get; set; }
     public Hash256? Hash { get; set; }
     public UInt256? TotalDifficulty { get; set; }
-    public byte[]? AuRaSignature { get; set; }
-    public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas;
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }

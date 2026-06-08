@@ -19,7 +19,10 @@ public class BlockHeaderForRpc
     [SkipLocalsInit]
     public BlockHeaderForRpc(BlockHeader header, ISpecProvider? specProvider = null)
     {
-        bool isAuRaBlock = header.AuRaSignature is not null;
+        long auRaStep = 0;
+        byte[]? auRaSignature = null;
+        bool isAuRaBlock = AuRaBlockHeaderHandler.Instance is { } auraHandler
+            && auraHandler.TryGetSeal(header, out auRaStep, out auRaSignature);
         Number = header.Number;
         Hash = header.Hash;
         ParentHash = header.ParentHash;
@@ -32,8 +35,8 @@ public class BlockHeaderForRpc
         else
         {
             Author = header.Author;
-            Step = header.AuRaStep;
-            Signature = header.AuRaSignature;
+            Step = auRaStep;
+            Signature = auRaSignature;
         }
         Sha3Uncles = header.UnclesHash;
         LogsBloom = header.Bloom;

@@ -111,8 +111,6 @@ public class BlockHeaderTests
             Nonce = 1,
             Hash = TestItem.KeccakB,
             TotalDifficulty = UInt256.One,
-            AuRaSignature = [1],
-            AuRaStep = 1,
             BaseFeePerGas = 2,
             WithdrawalsRoot = TestItem.KeccakB,
             BlockAccessListHash = TestItem.KeccakB,

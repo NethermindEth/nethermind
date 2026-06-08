@@ -2730,13 +2730,7 @@ public partial class EthRpcModuleTests
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(configurer: builder =>
                     {
-                        builder
-                            .WithGenesisPostProcessor((block, state) =>
-                                {
-                                    block.Header.AuRaStep = 0;
-                                    block.Header.AuRaSignature = new byte[65];
-                                }
-                            );
+                        // Genesis is exempt from AuRa seal validation; no need to stamp AuRa seal here.
                         wrappedConfigurer(builder);
                     }).Result
             });

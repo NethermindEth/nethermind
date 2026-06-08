@@ -349,8 +349,7 @@ public static class TestEqualityComparers
                 actual.Nonce == expected.Nonce &&
                 (!compareHash || actual.Hash == expected.Hash) &&
                 actual.TotalDifficulty == expected.TotalDifficulty &&
-                BytesEqual(actual.AuRaSignature, expected.AuRaSignature) &&
-                actual.AuRaStep == expected.AuRaStep &&
+                AuRaSealsEqual(actual, expected) &&
                 actual.BaseFeePerGas == expected.BaseFeePerGas &&
                 actual.WithdrawalsRoot == expected.WithdrawalsRoot &&
                 actual.ParentBeaconBlockRoot == expected.ParentBeaconBlockRoot &&
@@ -363,6 +362,16 @@ public static class TestEqualityComparers
         }
 
         public int GetHashCode(BlockHeader obj) => 0;
+
+        private static bool AuRaSealsEqual(BlockHeader actual, BlockHeader expected)
+        {
+            IAuRaBlockHeaderHandler? handler = AuRaBlockHeaderHandler.Instance;
+            if (handler is null) return true;
+            bool actualHasSeal = handler.TryGetSeal(actual, out long actualStep, out byte[]? actualSig);
+            bool expectedHasSeal = handler.TryGetSeal(expected, out long expectedStep, out byte[]? expectedSig);
+            if (actualHasSeal != expectedHasSeal) return false;
+            return !actualHasSeal || (actualStep == expectedStep && BytesEqual(actualSig, expectedSig));
+        }
     }
 
     private sealed class BlockBodyEqualityComparer(bool compareHash) : IEqualityComparer<BlockBody>

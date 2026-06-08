@@ -44,33 +44,48 @@ namespace Nethermind.Serialization.Rlp
             ulong timestamp = decoderContext.DecodeULong();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
-            BlockHeader blockHeader = new(
-                parentHash,
-                unclesHash,
-                beneficiary,
-                difficulty,
-                number,
-                gasLimit,
-                timestamp,
-                extraData)
+            // Seal section: 32-byte item ⇒ Ethash (mixHash + nonce); otherwise AuRa (step + signature)
+            // produced via the plugin-registered handler so the AuRaBlockHeader subclass stays in the plugin.
+            bool isAuRa = decoderContext.PeekPrefixAndContentLength().ContentLength != Hash256.Size;
+            BlockHeader blockHeader;
+            if (isAuRa)
             {
-                StateRoot = stateRoot,
-                TxRoot = transactionsRoot,
-                ReceiptsRoot = receiptsRoot,
-                Bloom = bloom,
-                GasUsed = gasUsed,
-                Hash = Keccak.Compute(headerRlp)
-            };
+                IAuRaBlockHeaderHandler handler = AuRaBlockHeaderHandler.Instance
+                    ?? throw new RlpException("Encountered AuRa-shaped header but no AuRa handler is registered.");
 
-            if (decoderContext.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
-            {
-                blockHeader.MixHash = decoderContext.DecodeKeccak();
-                blockHeader.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
+                long step = (long)decoderContext.DecodeUInt256();
+                byte[] auRaSignature = decoderContext.DecodeByteArray();
+
+                blockHeader = handler.CreateBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData!);
+                handler.SetSeal(blockHeader, step, auRaSignature);
+                blockHeader.StateRoot = stateRoot;
+                blockHeader.TxRoot = transactionsRoot;
+                blockHeader.ReceiptsRoot = receiptsRoot;
+                blockHeader.Bloom = bloom;
+                blockHeader.GasUsed = gasUsed;
+                blockHeader.Hash = Keccak.Compute(headerRlp);
             }
             else
             {
-                blockHeader.AuRaStep = (long)decoderContext.DecodeUInt256();
-                blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
+                blockHeader = new BlockHeader(
+                    parentHash,
+                    unclesHash,
+                    beneficiary,
+                    difficulty,
+                    number,
+                    gasLimit,
+                    timestamp,
+                    extraData)
+                {
+                    StateRoot = stateRoot,
+                    TxRoot = transactionsRoot,
+                    ReceiptsRoot = receiptsRoot,
+                    Bloom = bloom,
+                    GasUsed = gasUsed,
+                    Hash = Keccak.Compute(headerRlp),
+                    MixHash = decoderContext.DecodeKeccak(),
+                    Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength),
+                };
             }
 
             if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
@@ -116,11 +131,10 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = header.AuRaSignature is not null;
-                if (isAuRa)
+                if (AuRaBlockHeaderHandler.Instance is { } sealHandler && sealHandler.TryGetSeal(header, out long step, out byte[]? auRaSignature))
                 {
-                    rlpStream.Encode(header.AuRaStep!.Value);
-                    rlpStream.Encode(header.AuRaSignature);
+                    rlpStream.Encode(step);
+                    rlpStream.Encode(auRaSignature);
                 }
                 else
                 {
@@ -192,11 +206,10 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                bool isAuRa = item.AuRaSignature is not null;
-                if (isAuRa)
+                if (AuRaBlockHeaderHandler.Instance is { } sealHandler && sealHandler.TryGetSeal(item, out long step, out byte[]? auRaSignature))
                 {
-                    contentLength += Rlp.LengthOf(item.AuRaStep!.Value);
-                    contentLength += Rlp.LengthOf(item.AuRaSignature);
+                    contentLength += Rlp.LengthOf(step);
+                    contentLength += Rlp.LengthOf(auRaSignature);
                 }
                 else
                 {

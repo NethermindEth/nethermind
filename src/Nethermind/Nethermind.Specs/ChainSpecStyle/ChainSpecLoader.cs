@@ -356,26 +356,22 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
         chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
 
-        BlockHeader genesisHeader = new(
-            parentHash,
-            Keccak.OfAnEmptySequenceRlp,
-            beneficiary,
-            difficulty,
-            0,
-            (long)gasLimit,
-            timestamp,
-            extraData)
-        {
-            Author = beneficiary,
-            Hash = Keccak.Zero, // need to run the block to know the actual hash
-            Bloom = Bloom.Empty,
-            MixHash = mixHash,
-            Nonce = (ulong)nonce,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            StateRoot = stateRoot,
-            TxRoot = Keccak.EmptyTreeHash,
-            BaseFeePerGas = baseFee
-        };
+        bool isAuRaGenesis = auRaSignature is not null || step is not null;
+        BlockHeader genesisHeader = isAuRaGenesis
+            ? (AuRaBlockHeaderHandler.Instance ?? throw new InvalidDataException(
+                    "Chainspec genesis carries AuthorityRound seal data but the AuRa plugin assembly is not loaded."))
+                .CreateBlockHeader(parentHash, Keccak.OfAnEmptySequenceRlp, beneficiary, difficulty, 0, (long)gasLimit, timestamp, extraData)
+            : new BlockHeader(parentHash, Keccak.OfAnEmptySequenceRlp, beneficiary, difficulty, 0, (long)gasLimit, timestamp, extraData);
+
+        genesisHeader.Author = beneficiary;
+        genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
+        genesisHeader.Bloom = Bloom.Empty;
+        genesisHeader.MixHash = mixHash;
+        genesisHeader.Nonce = (ulong)nonce;
+        genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+        genesisHeader.StateRoot = stateRoot;
+        genesisHeader.TxRoot = Keccak.EmptyTreeHash;
+        genesisHeader.BaseFeePerGas = baseFee;
 
         bool withdrawalsEnabled = parameters.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4895TransitionTimestamp;
         bool depositsEnabled = parameters.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip6110TransitionTimestamp;
@@ -423,8 +419,10 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber ?? 0;
         }
 
-        genesisHeader.AuRaStep = step;
-        genesisHeader.AuRaSignature = auRaSignature;
+        if (isAuRaGenesis)
+        {
+            AuRaBlockHeaderHandler.Instance!.SetSeal(genesisHeader, step ?? 0, auRaSignature ?? []);
+        }
 
         chainSpec.Genesis = !blockAccessListsEnabled ?
             (!withdrawalsEnabled

@@ -293,37 +293,42 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
-        BlockHeader headerForProcessing = new(
-            bh.ParentHash,
-            bh.UnclesHash,
-            bh.Beneficiary,
-            bh.Difficulty,
-            bh.Number,
-            bh.GasLimit,
-            bh.Timestamp,
-            bh.ExtraData,
-            bh.BlobGasUsed,
-            bh.ExcessBlobGas)
-        {
-            Bloom = Bloom.Empty,
-            Author = bh.Author,
-            Hash = bh.Hash,
-            MixHash = bh.MixHash,
-            Nonce = bh.Nonce,
-            TxRoot = bh.TxRoot,
-            TotalDifficulty = bh.TotalDifficulty,
-            AuRaStep = bh.AuRaStep,
-            AuRaSignature = bh.AuRaSignature,
-            ReceiptsRoot = bh.ReceiptsRoot,
-            BaseFeePerGas = bh.BaseFeePerGas,
-            WithdrawalsRoot = bh.WithdrawalsRoot,
-            RequestsHash = bh.RequestsHash,
-            IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            SlotNumber = bh.SlotNumber,
-            // Carried for the verify-only fast path which doesn't recompute it.
-            BlockAccessListHash = bh.BlockAccessListHash
-        };
+        IAuRaBlockHeaderHandler? auraHandler = AuRaBlockHeaderHandler.Instance;
+        long auRaStep = 0;
+        byte[]? auRaSignature = null;
+        bool hasAuRaSeal = auraHandler is not null && auraHandler.TryGetSeal(bh, out auRaStep, out auRaSignature);
+        BlockHeader headerForProcessing = hasAuRaSeal
+            ? auraHandler!.CreateBlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, in bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData)
+            : new BlockHeader(
+                bh.ParentHash,
+                bh.UnclesHash,
+                bh.Beneficiary,
+                bh.Difficulty,
+                bh.Number,
+                bh.GasLimit,
+                bh.Timestamp,
+                bh.ExtraData,
+                bh.BlobGasUsed,
+                bh.ExcessBlobGas);
+        headerForProcessing.Bloom = Bloom.Empty;
+        headerForProcessing.Author = bh.Author;
+        headerForProcessing.Hash = bh.Hash;
+        headerForProcessing.MixHash = bh.MixHash;
+        headerForProcessing.Nonce = bh.Nonce;
+        headerForProcessing.TxRoot = bh.TxRoot;
+        headerForProcessing.TotalDifficulty = bh.TotalDifficulty;
+        headerForProcessing.ReceiptsRoot = bh.ReceiptsRoot;
+        headerForProcessing.BaseFeePerGas = bh.BaseFeePerGas;
+        headerForProcessing.WithdrawalsRoot = bh.WithdrawalsRoot;
+        headerForProcessing.RequestsHash = bh.RequestsHash;
+        headerForProcessing.IsPostMerge = bh.IsPostMerge;
+        headerForProcessing.ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot;
+        headerForProcessing.SlotNumber = bh.SlotNumber;
+        // Carried for the verify-only fast path which doesn't recompute it.
+        headerForProcessing.BlockAccessListHash = bh.BlockAccessListHash;
+        headerForProcessing.BlobGasUsed = bh.BlobGasUsed;
+        headerForProcessing.ExcessBlobGas = bh.ExcessBlobGas;
+        if (hasAuRaSeal) auraHandler!.SetSeal(headerForProcessing, auRaStep, auRaSignature!);
 
         if (!ShouldComputeStateRoot(bh))
         {

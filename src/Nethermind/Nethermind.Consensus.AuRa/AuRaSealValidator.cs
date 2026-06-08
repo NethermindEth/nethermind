@@ -41,32 +41,34 @@ namespace Nethermind.Consensus.AuRa
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             const long rejectedStepDrift = 4;
+            AuRaBlockHeader auraHeader = header.AsAuRa();
+            AuRaBlockHeader auraParent = parent.AsAuRa();
 
-            if (header.AuRaSignature is null)
+            if (auraHeader.AuRaSignature is null)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing signature.");
                 return false;
             }
 
             // Ensure header is from the step after parent.
-            if (header.AuRaStep is null)
+            if (auraHeader.AuRaStep is null)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} is missing step value.");
                 return false;
             }
             else
             {
-                long step = header.AuRaStep.Value;
+                long step = auraHeader.AuRaStep.Value;
 
-                if (step == parent.AuRaStep)
+                if (step == auraParent.AuRaStep)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {step}. Block {header.Number}, hash {header.Hash} is duplicate.");
                     ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
-                else if (step < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
+                else if (step < auraParent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
                 {
-                    if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {parent.AuRaStep}.");
+                    if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {step} is lesser than parents step {auraParent.AuRaStep}.");
                     ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, [], IReportingValidator.MaliciousCause.DuplicateStep);
                     return false;
                 }
@@ -121,7 +123,7 @@ namespace Nethermind.Consensus.AuRa
                         return false;
                     }
 
-                    UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, step, 0);
+                    UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(auraParent.AuRaStep!.Value, step, 0);
                     if (header.Difficulty != expectedDifficulty)
                     {
                         if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
@@ -152,7 +154,7 @@ namespace Nethermind.Consensus.AuRa
 
         private Address GetSealer(BlockHeader header)
         {
-            Signature signature = new(header.AuRaSignature);
+            Signature signature = new(header.AsAuRa().AuRaSignature);
             signature.V += Signature.VOffset;
             ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);
             return _ecdsa.RecoverAddress(signature, in message);
@@ -197,7 +199,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 using McsLock.Disposable _ = _lock.Acquire();
 
-                long step = header.AuRaStep.Value;
+                long step = header.AsAuRa().AuRaStep!.Value;
                 Address author = header.Beneficiary;
                 Hash256 hash = header.Hash;
                 int index = BinarySearch(step);

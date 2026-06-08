@@ -40,6 +40,11 @@ namespace Nethermind.Consensus.AuRa
     /// </summary>
     public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
+        // Registers the AuRa BlockHeader subclass with the Core handler the moment this
+        // type is first touched — well before ChainSpecLoader or HeaderDecoder need it.
+        // The runner reaches us via the typeof(...) in NethermindPlugins.EmbeddedPlugins.
+        static AuRaPlugin() => AuRaBlockHeaderHandler.Instance = AuRaBlockHeaderHandlerImpl.Instance;
+
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus Engine";
