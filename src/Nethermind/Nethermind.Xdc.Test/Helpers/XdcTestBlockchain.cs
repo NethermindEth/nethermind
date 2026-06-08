@@ -40,9 +40,9 @@ public class XdcTestBlockchain : TestBlockchain
     private readonly bool _useHotStuffModule;
     private readonly bool _withPresetPenaltyHistory;
 
-    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false)
+    public static async Task<XdcTestBlockchain> Create(int blocksToAdd = 3, bool useHotStuffModule = false, Action<ContainerBuilder>? configurer = null, bool withPenalty = false, IReadOnlyList<PrivateKey>? keys = null)
     {
-        XdcTestBlockchain chain = new(useHotStuffModule, withPenalty);
+        XdcTestBlockchain chain = new(useHotStuffModule, withPenalty, keys);
         await chain.Build(configurer);
 
         FromXdcContainer fromXdcContainer = chain.Container.Resolve<FromXdcContainer>();
@@ -75,9 +75,9 @@ public class XdcTestBlockchain : TestBlockchain
     internal TestRandomSigner? RandomSigner { get; private set; }
     internal XdcHotStuff ConsensusModule => (XdcHotStuff)BlockProducerRunner;
 
-    protected XdcTestBlockchain(bool useHotStuffModule, bool withPresetPenaltyHistory = false)
+    protected XdcTestBlockchain(bool useHotStuffModule, bool withPresetPenaltyHistory = false, IReadOnlyList<PrivateKey>? keys = null)
     {
-        List<PrivateKey> keys = new PrivateKeyGenerator().Generate(210).ToList();
+        keys ??= new PrivateKeyGenerator().Generate(210).ToList();
         MasterNodeCandidates = keys.Take(200).ToList();
         RandomKeys = keys.Skip(200).ToList();
         _useHotStuffModule = useHotStuffModule;
@@ -457,10 +457,20 @@ public class XdcTestBlockchain : TestBlockchain
         return b;
     }
 
-    public override async Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
+    public override Task<Block> AddBlockFromParent(
+        BlockHeader parent,
+        params Transaction[] transactions)
+        => AddBlockFromParent(parent, true, transactions);
+
+    public async Task<Block> AddBlockFromParent(
+        BlockHeader parent,
+        bool withQC,
+        params Transaction[] transactions)
     {
         Block b = await _fromContainer.TestBlockchainUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead | TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, CreateCancellationSource().Token, transactions);
-        CreateAndCommitQC((XdcBlockHeader)b.Header);
+
+        if (withQC)
+            CreateAndCommitQC((XdcBlockHeader)b.Header);
 
         return b;
     }
@@ -585,7 +595,7 @@ public class XdcTestBlockchain : TestBlockchain
                     .Select(a => MasterNodeCandidates.First(c => a == c.Address))
                     .ToArray();
 
-    private TransactionBuilder<Transaction> CreateTransactionBuilder()
+    public TransactionBuilder<Transaction> CreateTransactionBuilder()
     {
         TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction;
 

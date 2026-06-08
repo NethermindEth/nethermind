@@ -3,9 +3,11 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -29,6 +31,8 @@ namespace Nethermind.Xdc
         ISigner signer,
         ITimeoutTimer timeoutTimer,
         ITimestamper timestamper,
+        IBlockProcessingQueue processingQueue,
+        IStateReader stateReader,
         ILogManager logManager) : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -41,6 +45,8 @@ namespace Nethermind.Xdc
         private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         private readonly ITimeoutTimer _timeoutTimer = timeoutTimer ?? throw new ArgumentNullException(nameof(timeoutTimer));
         private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+        private readonly IBlockProcessingQueue _processingQueue = processingQueue ?? throw new ArgumentNullException(nameof(processingQueue));
+        private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private readonly object _lockObject = new();
@@ -214,6 +220,46 @@ namespace Nethermind.Xdc
 
             if (!IsMyTurn(proposalParent, round, proposalSpec)) return;
 
+            // If the HighestQC block is a fork that was never processed, build its state now before proposing.
+            // ForceProcessing bypasses the IsBetterThanHead TD check (fork has equal TD to head).
+            // We wait for BlockRemoved rather than NewHeadBlock — the block producer takes proposalParent
+            // explicitly, so no head update is needed, just the state.
+            if (!_stateReader.HasStateForBlock(proposalParent))
+            {
+                Block? unprocessedParent = _blockTree.FindBlock(proposalParent.Hash!, BlockTreeLookupOptions.None, blockNumber: proposalParent.Number);
+                if (unprocessedParent is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Round {round}: HighestQC block #{proposalParent.Number} body not available, skipping proposal.");
+                    return;
+                }
+
+                if (_logger.IsInfo) _logger.Info($"Round {round}: processing HighestQC fork block #{proposalParent.Number} {proposalParent.Hash} before proposing.");
+
+                TaskCompletionSource<ProcessingResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                void OnBlockRemoved(object? s, BlockRemovedEventArgs e)
+                {
+                    if (e.BlockHash == unprocessedParent.Hash)
+                        tcs.TrySetResult(e.ProcessingResult);
+                }
+
+                _processingQueue.BlockRemoved += OnBlockRemoved;
+                try
+                {
+                    await _processingQueue.Enqueue(unprocessedParent, ProcessingOptions.ForceProcessing);
+                    ProcessingResult result = await tcs.Task.WaitAsync(ct);
+                    if (result != ProcessingResult.Success)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Round {round}: processing HighestQC block #{proposalParent.Number} failed ({result}), skipping proposal.");
+                        return;
+                    }
+                }
+                finally
+                {
+                    _processingQueue.BlockRemoved -= OnBlockRemoved;
+                }
+                // fall through — state is now available
+            }
+
             if (!TryAdvance(ref _highestSelfMinedRound, (long)round)) return;
 
             // Gate 1: enforce minimum mine period since parent block was produced
@@ -227,10 +273,10 @@ namespace Nethermind.Xdc
             // Gate 2: if head has no QC yet, wait for late votes to form one.
             // If QC arrives, NewRoundSetEvent fires and cancels this task via ct.
             // If fallback elapses without QC, propose on the last certified block.
-            bool headHasQc = head.Hash == qc.ProposedBlockInfo.Hash;
+            bool headHasQc = proposalParent.Hash == qc.ProposedBlockInfo.Hash;
             if (!headHasQc)
             {
-                long fallbackReadyAt = (long)head.Timestamp + proposalSpec.TimeoutPeriod / 2;
+                long fallbackReadyAt = (long)proposalParent.Timestamp + proposalSpec.TimeoutPeriod / 2;
                 now = _timestamper.UnixTime.SecondsLong;
                 if (fallbackReadyAt > now)
                     await Task.Delay(TimeSpan.FromSeconds(fallbackReadyAt - now), ct);
