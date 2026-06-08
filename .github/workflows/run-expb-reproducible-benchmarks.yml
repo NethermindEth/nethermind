@@ -630,6 +630,13 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
+      - name: Pull Nethermind image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "${NETHERMIND_IMAGE}"
+          docker image inspect "${NETHERMIND_IMAGE}" --format 'Pulled {{.Id}} {{join .RepoDigests ", "}}'
+
       - name: Run expb scenarios
         id: run-expb
         continue-on-error: true
@@ -1692,6 +1699,13 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Pull Nethermind image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "${NETHERMIND_IMAGE}"
+          docker image inspect "${NETHERMIND_IMAGE}" --format 'Pulled {{.Id}} {{join .RepoDigests ", "}}'
 
       - name: Run expb scenarios
         id: run-expb
