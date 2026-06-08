@@ -20,6 +20,6 @@ public class FlatDbConfig : IFlatDbConfig
     public int MinReorgDepth { get; set; } = 128;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
     public int TrieWarmerWorkerCount { get; set; } = -1;
-    public long BlockCacheSizeBudget { get; set; } = 1.GiB;
+    public long BlockCacheSizeBudget { get; set; } = 2.GiB;
     public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
 }
