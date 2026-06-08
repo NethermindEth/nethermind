@@ -71,6 +71,20 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "true")]
     bool ParallelExecutionBatchRead { get; set; }
 
+    [ConfigItem(
+        Description = "Enable block-STM (software transactional memory) parallel transaction execution. " +
+                      "Used as the parallel-execution fallback when Block Access Lists are not present " +
+                      "(BAL execution is preferred when available). Experimental.",
+        DefaultValue = "false")]
+    bool BlockStmEnabled { get; set; }
+
+    [ConfigItem(
+        Description = "Worker concurrency for block-STM parallel execution. " +
+                      "Default `0` uses 75% of logical processors (min 1), leaving headroom for CL traffic, RPC, and sync threads.",
+        DefaultValue = "0",
+        HiddenFromDocs = true)]
+    int BlockStmConcurrency { get; set; }
+
     byte[] GetExtraDataBytes();
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
@@ -89,4 +103,12 @@ public interface IBlocksConfig : IConfig
                       "Set to `0` to log all transactions. Set to `-1` to disable per-transaction logging.",
         DefaultValue = "-1")]
     long SlowBlockPerTxThresholdMs { get; set; }
+
+    [ConfigItem(
+        Description = "Delete the offending block and its descendants when block processing fails. " +
+                      "Set to `false` to keep them in the DB so the same block can be replayed (useful when " +
+                      "debugging non-deterministic execution paths such as Block-STM divergence).",
+        DefaultValue = "true",
+        HiddenFromDocs = true)]
+    bool DeleteInvalidBlocks { get; set; }
 }

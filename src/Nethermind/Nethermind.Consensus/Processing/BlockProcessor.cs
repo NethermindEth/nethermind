@@ -132,7 +132,8 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
-        _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+        ITxTracer systemTracer = _blockTransactionsExecutor.PreTxStateCommitTracer ?? NullTxTracer.Instance;
+        _systemContractHandler.StoreBeaconRoot(block, spec, systemTracer);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 

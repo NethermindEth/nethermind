@@ -317,19 +317,32 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
+        private bool _explicitClear;
         private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
+        // True only when the clear came from a real ClearStorage call (SELFDESTRUCT /
+        // CREATE-collision). The empty-tree optimization sets HasClear without ExplicitClear;
+        // Block-STM relies on this to skip emitting a write-set StorageClear marker that
+        // would clobber earlier tx writes when PushChanges replays in order.
+        public bool ExplicitClear => _explicitClear;
         public int Capacity => _dictionary.Capacity;
 
         public void Reset()
         {
             _missingAreDefault = false;
+            _explicitClear = false;
             _dictionary.Clear();
         }
         public void ClearAndSetMissingAsDefault()
         {
             _missingAreDefault = true;
+            _dictionary.Clear();
+        }
+        public void ClearAndSetMissingAsDefaultExplicit()
+        {
+            _missingAreDefault = true;
+            _explicitClear = true;
             _dictionary.Clear();
         }
 
@@ -370,7 +383,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
         }
 
-        public void UnmarkClear() => _missingAreDefault = false;
+        public void UnmarkClear()
+        {
+            _missingAreDefault = false;
+            _explicitClear = false;
+        }
     }
 
     private sealed class PerContractState : IReturnable
@@ -427,9 +444,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _backend = _provider._currentScope.CreateStorageTree(_address);
 
             bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
-            if (isEmpty && !_wasWritten)
+            // Empty-tree optimization: short-circuit subsequent SLOADs to ZeroBytes without
+            // touching the trie. Disabled under Block-STM where MVMM may carry an overlay
+            // (pre-block system-contract writes) for slots of an otherwise-empty trie —
+            // the optimization would route those reads to ZeroBytes and miss the overlay.
+            if (isEmpty && !_wasWritten && !EmptyStorageTreeShortCircuit.Disabled)
             {
-                // Slight optimization that skips the tree
                 BlockChange.ClearAndSetMissingAsDefault();
             }
         }
@@ -437,7 +457,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Clear()
         {
             EnsureStorageTree();
-            BlockChange.ClearAndSetMissingAsDefault();
+            BlockChange.ClearAndSetMissingAsDefaultExplicit();
         }
 
         public void Return()
@@ -505,7 +525,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             int writes = 0;
             int skipped = 0;
 
-            if (BlockChange.HasClear)
+            if (BlockChange.HasClear && BlockChange.ExplicitClear)
             {
                 storageWriteBatch.Clear();
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree

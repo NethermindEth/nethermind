@@ -21,8 +21,9 @@ public class OptimismTransactionProcessor(
     ILogManager logManager,
     ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
-    ICodeInfoRepository? codeInfoRepository
-    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ICodeInfoRepository? codeInfoRepository,
+    IFeeRecorder? feeRecorder = null
+    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder)
 {
     private UInt256? _currentTxL1Cost;
 
@@ -152,7 +153,14 @@ public class OptimismTransactionProcessor(
             if (opSpecHelper.IsBedrock(header))
             {
                 UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
-                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
+                if (FeeRecorder is not null)
+                {
+                    FeeRecorder.RecordFee(opSpecHelper.L1FeeReceiver!, in l1Cost, createAccount: !l1Cost.IsZero);
+                }
+                else
+                {
+                    WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
+                }
             }
 
             if (opSpecHelper.IsIsthmus(header))
@@ -162,12 +170,18 @@ public class OptimismTransactionProcessor(
 
                 if (operatorCostMax > operatorCostUsed)
                 {
-                    // Refund the rest
+                    // Sender already serialised by FindNonceDependencies — no W-A-W to divert.
                     WorldState.AddToBalance(tx.SenderAddress!, operatorCostMax - operatorCostUsed, spec);
                 }
 
-                // Transfer to fee recipient
-                WorldState.AddToBalance(PreDeploys.OperatorFeeRecipient, operatorCostUsed, spec);
+                if (FeeRecorder is not null)
+                {
+                    FeeRecorder.RecordFee(PreDeploys.OperatorFeeRecipient, in operatorCostUsed, createAccount: !operatorCostUsed.IsZero);
+                }
+                else
+                {
+                    WorldState.AddToBalance(PreDeploys.OperatorFeeRecipient, operatorCostUsed, spec);
+                }
             }
         }
     }

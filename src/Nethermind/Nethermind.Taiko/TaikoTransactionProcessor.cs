@@ -20,8 +20,9 @@ public class TaikoTransactionProcessor(
     IWorldState worldState,
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
-    ILogManager? logManager
-    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ILogManager? logManager,
+    IFeeRecorder? feeRecorder = null
+    ) : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, feeRecorder)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
@@ -52,10 +53,9 @@ public class TaikoTransactionProcessor(
         // as zero. So there is no need to create the account and pay the fees to the beneficiary,
         // except for the case when a restore is required due to a failure.
         bool gasBeneficiaryNotDestroyed = !substate.DestroyListContains(header.GasBeneficiary);
-        if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
-        {
-            WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, tipFees, spec);
-        }
+        bool payBeneficiary = statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed;
+
+        CreditGasBeneficiary(header.GasBeneficiary!, tipFees, spec, payBeneficiary);
 
         if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
         {
@@ -65,23 +65,46 @@ public class TaikoTransactionProcessor(
                 byte basefeeSharingPct = (taikoSpec.IsShastaEnabled ? header.DecodeShastaBasefeeSharingPctg() : header.DecodeOntakeExtraData()) ?? 0;
 
                 UInt256 feeCoinbase = baseFees * basefeeSharingPct / 100;
-
-                if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
-                {
-                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
-                }
+                CreditGasBeneficiary(header.GasBeneficiary!, feeCoinbase, spec, payBeneficiary);
 
                 UInt256 feeTreasury = baseFees - feeCoinbase;
-                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, feeTreasury, spec);
+                CreditFeeCollector(spec.FeeCollector, feeTreasury, spec);
             }
             else
             {
-                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, baseFees, spec);
+                CreditFeeCollector(spec.FeeCollector, baseFees, spec);
             }
         }
 
         if (tracer.IsTracingFees)
             tracer.ReportFees(tipFees, baseFees);
+    }
+
+    // The recorder is called with zero amount when payBeneficiary is false so the
+    // dependency edge for higher txs is still recorded.
+    private void CreditGasBeneficiary(Address beneficiary, in UInt256 amount, IReleaseSpec spec, bool payBeneficiary)
+    {
+        if (FeeRecorder is not null)
+        {
+            UInt256 payable = payBeneficiary ? amount : UInt256.Zero;
+            FeeRecorder.RecordFee(beneficiary, in payable, payBeneficiary);
+        }
+        else if (payBeneficiary)
+        {
+            WorldState.AddToBalanceAndCreateIfNotExists(beneficiary, amount, spec);
+        }
+    }
+
+    private void CreditFeeCollector(Address feeCollector, in UInt256 amount, IReleaseSpec spec)
+    {
+        if (FeeRecorder is not null)
+        {
+            FeeRecorder.RecordFee(feeCollector, in amount, createAccount: !amount.IsZero);
+        }
+        else
+        {
+            WorldState.AddToBalanceAndCreateIfNotExists(feeCollector, amount, spec);
+        }
     }
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
