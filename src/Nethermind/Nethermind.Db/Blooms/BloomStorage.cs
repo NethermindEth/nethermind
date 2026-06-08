@@ -65,16 +65,14 @@ namespace Nethermind.Db.Blooms
 
         public BloomStorage(IBloomConfig config, [KeyFilter(DbNames.Bloom)] IDb bloomDb, [KeyFilter(nameof(BloomStorage))] IFileStoreFactory fileStoreFactory)
         {
-            ulong Get(Hash256 key, ulong defaultValue) => bloomDb.Get(key)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
-
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _bloomInfoDb = bloomDb ?? throw new ArgumentNullException(nameof(bloomDb));
             _fileStoreFactory = fileStoreFactory;
             _storageLevels = CreateStorageLevels(config);
             Levels = (byte)_storageLevels.Length;
-            _minBlockNumber = Get(MinBlockNumberKey, ulong.MaxValue);
-            _maxBlockNumber = Get(MaxBlockNumberKey, 0);
-            _migratedBlockNumber = Get(MigrationBlockNumberKey, ulong.MaxValue);
+            _minBlockNumber = bloomDb.GetULongFromBigEndianByteArrayWithoutLeadingZeros(MinBlockNumberKey, ulong.MaxValue);
+            _maxBlockNumber = bloomDb.GetULongFromBigEndianByteArrayWithoutLeadingZeros(MaxBlockNumberKey, 0);
+            _migratedBlockNumber = bloomDb.GetULongFromBigEndianByteArrayWithoutLeadingZeros(MigrationBlockNumberKey, ulong.MaxValue);
         }
 
         private BloomStorageLevel[] CreateStorageLevels(IBloomConfig config)

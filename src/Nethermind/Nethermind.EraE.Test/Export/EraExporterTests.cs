@@ -43,6 +43,28 @@ public class EraExporterTests
         Assert.That(eraFiles.Length, Is.EqualTo(expectedEraFiles));
     }
 
+    [Test]
+    public async Task Export_WhenLegacyEraeFileExists_SkipsEpochWithoutWritingEre()
+    {
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(16)
+            .AddSingleton<IEraEConfig>(new EraEConfig { MaxEraSize = 16, NetworkName = EraETestModule.TestNetwork })
+            .Build();
+
+        string tmpDirectory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(tmpDirectory, 0, 15);
+
+        string ereFile = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}").Single();
+        string eraeFile = System.IO.Path.ChangeExtension(ereFile, EraPathUtils.LegacyFileExtension);
+        System.IO.File.Move(ereFile, eraeFile);
+
+        await sut.Export(tmpDirectory, 0, 15);
+
+        Assert.That(System.IO.File.Exists(eraeFile), Is.True, "pre-existing legacy .erae file must be kept on re-export");
+        Assert.That(System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}"), Is.Empty,
+            "epoch already present as .erae must be skipped, not re-exported as a duplicate .ere");
+    }
+
     [TestCase("checksums_sha256.txt")]
     [TestCase("checksums.txt")]
     [TestCase("accumulators.txt")]

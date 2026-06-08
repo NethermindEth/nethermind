@@ -78,7 +78,6 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    [Ignore("// https://github.com/NethermindEth/nethermind/issues/140")]
     public void Trace_invalid_jump_exception()
     {
         byte[] code = Prepare.EvmCode
@@ -92,7 +91,6 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    [Ignore("// https://github.com/NethermindEth/nethermind/issues/140")]
     public void Trace_invalid_jumpi_exception()
     {
         byte[] code = Prepare.EvmCode

@@ -17,7 +17,6 @@ namespace Nethermind.Evm;
 public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
-    private static readonly JournalSet<Address> _emptyDestroyList = new(Address.EqualityComparer);
 
     private const string SomeError = "error";
     public const string Revert = "revert";
@@ -54,7 +53,7 @@ public readonly ref struct TransactionSubstate
     public bool ShouldRevert { get; }
     public ulong Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs;
-    public JournalSet<Address> DestroyList => _destroyList ?? _emptyDestroyList;
+    public JournalSet<Address>? DestroyList => _destroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
@@ -62,18 +61,18 @@ public readonly ref struct TransactionSubstate
         SubstateError = substateError;
         EvmExceptionType = exceptionType;
         Refund = 0;
-        _destroyList = _emptyDestroyList;
-        // Can be mutated by SELFDESTRUCT and BURN logs so need to initialize as empty.
+        _destroyList = null;
+        // Real list, not a shared empty sentinel: EIP-7708 SELFDESTRUCT appends a transfer log and this readonly struct can't reassign later.
         _logs = [];
         ShouldRevert = false;
     }
 
     public TransactionSubstate(ReadOnlyMemory<byte> bytes,
         ulong refund,
-        JournalSet<Address> destroyList,
-        JournalCollection<LogEntry> logs,
+        JournalSet<Address>? destroyList,
+        JournalCollection<LogEntry>? logs,
         bool shouldRevert,
-        bool isTracerConnected,
+        bool isTracerConnected = default,
         EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {
@@ -81,7 +80,7 @@ public readonly ref struct TransactionSubstate
         Output = bytes;
         Refund = refund;
         _destroyList = destroyList;
-        _logs = logs;
+        _logs = logs ?? [];
         ShouldRevert = shouldRevert;
         EvmExceptionType = evmExceptionType;
 
@@ -102,6 +101,10 @@ public readonly ref struct TransactionSubstate
         ReadOnlySpan<byte> span = Output.Span;
         if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
+
+    public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
+
+    public LogEntry[] LogsToArray() => _logs.ToArray();
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
     {

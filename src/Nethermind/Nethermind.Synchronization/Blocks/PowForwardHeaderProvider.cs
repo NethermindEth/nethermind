@@ -37,7 +37,7 @@ public class PowForwardHeaderProvider(
     private readonly Random _rnd = new();
     private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
-    private const int MinCachedHeaderBatchSize = 32;
+    protected const int MinCachedHeaderBatchSize = 32;
 
     private IPeerAllocationStrategy _bestPeerAllocationStrategy =
         new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);

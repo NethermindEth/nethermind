@@ -208,6 +208,7 @@ public class GasEstimator(
 
     private static bool IsGasRelatedFailure(TransactionResult result) =>
         result.Error is TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+            or TransactionResult.ErrorType.GasLimitBelowFloorGas
             or TransactionResult.ErrorType.BlockGasLimitExceeded;
 
     private static bool ShouldContinueSearch(ulong leftBound, ulong rightBound, double threshold) =>

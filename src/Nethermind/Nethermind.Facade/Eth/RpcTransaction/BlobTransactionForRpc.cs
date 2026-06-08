@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -67,6 +68,13 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
         if (validateUserInput && MaxFeePerBlobGas?.IsZero == true)
             return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
+
+        if (validateUserInput && spec?.IsEip4844Enabled == true)
+        {
+            ValidationResult blobCountValidation = BlobFieldsTxValidator.ValidateBlobGasLimits(BlobVersionedHashes.Length, spec);
+            if (!blobCountValidation)
+                return blobCountValidation.Error!;
+        }
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (!baseResult) return baseResult;

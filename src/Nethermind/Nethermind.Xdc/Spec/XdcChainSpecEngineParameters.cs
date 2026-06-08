@@ -36,8 +36,10 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public Address MasternodeVotingContract { get; set; }
 
-    public ulong LimitPenaltyEpoch { get; set; }
-    public ulong LimitPenaltyEpochV2 { get; set; }
+    public ulong LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public ulong LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public Address RelayerRegistrationSMC { get; set; }
+    public Address TRC21IssuerSMC { get; set; }
 
     private List<V2ConfigParams> _v2Configs = [];
     public List<V2ConfigParams> V2Configs

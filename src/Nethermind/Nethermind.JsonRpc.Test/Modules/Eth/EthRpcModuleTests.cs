@@ -500,7 +500,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_storage_at_missing_trie_node()
     {
-        using Context ctx = await Context.Create();
+        // Asserts the patricia "missing trie node" error, which has no equivalent in the flat backend.
+        using Context ctx = await Context.Create(useFlatDb: false);
         await Task.Delay(100); // Wait a bit for pruning
         ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();
@@ -588,7 +589,7 @@ public partial class EthRpcModuleTests
         blockTree.Head.Returns((Block?)null);
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build();
-        string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
+        string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\"},\"id\":67}"));
     }
@@ -597,7 +598,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_balance_incorrect_parameters()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x01");
+        string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x1");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}"));
     }
 
@@ -2708,7 +2709,8 @@ public partial class EthRpcModuleTests
 
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
-            Action<ContainerBuilder>? configurer = null)
+            Action<ContainerBuilder>? configurer = null,
+            bool? useFlatDb = null)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -2722,6 +2724,7 @@ public partial class EthRpcModuleTests
                     .WithBlockchainBridge(blockchainBridge!)
                     .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0, Timeout = -1 })
                     .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
+                    .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
                     .Build(wrappedConfigurer).Result,
 
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)

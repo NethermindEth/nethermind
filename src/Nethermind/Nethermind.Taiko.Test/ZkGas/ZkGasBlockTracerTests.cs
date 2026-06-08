@@ -36,6 +36,18 @@ public class ZkGasBlockTracerTests
     private static Transaction MakeTx() =>
         Build.A.Transaction.TestObject;
 
+    /// <summary>
+    /// Constructs a tracer with the alethia recalibrated opcode/precompile tables in place. The
+    /// production meter no longer carries in-code defaults, so tests that exercise specific
+    /// opcode multipliers (e.g. CREATE=1, ADD=19) must supply the tables explicitly here.
+    /// </summary>
+    private static ZkGasBlockTracer MakeTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null,
+        ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
+        ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas) =>
+        new(inner, holder, blockZkGasLimit, txIntrinsicZkGas,
+            ZkGasTestSchedules.OpcodeMultipliers,
+            ZkGasTestSchedules.PrecompileMultipliers);
+
     // ── meter reset / holder publishing ──────────────────────────────────────
 
     /// <summary>
@@ -46,7 +58,7 @@ public class ZkGasBlockTracerTests
     {
         ZkGasMeterHolder holder = new();
         IBlockTracer inner = Substitute.For<IBlockTracer>();
-        ZkGasBlockTracer blockTracer = new(inner, holder);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, holder);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
 
@@ -64,7 +76,7 @@ public class ZkGasBlockTracerTests
     {
         ZkGasMeterHolder holder = new();
         IBlockTracer inner = Substitute.For<IBlockTracer>();
-        ZkGasBlockTracer blockTracer = new(inner, holder);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, holder);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
         ZkGasMeter firstMeter = blockTracer.Meter;
@@ -93,7 +105,7 @@ public class ZkGasBlockTracerTests
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
         // txIntrinsicZkGas:0 isolates the reset-behavior assertion from the intrinsic charge.
-        ZkGasBlockTracer blockTracer = new(inner, txIntrinsicZkGas: 0);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, txIntrinsicZkGas: 0);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
 
@@ -114,7 +126,7 @@ public class ZkGasBlockTracerTests
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
-        ZkGasBlockTracer blockTracer = new(inner);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
         blockTracer.StartNewTxTrace(MakeTx());
@@ -138,7 +150,7 @@ public class ZkGasBlockTracerTests
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
         // txIntrinsicZkGas:0 isolates the discard-behavior assertion from the intrinsic charge.
-        ZkGasBlockTracer blockTracer = new(inner, txIntrinsicZkGas: 0);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, txIntrinsicZkGas: 0);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
 
@@ -164,7 +176,7 @@ public class ZkGasBlockTracerTests
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
-        ZkGasBlockTracer blockTracer = new(inner);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
 
@@ -190,7 +202,7 @@ public class ZkGasBlockTracerTests
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.IsTracingRewards.Returns(true);
-        ZkGasBlockTracer blockTracer = new(inner);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner);
 
         Assert.That(blockTracer.IsTracingRewards, Is.True);
     }
@@ -202,7 +214,7 @@ public class ZkGasBlockTracerTests
     public void ReportReward_ForwardedToInner()
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
-        ZkGasBlockTracer blockTracer = new(inner);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner);
 
         blockTracer.ReportReward(TestItem.AddressA, "block", 1);
 
@@ -222,7 +234,7 @@ public class ZkGasBlockTracerTests
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
         // Explicitly set a known intrinsic to decouple from the schedule constant.
         const ulong intrinsic = 243_000UL;
-        ZkGasBlockTracer blockTracer = new(inner, txIntrinsicZkGas: intrinsic);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, txIntrinsicZkGas: intrinsic);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
         blockTracer.StartNewTxTrace(MakeTx());
@@ -239,7 +251,7 @@ public class ZkGasBlockTracerTests
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
-        ZkGasBlockTracer blockTracer = new(inner, txIntrinsicZkGas: 0);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, txIntrinsicZkGas: 0);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
         blockTracer.StartNewTxTrace(MakeTx());
@@ -259,7 +271,7 @@ public class ZkGasBlockTracerTests
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
         const ulong intrinsic = 243_000UL;
         const ulong tinyLimit = intrinsic - 1; // one under the intrinsic cost
-        ZkGasBlockTracer blockTracer = new(inner, blockZkGasLimit: tinyLimit, txIntrinsicZkGas: intrinsic);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, blockZkGasLimit: tinyLimit, txIntrinsicZkGas: intrinsic);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
         blockTracer.StartNewTxTrace(MakeTx());
@@ -275,7 +287,7 @@ public class ZkGasBlockTracerTests
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
-        ZkGasBlockTracer blockTracer = new(inner, blockZkGasLimit: 1000, txIntrinsicZkGas: 0);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, blockZkGasLimit: 1000, txIntrinsicZkGas: 0);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
         blockTracer.StartNewTxTrace(MakeTx());
@@ -297,7 +309,7 @@ public class ZkGasBlockTracerTests
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
         // Limit=800, intrinsic=500. Pre-fill 600 units so only 200 budget remains.
-        ZkGasBlockTracer blockTracer = new(inner, blockZkGasLimit: 800, txIntrinsicZkGas: 500);
+        ZkGasBlockTracer blockTracer = MakeTracer(inner, blockZkGasLimit: 800, txIntrinsicZkGas: 500);
 
         blockTracer.StartNewBlockTrace(MakeBlock());
 

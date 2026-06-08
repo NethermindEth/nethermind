@@ -79,9 +79,6 @@ public class TaikoBeaconSyncTests
             new SyncConfig(),
             LimboLogs.Instance);
 
-        sut.AllowBeaconHeaderSync();
-        inner.Received(1).AllowBeaconHeaderSync();
-
         Assert.Multiple(() =>
         {
             Assert.That(sut.ShouldBeInBeaconModeControl(), Is.True);

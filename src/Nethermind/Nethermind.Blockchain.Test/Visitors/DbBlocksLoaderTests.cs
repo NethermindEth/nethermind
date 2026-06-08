@@ -61,7 +61,7 @@ public class DbBlocksLoaderTests
                 .WithSpecProvider(OlympicSpecProvider.Instance)
                 .TestObject;
 
-            DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
+            using DbBlocksLoader loader = new(blockTree, NoErrorLimboLogs.Instance);
             await blockTree.Accept(loader, CancellationToken.None);
 
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
@@ -106,7 +106,7 @@ public class DbBlocksLoaderTests
                 .WithSpecProvider(OlympicSpecProvider.Instance)
                 .TestObject;
 
-            DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
+            using DbBlocksLoader loader = new(blockTree, NoErrorLimboLogs.Instance);
             await blockTree.Accept(loader, CancellationToken.None);
 
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
@@ -167,12 +167,12 @@ public class DbBlocksLoaderTests
             }
         };
 
-        DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
+        using DbBlocksLoader loader = new(tree2, NoErrorLimboLogs.Instance, null, 1);
         await tree2.Accept(loader, tokenSource.Token);
 
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(3ul), "best known");
-        BlockTestAssertions.AssertBlockHeaderEquivalent(tree2.Head!.Header, block3B.Header);
-        BlockTestAssertions.AssertBlockHeaderEquivalent(tree2.BestSuggestedHeader, block3B.Header);
+        Assert.That(tree2.Head!.Header, Is.EqualTo(block3B.Header).UsingBlockHeaderComparer());
+        Assert.That(tree2.BestSuggestedHeader, Is.EqualTo(block3B.Header).UsingBlockHeaderComparer());
 
         Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
@@ -227,7 +227,7 @@ public class DbBlocksLoaderTests
             }
         };
 
-        DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
+        using DbBlocksLoader loader = new(tree2, NoErrorLimboLogs.Instance, null, 1);
         await tree2.Accept(loader, tokenSource.Token);
 
         /* note the block tree historically loads one less block than it could */

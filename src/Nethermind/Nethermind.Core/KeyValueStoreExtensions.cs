@@ -48,11 +48,47 @@ namespace Nethermind.Core
 
             public bool KeyExists(long key) => db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
+            public Span<byte> GetSpan(long key) => db.GetSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
             public byte[]? Get(long key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
 
             public bool KeyExists(ulong key) => db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
+            public Span<byte> GetSpan(ulong key) => db.GetSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _));
+
             public byte[]? Get(ulong key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
+
+            public ulong GetULongFromBigEndianByteArrayWithoutLeadingZeros(Hash256 key, ulong defaultValue)
+            {
+                Span<byte> bytes = db.GetSpan(key);
+                ulong value = bytes.IsNull() ? defaultValue : bytes.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+                db.DangerousReleaseMemory(bytes);
+                return value;
+            }
+
+            public ulong GetULongFromBigEndianByteArrayWithoutLeadingZeros(ulong key)
+            {
+                Span<byte> bytes = db.GetSpan(key);
+                ulong value = bytes.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+                db.DangerousReleaseMemory(bytes);
+                return value;
+            }
+
+            public long GetLongFromBigEndianByteArrayWithoutLeadingZeros(Hash256 key, long defaultValue)
+            {
+                Span<byte> bytes = db.GetSpan(key);
+                long value = bytes.IsNull() ? defaultValue : (long)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                db.DangerousReleaseMemory(bytes);
+                return value;
+            }
+
+            public long GetLongFromBigEndianByteArrayWithoutLeadingZeros(long key)
+            {
+                Span<byte> bytes = db.GetSpan(key);
+                long value = (long)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                db.DangerousReleaseMemory(bytes);
+                return value;
+            }
         }
 
         extension(IWriteOnlyKeyValueStore db)

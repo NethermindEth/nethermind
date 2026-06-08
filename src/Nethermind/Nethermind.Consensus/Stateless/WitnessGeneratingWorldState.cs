@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Collections.Pooled;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -26,7 +28,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = [];
 
-    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = [];
+    private readonly Dictionary<ValueHash256, byte[]> _bytecodes = new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
     public Witness GetWitness(BlockHeader parentHeader)
     {
@@ -288,6 +290,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public void ResetTransient() => inner.ResetTransient();
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
+    public Task HintBal(ReadOnlyBlockAccessList bal) => inner.HintBal(bal);
 
     public void CreateEmptyAccountIfDeleted(Address address)
     {

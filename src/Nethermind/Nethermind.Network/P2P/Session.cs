@@ -178,9 +178,13 @@ namespace Nethermind.Network.P2P
 
         private (DisconnectReason, string?)? _disconnectAfterInitialized = null;
 
+        private long _bytesReceived;
+        public long BytesReceived => Interlocked.Read(ref _bytesReceived);
+
         public void ReceiveMessage(ZeroPacket zeroPacket)
         {
             Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
+            Interlocked.Add(ref _bytesReceived, zeroPacket.Content.ReadableBytes);
 
             lock (_sessionStateLock)
             {

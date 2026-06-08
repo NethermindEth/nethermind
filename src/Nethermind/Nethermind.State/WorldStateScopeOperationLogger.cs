@@ -3,7 +3,9 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -50,6 +52,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public void HintGet(Address address, Account? account) => innerScope.HintGet(address, account);
+
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+            => innerScope.HintBal(bal, sink);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 

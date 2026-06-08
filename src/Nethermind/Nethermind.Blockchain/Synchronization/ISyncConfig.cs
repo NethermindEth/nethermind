@@ -126,7 +126,8 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to disable some optimizations and do a more extensive sync. Useful when sync state is corrupted.", DefaultValue = "false")]
     public bool StrictMode { get; set; }
 
-    [ConfigItem(Description = $"Whether to operate as a non-validator. If `true`, the `{nameof(DownloadReceiptsInFastSync)}` and `{nameof(DownloadBodiesInFastSync)}` can be set to `false`.", DefaultValue = "false")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated.", DefaultValue = "false", HiddenFromDocs = true)]
     public bool NonValidatorNode { get; set; }
 
     [ConfigItem(Description = "Configure the database for write optimizations during sync. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = nameof(ITunableDb.TuneType.HeavyWrite), HiddenFromDocs = true)]

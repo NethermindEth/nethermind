@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -27,6 +28,10 @@ public static class WorldStateExtensions
 
     public static bool AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, ExecutionType executionType, in UInt256 balanceChange, IReleaseSpec spec)
+        => worldState.AddToBalanceAndCreateIfNotExists(address, executionType.GetBalanceCredit(in balanceChange), spec, out _);
 
     public static void SubtractFromBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.SubtractFromBalance(address, balanceChange, spec, out _);

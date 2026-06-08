@@ -31,16 +31,16 @@ public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvi
         if (!HasPivot())
         {
             _barrierWhenStarted = SyncConfigBarrierCalc;
-            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, ((long)_barrierWhenStarted.Value).ToBigEndianByteArrayWithoutLeadingZeros());
+            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         }
         else if (_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
         {
-            _barrierWhenStarted = (ulong)_metadataDb.Get(BarrierWhenStartedMetadataDbKey).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            _barrierWhenStarted = _metadataDb.GetULongFromBigEndianByteArrayWithoutLeadingZeros((ulong)BarrierWhenStartedMetadataDbKey);
         }
         else
         {
             _barrierWhenStarted = _barrier;
-            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, ((long)_barrierWhenStarted.Value).ToBigEndianByteArrayWithoutLeadingZeros());
+            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         }
     }
 }

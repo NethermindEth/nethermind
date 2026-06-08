@@ -43,7 +43,6 @@ public sealed class EraExporter(
     public const string ChecksumsSHA256FileName = "checksums_sha256.txt";
     public const string ChecksumsFileName = "checksums.txt";
 
-    private const int ProgressLogInterval = 10000;
     private const int RetryDelayMs = 100;
 
     public Task Export(string destinationPath, ulong from, ulong to, CancellationToken cancellation = default)
@@ -70,9 +69,8 @@ public sealed class EraExporter(
         if (!fileSystem.Directory.Exists(destinationPath))
             fileSystem.Directory.CreateDirectory(destinationPath);
 
-        ProgressLogger progress = new("EraE export", logManager);
-        progress.Reset(0, to - from + 1);
-        int totalProcessed = 0;
+        using ProgressReporter progress = new("EraE export", logManager, to - from + 1);
+        long totalProcessed = 0;
 
         ulong startEpoch = from / (ulong)_eraSize;
         ulong endEpoch = to / (ulong)_eraSize;
@@ -109,7 +107,6 @@ public sealed class EraExporter(
         fileSystem.File.Delete(checksumFilePath);
         await WriteChecksumFile(checksumFilePath, checksums, cancellation);
 
-        progress.LogProgress();
         if (_logger.IsInfo) _logger.Info($"Finished EraE export from {from} to {to}");
 
         async Task WriteEpoch(long epochIdx, CancellationToken cancel)
@@ -160,12 +157,7 @@ public sealed class EraExporter(
 
                     await eraWriter.Add(block, receipts, cancel);
                     lastBlockHash = block.Hash!;
-
-                    if (Interlocked.Increment(ref totalProcessed) % ProgressLogInterval == 0)
-                    {
-                        progress.Update((ulong)totalProcessed);
-                        progress.LogProgress();
-                    }
+                    progress.Update((ulong)Interlocked.Increment(ref totalProcessed));
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancel);
@@ -225,13 +217,18 @@ public sealed class EraExporter(
         ArrayPoolList<string> fileNames,
         Dictionary<string, ValueHash256> cachedChecksums,
         Dictionary<string, ValueHash256> cachedAccumulators,
-        ref int totalProcessed)
+        ref long totalProcessed)
     {
         string? existingFile = null;
-        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*{EraPathUtils.FileExtension}"))
+        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*"))
         {
-            existingFile = f;
-            break;
+            if (!EraPathUtils.IsEraFile(f)) continue;
+            if (EraPathUtils.IsCanonicalEraFile(f))
+            {
+                existingFile = f;
+                break;
+            }
+            existingFile ??= f;
         }
 
         if (existingFile is null)
@@ -261,7 +258,7 @@ public sealed class EraExporter(
             checksums[idx] = reader.CalculateChecksum();
         }
 
-        Interlocked.Add(ref totalProcessed, (int)(writeTo - writeFrom + 1));
+        Interlocked.Add(ref totalProcessed, (long)(writeTo - writeFrom + 1));
         if (_logger.IsDebug) _logger.Debug($"Skipping already exported epoch {epoch}.");
         return true;
     }

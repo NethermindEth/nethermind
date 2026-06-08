@@ -58,11 +58,8 @@ public class EraExporter(
             fileSystem.Directory.CreateDirectory(destinationPath);
         }
 
-        ProgressLogger progress = new("Era export", logManager);
-        // Cast to long is safe: to - from + 1 is a block count used only as a progress display
-        // value; no realistic chain has more than long.MaxValue blocks.
-        progress.Reset(0, to - from + 1);
-        int totalProcessed = 0;
+        using ProgressReporter progress = new("Era export", logManager, to - from + 1);
+        long totalProcessed = 0;
 
         // Cast to long is safe: epoch numbers are small ordinals (thousands at most).
         ulong era1Size = (ulong)_era1Size;
@@ -99,8 +96,6 @@ public class EraExporter(
         string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
         fileSystem.File.Delete(checksumPath);
         await WriteFileAsync(checksumPath, checksums, fileNames, cancellation);
-
-        progress.LogProgress();
 
         if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
 
@@ -139,13 +134,7 @@ public class EraExporter(
                     }
 
                     await eraWriter.Add(block, receipts, cancellation);
-
-                    bool shouldLog = (Interlocked.Increment(ref totalProcessed) % 10000) == 0;
-                    if (shouldLog)
-                    {
-                        progress.Update((ulong)totalProcessed);
-                        progress.LogProgress();
-                    }
+                    progress.Update((ulong)Interlocked.Increment(ref totalProcessed));
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancellation);

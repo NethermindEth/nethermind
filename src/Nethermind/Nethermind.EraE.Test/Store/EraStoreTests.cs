@@ -28,6 +28,21 @@ public class EraStoreTests
     }
 
     [Test]
+    public async Task Create_WhenBothEreAndCorruptLegacyEraeExist_PrefersCanonicalEre()
+    {
+        await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(16, 0, 0);
+        string tmpDirectory = ctx.ResolveTempDirPath();
+
+        string ereFile = Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}").Single();
+        File.WriteAllText(Path.ChangeExtension(ereFile, EraPathUtils.LegacyFileExtension), "not a valid era file");
+
+        using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
+
+        Assert.That(eraStore.BlockRange, Is.EqualTo((0L, 15L)),
+            "store must read the canonical .ere and ignore the corrupt legacy .erae for the same epoch");
+    }
+
+    [Test]
     public async Task FindBlockAndReceipts_WithKnownBlockNumber_ReturnsBlock()
     {
         await using EraStoreEnv env = await CreateDefaultEraStoreEnv();

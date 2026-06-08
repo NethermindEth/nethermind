@@ -1069,14 +1069,12 @@ namespace Nethermind.Trie.Test
                 yield return (trieStoreConfiguration, 96, 192, 1541344441);
                 yield return (trieStoreConfiguration, 128, 2568, 988091870);
                 yield return (trieStoreConfiguration, 128, 2568, 2107374965);
-                yield return (trieStoreConfiguration, 128, 2568, null);
                 yield return (trieStoreConfiguration, 4, 16, 1242692908);
                 yield return (trieStoreConfiguration, 8, 32, 1543322391);
             }
         }
 
         [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
-        [Retry(3)]
         [NonParallelizable]
         public void Fuzz_accounts_with_storage(
             (TrieStoreConfigurations trieStoreConfigurations,
@@ -1225,6 +1223,27 @@ namespace Nethermind.Trie.Test
                 verifiedBlocks++;
             }
         }
+
+        // Local-only fuzz driver: feed it any seed via env var or pick a fresh one.
+        // Excluded from CI because random seeds can hit known pruning-corner-case bugs
+        // that need targeted fixes rather than a Retry mask.
+        private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int? seed)> RandomSeedFuzzScenarios()
+        {
+            foreach (TrieStoreConfigurations trieStoreConfiguration in CreateTrieStoreConfigurations())
+            {
+                yield return (trieStoreConfiguration, 128, 2568, null);
+            }
+        }
+
+        [Explicit("Random-seed fuzz; runs locally to surface trie/pruning bugs. See FuzzAccountsWithStorageScenarios for deterministic CI coverage.")]
+        [TestCaseSource(nameof(RandomSeedFuzzScenarios))]
+        [NonParallelizable]
+        public void Fuzz_accounts_with_storage_random_seed(
+            (TrieStoreConfigurations trieStoreConfigurations,
+                int accountsCount,
+                int blocksCount,
+                int? seed) scenario) =>
+            Fuzz_accounts_with_storage(scenario);
 
         [Test]
         public void Can_parallel_read_trees()

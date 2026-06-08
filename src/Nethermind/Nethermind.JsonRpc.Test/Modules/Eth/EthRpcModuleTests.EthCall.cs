@@ -194,7 +194,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create();
+        // Simulates pruned/missing patricia state (clears StateDb, persists the pruning trie store); flat has no equivalent.
+        using Context ctx = await Context.Create(useFlatDb: false);
         LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
@@ -234,6 +235,20 @@ public partial class EthRpcModuleTests
             $"{{\"from\": \"{BatTokenAddress}\", \"to\": \"{BatTokenAddress}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_keeps_explicit_zero_gas_limit()
+    {
+        using Context ctx = await Context.Create();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"gas\": \"0x0\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
+            Does.Contain("intrinsic gas too low"));
     }
 
     [Test]
@@ -759,6 +774,39 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_rejects_blob_transaction_with_too_many_blob_hashes()
+    {
+        using Context ctx = await Context.Create(new SingleReleaseSpecProvider(Cancun.Instance, BlockchainIds.Mainnet, BlockchainIds.Mainnet));
+
+        byte[][] hashes = new byte[7][];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = new byte[32];
+            hashes[i][0] = 0x01;
+            hashes[i][31] = (byte)i;
+        }
+
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(100000)
+            .WithMaxFeePerBlobGas(1)
+            .WithBlobVersionedHashes(hashes)
+            .To(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        BlobTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet))
+        {
+            GasPrice = null
+        };
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(
+            serialized,
+            Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"BlockBlobGasExceeded: A block cannot have more than 786432 blob gas, blobs count 7, blobs gas used: 917504.\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_call_bubbles_up_precompile_errors()
     {
         using Context ctx = await Context.Create(new SingleReleaseSpecProvider(Osaka.Instance, BlockchainIds.Mainnet, BlockchainIds.Mainnet));
@@ -844,7 +892,8 @@ public partial class EthRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
         object? blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson);
 
-        using Context ctx = await Context.Create();
+        // Pin to flat to validate the block-override fix under flat's (number, root)-keyed state addressing.
+        using Context ctx = await Context.Create(useFlatDb: true);
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 

@@ -95,6 +95,7 @@ internal class TestBlockTree : IBlockTree
     public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         => new ArrayPoolList<BlockHeader>(0);
     public void DeleteInvalidBlock(Block invalidBlock) { }
+    public void ReportBadBlock(Block badBlock) { }
     public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) { }
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) { }
     public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false) => 0;

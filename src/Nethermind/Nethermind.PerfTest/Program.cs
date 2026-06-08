@@ -368,7 +368,7 @@ namespace Nethermind.PerfTest
                 }
             };
 
-            DbBlocksLoader dbBlocksLoader = new(blockTree, _logger, 0, 10000, BlocksToLoad);
+            using DbBlocksLoader dbBlocksLoader = new(blockTree, _logManager, 0, 10000, BlocksToLoad);
             await Task.WhenAny(completionSource.Task, blockTree.Accept(dbBlocksLoader, CancellationToken.None));
 
             await blockchainProcessor.StopAsync(true).ContinueWith(

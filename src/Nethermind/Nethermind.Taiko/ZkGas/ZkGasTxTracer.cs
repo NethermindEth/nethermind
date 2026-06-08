@@ -41,7 +41,7 @@ public sealed class ZkGasTxTracer : TxTracer
 
     // Precompile tracking
     private bool _pendingPrecompile;
-    private byte _precompileAddressByte;
+    private Address? _precompileAddress;
     private ulong _precompileGasStart;
 
     /// <summary>
@@ -116,7 +116,7 @@ public sealed class ZkGasTxTracer : TxTracer
         if (isPrecompileCall)
         {
             _pendingPrecompile = true;
-            _precompileAddressByte = to.Bytes[19];
+            _precompileAddress = to;
             _precompileGasStart = gas;
         }
     }
@@ -259,10 +259,12 @@ public sealed class ZkGasTxTracer : TxTracer
 
         _pendingPrecompile = false;
         ulong gasUsed = _precompileGasStart > gasRemaining ? _precompileGasStart - gasRemaining : 0UL;
-        if (gasUsed > 0)
+        if (gasUsed > 0 && _precompileAddress is not null)
         {
-            _meter.ChargePrecompile(_precompileAddressByte, gasUsed);
+            _meter.ChargePrecompile(_precompileAddress, gasUsed);
         }
+
+        _precompileAddress = null;
     }
 
     private static bool IsSpawnOpcode(byte opcode) =>

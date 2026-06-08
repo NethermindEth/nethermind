@@ -28,6 +28,7 @@ namespace Nethermind.Xdc
         IVotesManager votesManager,
         ISigner signer,
         ITimeoutTimer timeoutTimer,
+        ITimestamper timestamper,
         ILogManager logManager) : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -39,6 +40,7 @@ namespace Nethermind.Xdc
         private readonly IVotesManager _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
         private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         private readonly ITimeoutTimer _timeoutTimer = timeoutTimer ?? throw new ArgumentNullException(nameof(timeoutTimer));
+        private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private readonly object _lockObject = new();
@@ -215,7 +217,7 @@ namespace Nethermind.Xdc
             if (!TryAdvance(ref _highestSelfMinedRound, (long)round)) return;
 
             // Gate 1: enforce minimum mine period since parent block was produced
-            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long now = _timestamper.UnixTime.SecondsLong;
             long mineReadyAt = (long)proposalParent.Timestamp + proposalSpec.MinePeriod;
             if (mineReadyAt > now)
                 await Task.Delay(TimeSpan.FromSeconds(mineReadyAt - now), ct);
@@ -229,7 +231,7 @@ namespace Nethermind.Xdc
             if (!headHasQc)
             {
                 long fallbackReadyAt = (long)head.Timestamp + proposalSpec.TimeoutPeriod / 2;
-                now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                now = _timestamper.UnixTime.SecondsLong;
                 if (fallbackReadyAt > now)
                     await Task.Delay(TimeSpan.FromSeconds(fallbackReadyAt - now), ct);
             }
@@ -251,7 +253,7 @@ namespace Nethermind.Xdc
                 {
                     Round = currentRound,
                     QuorumCertificate = qc,
-                    Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    Timestamp = _timestamper.UnixTime.Seconds
                 };
 
                 Block? proposedBlock = await _blockBuilder.BuildBlock(parent, null, payloadAttributes, IBlockProducer.Flags.None, ct);

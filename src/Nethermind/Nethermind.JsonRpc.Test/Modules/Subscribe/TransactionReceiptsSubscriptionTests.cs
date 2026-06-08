@@ -19,7 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 {
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     public class TransactionReceiptsSubscriptionTests
     {
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
@@ -86,15 +86,24 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 filter);
 
             List<JsonRpcResult> jsonRpcResults = [];
-            SemaphoreSlim semaphoreSlim = new(0, 1);
+            using CountdownEvent received = new(Math.Max(expectedCount, 1));
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResults.Add(j);
+                if (!received.IsSet) received.Signal();
             }));
 
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
-            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
+
+            if (expectedCount > 0)
+            {
+                received.Wait(TimeSpan.FromSeconds(1));
+            }
+            else
+            {
+                Thread.Sleep(200);
+            }
 
             subscriptionId = subscription.Id;
             return jsonRpcResults;

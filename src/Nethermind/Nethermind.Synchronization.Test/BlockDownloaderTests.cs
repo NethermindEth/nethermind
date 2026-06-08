@@ -871,11 +871,6 @@ public partial class BlockDownloaderTests
             })
             .AddSingleton<Context>();
 
-        if (PseudoNethermindModule.TestUseFlat && configProvider.GetConfig<ISyncConfig>().FastSync)
-        {
-            Assert.Ignore("Flat does not work when fast sync is on");
-        }
-
         configurer?.Invoke(b);
         return b
             .Build();
@@ -918,20 +913,21 @@ public partial class BlockDownloaderTests
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
-            AutoResetEvent autoResetEvent = new(true);
+            SemaphoreSlim peerSemaphore = new(1, 1);
             SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
 
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                .Returns((c) =>
+                .Returns(async ci =>
                 {
-                    if (!autoResetEvent.WaitOne(100)) return Task.FromResult<SyncPeerAllocation?>(null)!;
-                    return Task.FromResult(peerAllocation);
+                    CancellationToken token = ci.ArgAt<CancellationToken>(3);
+                    await peerSemaphore.WaitAsync(token);
+                    return peerAllocation;
                 });
 
             PeerPool
                 .When((p) => p.Free(peerAllocation))
-                .Do((c) => autoResetEvent.Set());
+                .Do((c) => peerSemaphore.Release());
         }
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)

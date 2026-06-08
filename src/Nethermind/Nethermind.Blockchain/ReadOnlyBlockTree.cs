@@ -104,6 +104,8 @@ namespace Nethermind.Blockchain
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
 
+        public void ReportBadBlock(Block badBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ReportBadBlock)} calls");
+
         public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => _wrapped.IsMainChain(blockHash, throwOnMissingHash);
 
         public BlockHeader FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();

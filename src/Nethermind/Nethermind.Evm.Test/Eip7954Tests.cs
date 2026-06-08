@@ -70,7 +70,7 @@ public class Eip7954Tests : VirtualMachineTestsBase
             new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
             NullTxTracer.Instance);
 
-        Assert.That(result, Is.EqualTo(TransactionResult.GasLimitBelowIntrinsicGas));
+        Assert.That(result, Is.EqualTo(TransactionResult.GasLimitBelowFloorGas));
     }
 
     private TestAllTracerWithOutput ExecuteDeployTransaction(ulong timestamp, int deployedCodeSize)

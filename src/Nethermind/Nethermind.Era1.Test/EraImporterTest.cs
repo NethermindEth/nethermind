@@ -136,7 +136,6 @@ public class EraImporterTest
     }
 
     [CancelAfter(4000)]
-    [Retry(3)]
     [Test]
     public async Task ImportAsArchiveSync_WillPaceSuggestBlock(CancellationToken token)
     {
@@ -157,27 +156,26 @@ public class EraImporterTest
             })
             .Build();
 
-        ManualResetEventSlim reachedBlock11 = new();
         bool shouldUpdateMainChain = false;
-        long maxSuggestedBlocks = 0;
-        long expectedStopBlock = 10;
+        ulong maxSuggestedBlocks = 0;
+        ulong expectedStopBlock = 10;
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
             if (shouldUpdateMainChain) inTree.UpdateMainChain([args.Block], true);
-            maxSuggestedBlocks = (long)args.Block.Number;
-            if ((long)args.Block.Number == expectedStopBlock) reachedBlock11.Set();
+            maxSuggestedBlocks = args.Block.Number;
         };
 
-        IEraImporter sut = inCtx.Resolve<IEraImporter>();
+        EraImporter sut = (EraImporter)inCtx.Resolve<IEraImporter>();
         Task importTask = sut.Import(destinationPath, 0, long.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
-        reachedBlock11.Wait(token);
-        await Task.Delay(100);
+        // Pacer is created when import starts; spin briefly until it's published.
+        while (sut.CurrentPacer is null) await Task.Yield();
+        await sut.CurrentPacer.WaitForPausedAsync(token);
 
         Assert.That(maxSuggestedBlocks, Is.EqualTo(expectedStopBlock));
         shouldUpdateMainChain = true;
-        inTree.UpdateMainChain([inTree.FindBlock((ulong)expectedStopBlock, BlockTreeLookupOptions.None)!], true);
+        inTree.UpdateMainChain([inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!], true);
 
         await importTask;
     }

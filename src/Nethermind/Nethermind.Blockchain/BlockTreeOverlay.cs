@@ -111,6 +111,9 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public void DeleteInvalidBlock(Block invalidBlock) =>
         _overlayTree.DeleteInvalidBlock(invalidBlock);
 
+    public void ReportBadBlock(Block badBlock) =>
+        _overlayTree.ReportBadBlock(badBlock);
+
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         _overlayTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
 

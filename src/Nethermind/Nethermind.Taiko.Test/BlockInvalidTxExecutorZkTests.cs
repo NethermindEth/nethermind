@@ -14,6 +14,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Taiko.BlockTransactionExecutors;
+using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Taiko.ZkGas;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -64,6 +65,19 @@ public class BlockInvalidTxExecutorZkTests
     /// <summary>Creates a <see cref="BlockExecutionContext"/> for the given block.</summary>
     private static BlockExecutionContext MakeBlockCtx(Block block) =>
         new(block.Header, Substitute.For<IReleaseSpec>());
+
+    /// <summary>
+    /// Spec provider that returns a Taiko release spec with <c>IsUnzenEnabled = true</c> for every
+    /// query, so the producer-side ZK gas gate in <see cref="BlockInvalidTxExecutor"/> activates.
+    /// </summary>
+    private static ISpecProvider MakeUnzenSpecProvider()
+    {
+        ITaikoReleaseSpec spec = Substitute.For<ITaikoReleaseSpec>();
+        spec.IsUnzenEnabled.Returns(true);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        return specProvider;
+    }
 
     // ── invalid transactions ──────────────────────────────────────────────────
 
@@ -176,7 +190,7 @@ public class BlockInvalidTxExecutorZkTests
         IWorldState worldState = Substitute.For<IWorldState>();
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
-        BlockInvalidTxExecutor executor = new(txProcessor, worldState, Substitute.For<ITxPool>(), LimboLogs.Instance, holder);
+        BlockInvalidTxExecutor executor = new(txProcessor, worldState, Substitute.For<ITxPool>(), LimboLogs.Instance, holder, MakeUnzenSpecProvider());
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -215,7 +229,7 @@ public class BlockInvalidTxExecutorZkTests
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
         BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(),
-            Substitute.For<ITxPool>(), LimboLogs.Instance, holder);
+            Substitute.For<ITxPool>(), LimboLogs.Instance, holder, MakeUnzenSpecProvider());
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -249,7 +263,7 @@ public class BlockInvalidTxExecutorZkTests
         ITxPool txPool = Substitute.For<ITxPool>();
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
-        BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(), txPool, LimboLogs.Instance, holder);
+        BlockInvalidTxExecutor executor = new(txProcessor, Substitute.For<IWorldState>(), txPool, LimboLogs.Instance, holder, MakeUnzenSpecProvider());
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
@@ -331,7 +345,7 @@ public class BlockInvalidTxExecutorZkTests
         ITxPool txPool = Substitute.For<ITxPool>();
         BlockReceiptsTracer receiptsTracer = MakeReceiptsTracer(block);
 
-        BlockInvalidTxExecutor executor = new(txProcessor, worldState, txPool, LimboLogs.Instance, holder);
+        BlockInvalidTxExecutor executor = new(txProcessor, worldState, txPool, LimboLogs.Instance, holder, MakeUnzenSpecProvider());
         executor.SetBlockExecutionContext(MakeBlockCtx(block));
 
         executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);

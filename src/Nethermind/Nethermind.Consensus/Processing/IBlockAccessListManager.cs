@@ -16,6 +16,7 @@ public interface IBlockAccessListManager
     GeneratedBlockAccessList GeneratedBlockAccessList { get; set; }
     bool Enabled { get; }
     bool ParallelExecutionEnabled { get; }
+    bool BatchReadEnabled { get; }
 
     /// <summary>When set, the manager always builds the constructed GeneratedBlockAccessList
     /// even on the parallel-validation path. BAL recorder must set this before

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -60,6 +61,7 @@ namespace Nethermind.Blockchain.Synchronization
         public ulong? FixTotalDifficultyLastBlock { get; set; } = null;
         public bool StrictMode { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
+        [Obsolete]
         public bool NonValidatorNode { get; set; } = false;
         public ITunableDb.TuneType TuneDbMode { get; set; } = ITunableDb.TuneType.HeavyWrite;
         public ITunableDb.TuneType BlocksDbTuneDbMode { get; set; } = ITunableDb.TuneType.EnableBlobFiles;

@@ -11,34 +11,35 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public class DbBlocksLoader : IBlockTreeVisitor, IDisposable
+    public class DbBlocksLoader : IBlockTreeVisitor
     {
         public const int DefaultBatchSize = 4000;
 
-        private readonly ulong _batchSize;
         private readonly ulong _blocksToLoad;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
+        private readonly ProgressReporter _progress;
 
         private readonly BlockTreeSuggestPacer _blockTreeSuggestPacer;
 
         public DbBlocksLoader(IBlockTree blockTree,
-            ILogger logger,
+            ILogManager logManager,
             ulong? startBlockNumber = null,
             ulong batchSize = DefaultBatchSize,
             ulong maxBlocksToLoad = ulong.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, batchSize, batchSize / 2);
-            _logger = logger;
+            _logger = logManager.GetClassLogger<DbBlocksLoader>();
 
-            _batchSize = batchSize;
             StartLevelInclusive = startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0UL;
             ulong bestKnown = _blockTree.BestKnownNumber;
             _blocksToLoad = bestKnown >= StartLevelInclusive
                 ? Math.Min(maxBlocksToLoad, bestKnown - StartLevelInclusive)
                 : 0UL;
             EndLevelExclusive = StartLevelInclusive + _blocksToLoad + 1;
+
+            _progress = new ProgressReporter("DB blocks load", logManager, _blocksToLoad);
 
             LogPlannedOperation();
         }
@@ -69,12 +70,7 @@ namespace Nethermind.Blockchain.Visitors
 
         Task<HeaderVisitOutcome> IBlockTreeVisitor.VisitHeader(BlockHeader header, CancellationToken cancellationToken)
         {
-            ulong i = header.Number - StartLevelInclusive;
-            if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 && _blockTree.Head.Number + _batchSize < header.Number)
-            {
-                if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {_blocksToLoad} headers from DB.");
-            }
-
+            _progress.Update(header.Number - StartLevelInclusive + 1);
             return Task.FromResult(HeaderVisitOutcome.None);
         }
 
@@ -111,6 +107,10 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        public void Dispose() => _blockTreeSuggestPacer.Dispose();
+        public void Dispose()
+        {
+            _progress.Dispose();
+            _blockTreeSuggestPacer.Dispose();
+        }
     }
 }

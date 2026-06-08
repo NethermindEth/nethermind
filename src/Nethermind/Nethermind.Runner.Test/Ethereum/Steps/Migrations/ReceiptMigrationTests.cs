@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -120,30 +121,54 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
-        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptStorage
+        [TestCaseSource(nameof(PointerTrackerScenarios))]
+        public void MigrationPointerTracker_advances_pointer_only_across_contiguously_completed_blocks(
+            ulong to, ulong[] completionOrder, ulong[] expectedPointerAfterEachCompletion)
         {
-            private readonly IReceiptStorage _inStorage = inStorage;
-            private readonly IReceiptStorage _outStorage = outStorage;
+            InMemoryReceiptStorage receiptStorage = new() { MigratedBlockNumber = to + 1 };
+            ReceiptMigration.MigrationPointerTracker tracker = new(receiptStorage, to);
 
-            public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
+            for (int i = 0; i < completionOrder.Length; i++)
+            {
+                tracker.ReportCompleted(completionOrder[i]);
+                Assert.That(receiptStorage.MigratedBlockNumber, Is.EqualTo(expectedPointerAfterEachCompletion[i]),
+                    $"pointer after completing block {completionOrder[i]}");
+            }
+        }
 
-            public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => _inStorage.Get(block, recover, recoverSender);
+        private static IEnumerable<TestCaseData> PointerTrackerScenarios()
+        {
+            yield return new TestCaseData(3UL, new ulong[] { 3UL, 2UL, 1UL, 0UL }, new ulong[] { 3UL, 2UL, 1UL, 0UL })
+                .SetName("DescendingCompletionAdvancesOneByOne");
+            yield return new TestCaseData(10UL, new ulong[] { 10UL, 9UL, 7UL, 8UL }, new ulong[] { 10UL, 9UL, 9UL, 7UL })
+                .SetName("GapHoldsPointerUntilFilledThenJumps");
+            yield return new TestCaseData(3UL, new ulong[] { 0UL, 1UL, 2UL, 3UL }, new ulong[] { 4UL, 4UL, 4UL, 0UL })
+                .SetName("UnfinishedHighestBlockHoldsPointerUntilItCompletes");
+        }
 
-            public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => _inStorage.Get(blockHash, recover);
+        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptMigrationStore
+        {
+            public Hash256 FindBlockHash(Hash256 txHash) => inStorage.FindBlockHash(txHash);
 
-            public bool CanGetReceiptsByHash(ulong blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
-            public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            public void InsertForMigration(Block block, TxReceipt[] receipts) => outStorage.Insert(block, receipts);
 
-            public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber) => _outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
-            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber) => _outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
+            public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inStorage.Get(block, recover, recoverSender);
+
+            public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inStorage.Get(blockHash, recover);
+
+            public bool CanGetReceiptsByHash(ulong blockNumber) => inStorage.CanGetReceiptsByHash(blockNumber);
+            public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+
+            public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber) => outStorage.Insert(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
+            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber) => outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags, lastBlockNumber);
 
             public ulong MigratedBlockNumber
             {
-                get => _outStorage.MigratedBlockNumber;
-                set => _outStorage.MigratedBlockNumber = value;
+                get => outStorage.MigratedBlockNumber;
+                set => outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(ulong blockNumber, Hash256 hash) => _outStorage.HasBlock(blockNumber, hash);
+            public bool HasBlock(ulong blockNumber, Hash256 hash) => outStorage.HasBlock(blockNumber, hash);
 
             public void EnsureCanonical(Block block)
             {

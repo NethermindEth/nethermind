@@ -16,7 +16,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.IO;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
@@ -45,7 +44,12 @@ public class FullPruningDiskTest
         public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
         public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
-        public PruningTestBlockchain() => TempDirectory = TempPath.GetTempDirectory();
+        // Full pruning operates on the patricia trie state DB (FullPruningDb); it has no flat equivalent.
+        public PruningTestBlockchain()
+        {
+            TempDirectory = TempPath.GetTempDirectory();
+            UseFlatDb = false;
+        }
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? containerBuilder = null)
         {
@@ -64,6 +68,7 @@ public class FullPruningDiskTest
                 PruningTrigger,
                 PruningConfig,
                 BlockTree,
+                Container.Resolve<IStateBoundaryWriter>(),
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
@@ -114,6 +119,7 @@ public class FullPruningDiskTest
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
+            IStateBoundaryWriter stateBoundary,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IDriveInfo driveInfo,
@@ -121,7 +127,7 @@ public class FullPruningDiskTest
             IChainEstimations chainEstimations,
             ILogManager logManager)
             : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
-                stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
+                stateBoundary, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
 
@@ -131,12 +137,6 @@ public class FullPruningDiskTest
                 WaitHandle.Set();
             }
         }
-    }
-
-    [SetUp]
-    public void Setup()
-    {
-        if (PseudoNethermindModule.TestUseFlat) Assert.Ignore("Disabled in flat");
     }
 
     [Test, MaxTime(Timeout.LongTestTime)]
@@ -204,6 +204,10 @@ public class FullPruningDiskTest
                 );
 
             HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
+            // Exclude the boundary marker FullPruner writes on commit — it's absent from the pre-prune snapshot.
+            byte[]? boundaryValue = chain.DbProvider.StateDb[StateBoundaryStore.OldestStateBlockKey];
+            Assert.That(boundaryValue, Is.Not.Null, "FullPruner should record the OldestStateBlock floor on a successful prune");
+            currentItems.Remove(boundaryValue!);
             Assert.That(currentItems.IsSubsetOf(allItems), Is.True);
             Assert.That(currentItems.Count, Is.GreaterThan(0));
         }

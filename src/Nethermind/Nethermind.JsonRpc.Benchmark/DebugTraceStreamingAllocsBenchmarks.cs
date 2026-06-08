@@ -41,7 +41,7 @@ public class DebugTraceStreamingAllocsBenchmarks
         for (int d = 0; d < 5; d++)
         {
             _envByDepth[d] = ExecutionEnvironment.Rent(
-                CodeInfo.Empty, Address.Zero, Address.Zero, null, d, default, default, default);
+                CodeInfo.Empty, Address.Zero, Address.Zero, null, d, default, default);
         }
         _valueBuffer = new byte[32];
     }

@@ -28,6 +28,7 @@ public class LogIndexBuilderTests
 {
     private class TestLogIndexStorage : ILogIndexStorage
     {
+        private readonly Lock _gate = new();
         private int? _minBlockNumber;
         private int? _maxBlockNumber;
 
@@ -38,13 +39,13 @@ public class LogIndexBuilderTests
 
         public int? MinBlockNumber
         {
-            get => _minBlockNumber;
+            get { lock (_gate) return _minBlockNumber; }
             init => _minBlockNumber = value;
         }
 
         public int? MaxBlockNumber
         {
-            get => _maxBlockNumber;
+            get { lock (_gate) return _maxBlockNumber; }
             init => _maxBlockNumber = value;
         }
 
@@ -64,23 +65,34 @@ public class LogIndexBuilderTests
             int min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
             int max = Math.Max(aggregate.FirstBlockNum, aggregate.LastBlockNum);
 
-            if (_minBlockNumber is null || min < _minBlockNumber)
+            bool fireMin = false;
+            bool fireMax = false;
+            lock (_gate)
             {
-                if (_minBlockNumber is not null && max != _minBlockNumber - 1)
-                    throw new InvalidOperationException("Invalid receipts order.");
+                if (_minBlockNumber is null || min < _minBlockNumber)
+                {
+                    if (_minBlockNumber is not null && max != _minBlockNumber - 1)
+                        throw new InvalidOperationException("Invalid receipts order.");
 
-                _minBlockNumber = min;
-                NewMinBlockNumber?.Invoke(this, min);
+                    _minBlockNumber = min;
+                    fireMin = true;
+                }
+
+                if (_maxBlockNumber is null || max > _maxBlockNumber)
+                {
+                    if (_maxBlockNumber is not null && min != _maxBlockNumber + 1)
+                        throw new InvalidOperationException("Invalid receipts order.");
+
+                    _maxBlockNumber = max;
+                    fireMax = true;
+                }
             }
 
-            if (_maxBlockNumber is null || max > _maxBlockNumber)
-            {
-                if (_maxBlockNumber is not null && min != _maxBlockNumber + 1)
-                    throw new InvalidOperationException("Invalid receipts order.");
-
-                _maxBlockNumber = max;
-                NewMaxBlockNumber?.Invoke(this, max);
-            }
+            // Fire events outside the lock to avoid running subscriber code
+            // under the gate (subscribers in tests can re-enter via Wait
+            // helpers that subscribe/unsubscribe).
+            if (fireMin) NewMinBlockNumber?.Invoke(this, min);
+            if (fireMax) NewMaxBlockNumber?.Invoke(this, max);
 
             return Task.CompletedTask;
         }

@@ -344,13 +344,13 @@ public class ForkchoiceUpdatedHandler(
 
     private void StartNewBeaconHeaderSync(ForkchoiceStateV1 forkchoiceState, BlockHeader blockHeader, string requestStr)
     {
-        bool isSyncInitialized = mergeSyncController.TryInitBeaconHeaderSync(blockHeader);
+        mergeSyncController.InitBeaconHeaderSync(blockHeader);
         beaconPivot.ProcessDestination = blockHeader;
         peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
         blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
         blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
 
-        if (isSyncInitialized && _logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
+        if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
 
     // Validates that candidateHeader is an ancestor of newHeadHeader per the Engine API spec

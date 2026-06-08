@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public ValidatorStore([KeyFilter(DbNames.BlockInfos)] IDb db)
         {
             _db = db;
-            _latestFinalizedValidatorsBlockNumber = _db.Get(LatestFinalizedValidatorsBlockNumberKey) is { } bytes ? (ulong)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros() : EmptyBlockNumber;
+            _latestFinalizedValidatorsBlockNumber = _db.GetULongFromBigEndianByteArrayWithoutLeadingZeros(LatestFinalizedValidatorsBlockNumberKey, EmptyBlockNumber);
         }
 
         public void SetValidators(ulong finalizingBlockNumber, Address[] validators)
@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 ValidatorInfo validatorInfo = new(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber ? EmptyBlockNumber : _latestFinalizedValidatorsBlockNumber, validators);
                 Rlp rlp = Rlp.Encode(validatorInfo);
                 _db.Set(GetKey(finalizingBlockNumber), rlp.Bytes);
-                _db.PutSpan(LatestFinalizedValidatorsBlockNumberKey.Bytes, ((long)finalizingBlockNumber).ToBigEndianSpanWithoutLeadingZeros(out _));
+                _db.PutSpan(LatestFinalizedValidatorsBlockNumberKey.Bytes, finalizingBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
                 _latestFinalizedValidatorsBlockNumber = finalizingBlockNumber;
                 _latestValidatorInfo = validatorInfo;
                 Metrics.ValidatorsCount = validators.Length;
