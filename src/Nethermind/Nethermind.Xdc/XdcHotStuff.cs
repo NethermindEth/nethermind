@@ -275,20 +275,6 @@ namespace Nethermind.Xdc
 
             if (ct.IsCancellationRequested) return;
 
-            // Gate 2: if head has no QC yet, wait for late votes to form one.
-            // If QC arrives, NewRoundSetEvent fires and cancels this task via ct.
-            // If fallback elapses without QC, propose on the last certified block.
-            bool headHasQc = proposalParent.Hash == qc.ProposedBlockInfo.Hash;
-            if (!headHasQc)
-            {
-                long fallbackReadyAt = (long)proposalParent.Timestamp + proposalSpec.TimeoutPeriod / 2;
-                now = _timestamper.UnixTime.SecondsLong;
-                if (fallbackReadyAt > now)
-                    await Task.Delay(TimeSpan.FromSeconds(fallbackReadyAt - now), ct);
-            }
-
-            if (ct.IsCancellationRequested) return;
-
             await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, ct);
         }
 
