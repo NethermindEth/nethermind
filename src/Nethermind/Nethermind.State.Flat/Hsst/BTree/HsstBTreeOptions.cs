@@ -85,13 +85,13 @@ public sealed record HsstBTreeOptions
     public const long DefaultPartitionThresholdBytes = 4L * 1024 * 1024;
 
     /// <summary>Hard cap on a single partition's data section for the partitioned
-    /// builder. The per-partition hashtable stores each entry as a <c>u24</c> forward
+    /// builder. The per-partition hashtable stores each entry as a <c>u48</c> forward
     /// distance from the data-section start, so the data section (entries + inline
-    /// leaves) must stay under 16 MiB; the builder closes a partition once its data
-    /// span reaches this. The inner index sits after the data section and is not
-    /// addressed by the hashtable, so it does not count. A correctness bound, not a
-    /// tuning knob.</summary>
-    public const long DefaultPartitionMaxSpanBytes = 16L * 1024 * 1024;
+    /// leaves) must stay under 256 TiB; the builder closes a partition once its data
+    /// span reaches this. In practice the key-bytes threshold
+    /// (<see cref="DefaultPartitionThresholdBytes"/>) always fires first — this is just a
+    /// correctness bound from the offset width, not a tuning knob.</summary>
+    public const long DefaultPartitionMaxSpanBytes = 1L << 48;
 
     /// <summary>Minimum key-bytes for a <b>whole single-partition blob</b> to bother with a
     /// hashtable. Below this the blob is emitted as a plain key-first B-tree (0x07) with no

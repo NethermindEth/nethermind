@@ -266,10 +266,12 @@ public static class PersistedSnapshotBuilder
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 32 - slotPrefixLength;
 
-        // Address-level HSST keyed by raw 20-byte Address.
+        // Address-level HSST keyed by raw 20-byte Address. Partitioned (key-after-value) so the
+        // per-address blob gets a per-partition hashtable accelerating the address lookup; the
+        // value size is unknown up front, so entries are streamed via BeginValueWrite/FinishValueWrite.
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilderBuffersContainer addressLevelBuffers = new(expectedKeyCount: uniqueAddresses.Count);
-        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, ref addressLevelBuffers.Buffers, PersistedSnapshotTags.AddressKeyLength, expectedKeyCount: uniqueAddresses.Count);
+        using HsstPartitionedBTreeBuilderBuffersContainer addressLevelBuffers = new();
+        using HsstPartitionedBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, ref addressLevelBuffers.Buffers, PersistedSnapshotTags.AddressKeyLength, slotOptions, keyFirst: false);
         // Slim-account RLP for any single account fits comfortably in 256 bytes (4×u256 fields
         // plus framing). Pool the scratch so it doesn't allocate per WritePerAddressColumn call.
         byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);

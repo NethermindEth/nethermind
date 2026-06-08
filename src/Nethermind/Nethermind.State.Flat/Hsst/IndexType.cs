@@ -86,4 +86,19 @@ public enum IndexType : byte
     /// FORMAT.md for the full layout / lookup procedure.
     /// </summary>
     SinglePartitionHashtableBTreeKeyFirst = 0x09,
+    /// <summary>
+    /// Key-after-value sibling of <see cref="PartitionedBTreeKeyFirst"/> (0x08): a partitioned
+    /// table whose entries are <c>[Value][Flag][LEB128 ValueLength][FullKey]</c> (so values can
+    /// be streamed without knowing their length up front). Used for the per-address column,
+    /// whose value sizes are unknown ahead of time. Same directory + per-partition hashtable
+    /// layout as 0x08; only the per-entry layout (and the single-no-hashtable fallback, which is
+    /// plain <see cref="BTree"/> 0x01) differ. See FORMAT.md.
+    /// </summary>
+    PartitionedBTree = 0x0A,
+    /// <summary>
+    /// Key-after-value sibling of <see cref="SinglePartitionHashtableBTreeKeyFirst"/> (0x09):
+    /// the single-partition-with-hashtable form for key-after-value data (metadata in the
+    /// trailer, no directory). See FORMAT.md.
+    /// </summary>
+    SinglePartitionHashtableBTree = 0x0B,
 }

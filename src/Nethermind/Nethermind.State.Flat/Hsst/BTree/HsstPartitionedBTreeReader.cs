@@ -25,11 +25,15 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// </remarks>
 internal static class HsstPartitionedBTreeReader
 {
-    /// <summary>0x08 lookup: floor-seek the directory for the partition, then probe + fall back.</summary>
+    /// <summary>
+    /// 0x08 / 0x0A lookup: floor-seek the directory for the partition, then probe + fall back.
+    /// <paramref name="keyFirst"/> is the partition entries' layout (the directory itself is
+    /// always key-first): true for 0x08, false for 0x0A (key-after-value).
+    /// </summary>
     [SkipLocalsInit]
     public static bool TrySeek<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
-        bool exactMatch, out Bound resultBound)
+        bool exactMatch, bool keyFirst, out Bound resultBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -65,15 +69,18 @@ internal static class HsstPartitionedBTreeReader
             rootPrefix = rp;
         }
 
-        return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyLength,
+        return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyFirst, keyLength,
             innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix, out resultBound);
     }
 
-    /// <summary>0x09 lookup: read the single partition's metadata from the trailer, then probe + fall back.</summary>
+    /// <summary>
+    /// 0x09 / 0x0B lookup: read the single partition's metadata from the trailer, then probe +
+    /// fall back. <paramref name="keyFirst"/>: true for 0x09, false for 0x0B (key-after-value).
+    /// </summary>
     [SkipLocalsInit]
     public static bool TrySeekSingle<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
-        bool exactMatch, out Bound resultBound)
+        bool exactMatch, bool keyFirst, out Bound resultBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -84,7 +91,7 @@ internal static class HsstPartitionedBTreeReader
                 out long dataRegionStart, out int bucketCount, prefixBuf, out int rootPrefixLen))
             return false;
 
-        return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyLength,
+        return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyFirst, keyLength,
             innerRootOffset, innerScopeEnd, hashtableOffset, dataRegionStart, bucketCount, prefixBuf[..rootPrefixLen], out resultBound);
     }
 
@@ -139,7 +146,7 @@ internal static class HsstPartitionedBTreeReader
     /// </summary>
     [SkipLocalsInit]
     private static bool ProbeAndFallback<TReader, TPin>(
-        scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key, bool exactMatch,
+        scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key, bool exactMatch, bool keyFirst,
         int keyLength, long innerRootOffset, long innerScopeEnd, long hashtableOffset,
         long dataRegionStart, int bucketCount, scoped ReadOnlySpan<byte> rootPrefix, out Bound resultBound)
         where TPin : struct, IBufferPin, allows ref struct
@@ -157,7 +164,7 @@ internal static class HsstPartitionedBTreeReader
             Span<byte> bucketBuf = stackalloc byte[HsstPartitionHashtable.BucketBytes];
             if (reader.TryRead(bucketAbs, bucketBuf))
             {
-                // One 256-bit equality scan over the 12 tags → a bitmask of candidate ways.
+                // One 128-bit equality scan over the 8 tags → a bitmask of candidate ways.
                 uint matchMask = HsstPartitionHashtable.MatchMask(bucketBuf, tag);
                 while (matchMask != 0)
                 {
@@ -167,7 +174,7 @@ internal static class HsstPartitionedBTreeReader
                     // DecodeEntry verifies the full key under exactMatch, so a tag collision
                     // with a different key returns false and we try the next matching way.
                     if (HsstBTreeReader.DecodeEntry<TReader, TPin>(in reader, bound, entryAbs, key,
-                            exactMatch: true, keyFirst: true, keyLength, out resultBound))
+                            exactMatch: true, keyFirst, keyLength, out resultBound))
                         return true;
                     matchMask &= matchMask - 1;
                 }
@@ -178,7 +185,7 @@ internal static class HsstPartitionedBTreeReader
         long rootStartAbs = bound.Offset + innerRootOffset;
         long scopeEndAbs = bound.Offset + innerScopeEnd;
         return HsstBTreeReader.TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStartAbs, scopeEndAbs,
-            rootPrefix, keyLength, key, exactMatch, keyFirst: true, out resultBound);
+            rootPrefix, keyLength, key, exactMatch, keyFirst, out resultBound);
     }
 
     private static long ReadU48(scoped ReadOnlySpan<byte> src) =>

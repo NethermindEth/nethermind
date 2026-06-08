@@ -98,7 +98,9 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 matched = default;
                 return false;
             case IndexType.PartitionedBTreeKeyFirst:
-                if (HsstPartitionedBTreeReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound partBound))
+            case IndexType.PartitionedBTree:
+                if (HsstPartitionedBTreeReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch,
+                        keyFirst: (IndexType)idxType[0] == IndexType.PartitionedBTreeKeyFirst, out Bound partBound))
                 {
                     _bound = partBound;
                     matched = partBound;
@@ -107,7 +109,9 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 matched = default;
                 return false;
             case IndexType.SinglePartitionHashtableBTreeKeyFirst:
-                if (HsstPartitionedBTreeReader.TrySeekSingle<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound singleBound))
+            case IndexType.SinglePartitionHashtableBTree:
+                if (HsstPartitionedBTreeReader.TrySeekSingle<TReader, TPin>(in _reader, _bound, key, exactMatch,
+                        keyFirst: (IndexType)idxType[0] == IndexType.SinglePartitionHashtableBTreeKeyFirst, out Bound singleBound))
                 {
                     _bound = singleBound;
                     matched = singleBound;

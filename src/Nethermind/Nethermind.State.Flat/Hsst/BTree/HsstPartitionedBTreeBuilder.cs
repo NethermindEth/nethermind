@@ -21,9 +21,9 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// ordinary <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/> (key-first) driven over the
 /// same writer with <c>baseOffsetOverride = </c> this blob's byte 0, so every recorded
 /// offset shares one byte-0-relative coordinate system that a reader walks with a single
-/// whole-blob bound. The per-partition hashtable stores, per key, the backward distance from
-/// the hashtable start to the entry; a reader probes one bucket and, on a miss, falls back to
-/// the partition's inner B-tree (located via the directory metadata). See FORMAT.md.
+/// whole-blob bound. The per-partition hashtable stores, per key, the forward distance from
+/// the partition's data-section start to the entry; a reader probes one bucket and, on a miss,
+/// falls back to the partition's inner B-tree (located via the directory metadata). See FORMAT.md.
 /// </remarks>
 public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     where TWriter : IByteBufferWriterWithReader<TReader, TPin>
@@ -35,9 +35,11 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     private readonly HsstBTreeOptions _options;
     private readonly int _keyLength;
     private readonly long _hsstBase;
+    private readonly bool _keyFirst;
 
     private HsstBTreeBuilder<TWriter, TReader, TPin> _inner;
     private bool _partitionOpen;
+    private bool _needFirstKey;
     private long _partitionStartAbs;
     private long _accumKeyBytes;
 
@@ -55,7 +57,15 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     private long _lastDataRegionStart;
 
     /// <param name="keyLength">Fixed key length (0–255) for every entry and every directory key.</param>
-    public HsstPartitionedBTreeBuilder(ref TWriter writer, ref HsstPartitionedBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null)
+    /// <param name="keyFirst">
+    /// Entry layout of the partition data: key-first (<c>[Flag][Key][LEB128][Value]</c>, for the
+    /// slot levels — use <see cref="Add"/>) or key-after-value (<c>[Value][Flag][LEB128][Key]</c>,
+    /// for the per-address column whose value sizes are unknown up front — use
+    /// <see cref="BeginValueWrite"/>/<see cref="FinishValueWrite"/> streaming). The trailing
+    /// directory B-tree is always key-first regardless. Selects the 0x07/0x08/0x09 (key-first) vs
+    /// 0x01/0x0A/0x0B (key-after-value) trailers.
+    /// </param>
+    public HsstPartitionedBTreeBuilder(ref TWriter writer, ref HsstPartitionedBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, bool keyFirst = true)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(keyLength);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
@@ -65,7 +75,9 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _buffers = ref buffers;
         _options = options ?? HsstBTreeOptions.Default;
         _keyLength = keyLength;
+        _keyFirst = keyFirst;
         _partitionOpen = false;
+        _needFirstKey = false;
         _partitionStartAbs = 0;
         _accumKeyBytes = 0;
         _lastRootOffset = 0;
@@ -82,40 +94,67 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     /// <summary>No-op; the caller owns and disposes the <see cref="HsstPartitionedBTreeBuilderBuffers"/>.</summary>
     public void Dispose() { }
 
-    /// <summary>Add a key-value entry. Keys must be exactly the declared key length and strictly ascending.</summary>
+    /// <summary>Add a key-value entry (value known up front). Keys must be exactly the declared key length and strictly ascending.</summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
         if (key.Length != _keyLength)
             throw new ArgumentException($"key length {key.Length} != declared keyLength {_keyLength}", nameof(key));
 
-        if (!_partitionOpen) OpenPartition(key);
-
+        if (!_partitionOpen) OpenPartition();
         _inner.Add(key, value, out long entryStart);
+        RecordEntry(key, entryStart);
+    }
+
+    /// <summary>
+    /// Streaming value write for key-after-value mode (the value length need not be known up
+    /// front). Returns the writer to stream the value into; close the entry with
+    /// <see cref="FinishValueWrite"/>. Not valid in key-first mode (use <see cref="Add"/>).
+    /// </summary>
+    public ref TWriter BeginValueWrite()
+    {
+        if (_keyFirst) throw new InvalidOperationException("Key-first partitioned builder requires Add(key, value); streaming is not supported.");
+        if (!_partitionOpen) OpenPartition();
+        return ref _inner.BeginValueWrite();
+    }
+
+    /// <summary>Close a streamed entry started with <see cref="BeginValueWrite"/>.</summary>
+    public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength)
+    {
+        if (key.Length != _keyLength)
+            throw new ArgumentException($"key length {key.Length} != declared keyLength {_keyLength}", nameof(key));
+        _inner.FinishValueWrite(key, valueLength, out long entryStart);
+        RecordEntry(key, entryStart);
+    }
+
+    /// <summary>
+    /// Per-entry bookkeeping shared by <see cref="Add"/> and <see cref="FinishValueWrite"/>:
+    /// records the partition's first key (lazily — the key is only known here for streamed
+    /// entries), pushes the (hash, entry-offset) pair for the hashtable, and closes the
+    /// partition once the key buffer reaches the threshold (a mid-stream close ⇒ the blob is
+    /// partitioning, so the partition always gets a hashtable).
+    /// </summary>
+    private void RecordEntry(scoped ReadOnlySpan<byte> key, long entryStart)
+    {
+        if (_needFirstKey)
+        {
+            _buffers.DirKeys.AddRange(key);
+            _needFirstKey = false;
+        }
         _buffers.AccumHashes.Add(HsstPartitionHashtable.Hash(key));
         _buffers.AccumOffsets.Add(entryStart);
         _accumKeyBytes += key.Length;
 
-        // Every Add is a valid split point (one self-contained entry), so close as soon as
-        // either trigger fires. The span guard is the correctness bound (u24 forward offset).
-        // A mid-stream close means the blob is partitioning, so the partition always gets a
-        // hashtable (closedByBuild: false).
         long span = _writer.Written - _partitionStartAbs;
         if (_accumKeyBytes >= _options.PartitionThresholdBytes || span >= _options.PartitionMaxSpanBytes)
             ClosePartition(closedByBuild: false);
     }
 
     /// <summary>
-    /// Close the final partition (if open), then emit one of three trailers depending on how
-    /// the blob collapsed:
-    /// <list type="bullet">
-    /// <item>single partition, no hashtable → a plain <see cref="IndexType.BTreeKeyFirst"/>
-    /// (0x07) trailer (byte-identical to a non-partitioned key-first build);</item>
-    /// <item>single partition, with hashtable →
-    /// <see cref="IndexType.SinglePartitionHashtableBTreeKeyFirst"/> (0x09) — the hashtable
-    /// metadata in the trailer, no directory B-tree;</item>
-    /// <item>multiple partitions → the directory B-tree +
-    /// <see cref="IndexType.PartitionedBTreeKeyFirst"/> (0x08).</item>
-    /// </list>
+    /// Close the final partition (if open), then emit the trailer for how the blob collapsed,
+    /// keyed by partition count × entry layout (key-first / key-after-value):
+    /// single + no hashtable → 0x07 / 0x01; single + hashtable → 0x09 / 0x0B; multiple →
+    /// directory B-tree + 0x08 / 0x0A. The single-no-hashtable form is byte-identical to a
+    /// standalone B-tree build.
     /// </summary>
     public void Build()
     {
@@ -125,11 +164,16 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         // byte-0-relative data + index region, so we skip the (useless, single-entry) directory.
         if (_buffers.DirValueLengths.Count == 1)
         {
-            if (!_lastHadHashtable) WriteSingleBTreeKeyFirstTrailer();
-            else WriteSinglePartitionHashtableTrailer();
+            if (!_lastHadHashtable)
+                // No hashtable → a plain B-tree (0x07 key-first / 0x01 key-after-value), byte-identical to a standalone build.
+                WriteSinglePlainTrailer(_keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree);
+            else
+                WriteSinglePartitionHashtableTrailer(_keyFirst ? IndexType.SinglePartitionHashtableBTreeKeyFirst : IndexType.SinglePartitionHashtableBTree);
             return;
         }
 
+        // The directory B-tree is always key-first (its values are the fixed metadata records);
+        // only its trailing IndexType distinguishes the partition entry layout (0x08 vs 0x0A).
         HsstBTreeBuilder<TWriter, TReader, TPin> dir = new(
             ref _writer, ref _buffers.Inner, _keyLength, _options, keyFirst: true, baseOffsetOverride: _hsstBase);
         try
@@ -143,7 +187,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
                 dir.Add(dirKeys.Slice(p * _keyLength, _keyLength), dirValues.Slice(valOff, dirLengths[p]));
                 valOff += dirLengths[p];
             }
-            dir.Build(IndexType.PartitionedBTreeKeyFirst);
+            dir.Build(_keyFirst ? IndexType.PartitionedBTreeKeyFirst : IndexType.PartitionedBTree);
         }
         finally
         {
@@ -152,14 +196,12 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Append a plain <see cref="IndexType.BTreeKeyFirst"/> (0x07) trailer for the single
-    /// partition's inner index. The writer already sits at the inner index end (no hashtable
-    /// was written), and the partition's offsets are byte-0-relative — which equals
-    /// partition-relative for the first partition — so the result is byte-identical to what a
-    /// standalone <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/> in key-first mode would
-    /// have produced for these entries.
+    /// Append a plain B-tree trailer (<paramref name="indexType"/> = 0x07 key-first / 0x01
+    /// key-after-value) for the single hashtable-less partition. The writer already sits at the
+    /// inner index end, and the partition's offsets are byte-0-relative (= partition-relative for
+    /// the first partition), so the result is byte-identical to a standalone build's output.
     /// </summary>
-    private void WriteSingleBTreeKeyFirstTrailer()
+    private void WriteSinglePlainTrailer(IndexType indexType)
     {
         int rootPrefixLen = _lastRootPrefixLen;
         int trailerLen = 5 + rootPrefixLen;
@@ -169,7 +211,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         tail[rootPrefixLen + 1] = (byte)_lastRootSize;
         tail[rootPrefixLen + 2] = (byte)(_lastRootSize >> 8);
         tail[rootPrefixLen + 3] = (byte)_keyLength;
-        tail[rootPrefixLen + 4] = (byte)IndexType.BTreeKeyFirst;
+        tail[rootPrefixLen + 4] = (byte)indexType;
         _writer.Advance(trailerLen);
     }
 
@@ -184,7 +226,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     /// have held as the partition's value (its DataRegionStart is 0 — a single partition's data
     /// starts at the blob's byte 0).
     /// </summary>
-    private void WriteSinglePartitionHashtableTrailer()
+    private void WriteSinglePartitionHashtableTrailer(IndexType indexType)
     {
         int prefixLen = _lastRootPrefixLen;
         int recSize = HsstPartitionHashtable.DirRecordFixedSize;
@@ -194,18 +236,20 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         Span<byte> rec = tail.Slice(prefixLen, recSize);
         WriteRecord(rec, _lastRootOffset, _lastInnerScopeEnd, _lastHashtableOffset, _lastDataRegionStart, _lastBucketCount, prefixLen);
         tail[prefixLen + recSize] = (byte)_keyLength;
-        tail[prefixLen + recSize + 1] = (byte)IndexType.SinglePartitionHashtableBTreeKeyFirst;
+        tail[prefixLen + recSize + 1] = (byte)indexType;
         _writer.Advance(trailerLen);
     }
 
-    private void OpenPartition(scoped ReadOnlySpan<byte> firstKey)
+    // Opens a partition without its first key — the first key is recorded by RecordEntry on the
+    // first entry (it is only known at FinishValueWrite time for streamed entries).
+    private void OpenPartition()
     {
         _partitionStartAbs = _writer.Written;
         _inner = new HsstBTreeBuilder<TWriter, TReader, TPin>(
-            ref _writer, ref _buffers.Inner, _keyLength, _options, keyFirst: true, baseOffsetOverride: _hsstBase);
-        _buffers.DirKeys.AddRange(firstKey);
+            ref _writer, ref _buffers.Inner, _keyLength, _options, keyFirst: _keyFirst, baseOffsetOverride: _hsstBase);
         _accumKeyBytes = 0;
         _partitionOpen = true;
+        _needFirstKey = true;
     }
 
     /// <param name="closedByBuild">
@@ -244,7 +288,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
             for (int i = 0; i < keyCount; i++)
             {
                 // Forward distance from the data-section start to the entry — bounded by the
-                // data section size (< 16 MiB by the span split) so it fits u24. The inner
+                // data section size (< 256 TiB by the span split) so it fits u48. The inner
                 // index sits after the data section and is not addressed here.
                 long forward = offsets[i] - dataRegionStart;
                 HsstPartitionHashtable.TryInsert(buckets, bucketCount, hashes[i], forward);

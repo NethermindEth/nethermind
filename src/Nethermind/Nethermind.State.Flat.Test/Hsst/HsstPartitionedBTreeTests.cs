@@ -49,6 +49,61 @@ public class HsstPartitionedBTreeTests
         }
     }
 
+    // Key-after-value (keyFirst:false) partitioned build, exercising both the up-front Add and the
+    // streaming BeginValueWrite/FinishValueWrite path (alternating by key index).
+    private static byte[] BuildPartitionedKeyAfterValue(int count, HsstBTreeOptions options)
+    {
+        using PooledByteBufferWriter pooled = new(1 << 20);
+        using HsstPartitionedBTreeBuilderBuffersContainer buffers = new();
+        HsstPartitionedBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b =
+            new(ref pooled.GetWriter(), ref buffers.Buffers, KeyLength, options, keyFirst: false);
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                byte[] key = Key(i);
+                byte[] val = Val(i);
+                if ((i & 1) == 0)
+                {
+                    b.Add(key, val);
+                }
+                else
+                {
+                    // Stream the value in (size unknown to the builder up front).
+                    ref PooledByteBufferWriter.Writer w = ref b.BeginValueWrite();
+                    val.CopyTo(w.GetSpan(val.Length));
+                    w.Advance(val.Length);
+                    b.FinishValueWrite(key, val.Length);
+                }
+            }
+            b.Build();
+            return pooled.WrittenSpan.ToArray();
+        }
+        finally
+        {
+            b.Dispose();
+        }
+    }
+
+    // Equivalent plain key-after-value 0x01 build of the same entries, for parity checks.
+    private static byte[] BuildPlainKeyAfterValue(int count)
+    {
+        using PooledByteBufferWriter pooled = new(1 << 20);
+        using HsstBTreeBuilderBuffersContainer buffers = new();
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b =
+            new(ref pooled.GetWriter(), ref buffers.Buffers, KeyLength, keyFirst: false);
+        try
+        {
+            for (int i = 0; i < count; i++) b.Add(Key(i), Val(i));
+            b.Build();
+            return pooled.WrittenSpan.ToArray();
+        }
+        finally
+        {
+            b.Dispose();
+        }
+    }
+
     // Equivalent plain key-first 0x07 build of the same entries, for parity checks.
     private static byte[] BuildPlainKeyFirst(int count)
     {
@@ -296,38 +351,39 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // BucketCountFor sizes the table to exactly ceil(keyCount / 9) buckets — no power-of-two
+    // BucketCountFor sizes the table to exactly ceil(keyCount / 6) buckets — no power-of-two
     // rounding — so capacity holds every key and the load is at the ~75% target.
     [Test]
     public void BucketCount_Targets_Configured_Utilization()
     {
         Assert.That(HsstPartitionHashtable.TargetUtilizationPercent, Is.EqualTo(75));
-        Assert.That(HsstPartitionHashtable.TargetKeysPerBucket, Is.EqualTo(9));
-        Assert.That(HsstPartitionHashtable.WaysPerBucket, Is.EqualTo(12));
+        Assert.That(HsstPartitionHashtable.TargetKeysPerBucket, Is.EqualTo(6));
+        Assert.That(HsstPartitionHashtable.WaysPerBucket, Is.EqualTo(8));
 
         foreach (int keyCount in new[] { 7, 48, 49, 137, 1000, 100_000 })
         {
             int buckets = HsstPartitionHashtable.BucketCountFor(keyCount);
-            Assert.That(buckets, Is.EqualTo((keyCount + 8) / 9), $"bucket count for {keyCount} must be ceil(k/9), not a power of two");
+            Assert.That(buckets, Is.EqualTo((keyCount + 5) / 6), $"bucket count for {keyCount} must be ceil(k/6), not a power of two");
             long capacity = (long)buckets * HsstPartitionHashtable.WaysPerBucket;
             Assert.That(capacity, Is.GreaterThanOrEqualTo(keyCount), $"capacity must hold all {keyCount} keys");
             Assert.That((double)keyCount / capacity, Is.LessThanOrEqualTo(0.75 + 1e-9), $"load for {keyCount} keys exceeds 75% target");
         }
     }
 
-    // The struct-of-arrays bucket (12 tags then 12 u24 offsets) round-trips through TryInsert /
+    // The struct-of-arrays bucket (8 tags then 8 u48 offsets) round-trips through TryInsert /
     // MatchMask / OffsetAt, the SIMD and scalar match masks agree, tag collisions surface all
-    // matching ways, the u24 forward offset round-trips to its 16 MiB ceiling, and a 13th insert
-    // (or an over-u24 offset) is dropped.
+    // matching ways, the u48 forward offset round-trips to its 256 TiB ceiling, and a 9th insert
+    // (or an over-u48 offset) is dropped.
     [Test]
     public void Hashtable_Bucket_Codec_RoundTrips()
     {
         static ulong H(ushort tag) => (ulong)tag << 48; // bucketCount 1 ⇒ Lemire always picks bucket 0; Tag(h) = tag (≥1)
+        const long MaxU48 = (1L << 48) - 1;
 
         Span<byte> bucket = stackalloc byte[HsstPartitionHashtable.BucketBytes];
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(5), 100), Is.True);       // way 0, tag 5
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(9), 200), Is.True);       // way 1, tag 9
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(5), 0xFFFFFF), Is.True);  // way 2, tag 5 (collision), max u24 offset
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(5), 100), Is.True);     // way 0, tag 5
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(9), 200), Is.True);     // way 1, tag 9
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(5), MaxU48), Is.True);  // way 2, tag 5 (collision), max u48 offset
 
         // SIMD path agrees with the scalar reference.
         foreach (ushort probe in new ushort[] { 5, 9, 1234 })
@@ -338,20 +394,90 @@ public class HsstPartitionedBTreeTests
         Assert.That(HsstPartitionHashtable.MatchMask(bucket, 9), Is.EqualTo(0b010u));
         Assert.That(HsstPartitionHashtable.MatchMask(bucket, 1234), Is.EqualTo(0u));
 
-        // Forward (u24) offsets read back, including the 16 MiB ceiling.
-        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 0), Is.EqualTo(100u));
-        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 1), Is.EqualTo(200u));
-        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 2), Is.EqualTo(0xFFFFFFu));
+        // Forward (u48) offsets read back, including the 256 TiB ceiling.
+        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 0), Is.EqualTo(100L));
+        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 1), Is.EqualTo(200L));
+        Assert.That(HsstPartitionHashtable.OffsetAt(bucket, 2), Is.EqualTo(MaxU48));
 
-        // Fill to 12 ways, then the 13th overflows (best-effort drop).
-        for (ushort i = 0; i < 9; i++)
+        // Fill to 8 ways, then the 9th overflows (best-effort drop).
+        for (ushort i = 0; i < 5; i++)
             Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H((ushort)(20 + i)), 300 + i), Is.True);
-        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(99), 999), Is.False, "13th insert into a full bucket must overflow");
+        Assert.That(HsstPartitionHashtable.TryInsert(bucket, 1, H(99), 999), Is.False, "9th insert into a full bucket must overflow");
 
-        // u24 offset guard: an offset beyond MaxOffset is rejected; the ceiling itself fits.
+        // u48 offset guard: an offset beyond MaxOffset is rejected; the ceiling itself fits.
         Span<byte> b2 = stackalloc byte[HsstPartitionHashtable.BucketBytes];
-        Assert.That(HsstPartitionHashtable.TryInsert(b2, 1, H(7), HsstPartitionHashtable.MaxOffset + 1L), Is.False, "offset > u24 must be rejected");
-        Assert.That(HsstPartitionHashtable.TryInsert(b2, 1, H(7), HsstPartitionHashtable.MaxOffset), Is.True, "offset at the u24 ceiling fits");
+        Assert.That(HsstPartitionHashtable.TryInsert(b2, 1, H(7), HsstPartitionHashtable.MaxOffset + 1L), Is.False, "offset > u48 must be rejected");
+        Assert.That(HsstPartitionHashtable.TryInsert(b2, 1, H(7), HsstPartitionHashtable.MaxOffset), Is.True, "offset at the u48 ceiling fits");
+    }
+
+    // The key-after-value partitioned builder (the per-address layout) round-trips via streaming
+    // BeginValueWrite/FinishValueWrite and Add: multi-partition → 0x0A, single+hashtable → 0x0B,
+    // single small → plain 0x01. Every key reads back (hashtable hit + floor fallback), and
+    // enumeration matches the plain 0x01 build. (A mixed Add/streaming build is not byte-identical
+    // to an all-Add build — a streamed value flushes any pending leaf first — so only the trailer
+    // tag is asserted for the single-small case, not byte equality.)
+    [TestCase(60, /*threshold*/ 300L, /*htMin*/ 0, (byte)0x0A)]   // multi-partition + hashtable
+    [TestCase(60, 4L * 1024 * 1024, 0, (byte)0x0B)]               // single partition + hashtable
+    [TestCase(5, 4L * 1024 * 1024, 4096, (byte)0x01)]             // single small → plain 0x01
+    public void KeyAfterValue_Partitioned_Streaming_RoundTrips(int count, long thresholdBytes, int htMinBytes, byte expectedTail)
+    {
+        HsstBTreeOptions opts = new() { PartitionThresholdBytes = thresholdBytes, HashtableMinBytes = htMinBytes };
+        byte[] data = BuildPartitionedKeyAfterValue(count, opts);
+
+        Assert.That(data[^1], Is.EqualTo(expectedTail), "key-after-value trailer must match the partition layout");
+
+        // Hashtable-hit path: every key resolves with the right value.
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i} not found");
+            Assert.That(value, Is.EqualTo(Val(i)), $"wrong value for key {i}");
+        }
+
+        // Absent + floor (inner-B-tree fallback, skips the hashtable).
+        Assert.That(HsstTestUtil.TryGet(data, Key(count + 500), out _), Is.False);
+        Assert.That(HsstTestUtil.TryGetFloor(data, Key(count + 500), out byte[] floorVal), Is.True);
+        Assert.That(floorVal, Is.EqualTo(Val(count - 1)));
+
+        // Enumeration yields the same key-sorted sequence as the plain 0x01 build.
+        List<(byte[] key, byte[] val)> partitioned = Enumerate(data);
+        List<(byte[] key, byte[] val)> plain = Enumerate(BuildPlainKeyAfterValue(count));
+        Assert.That(partitioned.Count, Is.EqualTo(count));
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(partitioned[i].key, Is.EqualTo(plain[i].key), $"key mismatch at {i}");
+            Assert.That(partitioned[i].val, Is.EqualTo(plain[i].val), $"value mismatch at {i}");
+        }
+    }
+
+    // A single streamed key-after-value entry that warrants a hashtable (htMin 0) → 0x0B, with a
+    // large value (mirrors the per-address column: one address, big nested value). The lone
+    // entry must read back via the hashtable probe and the floor/inner-tree fallback.
+    [TestCase(1)]
+    [TestCase(4000)]
+    public void KeyAfterValue_Single_Streamed_Entry_With_Hashtable_RoundTrips(int valueLen)
+    {
+        byte[] key = Key(7);
+        byte[] val = new byte[valueLen];
+        for (int j = 0; j < val.Length; j++) val[j] = (byte)(j * 31 + 1);
+
+        using PooledByteBufferWriter pooled = new(1 << 20);
+        using HsstPartitionedBTreeBuilderBuffersContainer buffers = new();
+        HsstPartitionedBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b =
+            new(ref pooled.GetWriter(), ref buffers.Buffers, KeyLength, new HsstBTreeOptions { HashtableMinBytes = 0 }, keyFirst: false);
+        ref PooledByteBufferWriter.Writer w = ref b.BeginValueWrite();
+        val.CopyTo(w.GetSpan(val.Length));
+        w.Advance(val.Length);
+        b.FinishValueWrite(key, val.Length);
+        b.Build();
+        byte[] data = pooled.WrittenSpan.ToArray();
+        b.Dispose();
+
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.SinglePartitionHashtableBTree), "single streamed entry + hashtable must be 0x0B");
+        Assert.That(HsstTestUtil.TryGet(data, key, out byte[] got), Is.True, "hashtable hit must find the lone entry");
+        Assert.That(got, Is.EqualTo(val), "value mismatch");
+        // Floor of a higher key skips the hashtable → inner-tree fallback must still resolve it.
+        Assert.That(HsstTestUtil.TryGetFloor(data, Key(99), out byte[] floor), Is.True, "floor fallback must find the lone entry");
+        Assert.That(floor, Is.EqualTo(val), "floor value mismatch");
     }
 
     // Bucket selection is Lemire's multiply-shift (no integer division/modulo) and works for

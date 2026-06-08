@@ -239,7 +239,15 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Key must be greater than previous key (sorted order).
     /// Not supported in key-first mode — use <see cref="Add"/>.
     /// </summary>
-    public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength)
+    public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength) =>
+        FinishValueWrite(key, valueLength, out _);
+
+    /// <summary>
+    /// <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> that also outs the entry's
+    /// recorded index pointer (<c>MetadataStart</c>, measured from this builder's base offset) —
+    /// used by the partitioned builder to populate its per-partition hashtable for streamed values.
+    /// </summary>
+    public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength, out long entryStart)
     {
         if (_keyFirst)
             throw new InvalidOperationException("Key-first BTree requires Add(key, value); BeginValueWrite/FinishValueWrite streaming is not supported.");
@@ -261,6 +269,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // reader's dispatch loop reads it first to recognize the entry before decoding the
         // value/LEB128 that follow.
         long metadataPos = _writer.Written - _baseOffset;
+        entryStart = metadataPos;
 
         // Single GetSpan/Advance for the post-value [FlagByte][LEB128][FullKey] trailer.
         // Value bytes were streamed in via the caller's BeginValueWrite snapshot and are
