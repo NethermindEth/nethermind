@@ -1033,11 +1033,8 @@ public partial class EthRpcModuleTests
             """{"0x1111111111111111111111111111111111111111":{"balance":"0x0"}}""")!;
         object transaction = JsonSerializer.Deserialize<object>(transactionJson)!;
 
-        string serialized = blockOverrideJson is null
-            ? await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride)
-            : await ctx.Test.TestEthRpc(
-                "eth_call", transaction, "latest", stateOverride,
-                JsonSerializer.Deserialize<object>(blockOverrideJson)!);
+        object? blockOverride = blockOverrideJson is null ? null : JsonSerializer.Deserialize<object>(blockOverrideJson);
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 
         JToken parsed = JToken.Parse(serialized);
         string message = parsed["error"]!["message"]!.Value<string>()!;
