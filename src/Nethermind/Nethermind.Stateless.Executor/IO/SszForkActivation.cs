@@ -29,6 +29,6 @@ public partial struct SszForkActivation
         if (Timestamp is not { Length: 1 })
             throw new InvalidDataException($"{nameof(Timestamp)} must have exactly one element.");
 
-        return new(checked((long)BlockNumber[0]), Timestamp[0]);
+        return new(checked(BlockNumber[0]), Timestamp[0]);
     }
 }
