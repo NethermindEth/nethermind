@@ -13,9 +13,7 @@ namespace Nethermind.Consensus.Processing;
 public class PrewarmerEnvFactory(
     IWorldStateManager worldStateManager,
     ILogManager logManager,
-    ILifetimeScope parentLifetime,
-    PrewarmerReadDeduplicator readDeduplicator,
-    PrewarmerWriteHintCache writeHintCache)
+    ILifetimeScope parentLifetime)
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
@@ -23,9 +21,7 @@ public class PrewarmerEnvFactory(
             worldStateManager.CreateResettableWorldState(),
             preBlockCaches,
             logManager,
-            isPrewarmer: true,
-            readDeduplicator: readDeduplicator,
-            writeHintCache: writeHintCache
+            isPrewarmer: true
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
