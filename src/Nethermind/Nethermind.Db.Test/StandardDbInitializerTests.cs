@@ -35,7 +35,7 @@ public class StandardDbInitializerTests
     public async Task InitializerTests_MemDbProvider(bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, true, "mem");
-        Type receiptsType = GetReceiptsType(useReceipts, typeof(MemColumnsDb<ReceiptsColumns>));
+        Type receiptsType = GetReceiptsType(useReceipts, typeof(SnapshotableMemColumnsDb<ReceiptsColumns>));
         AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
         Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
