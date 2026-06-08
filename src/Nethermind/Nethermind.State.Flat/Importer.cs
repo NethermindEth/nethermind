@@ -116,7 +116,7 @@ public class Importer(
                 {
                     Rlp.ValueDecoderContext accountContext = node.Value.AsSpan().AsRlpValueContext();
                     Account acc = _accountDecoder.Decode(ref accountContext)!;
-                    writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
+                    writeBatch.SetAccountRaw(fullPath, acc);
                 }
                 else
                 {
@@ -125,7 +125,7 @@ public class Importer(
                     ReadOnlySpan<byte> value = node.Value.AsSpan();
                     if (!value.IsEmpty)
                     {
-                        writeBatch.SetStorageRawEncoded(address, fullPath.ToHash256(), value);
+                        writeBatch.SetStorageRawEncoded(address, fullPath, value);
                     }
                 }
             }

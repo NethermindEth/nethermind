@@ -81,6 +81,7 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
+        [SkipLocalsInit]
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
             ReadOnlySpan<byte> storageKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], address, slot);
@@ -235,6 +236,7 @@ public static class BaseFlatPersistence
             state.Remove(key);
         }
 
+        [SkipLocalsInit]
         public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[StorageKeyLength], addrHash, slotHash);
@@ -259,6 +261,7 @@ public static class BaseFlatPersistence
             }
         }
 
+        [SkipLocalsInit]
         public void SetStorageEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
         {
             // The input is the trie leaf value, i.e. RLP(stripped), which is byte-identical to our on-disk format

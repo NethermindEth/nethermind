@@ -420,7 +420,7 @@ namespace Nethermind.Serialization.Rlp
         [SkipLocalsInit]
         public static Rlp Encode(ReadOnlySpan<byte> input)
         {
-            // Handle special cases first
+            // Special cases return compact/shared instances rather than a freshly allocated array.
             int length = input.Length;
             if (length == 0)
             {
@@ -433,30 +433,10 @@ namespace Nethermind.Serialization.Rlp
                 return new Rlp(input[0]);
             }
 
-            // For lengths < 56, the encoding is one byte of prefix + the data
-            if (length < RlpHelpers.SmallPrefixBarrier)
-            {
-                // Allocate exactly what we need: 1 prefix byte + input length
-                byte[] rlpResult = GC.AllocateUninitializedArray<byte>(1 + length);
-                // First byte is 0x80 + length
-                rlpResult[0] = (byte)(0x80 + length);
-                // Copy input after the prefix
-                input.CopyTo(rlpResult.AsSpan(1));
-                return new Rlp(rlpResult);
-            }
-            else
-            {
-                int lengthOfLength = LengthOfLength(length);
-                // Total size = 1 prefix byte + lengthOfLength + data length
-                int totalSize = 1 + lengthOfLength + length;
-                byte[] rlpResult = GC.AllocateUninitializedArray<byte>(totalSize);
-                // Prefix: 0xb7 (183) + number of bytes in length
-                rlpResult[0] = (byte)(0xb7 + lengthOfLength);
-                SerializeLength(length, rlpResult.AsSpan(1, lengthOfLength));
-                // Finally copy the actual input
-                input.CopyTo(rlpResult.AsSpan(1 + lengthOfLength));
-                return new Rlp(rlpResult);
-            }
+            // Everything else shares the single serialization code path in Encode(input, output).
+            byte[] rlpResult = GC.AllocateUninitializedArray<byte>(LengthOf(input));
+            Encode(input, rlpResult);
+            return new Rlp(rlpResult);
         }
 
         public static Rlp Encode(byte[]? input) => input is null or [] ? OfEmptyByteArray : Encode(input.AsSpan());

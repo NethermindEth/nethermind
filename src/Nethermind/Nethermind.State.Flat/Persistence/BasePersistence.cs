@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -125,6 +126,7 @@ public static class BasePersistence
         return bytes is null || bytes.Length == 0 ? null : bytes[0];
     }
 
+    [SkipLocalsInit]
     private static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
     {
         Span<byte> bytes = stackalloc byte[1];
@@ -145,31 +147,19 @@ public static class BasePersistence
     internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ILogger logger)
     {
         IReadOnlyKeyValueStore meta = db.GetColumnDb(FlatDbColumns.Metadata);
-        byte? stored = ReadSlotEncoding(meta);
-        if (stored is not null)
+        bool rlpWrap = ReadSlotEncoding(meta) switch
         {
-            switch (stored.Value)
-            {
-                case SlotEncodingRlp:
-                    return true;
-                case SlotEncodingRaw:
-                    WarnRawDeprecated(logger);
-                    return false;
-                default:
-                    throw new InvalidConfigurationException(
-                        $"Flat DB metadata contains an unrecognized slot encoding version '{stored.Value}'. The DB may be corrupt or was written by a newer version.",
-                        -1);
-            }
-        }
+            SlotEncodingRlp => true,
+            SlotEncodingRaw => false,
+            // No recorded version: a brand-new DB wraps; a previously-synced DB (Layout present) is legacy raw.
+            null => ReadLayout(meta) is null,
+            byte version => throw new InvalidConfigurationException(
+                $"Flat DB metadata contains an unrecognized slot encoding version '{version}'. The DB may be corrupt or was written by a newer version.",
+                -1),
+        };
 
-        bool preExisting = ReadLayout(meta) is not null;
-        if (preExisting)
-        {
-            WarnRawDeprecated(logger);
-            return false;
-        }
-
-        return true;
+        if (!rlpWrap) WarnRawDeprecated(logger);
+        return rlpWrap;
     }
 
     /// <summary>Warns that the DB is on the deprecated raw slot encoding and should be resynced.</summary>
