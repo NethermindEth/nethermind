@@ -1,0 +1,303 @@
+name: Nethermind/Ethereum tests (Trie DB)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  TERM: xterm
+  TEST_USE_TRIE: 1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      DOTNET_GCConserveMemory: 9
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - windows-latest
+        project:
+          - Nethermind.Abi.Test
+          - Nethermind.Api.Test
+          - Nethermind.AuRa.Test
+          - Nethermind.Blockchain.Test
+          - Nethermind.Clique.Test
+          - Nethermind.Config.Test
+          - Nethermind.Consensus.Test
+          - Nethermind.Core.Test
+          - Nethermind.Db.Test
+          - Nethermind.Era1.Test
+          - Nethermind.EraE.Test
+          - Nethermind.Ethash.Test
+          - Nethermind.EthStats.Test
+          - Nethermind.Evm.Test
+          - Nethermind.Facade.Test
+          - Nethermind.Flashbots.Test
+          - Nethermind.HealthChecks.Test
+          - Nethermind.History.Test
+          - Nethermind.Hive.Test
+          - Nethermind.JsonRpc.Test
+          - Nethermind.JsonRpc.TraceStore.Test
+          - Nethermind.KeyStore.Test
+          - Nethermind.Logging.NLog.Test
+          - Nethermind.Merge.AuRa.Test
+          - Nethermind.Merge.Plugin.Test
+          - Nethermind.Mining.Test
+          - Nethermind.Monitoring.Test
+          - Nethermind.Network.Discovery.Test
+          - Nethermind.Network.Dns.Test
+          - Nethermind.Network.Enr.Test
+          - Nethermind.Network.Test
+          - Nethermind.Optimism.Test
+          - Nethermind.Runner.Test
+          - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Shutter.Test
+          - Nethermind.Sockets.Test
+          - Nethermind.Specs.Test
+          - Nethermind.State.Test
+          - Nethermind.State.Test.Runner.Test
+          - Nethermind.Synchronization.Test
+          - Nethermind.Taiko.Test
+          - Nethermind.Trie.Test
+          - Nethermind.TxPool.Test
+          - Nethermind.Wallet.Test
+          - Nethermind.Xdc.Test
+        chunk: ['']
+        exclude: # Synchronization.Test on ARM is chunked (see include block) — its unchunked variant hits the 15-min wall.
+          - runner: ubuntu-24.04-arm
+            project: Nethermind.Synchronization.Test
+            chunk: ''
+        include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
+          - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: '' }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
+        run: |
+          dotnet build ${{ matrix.project }}.csproj -c release
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          test_args=(--no-build --no-restore)
+
+          set +e
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then
+            exit 0
+          elif [[ $rc -eq 1 ]]; then
+            exit 1
+          else
+            echo "::warning::Test process crashed (exit code $rc), retrying..."
+            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          fi
+
+  tests-spec:
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+        project:
+          - Ethereum.Abi.Test
+          - Ethereum.Basic.Test
+          - Ethereum.Blockchain.Block.Test
+          - Ethereum.Difficulty.Test
+          - Ethereum.HexPrefix.Test
+          - Ethereum.KeyAddress.Test
+          - Ethereum.KeyStore.Test
+          - Ethereum.Legacy.Blockchain.Block.Test
+          - Ethereum.Legacy.Transition.Test
+          - Ethereum.Legacy.VM.Test
+          - Ethereum.PoW.Test
+          - Ethereum.Rlp.Test
+          - Ethereum.Transaction.Test
+          - Ethereum.Trie.Test
+        chunk: ['']
+        exclude: # Legacy VM unchunked on ubuntu-latest is replaced by 8 chunks below (coverage makes it too slow)
+          - runner: ubuntu-latest
+            project: Ethereum.Legacy.VM.Test
+            chunk: ''
+        include:
+          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 1of8 }
+          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 2of8 }
+          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 3of8 }
+          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 4of8 }
+          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 5of8 }
+          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 6of8 }
+          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 7of8 }
+          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 8of8 }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
+        run: |
+          dotnet build ${{ matrix.project }}.csproj -c release
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          test_args=(--no-build --no-restore)
+
+          set +e
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then
+            exit 0
+          elif [[ $rc -eq 1 ]]; then
+            exit 1
+          else
+            echo "::warning::Test process crashed (exit code $rc), retrying..."
+            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          fi
+
+  tests-chunked:
+    name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - windows-latest
+          - macos-latest
+        test:
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 5of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
+        include:
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, label: Sequential } }
+          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, label: Sequential } }
+    steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
+      - name: Free up disk space
+        if: runner.os == 'Linux' && startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
+        id: test
+        working-directory: src/Nethermind/${{ matrix.test.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.test.chunk }}
+        run: |
+          dotnet build ${{ matrix.test.project }}.csproj -c release
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          test_args=(--no-build --no-restore)
+
+          set +e
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then
+            exit 0
+          elif [[ $rc -eq 1 ]]; then
+            exit 1
+          else
+            echo "::warning::Test process crashed (exit code $rc), retrying..."
+            dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+          fi
+
+  tests-summary:
+    name: Tests summary
+    needs: [tests, tests-spec, tests-chunked]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check result
+        run: |
+          [[ \
+            "${{ needs.tests.result }}" == "success" && \
+            "${{ needs.tests-spec.result }}" == "success" && \
+            "${{ needs.tests-chunked.result }}" == "success" \
+          ]]
