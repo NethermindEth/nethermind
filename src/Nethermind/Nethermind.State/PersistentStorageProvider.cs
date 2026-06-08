@@ -531,6 +531,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                     else
                     {
+                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
                         BlockChange[kvp.Key] = new(after, after);
                         storageWriteBatch.Set(kvp.Key, after);
 
