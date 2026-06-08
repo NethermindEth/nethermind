@@ -13,37 +13,42 @@ using System;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcessorBase<TGasPolicy>
+public class SystemTransactionProcessor<TGasPolicy>(
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+    ISpecProvider? specProvider,
+    IWorldState? worldState,
+    IVirtualMachine<TGasPolicy>? virtualMachine,
+    ICodeInfoRepository? codeInfoRepository,
+    ILogManager? logManager)
+    : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private readonly bool _isAura;
-
     /// <summary>
     /// Hacky flag to execution options, to pass information how original validate should behave.
     /// Needed to decide if we need to subtract transaction value.
     /// </summary>
-    private const int OriginalValidate = 2 << 30;
+    protected const int OriginalValidate = 2 << 30;
 
-    public SystemTransactionProcessor(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider? specProvider,
-        IWorldState? worldState,
-        IVirtualMachine<TGasPolicy>? virtualMachine,
-        ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager) => _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
+    /// <summary>
+    /// Whether to suppress reads of the SYSTEM_ADDRESS account in the BAL for this transaction.
+    /// </summary>
+    /// <remarks>
+    /// EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls. Consensus
+    /// engines that surface the system user (e.g. AuRa) override this to <c>false</c>.
+    /// </remarks>
+    protected virtual bool ShouldSuppressSystemAccountReads(Transaction tx) =>
+        tx.SenderAddress == Address.SystemUser;
+
+    /// <summary>
+    /// Hook for consensus-specific pre-execution state setup. Default is a no-op.
+    /// </summary>
+    protected virtual void OnBeforeSystemTransaction() { }
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
-        // EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls.
-        bool suppressSystemAccountReads = !_isAura && tx.SenderAddress == Address.SystemUser;
+        using IDisposable? systemAccountReadSuppression = ShouldSuppressSystemAccountReads(tx) ? WorldState.BeginSystemAccountReadSuppression() : null;
 
-        using IDisposable? systemAccountReadSuppression = suppressSystemAccountReads ? WorldState.BeginSystemAccountReadSuppression() : null;
-
-        if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
-        {
-            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
-        }
+        OnBeforeSystemTransaction();
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
         return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
@@ -61,7 +66,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         return TransactionResult.Ok;
     }
 
-    protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
+    protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(header.IsGenesis);
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in TGasPolicy intrinsicGas, long minGasRequired, bool validate) => TransactionResult.Ok;
 

@@ -22,7 +22,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -112,8 +114,20 @@ namespace Nethermind.Consensus.AuRa
         protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             RewriteContracts(block, spec);
-            _balManager.ApplyAuRaPreprocessingChanges(spec, _withdrawalContractAddress);
+            ApplyAuRaPreprocessingChanges(spec);
             return base.ProcessBlock(block, blockTracer, options, spec, token);
+        }
+
+        // BAL-era preprocessing for AuRa+Merge: materialise the system-user and withdrawal-contract
+        // accounts so that BAL accounting can see them. Skipped when BAL is off — pre-EIP-7928 chains
+        // continue to rely on the EVM's lazy account creation.
+        private void ApplyAuRaPreprocessingChanges(IReleaseSpec spec)
+        {
+            if (!_balManager.Enabled) return;
+
+            _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            _stateProvider.CreateAccount(_withdrawalContractAddress, UInt256.Zero, UInt256.Zero);
+            _stateProvider.Commit(spec.ForSystemTransaction(isGenesis: false), commitRoots: false);
         }
 
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
