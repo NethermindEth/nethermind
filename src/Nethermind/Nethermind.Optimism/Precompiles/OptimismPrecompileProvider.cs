@@ -46,30 +46,30 @@ public class OptimismPrecompileProvider : IPrecompileProvider
 
     private static int? Bn254PairingMaxInputSize(IReleaseSpec spec) => spec switch
     {
-        { IsOpKarstEnabled: true } => 57_600,
-        { IsOpJovianEnabled: true } => 81_984,
-        { IsOpGraniteEnabled: true } => 112_687,
+        IOptimismReleaseSpec { IsOpKarstEnabled: true } => 57_600,
+        IOptimismReleaseSpec { IsOpJovianEnabled: true } => 81_984,
+        IOptimismReleaseSpec { IsOpGraniteEnabled: true } => 112_687,
         _ => null,
     };
 
     private static int? BlsG1MsmMaxInputSize(IReleaseSpec spec) => spec switch
     {
-        { IsOpJovianEnabled: true } => 288_960,
-        { IsOpIsthmusEnabled: true } => 513_760,
+        IOptimismReleaseSpec { IsOpJovianEnabled: true } => 288_960,
+        IOptimismReleaseSpec { IsOpIsthmusEnabled: true } => 513_760,
         _ => null,
     };
 
     private static int? BlsG2MsmMaxInputSize(IReleaseSpec spec) => spec switch
     {
-        { IsOpJovianEnabled: true } => 278_784,
-        { IsOpIsthmusEnabled: true } => 488_448,
+        IOptimismReleaseSpec { IsOpJovianEnabled: true } => 278_784,
+        IOptimismReleaseSpec { IsOpIsthmusEnabled: true } => 488_448,
         _ => null,
     };
 
     private static int? BlsPairingMaxInputSize(IReleaseSpec spec) => spec switch
     {
-        { IsOpJovianEnabled: true } => 156_672,
-        { IsOpIsthmusEnabled: true } => 235_008,
+        IOptimismReleaseSpec { IsOpJovianEnabled: true } => 156_672,
+        IOptimismReleaseSpec { IsOpIsthmusEnabled: true } => 235_008,
         _ => null,
     };
 }

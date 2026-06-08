@@ -60,12 +60,13 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public void ApplyToChainSpec(ChainSpec chainSpec)
     {
-        chainSpec.Parameters.OpJovianTransitionTimestamp ??= JovianTimestamp;
-        chainSpec.Parameters.OpKarstTransitionTimestamp ??= KarstTimestamp;
     }
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
+        AddIfNotNull(timestamps, GraniteTimestamp);
+        AddIfNotNull(timestamps, HoloceneTimestamp);
+        AddIfNotNull(timestamps, IsthmusTimestamp);
         AddIfNotNull(timestamps, JovianTimestamp);
         AddIfNotNull(timestamps, KarstTimestamp);
     }
