@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -58,6 +59,25 @@ public class RewardsStoreTests
         Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
         Assert.That(oldest, Is.EqualTo(120));
         Assert.That(newest, Is.EqualTo(180));
+    }
+
+    [Test]
+    public void SaveEpochRewardsRpc_ShouldRoundTripNestedRewardPayload()
+    {
+        IDb db = new MemDb();
+        RewardsStore store = new(db);
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
+        {
+            ["rewards"] = new()
+            {
+                [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "1000" },
+            },
+        };
+
+        store.SaveEpochRewardsRpc(120, payload);
+
+        Assert.That(store.TryGetEpochRewards(120, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
+        Assert.That(loaded!["rewards"][Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("1000"));
     }
 
     [Test]

@@ -139,7 +139,8 @@ public class XdcModule : Module
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
 
-            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
+            .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>();
 
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();
