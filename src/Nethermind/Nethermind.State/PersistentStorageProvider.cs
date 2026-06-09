@@ -278,6 +278,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
+    /// <summary>
+    /// Reads a slot bypassing the per-block change registry (no <c>_originalValues</c> /
+    /// <c>_intraBlockCache</c> / <c>_changes</c> entry, no <see cref="PushToRegistryOnly"/>).
+    /// </summary>
+    /// <remarks>
+    /// Returns the same value as <see cref="Get"/> but skips the write-side bookkeeping that only
+    /// serves later <c>Set</c>/<see cref="GetOriginal"/>/commit. Safe only for a slot that will never
+    /// be written or have <see cref="GetOriginal"/> registered against it this block - which the BAL
+    /// guarantees for declared reads (they are never in <c>StorageChanges</c>).
+    /// </remarks>
+    public byte[] GetPureRead(in StorageCell storageCell) =>
+        GetOrCreateStorage(storageCell.Address).LoadFromTreeBypassingRegistry(storageCell);
+
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
         StackList<int> stack = SetupRegistry(cell);
@@ -465,7 +478,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (!storageCell.IsHash)
             {
                 EnsureStorageTree();
-                _backend.HintSet(storageCell.Index, value);
+                _backend.HintSet(in storageCell.Index, value);
             }
         }
 
@@ -493,9 +506,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             EnsureStorageTree();
             return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
+                ? _backend.Get(in storageCell.Index)
                 : _backend.Get(storageCell.Hash);
         }
+
+        // The lower read (StorageCache -> tree) without the BlockChange/registry entry LoadFromTree adds.
+        public byte[] LoadFromTreeBypassingRegistry(in StorageCell storageCell) => LoadFromTreeStorage(storageCell);
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {

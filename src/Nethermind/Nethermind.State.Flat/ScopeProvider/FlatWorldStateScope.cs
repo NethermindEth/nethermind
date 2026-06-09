@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -163,7 +164,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, CancellationToken cancellationToken = default)
     {
         int accountCount = bal.AccountChanges.Count;
         if (accountCount == 0) return Task.CompletedTask;
@@ -173,7 +174,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         CancelHintBal();
 
-        _hintBalCts = new CancellationTokenSource();
+        // Link the caller's token (e.g. the block processor's tx-complete background cancel) with our own
+        // re-hint/dispose cancellation, so the per-iteration checks below stop warming promptly on either.
+        _hintBalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken token = _hintBalCts.Token;
         int snapshot = _hintSequenceId;
 
@@ -195,9 +198,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                    // Warm the account's state-trie node only when the account is written: FlatDB serves
+                    // account reads from the flat store and the post-block root update only re-hashes
+                    // changed accounts, so a read-only account's state-trie node is never needed. Read-only
+                    // accounts must still fall through to the sink path below so phase 2 prefetches their
+                    // declared StorageReads; the storage-warming loop is already gated on storageChangeCount.
+                    if (ac.HasStateChanges
+                        && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
+                    {
                         Interlocked.Increment(ref _outstandingWarmups);
+                    }
 
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
@@ -227,9 +238,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
+                            if (slotChanges.Changes.Length == 0) continue;
+
                             UInt256 key = slotChanges.Key;
-                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
-                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                            if (_snapshotBundle.ShouldQueuePrewarm(address, in key)
+                                && _warmer.PushSlotJobMpmc(storageWarmer, in key, snapshot))
                                 Interlocked.Increment(ref _outstandingWarmups);
                         }
                     }
@@ -244,11 +257,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                // Warming is best-effort and self-heals on a read miss. Swallow non-cancellation faults
+                // here so the returned task stays RanToCompletion: BranchProcessor.WaitAndClear drains it
+                // with GetResult() and would otherwise fail an already-executed block on a prefetch error.
+                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                if (logger.IsError) logger.Error("HintBal read warming faulted; ignoring (reads self-heal)", ex);
+            }
             finally
             {
                 accountChanges.Dispose();
             }
-        }, token);
+            // Don't pass token to Task.Run: the body observes cancellation itself (early-return + OCE
+            // catch). Passing it lets a pre-start cancel - a fast empty block cancels the background token
+            // before the pool starts this - mark the task Canceled, surfacing as TaskCanceledException in
+            // BranchProcessor.WaitAndClear and failing the block.
+        });
     }
 
     private void RunSinkSlotReads(
@@ -258,6 +283,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
+        CancellationToken token = parallelOptions.CancellationToken;
+        if (token.IsCancellationRequested) return;
+
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -268,26 +296,48 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (totalSlots == 0) return;
 
-        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot, ValueHash256 SlotHash, uint AddrPrefix)> jobs = new(totalSlots, totalSlots);
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
             if (accounts[i] is null) continue;
+            if (token.IsCancellationRequested) return;
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
+            ValueHash256 addrHash = address.ToAccountPath;
+            uint addrPrefix = BinaryPrimitives.ReadUInt32BigEndian(addrHash.Bytes);
             foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key, ComputeSlotHash(slotChanges.Key), addrPrefix);
             foreach (UInt256 readKey in ac.StorageReads)
-                jobs[idx++] = (address, selfDestructIdx, readKey);
+                jobs[idx++] = (address, selfDestructIdx, readKey, ComputeSlotHash(readKey), addrPrefix);
         }
+
+        if (token.IsCancellationRequested) return;
+
+        // Issue persistence reads in on-disk key order. The flat storage key is
+        // addrHash[0..4] ++ slotHash ++ addrHash[4..20], so ordering by (addrHash prefix, slotHash)
+        // makes the parallel workers sweep a contiguous keyspace slice instead of scattering point
+        // gets; the 16-byte addrHash suffix tie-break is negligible (~1-in-2^32 shared prefix).
+        jobs.AsSpan().Sort(static (a, b) =>
+        {
+            int c = a.AddrPrefix.CompareTo(b.AddrPrefix);
+            return c != 0 ? c : a.SlotHash.CompareTo(b.SlotHash);
+        });
 
         Parallel.For(0, idx, parallelOptions, (j) =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+            (Address address, int selfDestructIdx, UInt256 slot, _, _) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         });
+    }
+
+    private static ValueHash256 ComputeSlotHash(in UInt256 slot)
+    {
+        ValueHash256 slotHash = default;
+        StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+        return slotHash;
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)

@@ -18,14 +18,15 @@ namespace Nethermind.Core
     {
         public static GenericEqualityComparer<StorageCell> EqualityComparer { get; } = new();
         private readonly AddressAsKey _address;
-        private readonly UInt256 _index;
+        // Public readonly field (not a get-only property) so callers can pass it by `in` without copying
+        // the 32-byte value; also aliased as the slot hash when _isHash.
+        public readonly UInt256 Index;
         private readonly bool _isHash;
 
         public Address Address => _address.Value;
         public bool IsHash => _isHash;
-        public UInt256 Index => _index;
 
-        public ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
+        public ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in Index)) : GetHash();
 
         private ValueHash256 GetHash()
         {
@@ -37,13 +38,13 @@ namespace Nethermind.Core
         public StorageCell(Address address, in UInt256 index)
         {
             _address = address;
-            _index = index;
+            Index = index;
         }
 
         public StorageCell(Address address, ValueHash256 hash)
         {
             _address = address;
-            _index = Unsafe.As<ValueHash256, UInt256>(ref hash);
+            Index = Unsafe.As<ValueHash256, UInt256>(ref hash);
             _isHash = true;
         }
 
@@ -53,8 +54,8 @@ namespace Nethermind.Core
             if (_isHash != other._isHash)
                 return false;
 
-            if (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) !=
-                Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)))
+            if (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in Index)) !=
+                Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other.Index)))
                 return false;
 
             // Inline 20-byte Address comparison: avoids the Address.Equals call
@@ -74,7 +75,7 @@ namespace Nethermind.Core
         public bool Equals(StorageCell other) => Equals(in other);
 
         public long GetHashCode64()
-            => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index))) ^ _address.Value.GetHashCode64();
+            => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in Index))) ^ _address.Value.GetHashCode64();
 
         public override bool Equals(object? obj)
         {
@@ -88,7 +89,7 @@ namespace Nethermind.Core
 
         public override int GetHashCode()
         {
-            int hash = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
+            int hash = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in Index), 1)).FastHash();
             return hash ^ _address.Value.GetHashCode();
         }
 

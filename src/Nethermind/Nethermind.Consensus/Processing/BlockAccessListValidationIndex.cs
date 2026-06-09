@@ -234,7 +234,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     /// Must only be called on the mutable (generated) index. <c>_generatedStorageReads</c> and
     /// <c>_generatedStorageWrites</c> are null on the immutable (suggested) side.
     /// </remarks>
-    public StructuralMismatchKind FindStructuralMismatch(ReadOnlyBlockAccessList suggested, out Address? mismatchAddress, out int generatedAccountCount)
+    public StructuralMismatchKind FindStructuralMismatch(ReadOnlyBlockAccessList suggested, out Address? mismatchAddress, out int generatedAccountCount, bool compareReads = true)
     {
         if (!_isMutable)
             throw new InvalidOperationException("FindStructuralMismatch must be called on the generated index.");
@@ -251,15 +251,17 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         // After sort+dedup each flat buffer is in (ordinal asc, slot asc) order, so per-ordinal
         // runs line up with suggested.AccountChanges' address-sorted iteration. Reads/writes
         // walk in lockstep per account, dropping reads whose slot also has a write — mirroring
-        // GeneratedBlockAccessList.Merge's read→write promotion.
-        SortAndDedupFlat(_generatedStorageReads, ref _generatedStorageReadsSorted);
-        SortAndDedupFlat(_generatedStorageWrites, ref _generatedStorageWritesSorted);
-        ReadOnlySpan<(int Ordinal, UInt256 Slot)> reads = _generatedStorageReads is null
-            ? default
-            : CollectionsMarshal.AsSpan(_generatedStorageReads);
-        ReadOnlySpan<(int Ordinal, UInt256 Slot)> writes = _generatedStorageWrites is null
-            ? default
-            : CollectionsMarshal.AsSpan(_generatedStorageWrites);
+        // GeneratedBlockAccessList.Merge's read→write promotion. Skipped on the coverage path, where
+        // reads aren't materialized here and the read-coverage bitmap proves read equivalence instead.
+        ReadOnlySpan<(int Ordinal, UInt256 Slot)> reads = default;
+        ReadOnlySpan<(int Ordinal, UInt256 Slot)> writes = default;
+        if (compareReads)
+        {
+            SortAndDedupFlat(_generatedStorageReads, ref _generatedStorageReadsSorted);
+            SortAndDedupFlat(_generatedStorageWrites, ref _generatedStorageWritesSorted);
+            if (_generatedStorageReads is not null) reads = CollectionsMarshal.AsSpan(_generatedStorageReads);
+            if (_generatedStorageWrites is not null) writes = CollectionsMarshal.AsSpan(_generatedStorageWrites);
+        }
         int readsCursor = 0;
         int writesCursor = 0;
         int lastOrdinal = -1;
@@ -271,6 +273,8 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
                 mismatchAddress = suggestedAccount.Address;
                 return StructuralMismatchKind.MissingInGenerated;
             }
+
+            if (!compareReads) continue;
 
             // suggested.AccountChanges is address-sorted and Build() assigns ordinals in that
             // iteration order, so ordinals here are monotonically increasing — the reads/writes

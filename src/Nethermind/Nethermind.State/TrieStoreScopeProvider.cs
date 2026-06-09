@@ -101,7 +101,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
-        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, CancellationToken cancellationToken = default)
         {
             // Legacy trie-store path: no trie warmer, so HintBal only does work when a sink is given.
             if (sink is null) return Task.CompletedTask;
@@ -113,7 +113,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
             CancelHintBal();
-            _hintBalCts = new CancellationTokenSource();
+            // Link the caller's token (e.g. the block processor's tx-complete background cancel) with our
+            // own re-hint/dispose cancellation, so the per-iteration check below stops warming on either.
+            _hintBalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             CancellationToken token = _hintBalCts.Token;
 
             return _hintBalTask = Task.Run(() =>
@@ -194,7 +196,11 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 {
                     accountChanges.Dispose();
                 }
-            }, token);
+                // Don't pass token to Task.Run: the body observes cancellation itself (early-return + OCE
+                // catch). Passing it lets a pre-start cancel - a fast empty block cancels the background
+                // token before the pool starts this - mark the task Canceled, surfacing as
+                // TaskCanceledException in BranchProcessor.WaitAndClear and failing the block.
+            });
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;

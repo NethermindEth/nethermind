@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -222,6 +224,52 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_HintBalWithSink_ManySlots_ReadInFullAfterSorting()
+    {
+        using Context ctx = new(useFlat);
+
+        // 8 slots so the prewarmer's per-account on-disk-order sort runs over a non-trivial run;
+        // a dropped/duplicated/misread slot surfaces as a missing or wrong sink value below.
+        UInt256[] slots = [7, 3, 1, 8, 2, 6, 4, 5];
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slots.Length))
+                {
+                    foreach (UInt256 slot in slots)
+                        storageA.Set(slot, [(byte)slot, (byte)(slot + 100)]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(slots).TestObject)
+            .TestObject;
+
+        CollectingBalSink sink = new();
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            scope.HintBal(bal, sink).Wait();
+
+            IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
+            foreach (UInt256 slot in slots)
+            {
+                StorageCell cell = new(TestItem.AddressA, slot);
+                Assert.That(sink.Storage.ContainsKey(cell), Is.True, $"slot {slot} missing from sink");
+                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get(slot)), $"slot {slot} value mismatch");
+            }
+        }
+    }
+
+    [Test]
     public void Test_HintBal_DoesNotThrow()
     {
         using Context ctx = new(useFlat);
@@ -291,6 +339,87 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.DoesNotThrow(() => scope.HintBal(bal));
         }
+    }
+
+    [Test]
+    public void Test_HintBal_DrainedTask_DoesNotThrow_WhenReHintCancels()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
+            .TestObject;
+
+        Task hint;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            // Start a warming pass, then immediately re-hint: the second HintBal cancels the first task's
+            // token (as the next block does). The first task must still complete - not end Cancelled -
+            // because BranchProcessor.WaitAndClear drains it via GetResult on fast/empty blocks and would
+            // otherwise surface a TaskCanceledException and fail the block.
+            hint = scope.HintBal(bal);
+            scope.HintBal(bal);
+        }
+
+        Assert.DoesNotThrow(() => hint.GetAwaiter().GetResult());
+        Assert.That(hint.IsCanceled, Is.False);
+    }
+
+    [Test]
+    public void Test_HintBal_CallerTokenCancels_DrainedTask_DoesNotThrow()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
+            .TestObject;
+
+        using CancellationTokenSource cts = new();
+        Task hint;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            // The caller's token (e.g. the block processor's tx-complete background cancel) is linked into
+            // the warming; cancelling it must stop the warming without faulting the drained task.
+            hint = scope.HintBal(bal, sink: null, token: cts.Token);
+            cts.Cancel();
+        }
+
+        Assert.DoesNotThrow(() => hint.GetAwaiter().GetResult());
+        Assert.That(hint.IsCanceled, Is.False);
     }
 
 #nullable enable

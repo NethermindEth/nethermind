@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -150,15 +151,17 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, CancellationToken token = default)
         {
-            sink ??= new CacheSink(preBlockCache, storageCache);
-            return baseScope.HintBal(bal, sink);
+            sink ??= new CacheSink(preBlockCache, storageCache, preBlockCaches.StorageReadPlan, preBlockCaches.StorageValueDestination);
+            return baseScope.HintBal(bal, sink, token);
         }
 
         private sealed class CacheSink(
             SeqlockCache<AddressAsKey, Account> stateCache,
-            SeqlockCache<StorageCell, byte[]> storageCache
+            SeqlockCache<StorageCell, byte[]> storageCache,
+            BalReadStoragePlan? readPlan,
+            BalStorageValueCache? readDestination
         ) : IWorldStateScopeProvider.IAsyncBalReaderSink
         {
             public void OnAccountRead(Address address, Account? account)
@@ -168,7 +171,18 @@ public class PrewarmerScopeProvider(
             }
 
             public void OnStorageRead(in StorageCell storageCell, byte[] value)
-                => storageCache.Set(in storageCell, value);
+            {
+                // A declared read in a large block goes to the exact-sized ordinal destination (the
+                // associative cache would conflict-evict it); changes and small blocks use the StorageCache.
+                if (TryGetReadOrdinal(in storageCell, out int ordinal))
+                {
+                    readDestination!.Set(ordinal, value);
+                }
+                else
+                {
+                    storageCache.Set(in storageCell, value);
+                }
+            }
 
             public bool StillNeeded(Address address, out Account? account)
             {
@@ -177,7 +191,19 @@ public class PrewarmerScopeProvider(
             }
 
             public bool StillNeeded(in StorageCell storageCell)
-                => !storageCache.TryGetValue(in storageCell, out _);
+                => TryGetReadOrdinal(in storageCell, out int ordinal)
+                    ? !readDestination!.TryGet(ordinal, out _)
+                    : !storageCache.TryGetValue(in storageCell, out _);
+
+            private bool TryGetReadOrdinal(in StorageCell storageCell, out int ordinal)
+            {
+                if (readDestination is not null && readPlan is not null)
+                {
+                    return readPlan.TryGetGlobalReadOrdinal(storageCell.Address, in storageCell.Index, out ordinal);
+                }
+                ordinal = -1;
+                return false;
+            }
         }
 
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
@@ -225,7 +251,7 @@ public class PrewarmerScopeProvider(
             Db.Metrics.IncrementStorageTreeReads();
 
             return !storageCell.IsHash
-                ? baseStorageTree.Get(storageCell.Index)
+                ? baseStorageTree.Get(in storageCell.Index)
                 : baseStorageTree.Get(storageCell.Hash);
         }
 

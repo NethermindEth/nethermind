@@ -772,6 +772,14 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             ? _changes[value.Peek()].Account
             : GetAndAddToCache(address);
 
+    /// <summary>
+    /// Reads an account bypassing the change journal (no <see cref="PushJustCache"/> entry in
+    /// <c>_changes</c>/<c>_intraTxCache</c>). Still populates the per-block read cache via
+    /// <see cref="GetState"/>, so the value equals <see cref="GetThroughCache"/> for a state that is
+    /// never written. Safe only for read-only parent readers, whose journal is never committed/reverted.
+    /// </summary>
+    internal Account? GetPureRead(Address address) => GetState(address);
+
     private void PushJustCache(Address address, Account account)
         => Push(address, account, ChangeType.JustCache);
 

@@ -249,6 +249,7 @@ public class BlockCachePreWarmerTests
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
 
         FlagCapturingPolicy flagPolicy = new(envFactory, preBlockCaches, observed, v => observedFlag = v);
         using BlockCachePreWarmer flagWarmer = new(
@@ -258,6 +259,7 @@ public class BlockCachePreWarmerTests
             parallelExecutionBatchRead: true,
             nodeStorageCache,
             preBlockCaches,
+            worldState,
             LimboLogs.Instance);
 
         Task prewarmTask = Task.CompletedTask;
@@ -375,6 +377,7 @@ public class BlockCachePreWarmerTests
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
 
         BlocksConfig config = new()
         {
@@ -384,7 +387,7 @@ public class BlockCachePreWarmerTests
             ParallelExecutionBatchRead = parallelExecutionBatchRead
         };
 
-        return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+        return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, worldState, LimboLogs.Instance);
     }
 
     private (BlockCachePreWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, ConcurrentBag<IReadOnlyTxProcessorSource> disposed) CreatePreWarmer(int maxPoolSize, bool parallelExecutionBatchRead = true)
@@ -392,6 +395,7 @@ public class BlockCachePreWarmerTests
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
 
         ConcurrentBag<IReadOnlyTxProcessorSource> created = [];
         ConcurrentBag<IReadOnlyTxProcessorSource> disposed = [];
@@ -404,6 +408,7 @@ public class BlockCachePreWarmerTests
             parallelExecutionBatchRead: parallelExecutionBatchRead,
             nodeStorageCache,
             preBlockCaches,
+            worldState,
             LimboLogs.Instance);
 
         return (preWarmer, created, disposed);
@@ -422,11 +427,7 @@ public class BlockCachePreWarmerTests
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         using (mainWorldState.BeginScope(parent))
         {
-            Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)
-                ? mainWorldState.HintBal(block.BlockAccessList)
-                : null;
             preWarmer.PreWarmCaches(block, parent, spec).GetAwaiter().GetResult();
-            hintBalTask?.GetAwaiter().GetResult();
         }
         return Task.CompletedTask;
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -25,7 +26,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     const BlockHeader? PreGenesis = null;
 
     IDisposable BeginScope(BlockHeader? baseBlock);
-    Task HintBal(ReadOnlyBlockAccessList bal);
+
+    /// <summary>
+    /// Starts (or restarts) background BAL read warming. <paramref name="token"/> lets the caller stop the
+    /// remaining warming promptly (e.g. once the block's transactions have executed); the returned task
+    /// completes rather than faulting when cancelled.
+    /// </summary>
+    Task HintBal(ReadOnlyBlockAccessList bal, CancellationToken token = default);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
@@ -46,6 +53,35 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
     ReadOnlySpan<byte> Get(in StorageCell storageCell);
+
+    /// <summary>
+    /// Reads a slot bypassing the change journal (no original-value / revert / cache entry the way
+    /// <see cref="Get"/> records). The value equals <see cref="Get"/>.
+    /// </summary>
+    /// <remarks>
+    /// Only safe for a slot that is never written or queried via <see cref="GetOriginal"/> this block,
+    /// since the skipped journal is what those rely on. The default returns <c>false</c> ("I keep the
+    /// journal - use the normal path"); a backing store that can read without journaling overrides it.
+    /// </remarks>
+    /// <returns><c>true</c> with the value when served without journaling; otherwise <c>false</c>.</returns>
+    bool TryGetPureReadStorage(in StorageCell cell, out byte[]? value)
+    {
+        value = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Reads an account bypassing the change journal (the account analogue of
+    /// <see cref="TryGetPureReadStorage"/>). <paramref name="account"/> is <c>null</c> when the
+    /// account does not exist. Same value as the normal getters; safe only for a state never written
+    /// this block. The default returns <c>false</c> ("I keep the journal - use the normal path").
+    /// </summary>
+    /// <returns><c>true</c> with the account when served without journaling; otherwise <c>false</c>.</returns>
+    bool TryGetPureReadAccount(Address address, out Account? account)
+    {
+        account = null;
+        return false;
+    }
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell

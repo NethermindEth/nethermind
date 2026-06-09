@@ -37,7 +37,8 @@ public class BlockAccessListBasedWorldStateTests
     private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
         uint blockAccessIndex,
         ReadOnlyBlockAccessList suggestedBal,
-        Action<IWorldState>? genesisSetup = null)
+        Action<IWorldState>? genesisSetup = null,
+        PreBlockCaches? preBlockCaches = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -51,7 +52,7 @@ public class BlockAccessListBasedWorldStateTests
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
 
-        BlockAccessListBasedWorldState bws = new(inner, Logger);
+        BlockAccessListBasedWorldState bws = new(inner, Logger, preBlockCaches);
         bws.SetBlockAccessIndex(blockAccessIndex);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
         bws.Setup(block);
@@ -60,6 +61,207 @@ public class BlockAccessListBasedWorldStateTests
         // — reads against it answer pre-block state directly from the trie.
         bws.SetParentReader(inner);
         return (bws, scope);
+    }
+
+    [Test]
+    public void Get_DeclaredRead_ServedFromOrdinalDestination_ElseFallsBackToParent()
+    {
+        // Above the associative-cache capacity the ordinal destination is built; declared reads then
+        // come from it (when prefetched) and otherwise fall back to the parent reader.
+        int readCount = PreBlockCaches.StorageReadDestinationThreshold + 1;
+        UInt256[] reads = new UInt256[readCount];
+        for (int i = 0; i < readCount; i++) reads[i] = (UInt256)i;
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(reads)
+                .TestObject)
+            .TestObject;
+
+        PreBlockCaches caches = new();
+        caches.BuildStorageReadDestination(bal);
+        Assert.That(caches.StorageValueDestination, Is.Not.Null, "destination must be built above the threshold");
+
+        // Simulate the prefetch loading slot 5 with a value distinct from parent state; leave slot 7 unloaded.
+        Assert.That(caches.StorageReadPlan!.TryGetGlobalReadOrdinal(TestItem.AddressA, 5, out int ordinal5), Is.True);
+        byte[] prefetched = [9, 9];
+        caches.StorageValueDestination!.Set(ordinal5, prefetched);
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.Set(new StorageCell(TestItem.AddressA, 5), [1, 1]); // parent value — must be shadowed by the destination
+                ws.Set(new StorageCell(TestItem.AddressA, 7), [7, 7]); // parent value — returned on fallback
+            },
+            preBlockCaches: caches);
+
+        using (scope)
+        {
+            // Slot 5 was prefetched: the destination value wins over parent state.
+            Assert.That(bws.Get(new StorageCell(TestItem.AddressA, 5)).ToArray(), Is.EqualTo(prefetched));
+            // Slot 7 was not prefetched: fall back to the parent reader (trie) value.
+            Assert.That(bws.Get(new StorageCell(TestItem.AddressA, 7)).ToArray(), Is.EqualTo(new byte[] { 7, 7 }));
+
+            // The miss read through to the parent and cached the value in the destination (self-heal):
+            // Set(ordinal, value) fired, so the slot now resolves straight from the destination.
+            Assert.That(caches.StorageReadPlan!.TryGetGlobalReadOrdinal(TestItem.AddressA, 7, out int ordinal7), Is.True);
+            Assert.That(caches.StorageValueDestination!.TryGet(ordinal7, out byte[]? cached7), Is.True, "destination-miss read-through must cache the value");
+            Assert.That(cached7, Is.EqualTo(new byte[] { 7, 7 }));
+            // A subsequent access returns the same value, now served from the destination.
+            Assert.That(bws.Get(new StorageCell(TestItem.AddressA, 7)).ToArray(), Is.EqualTo(new byte[] { 7, 7 }));
+        }
+    }
+
+    [Test]
+    public void GetOriginal_DeclaredRead_ReturnsPreStateViaPureRead_WithoutPriorGet()
+    {
+        // Large block -> the storage pure-read path is active (gated on the ordinal destination). A
+        // declared read is read-only this block (original == current == pre-state), so GetOriginal
+        // is served by the pure read - without a prior Get and without throwing (the old
+        // parentReader.GetOriginal would throw "only after get").
+        int readCount = PreBlockCaches.StorageReadDestinationThreshold + 1;
+        UInt256[] reads = new UInt256[readCount];
+        for (int i = 0; i < readCount; i++) reads[i] = (UInt256)i;
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(reads)
+                .TestObject)
+            .TestObject;
+
+        PreBlockCaches caches = new();
+        caches.BuildStorageReadDestination(bal);
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.Set(new StorageCell(TestItem.AddressA, 5), [4, 2]);
+            },
+            preBlockCaches: caches);
+        using (scope)
+        {
+            StorageCell cell = new(TestItem.AddressA, 5);
+            Assert.That(bws.GetOriginal(cell).ToArray(), Is.EqualTo(new byte[] { 4, 2 }));
+            Assert.That(bws.Get(cell).ToArray(), Is.EqualTo(new byte[] { 4, 2 }));
+        }
+    }
+
+    [Test]
+    public void AccountGetters_DeclaredRead_ServedFromParentViaPureRead()
+    {
+        // A declared account with no balance/nonce/code change before the index resolves every field
+        // through the parent account pure-read; guards the field extraction (incl. codehash
+        // Hash256->ValueHash256 and code-by-hash) matches the normal getters.
+        byte[] code = [0x60, 0x00]; // PUSH1 0
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 0,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, balance: 123, nonce: 7);
+                ws.InsertCode(TestItem.AddressA, codeHash, code, Spec);
+            });
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+            Assert.That(bws.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)7));
+            Assert.That(bws.GetCodeHash(TestItem.AddressA), Is.EqualTo(codeHash));
+            Assert.That(bws.GetCode(TestItem.AddressA), Is.EqualTo(code));
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+            Assert.That(bws.IsContract(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
+    public void ReadCoverage_AllDeclaredReadsAccessed_AreCovered_SystemReadsExcludedFromCharge()
+    {
+        // Coverage replaces read materialization: declared reads mark a per-slice bitmap; system-
+        // contract reads are covered structurally but excluded from the chargeable budget.
+        Address system = Eip7002Constants.WithdrawalRequestPredeployAddress;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(system).WithStorageReads(0).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(5, 7).TestObject)
+            .TestObject;
+
+        PreBlockCaches caches = new();
+        caches.EnableReadCoverage(bal);
+        Assert.That(caches.ReadCoverageEnabled, Is.True);
+        Assert.That(caches.StorageReadPlan!.TotalReads, Is.EqualTo(3));
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(system, 1);
+                ws.Set(new StorageCell(system, 0), [1]);
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.Set(new StorageCell(TestItem.AddressA, 5), [1, 1]);
+                ws.Set(new StorageCell(TestItem.AddressA, 7), [2, 2]);
+            },
+            preBlockCaches: caches);
+
+        using (scope)
+        {
+            Assert.That(bws.ReadCoverageActive, Is.True);
+            bws.Get(new StorageCell(system, 0));
+            bws.Get(new StorageCell(TestItem.AddressA, 5));
+            bws.Get(new StorageCell(TestItem.AddressA, 7));
+            Assert.That(bws.CurrentSliceChargeableReads, Is.EqualTo(2)); // system read excluded
+        }
+
+        using BalReadCoverage? reduced = caches.DrainAndReduceReadCoverage();
+        Assert.That(reduced, Is.Not.Null);
+        Assert.That(reduced!.TryFindFirstUncovered(out _), Is.False); // every declared read covered
+    }
+
+    [Test]
+    public void ReadCoverage_UnaccessedDeclaredRead_LeavesGap()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(5, 7).TestObject)
+            .TestObject;
+
+        PreBlockCaches caches = new();
+        caches.EnableReadCoverage(bal);
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.Set(new StorageCell(TestItem.AddressA, 5), [1, 1]);
+                ws.Set(new StorageCell(TestItem.AddressA, 7), [2, 2]);
+            },
+            preBlockCaches: caches);
+
+        using (scope)
+        {
+            bws.Get(new StorageCell(TestItem.AddressA, 5)); // slot 7 declared but never read
+        }
+
+        using BalReadCoverage? reduced = caches.DrainAndReduceReadCoverage();
+        Assert.That(reduced, Is.Not.Null);
+        Assert.That(reduced!.TryFindFirstUncovered(out int ordinal), Is.True);
+        Assert.That(caches.StorageReadPlan!.TryGetGlobalReadOrdinal(TestItem.AddressA, 7, out int slot7Ordinal), Is.True);
+        Assert.That(ordinal, Is.EqualTo(slot7Ordinal));
+        Assert.That(caches.StorageReadPlan!.MapOrdinalToAddress(ordinal), Is.EqualTo(TestItem.AddressA));
     }
 
     [Test]

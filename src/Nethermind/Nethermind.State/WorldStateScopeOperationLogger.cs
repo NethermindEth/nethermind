@@ -53,8 +53,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void HintGet(Address address, Account? account) => innerScope.HintGet(address, account);
 
-        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
-            => innerScope.HintBal(bal, sink);
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, CancellationToken token = default)
+            => innerScope.HintBal(bal, sink, token);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 

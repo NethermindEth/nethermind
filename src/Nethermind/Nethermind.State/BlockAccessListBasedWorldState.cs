@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -25,7 +26,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
-public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogManager logManager) : IWorldState
+public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
     private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
@@ -33,6 +34,21 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private IWorldState? _parentReader;
     private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
+    // Verify-only read coverage (replaces generated read materialization). A fresh instance is rented
+    // per slice (per tx) when PreBlockCaches.ReadCoverageEnabled, marked per declared read; the
+    // validator OR-reduces every slice's coverage at block end. Per-slice, so no block tag is needed:
+    // only one block runs at a time and the worker's state is cleared at slice return.
+    private BalReadCoverage? _readCoverage;
+    // Single per-account context cache shared by every read: same-account streams (the bloat loop
+    // walks one account, ascending slots) reuse the resolved BAL account changes and the coverage
+    // plan index/cursor instead of re-probing the BAL account dictionary on each read. Keyed by
+    // _contextAccount; invalidated when the queried address changes (or per slice in Setup).
+    private Address? _contextAccount;
+    private ReadOnlyAccountChanges? _contextChanges;
+    private int _coverageAccountIndex;
+    private bool _coverageHasAccount;
+    private bool _coveragePlanResolved;       // plan index lazily resolved for _contextAccount
+    private int _coverageCursor;              // ascending-read cursor within _contextAccount
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
     private UInt256 _scratchBalance;
@@ -53,7 +69,24 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
+        ResetContextCache();
+        SetupReadCoverage();
     }
+
+    /// <summary>Whether this worker is marking verify-only read coverage for the current block.</summary>
+    public bool ReadCoverageActive => _readCoverage is not null;
+
+
+    /// <summary>
+    /// Distinct chargeable (non-system) declared reads this worker marked for the current slice. Read
+    /// by the pool at slice return so the validator can accumulate the chargeable budget per slice.
+    /// </summary>
+    public long CurrentSliceChargeableReads => _readCoverage?.ChargeableCount ?? 0;
+
+    // Setup runs per tx (per slice): rent a fresh coverage instance enqueued for the block-end reduce;
+    // the worker forgets it at slice return.
+    private void SetupReadCoverage()
+        => _readCoverage = preBlockCaches is { ReadCoverageEnabled: true } caches ? caches.RentReadCoverage() : null;
 
     public void SetParentReader(IWorldState parentReader)
     {
@@ -71,6 +104,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
         _codeChangesByHash = null;
+        // The slice's coverage is owned by the block-end reduce queue now; drop our reference so the
+        // next slice rents a fresh one.
+        _readCoverage = null;
+        ResetContextCache();
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
@@ -95,7 +132,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public Task HintBal(ReadOnlyBlockAccessList bal) => _innerWorldState.HintBal(bal);
+    public Task HintBal(ReadOnlyBlockAccessList bal, CancellationToken token = default) => _innerWorldState.HintBal(bal, token);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
@@ -111,11 +148,96 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
                     .WithoutLeadingZeros();
             }
 
+            // Pure declared read (slotChanges is null): a slot the BAL proves is read-only this block,
+            // so original == current == pre-state. Mark verify-only read coverage, then serve it from
+            // the prefetched ordinal destination or the parent's registry-bypassing read; both are
+            // byte-identical to parentReader.Get.
+            if (slotChanges is null)
+            {
+                MarkDeclaredReadCoverage(in storageCell);
+                if (TryReadDeclaredPureRead(in storageCell, out byte[]? value))
+                {
+                    return value;
+                }
+            }
+
             return parentReader.Get(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
         return default;
+    }
+
+    // Marks a declared storage read in the per-worker coverage, replacing generated read-set
+    // materialization. Folds the ordinal lookup onto an ascending-read cursor (O(1) for sorted streams).
+    // GetOriginal does not mark: it is only reached after Get for the same slot (SSTORE), already marked.
+    private void MarkDeclaredReadCoverage(in StorageCell storageCell)
+    {
+        BalReadCoverage? coverage = _readCoverage;
+        if (coverage is null) return;
+
+        // ResolveContext already keyed _contextAccount to this address (Get resolved it first), so the
+        // cursor is valid for it; resolve the plan account index lazily, once per account.
+        // Coverage is only enabled after EnsureReadPlan, so the plan is always present here.
+        Debug.Assert(preBlockCaches?.StorageReadPlan is not null, "Read coverage active without a storage read plan");
+        BalReadStoragePlan plan = preBlockCaches!.StorageReadPlan!;
+        if (!_coveragePlanResolved)
+        {
+            _coverageHasAccount = plan.TryGetAccountIndex(storageCell.Address, out _coverageAccountIndex);
+            _coveragePlanResolved = true;
+        }
+
+        if (_coverageHasAccount &&
+            plan.TryGetReadLocalIndex(_coverageAccountIndex, in storageCell.Index, ref _coverageCursor, out int localIndex))
+        {
+            int ordinal = plan.GlobalReadOrdinal(_coverageAccountIndex, localIndex);
+            coverage.MarkRead(ordinal, chargeable: !IsSystemContract(storageCell.Address));
+        }
+    }
+
+    // System-contract reads are structurally compared but excluded from the chargeable read budget.
+    private static bool IsSystemContract(Address address)
+        => address == Eip7002Constants.WithdrawalRequestPredeployAddress
+        || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+
+    /// <remarks>
+    /// For a BAL-declared read the value never changes in-block, so the same lookup answers both
+    /// <see cref="Get"/> and <see cref="GetOriginal"/> and never needs the parent's change registry -
+    /// which is what lets <see cref="GetOriginal"/> avoid <c>parentReader.GetOriginal</c> (it would
+    /// throw without a prior registered read).
+    /// <para>
+    /// Gated on the ordinal destination existing (large blocks): there the destination serves repeats
+    /// in O(1), and a destination miss is read once through the parent's journal-bypassing read and
+    /// then cached by ordinal so later repeats also hit O(1). Without a destination (small blocks)
+    /// this returns false so the caller uses the normal registered read, whose upper cache is faster
+    /// for repeated same-slot reads.
+    /// </para>
+    /// </remarks>
+    private bool TryReadDeclaredPureRead(in StorageCell storageCell, out byte[]? value)
+    {
+        if (preBlockCaches?.StorageValueDestination is not { } destination
+            || preBlockCaches.StorageReadPlan is not { } readPlan
+            || !readPlan.TryGetGlobalReadOrdinal(storageCell.Address, in storageCell.Index, out int ordinal))
+        {
+            value = null;
+            return false;
+        }
+
+        if (destination.TryGet(ordinal, out value))
+        {
+            return true; // prefetched or previously cached read-through; null/empty => zero slot
+        }
+
+        // Destination miss: read once through the parent without journaling, then cache by ordinal so
+        // repeats of this not-yet-prefetched declared slot hit O(1) instead of re-probing.
+        if (_parentReader is not null && _parentReader.TryGetPureReadStorage(in storageCell, out value))
+        {
+            destination.Set(ordinal, value);
+            return true;
+        }
+
+        value = null;
+        return false;
     }
 
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
@@ -129,6 +251,13 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
                 _originalScratch = storageChange.Value;
                 return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref _originalScratch), 32)
                     .WithoutLeadingZeros();
+            }
+
+            // Declared read: original == pre-state, so use the same pure read as Get rather than
+            // parentReader.GetOriginal (which throws without a prior registered read).
+            if (slotChanges is null && TryReadDeclaredPureRead(in storageCell, out byte[]? value))
+            {
+                return value;
             }
 
             return parentReader.GetOriginal(storageCell);
@@ -156,6 +285,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
             _scratchBalance = balanceChange.Value;
             return ref _scratchBalance;
         }
+        if (parentReader.TryGetPureReadAccount(address, out Account? account))
+        {
+            _scratchBalance = account?.Balance ?? default;
+            return ref _scratchBalance;
+        }
         return ref parentReader.GetBalance(address);
     }
 
@@ -163,8 +297,12 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
-        return accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange)
-            ? nonceChange.Value
+        if (accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange))
+        {
+            return nonceChange.Value;
+        }
+        return parentReader.TryGetPureReadAccount(address, out Account? account)
+            ? account?.Nonce ?? UInt256.Zero
             : parentReader.GetNonce(address);
     }
 
@@ -177,6 +315,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
             _scratchCodeHash = codeChange.CodeHash;
             return ref _scratchCodeHash;
         }
+        if (parentReader.TryGetPureReadAccount(address, out Account? account))
+        {
+            _scratchCodeHash = account is not null ? account.CodeHash.ValueHash256 : Keccak.OfAnEmptyString.ValueHash256;
+            return ref _scratchCodeHash;
+        }
         return ref parentReader.GetCodeHash(address);
     }
 
@@ -184,8 +327,13 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
-        return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
-            ? codeChange.Code
+        if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
+        {
+            return codeChange.Code;
+        }
+        // Pure-read the account for its code hash, then fetch code by hash (no account-journal entry).
+        return parentReader.TryGetPureReadAccount(address, out Account? account)
+            ? account is null ? [] : parentReader.GetCode(account.CodeHash.ValueHash256)
             : parentReader.GetCode(address);
     }
 
@@ -254,7 +402,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
 
-        if (parentReader.AccountExists(address))
+        bool parentHasAccount = parentReader.TryGetPureReadAccount(address, out Account? account)
+            ? account is not null
+            : parentReader.AccountExists(address);
+        if (parentHasAccount)
         {
             return true;
         }
@@ -364,7 +515,26 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private (IWorldState ParentReader, ReadOnlyAccountChanges AccountChanges) ResolveContext(Address address)
     {
         CheckInitialized();
-        return (GetParentReader(), GetAccountChangesOrThrow(address));
+        if (!address.Equals(_contextAccount))
+        {
+            // New account: re-resolve its BAL changes and invalidate the coverage plan index + cursor.
+            _contextChanges = GetAccountChangesOrThrow(address);
+            _contextAccount = address;
+            _coveragePlanResolved = false;
+            _coverageCursor = -1;
+        }
+        return (GetParentReader(), _contextChanges!);
+    }
+
+    // Invalidates the per-account context cache. Called per slice in Setup and when the parent reader
+    // detaches; ResolveContext re-resolves on the next distinct address.
+    private void ResetContextCache()
+    {
+        _contextAccount = null;
+        _contextChanges = null;
+        _coverageHasAccount = false;
+        _coveragePlanResolved = false;
+        _coverageCursor = -1;
     }
 
     private bool TryGetDeclaredCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)

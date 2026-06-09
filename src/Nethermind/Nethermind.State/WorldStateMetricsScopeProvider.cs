@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -50,7 +51,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             parent._updateMetrics(parent._stateMerkleizationTime);
         }
 
-        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
-            => baseScope.HintBal(bal, sink);
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, CancellationToken token = default)
+            => baseScope.HintBal(bal, sink, token);
     }
 }

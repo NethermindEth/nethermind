@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -812,8 +813,8 @@ public class StorageProviderTests(bool useFlat)
 
             public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
 
-            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
-                => baseScope.HintBal(bal, sink);
+            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null, CancellationToken token = default)
+                => baseScope.HintBal(bal, sink, token);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 

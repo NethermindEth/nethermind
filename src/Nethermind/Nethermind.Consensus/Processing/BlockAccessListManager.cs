@@ -133,6 +133,19 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
+
+            // Resolve verify-only / read-coverage mode before building the generated validation index,
+            // so coverage mode can skip pre-sizing the (never-materialized) generated read list.
+            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+
+            // Verify-only parallel validation: workers mark per-worker read coverage instead of
+            // materializing a generated read set. Other modes (recorder / sequential / force-construct)
+            // keep full recording. Reuses the prewarmer's read plan when already built.
+            if (VerifyOnly && preBlockCaches is not null && suggestedBlock.BlockAccessList is not null)
+            {
+                preBlockCaches.EnableReadCoverage(suggestedBlock.BlockAccessList);
+            }
+
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
@@ -142,7 +155,10 @@ public partial class BlockAccessListManager(
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
+                // Coverage mode validates reads via the per-worker bitmap and never materializes the
+                // generated read list, so don't pre-size it to the (potentially huge) suggested read count.
+                int storageReadsCapacity = preBlockCaches?.ReadCoverageEnabled == true ? 0 : suggested.TotalStorageReads;
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, storageReadsCapacity, suggested.TotalStorageChangeEvents);
                 int suggestedReads = 0;
                 foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
@@ -152,7 +168,6 @@ public partial class BlockAccessListManager(
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
-            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
     }
 

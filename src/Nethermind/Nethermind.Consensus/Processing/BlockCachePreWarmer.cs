@@ -33,6 +33,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
+    private readonly IWorldState _stateProvider;
     private readonly bool _parallelExecutionEnabled;
 
     public BlockCachePreWarmer(
@@ -40,6 +41,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IBlocksConfig blocksConfig,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
+        IWorldState stateProvider,
         ILogManager logManager
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
@@ -48,6 +50,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
+        stateProvider,
         logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
@@ -57,6 +60,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         bool parallelExecutionBatchRead,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
+        IWorldState stateProvider,
         ILogManager logManager)
     {
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
@@ -65,11 +69,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
         _nodeStorageCache = nodeStorageCache;
+        _stateProvider = stateProvider;
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (_preBlockCaches is not null && ShouldPreWarm(spec))
+        if (_preBlockCaches is not null && ShouldPreWarm(suggestedBlock, spec))
         {
             CacheType result = _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
@@ -87,6 +92,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
                 // is in use, drive warmup directly off the suggested block's access list.
                 ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
+                if (bal is not null)
+                {
+                    // Large read sets get an exact-sized ordinal destination the prefetch fills and
+                    // parallel execution consumes; small sets stay on the associative StorageCache.
+                    _preBlockCaches.BuildStorageReadDestination(bal);
+                    // Pass the prewarm cancellation token so warming stops promptly once the block's
+                    // transactions have executed, instead of running to completion in the background.
+                    return _stateProvider.HintBal(bal, cancellationToken);
+                }
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
@@ -99,9 +113,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return Task.CompletedTask;
     }
 
-    private bool ShouldPreWarm(IReleaseSpec spec)
+    private bool ShouldPreWarm(Block suggestedBlock, IReleaseSpec spec)
         => !_parallelExecutionEnabled
         || !spec.BlockLevelAccessListsEnabled
+        || suggestedBlock.BlockAccessList is null
         || IsBalReadWarmingEnabled(spec);
 
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
@@ -384,7 +399,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
                 if (Bal is null)
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);

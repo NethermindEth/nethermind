@@ -107,6 +107,20 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _persistentStorageProvider.Get(storageCell);
         }
+
+        public bool TryGetPureReadStorage(in StorageCell cell, out byte[]? value)
+        {
+            DebugGuardInScope();
+            value = _persistentStorageProvider.GetPureRead(cell);
+            return true;
+        }
+
+        public bool TryGetPureReadAccount(Address address, out Account? account)
+        {
+            DebugGuardInScope();
+            account = _stateProvider.GetPureRead(address);
+            return true;
+        }
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
             DebugGuardInScope();
@@ -269,10 +283,10 @@ namespace Nethermind.State
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
-        public Task HintBal(ReadOnlyBlockAccessList bal)
+        public Task HintBal(ReadOnlyBlockAccessList bal, CancellationToken token = default)
         {
             GuardInScope();
-            return _currentScope!.HintBal(bal);
+            return _currentScope!.HintBal(bal, token: token);
         }
 
         public ref readonly UInt256 GetBalance(Address address)

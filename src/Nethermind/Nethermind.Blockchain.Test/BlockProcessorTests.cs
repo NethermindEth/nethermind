@@ -393,6 +393,40 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_prewarms_tiny_block_when_bal_read_warming_enabled()
+    {
+        TokenCapturingPreWarmer preWarmer = new(isBalReadWarmingEnabled: true);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
+        BranchProcessor branchProcessor = new(
+            new EmptyBlockProcessor(),
+            specProvider,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            preWarmer);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block
+            .WithHeader(header)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance);
+
+        Assert.That(preWarmer.CallCount, Is.EqualTo(1));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
     {
         (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) = CreateProcessorAndBranch();
@@ -479,20 +513,38 @@ public class BlockProcessorTests
     /// Manual IBlockCachePreWarmer that captures the CancellationToken for test verification.
     /// NSubstitute cannot proxy ReadOnlySpan&lt;T&gt; (ref struct) parameters.
     /// </summary>
-    private class TokenCapturingPreWarmer : IBlockCachePreWarmer
+    private class TokenCapturingPreWarmer(bool isBalReadWarmingEnabled = false) : IBlockCachePreWarmer
     {
         public CancellationToken CapturedToken { get; private set; }
+        public int CallCount { get; private set; }
 
         public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
             CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
         {
+            CallCount++;
             CapturedToken = cancellationToken;
             return Task.CompletedTask;
         }
 
         public CacheType ClearCaches() => default;
-        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
+        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => isBalReadWarmingEnabled;
         public void Dispose() { }
+    }
+
+    private sealed class EmptyBlockProcessor : IBlockProcessor
+    {
+        public event Action? TransactionsExecuted;
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+            Block suggestedBlock,
+            ProcessingOptions options,
+            IBlockTracer blockTracer,
+            IReleaseSpec spec,
+            CancellationToken token = default)
+        {
+            TransactionsExecuted?.Invoke();
+            return (suggestedBlock, []);
+        }
     }
 
     public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()
