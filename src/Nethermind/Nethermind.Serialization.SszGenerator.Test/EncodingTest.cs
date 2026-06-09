@@ -61,10 +61,13 @@ public class EncodingTest
 
         Decode(encoded, out DoubleListContainer decoded);
 
-        Assert.That(decoded.First, Is.Not.Null);
-        Assert.That(decoded.First, Is.Empty);
-        Assert.That(decoded.Second, Is.Not.Null);
-        Assert.That(decoded.Second, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.First, Is.Not.Null);
+            Assert.That(decoded.First, Is.Empty);
+            Assert.That(decoded.Second, Is.Not.Null);
+            Assert.That(decoded.Second, Is.Empty);
+        }
     }
 
     private static BitArray MakeSampleBits10()
@@ -85,12 +88,15 @@ public class EncodingTest
         Decode(encoded, out BitVectorContainer decoded);
 
         Assert.That(decoded.Bits, Is.Not.Null);
-        Assert.That(decoded.Bits!.Length, Is.EqualTo(10));
-        Assert.That(decoded.Bits.Cast<bool>(), Is.EqualTo(container.Bits!.Cast<bool>()));
-        Assert.That(decoded.Bits[0], Is.True);
-        Assert.That(decoded.Bits[3], Is.True);
-        Assert.That(decoded.Bits[9], Is.True);
-        Assert.That(decoded.Bits[1], Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Bits!.Length, Is.EqualTo(10));
+            Assert.That(decoded.Bits.Cast<bool>(), Is.EqualTo(container.Bits!.Cast<bool>()));
+            Assert.That(decoded.Bits[0], Is.True);
+            Assert.That(decoded.Bits[3], Is.True);
+            Assert.That(decoded.Bits[9], Is.True);
+            Assert.That(decoded.Bits[1], Is.False);
+        }
     }
 
     [Test]
@@ -135,8 +141,11 @@ public class EncodingTest
         Merkleize(container, out UInt256 actual);
         Merkle.Merkleize(out UInt256 expected, expectedBytes, 2);
 
-        Assert.That(Encode(container), Is.EqualTo(expectedBytes));
-        Assert.That(actual, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Encode(container), Is.EqualTo(expectedBytes));
+            Assert.That(actual, Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -207,12 +216,15 @@ public class EncodingTest
         byte[] encoded = Encode(container);
         Decode(encoded, out NestedProgressiveListContainer decoded);
 
-        Assert.That(Encode(decoded), Is.EqualTo(encoded));
-        Assert.That(decoded.Items, Has.Length.EqualTo(2));
-        Assert.That(decoded.Items![0].Items, Has.Length.EqualTo(2));
-        Assert.That(decoded.Items[0].Items![0].Fixed2, Is.EqualTo([2UL, 3UL]));
-        Assert.That(decoded.Items[1].Items, Has.Length.EqualTo(1));
-        Assert.That(decoded.Items[1].Items![0].Fixed2, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Encode(decoded), Is.EqualTo(encoded));
+            Assert.That(decoded.Items, Has.Length.EqualTo(2));
+            Assert.That(decoded.Items![0].Items, Has.Length.EqualTo(2));
+            Assert.That(decoded.Items[0].Items![0].Fixed2, Is.EqualTo([2UL, 3UL]));
+            Assert.That(decoded.Items[1].Items, Has.Length.EqualTo(1));
+            Assert.That(decoded.Items[1].Items![0].Fixed2, Is.Empty);
+        }
     }
 
     [Test]
@@ -247,8 +259,11 @@ public class EncodingTest
             Merkle.Merkleize(out UInt256 expected, MemoryMarshal.AsBytes(expectedItems.AsSpan()), 1);
             Merkle.MixIn(ref expected, expectedItems.Length);
 
-            Assert.That(decoded.Items.AsSpan().ToArray(), Is.EqualTo(expectedItems));
-            Assert.That(actual, Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Items.AsSpan().ToArray(), Is.EqualTo(expectedItems));
+                Assert.That(actual, Is.EqualTo(expected));
+            }
         }
         finally
         {
@@ -268,10 +283,13 @@ public class EncodingTest
 
         try
         {
-            Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
-            Assert.That(decoded.Items, Is.Not.Null);
-            Assert.That(decoded.Items, Is.Empty);
-            Assert.That(root, Is.EqualTo(decodedRoot));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
+                Assert.That(decoded.Items, Is.Not.Null);
+                Assert.That(decoded.Items, Is.Empty);
+                Assert.That(root, Is.EqualTo(decodedRoot));
+            }
         }
         finally
         {
@@ -291,10 +309,13 @@ public class EncodingTest
 
         try
         {
-            Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
-            Assert.That(decoded.Items, Is.Not.Null);
-            Assert.That(decoded.Items, Is.Empty);
-            Assert.That(root, Is.EqualTo(decodedRoot));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
+                Assert.That(decoded.Items, Is.Not.Null);
+                Assert.That(decoded.Items, Is.Empty);
+                Assert.That(root, Is.EqualTo(decodedRoot));
+            }
         }
         finally
         {
@@ -314,10 +335,13 @@ public class EncodingTest
 
         try
         {
-            Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
-            Assert.That(decoded.Items, Is.Not.Null);
-            Assert.That(decoded.Items, Is.Empty);
-            Assert.That(root, Is.EqualTo(decodedRoot));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded, Is.EqualTo(new byte[] { 4, 0, 0, 0 }));
+                Assert.That(decoded.Items, Is.Not.Null);
+                Assert.That(decoded.Items, Is.Empty);
+                Assert.That(root, Is.EqualTo(decodedRoot));
+            }
         }
         finally
         {
@@ -337,10 +361,13 @@ public class EncodingTest
 
         try
         {
-            Assert.That(encoded, Is.Empty);
-            Assert.That(decoded.Items, Is.Not.Null);
-            Assert.That(decoded.Items, Is.Empty);
-            Assert.That(root, Is.EqualTo(decodedRoot));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded, Is.Empty);
+                Assert.That(decoded.Items, Is.Not.Null);
+                Assert.That(decoded.Items, Is.Empty);
+                Assert.That(root, Is.EqualTo(decodedRoot));
+            }
         }
         finally
         {
@@ -358,8 +385,11 @@ public class EncodingTest
         Decode(encoded, out SingleListContainer decoded);
         Merkleize(decoded, out UInt256 decodedRoot);
 
-        Assert.That(decoded.Items, Is.Empty);
-        Assert.That(root, Is.EqualTo(decodedRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Items, Is.Empty);
+            Assert.That(root, Is.EqualTo(decodedRoot));
+        }
     }
 
     [Test]
@@ -597,8 +627,11 @@ public class EncodingTest
         Decode(encoded, out ProgressiveBitlistContainer decoded);
 
         Assert.That(decoded.Bits, Is.Not.Null);
-        Assert.That(decoded.Bits!.Length, Is.EqualTo(bits.Length));
-        Assert.That(decoded.Bits.Cast<bool>(), Is.EqualTo(bits.Cast<bool>()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Bits!.Length, Is.EqualTo(bits.Length));
+            Assert.That(decoded.Bits.Cast<bool>(), Is.EqualTo(bits.Cast<bool>()));
+        }
     }
 
     [Test]
@@ -637,10 +670,13 @@ public class EncodingTest
 
         ulong encodedA = BitConverter.ToUInt64(encoded, 0);
         uint encodedX = BitConverter.ToUInt32(encoded, 8);
-        Assert.That(encodedA, Is.EqualTo(value.A),
-            "A must be at offset 0 (first field in ShadowBase)");
-        Assert.That(encodedX, Is.EqualTo(value.X),
-            "X must be at offset 8 (second field in ShadowBase), using derived uint type");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encodedA, Is.EqualTo(value.A),
+                "A must be at offset 0 (first field in ShadowBase)");
+            Assert.That(encodedX, Is.EqualTo(value.X),
+                "X must be at offset 8 (second field in ShadowBase), using derived uint type");
+        }
     }
 
     [Test]
@@ -651,8 +687,11 @@ public class EncodingTest
         byte[] encoded = Encode(original);
         Decode(encoded, out ShadowDerived decoded);
 
-        Assert.That(decoded.A, Is.EqualTo(original.A));
-        Assert.That(decoded.X, Is.EqualTo(original.X));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.A, Is.EqualTo(original.A));
+            Assert.That(decoded.X, Is.EqualTo(original.X));
+        }
     }
 
     [Test]
@@ -663,8 +702,11 @@ public class EncodingTest
         byte[] encoded = Encode(original);
         Decode(encoded, out ReadOnlyMemoryVectorContainer decoded);
 
-        Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
-        Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
+            Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+        }
     }
 
     [Test]
@@ -675,8 +717,11 @@ public class EncodingTest
         byte[] encoded = Encode(original);
         Decode(encoded, out MemoryVectorContainer decoded);
 
-        Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
-        Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.EqualTo(original.Bytes.ToArray()));
+            Assert.That(decoded.Bytes.ToArray(), Is.EqualTo(original.Bytes.ToArray()));
+        }
     }
 
     [Test]
