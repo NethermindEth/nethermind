@@ -10,8 +10,7 @@ public class ExecutionArgs
     public required FilePos[] Sources { get; init; }
     public required Uri? Client { get; init; }
     public required int Parallelism { get; init; }
-    public required string? Include { get; init; }
-    public required string? Exclude { get; init; }
+    public required HashSet<string> Methods { get; init; }
     public required int? MinBlocks { get; init; }
     public required int? MaxBlocks { get; init; }
     public required int? MinResultLen { get; init; }

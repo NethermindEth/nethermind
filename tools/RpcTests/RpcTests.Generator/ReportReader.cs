@@ -28,6 +28,7 @@ public class ReportReader(FilePos[] sources, Filter filter)
                     await Console.Out.WriteLineAsync($"Reading line #{_lineN}");
 
                 if (fileLineN++ < startLocation.LineNumber) continue;
+                if (string.IsNullOrWhiteSpace(line)) continue;
 
                 if (GetResponse(line) is { } response && response.GetId() is { } responseId)
                 {
@@ -41,8 +42,6 @@ public class ReportReader(FilePos[] sources, Filter filter)
                     await target.SendAsync(testCase, ct);
                     continue;
                 }
-
-                if (!filter.IncludeRequest(line)) continue;
 
                 FilePos pos = startLocation with { LineNumber = fileLineN };
 

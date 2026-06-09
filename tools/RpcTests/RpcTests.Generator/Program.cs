@@ -24,14 +24,10 @@ Option<int> parallelismOption = new("--parallelism", "-p")
     DefaultValueFactory = static _ => 1
 };
 
-Option<string?> includeOption = new("--include")
+Option<string[]> methodsOption = new("--methods", "-m")
 {
-    Description = "Include only request lines containing this string"
-};
-
-Option<string?> excludeOption = new("--exclude")
-{
-    Description = "Exclude request lines containing this string, takes precedence over inclusion"
+    Description = "Include only requests with these method names",
+    AllowMultipleArgumentsPerToken = true
 };
 
 Option<int?> minBlocksOption = new("--min-blocks")
@@ -61,8 +57,7 @@ RootCommand rootCommand = new("Generates RPC test files from JSONL request files
     requestsOption,
     clientsOption,
     parallelismOption,
-    includeOption,
-    excludeOption,
+    methodsOption,
     minBlocksOption,
     maxBlocksOption,
     minResultLenOption,
@@ -76,8 +71,7 @@ rootCommand.SetAction(async (parseResult, ct) =>
         Sources = [.. parseResult.GetRequiredValue(requestsOption).Select(FilePos.Parse)],
         Client = parseResult.GetValue(clientsOption) is { } c ? new Uri(c) : null,
         Parallelism = parseResult.GetValue(parallelismOption),
-        Include = parseResult.GetValue(includeOption),
-        Exclude = parseResult.GetValue(excludeOption),
+        Methods = [.. parseResult.GetValue(methodsOption) ?? []],
         MinBlocks = parseResult.GetValue(minBlocksOption),
         MaxBlocks = parseResult.GetValue(maxBlocksOption),
         MinResultLen = parseResult.GetValue(minResultLenOption),

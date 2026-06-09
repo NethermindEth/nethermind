@@ -23,7 +23,7 @@ public class RequestReader(FilePos[] sources, Filter filter)
                     await Console.Out.WriteLineAsync($"Reading line #{_lineN}");
 
                 if (fileLineN++ < startLocation.LineNumber) continue;
-                if (!filter.IncludeRequest(line)) continue;
+                if (string.IsNullOrWhiteSpace(line)) continue;
 
                 FilePos pos = startLocation with { LineNumber = fileLineN };
 

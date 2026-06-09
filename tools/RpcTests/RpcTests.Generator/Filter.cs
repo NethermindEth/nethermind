@@ -7,15 +7,6 @@ namespace Nethermind.RpcTests.Generator;
 
 public class Filter(ExecutionArgs args)
 {
-    public bool IncludeRequest(string line)
-    {
-        if (string.IsNullOrWhiteSpace(line)) return false;
-        if (args.Exclude is { } exclude && line.Contains(exclude, StringComparison.Ordinal)) return false;
-        if (args.Include is { } include && !line.Contains(include, StringComparison.Ordinal)) return false;
-
-        return true;
-    }
-
     private static JsonNode? GetParams(JsonNode request) => request["params"] switch
     {
         JsonObject paramsObject => paramsObject,
@@ -26,13 +17,16 @@ public class Filter(ExecutionArgs args)
 
     public bool IncludeRequest(JsonNode request)
     {
+        if (request["method"] is not { } method)
+            return false;
+        if (args.Methods is { Count: > 0 } allowed && !allowed.Contains(method.ToString()))
+            return false;
+
         if (GetParams(request) is not { } @params)
-        {
             return true;
-        }
 
         if ((args.MinBlocks is not null || args.MaxBlocks is not null) &&
-            request["method"]?.ToString() == "eth_getLogs")
+            method.ToString() == "eth_getLogs")
         {
             long? fromBlock = @params["fromBlock"] is { } fromBlockJson ? Convert.ToInt64(fromBlockJson.ToString(), 16) : null;
             long? toBlock = @params["toBlock"] is { } toBlockJson ? Convert.ToInt64(toBlockJson.ToString(), 16) : null;
