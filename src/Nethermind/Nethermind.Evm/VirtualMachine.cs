@@ -477,7 +477,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
         else if (!chargedCodeDeposit && _txTracer.IsTracingActions)
         {
-            _txTracer.ReportActionEnd(0L, callCodeOwner, code);
+            // Cast note: 0UL is the canonical gas value here — no gas remains after a failed-but-non-halting
+            // deposit. ReportActionEnd takes ulong; using 0UL avoids any implicit narrowing ambiguity.
+            _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
         }
     }
 
@@ -991,8 +993,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        long baseGasCost = precompile.BaseGasCost(spec);
-        long dataGasCost = precompile.DataGasCost(callData, spec);
+        // Both fields are ulong after IPrecompile.BaseGasCost / DataGasCost interface migration.
+        ulong baseGasCost = precompile.BaseGasCost(spec);
+        ulong dataGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
 
@@ -1012,8 +1015,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
-            !TGasPolicy.UpdateGas(ref gas, (ulong)(baseGasCost + dataGasCost)))
+        // Guard against addition overflow before summing into UpdateGas.
+        // The previous form — (ulong)a + (ulong)b > ulong.MaxValue — was tautologically false:
+        // the addition already happened in ulong and silently wrapped before the comparison.
+        if (baseGasCost > ulong.MaxValue - dataGasCost ||
+            !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
         {
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
@@ -1300,12 +1306,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                 }
 
-                // If gas is exhausted, jump to the out-of-gas handler.
-                if (TGasPolicy.GetRemainingGas(in gas) < 0)
-                {
-                    OpCodeCount += opCodeCount;
-                    goto OutOfGas;
-                }
+                // GetRemainingGas returns ulong; the previous < 0 check here was dead code.
+                // Gas exhaustion is signalled by opcodes returning EvmExceptionType.OutOfGas
+                // (via TGasPolicy.UpdateGas returning false), caught by the exceptionType check below.
 
                 // Call gas policy hook after instruction execution.
                 TGasPolicy.OnAfterInstructionTrace(in gas);
@@ -1373,11 +1376,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     Revert:
         // Return a CallResult indicating a revert.
         return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
-
-    OutOfGas:
-        TGasPolicy.SetOutOfGas(ref gas);
-        // Set the exception type to OutOfGas if gas has been exhausted.
-        exceptionType = EvmExceptionType.OutOfGas;
     ReturnFailure:
         // EIP-8037: write gas back to state on failure so RestoreChildStateGasOnHalt
         // can read accumulated StateGasUsed/StateGasSpill from the child frame.

@@ -105,9 +105,9 @@ public class TxTrieTests(bool useEip2718)
     {
         const int txCount = 100;
         Transaction[] transactions = new Transaction[txCount];
-        for (int i = 0; i < txCount; i++)
+        for (uint i = 0; i < txCount; i++)
         {
-            transactions[i] = Build.A.Transaction.WithNonce((ulong)(i + 1)).Signed().TestObject;
+            transactions[i] = Build.A.Transaction.WithNonce(i + 1).Signed().TestObject;
         }
 
         using TrackingCappedArrayPool pool = new();

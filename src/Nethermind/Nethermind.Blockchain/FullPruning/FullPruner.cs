@@ -164,7 +164,7 @@ namespace Nethermind.Blockchain.FullPruning
             }, cancellationToken);
 
             ulong stateToCopy = _blockTree.BestPersistedState.Value;
-            ulong blockToPruneAfter = stateToCopy + (ulong)_pruningConfig.PruningBoundary;
+            ulong blockToPruneAfter = stateToCopy + _pruningConfig.PruningBoundary;
 
             await WaitForMainChainChange((e) =>
             {

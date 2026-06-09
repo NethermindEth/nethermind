@@ -25,9 +25,9 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     private const int InputLength = 128;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => 3000UL;
 
     // RunInternal zero-pads short inputs to InputLength, so trailing zeros are insignificant.
     // Trimming them normalizes e.g. a 64-byte input and its 128-byte zero-padded equivalent to the same key.

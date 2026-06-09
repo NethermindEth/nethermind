@@ -107,7 +107,7 @@ namespace Ethereum.Test.Base
                 test.Transaction.ChainId = test.ChainId;
             }
 
-            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)(ulong)test.CurrentNumber);
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             Transaction[] transactions = [test.Transaction];
             Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? [] : null;
 
@@ -116,8 +116,8 @@ namespace Ethereum.Test.Base
                 Keccak.OfAnEmptySequenceRlp,
                 test.CurrentCoinbase,
                 test.CurrentDifficulty,
-                (ulong)test.CurrentNumber,
-                (ulong)test.CurrentGasLimit,
+                test.CurrentNumber,
+                test.CurrentGasLimit,
                 test.CurrentTimestamp,
                 [])
             {
@@ -209,7 +209,7 @@ namespace Ethereum.Test.Base
                         storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
-                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, (ulong)accountState.Value.Nonce);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
             }
 

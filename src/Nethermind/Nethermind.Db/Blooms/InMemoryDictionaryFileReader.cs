@@ -11,6 +11,6 @@ namespace Nethermind.Db.Blooms
 
         public void Dispose() { }
 
-        public int Read(long index, Span<byte> element) => _store.Read(index, element);
+        public int Read(ulong index, Span<byte> element) => _store.Read(index, element);
     }
 }

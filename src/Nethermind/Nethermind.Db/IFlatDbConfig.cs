@@ -8,7 +8,7 @@ namespace Nethermind.Db;
 public interface IFlatDbConfig : IConfig
 {
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
-    long BlockCacheSizeBudget { get; set; }
+    ulong BlockCacheSizeBudget { get; set; }
 
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     int CompactSize { get; set; }
@@ -41,7 +41,7 @@ public interface IFlatDbConfig : IConfig
     bool RegenerateCompactionOffset { get; set; }
 
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
-    long TrieCacheMemoryBudget { get; set; }
+    ulong TrieCacheMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }

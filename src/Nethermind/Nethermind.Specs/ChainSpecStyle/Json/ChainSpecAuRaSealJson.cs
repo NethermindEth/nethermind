@@ -5,7 +5,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     public class ChainSpecAuRaSealJson
     {
-        public long Step { get; set; }
+        public ulong Step { get; set; }
         public byte[] Signature { get; set; }
     }
 }

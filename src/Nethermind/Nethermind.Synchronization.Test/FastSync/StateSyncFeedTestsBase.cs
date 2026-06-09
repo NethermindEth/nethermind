@@ -266,7 +266,7 @@ public abstract class StateSyncFeedTestsBase(
             _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
             PruningConfig pruningConfig = new();
-            TestFinalizedStateProvider testFinalizedStateProvider = new((ulong)pruningConfig.PruningBoundary);
+            TestFinalizedStateProvider testFinalizedStateProvider = new(pruningConfig.PruningBoundary);
             TrieStore trieStore = new(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                 Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;

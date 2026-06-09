@@ -20,7 +20,7 @@ namespace Nethermind.AuRa.Test
         {
             ManualTimestamper manualTimestamper = new(DateTime.UtcNow);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), manualTimestamper, LimboLogs.Instance);
-            long step = calculator.CurrentStep;
+            ulong step = calculator.CurrentStep;
             manualTimestamper.Add(calculator.TimeToNextStep);
             Assert.That(calculator.CurrentStep, Is.EqualTo(step + 1), calculator.TimeToNextStep.ToString());
         }
@@ -41,21 +41,21 @@ namespace Nethermind.AuRa.Test
             DateTimeOffset time = DateTimeOffset.FromUnixTimeMilliseconds(milliSeconds);
             ManualTimestamper timestamper = new(time.UtcDateTime);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), timestamper, LimboLogs.Instance);
-            Assert.That(calculator.CurrentStep, Is.EqualTo(time.ToUnixTimeSeconds() / stepDuration));
+            Assert.That(calculator.CurrentStep, Is.EqualTo((ulong)(time.ToUnixTimeSeconds() / stepDuration)));
         }
 
-        [TestCase(100000060005L, 2, 50000030)]
-        [TestCase(100000060005L, 2, 50000000)]
-        [TestCase(100000060005L, 2, 50000031)]
-        [TestCase(100000060005L, 2, 50000035)]
-        public void time_to_step_is_calculated_correctly(long milliSeconds, int stepDuration, int checkedStep)
+        [TestCase(100000060005L, 2, 50000030UL)]
+        [TestCase(100000060005L, 2, 50000000UL)]
+        [TestCase(100000060005L, 2, 50000031UL)]
+        [TestCase(100000060005L, 2, 50000035UL)]
+        public void time_to_step_is_calculated_correctly(long milliSeconds, int stepDuration, ulong checkedStep)
         {
-            const long currentStep = 50000030;
+            const ulong currentStep = 50000030UL;
             TimeSpan timeToNextStep = TimeSpan.FromMilliseconds(1995);
             DateTimeOffset time = DateTimeOffset.FromUnixTimeMilliseconds(milliSeconds);
             ManualTimestamper timestamper = new(time.UtcDateTime);
             AuRaStepCalculator calculator = new(GetStepDurationsForSingleStep(stepDuration), timestamper, LimboLogs.Instance);
-            TimeSpan expected = checkedStep <= currentStep ? TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds((checkedStep - currentStep - 1) * stepDuration) + timeToNextStep;
+            TimeSpan expected = checkedStep <= currentStep ? TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds((double)(checkedStep - currentStep - 1) * stepDuration) + timeToNextStep;
             TestContext.Out.WriteLine($"Expected time to step {checkedStep} is {expected}");
             Assert.That(calculator.TimeToStep(checkedStep), Is.EqualTo(expected));
         }

@@ -41,3 +41,36 @@ public class NullableRawLongConverter : JsonConverter<long?>
         }
     }
 }
+
+public class NullableRawULongConverter : JsonConverter<ulong?>
+{
+    private readonly ULongConverter _converter = new();
+
+    public override ulong? Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+
+        return _converter.Read(ref reader, typeToConvert, options);
+    }
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        ulong? value,
+        JsonSerializerOptions options)
+    {
+        if (!value.HasValue)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            writer.WriteNumberValue(value.GetValueOrDefault());
+        }
+    }
+}

@@ -19,6 +19,6 @@ internal class XdcGasLimitCalculator(ISpecProvider specProvider, IBlocksConfig b
         {
             return targetAdjustedGasLimitCalculator.GetGasLimit(parentHeader);
         }
-        return (ulong)(blocksConfig.TargetBlockGasLimit ?? XdcConstants.DefaultTargetGasLimit);
+        return blocksConfig.TargetBlockGasLimit ?? XdcConstants.DefaultTargetGasLimit;
     }
 }

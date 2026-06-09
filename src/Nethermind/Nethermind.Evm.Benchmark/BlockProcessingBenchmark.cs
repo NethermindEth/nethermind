@@ -358,14 +358,14 @@ public class BlockProcessingBenchmark
         return txs;
     }
 
-    private Transaction[] BuildEip1559Transfers(int count, uint startNonce)
+    private Transaction[] BuildEip1559Transfers(int count, int startNonce)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
         {
             txs[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithNonce(startNonce + i)
+                .WithNonce((ulong)(startNonce + i))
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)

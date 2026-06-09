@@ -69,7 +69,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                blockHeader.AuRaStep = (long)decoderContext.DecodeUInt256();
+                blockHeader.AuRaStep = (ulong)decoderContext.DecodeUInt256();
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
 

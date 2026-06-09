@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private ulong ComputeBarrier(ulong pivotNumber)
         {
-            ulong clamped = Math.Max(1UL, Math.Min(pivotNumber, (ulong)_syncConfig.AncientBodiesBarrier));
+            ulong clamped = Math.Max(1UL, Math.Min(pivotNumber, _syncConfig.AncientBodiesBarrier));
             ulong? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
             return cutoffBlockNumber is null ? clamped : ulong.Max(clamped, cutoffBlockNumber.Value);
         }

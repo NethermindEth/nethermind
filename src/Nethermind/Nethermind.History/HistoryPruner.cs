@@ -89,8 +89,8 @@ public class HistoryPruner : IHistoryPruner
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled();
-        // PruningInterval is uint, SlotsPerEpoch is int; promote both to ulong before multiply.
-        _pruningInterval = (ulong)historyConfig.PruningInterval * (ulong)SlotsPerEpoch;
+        // SlotsPerEpoch is int; promote to ulong before multiply.
+        _pruningInterval = historyConfig.PruningInterval * (ulong)SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
@@ -179,7 +179,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         ulong blocksToRetain = retentionEpochs * SlotsPerEpoch;
-        return ulong.Max(head.Value - blocksToRetain, 0);
+        return head.Value >= blocksToRetain ? head.Value - blocksToRetain : 0;
     }
 
     private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)

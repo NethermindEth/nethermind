@@ -92,7 +92,7 @@ public sealed class EraImporter(
         using ProgressReporter progress = new("EraE import", logManager, to - from + 1);
         ulong blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new(blockTree, (ulong)eraConfig.ImportBlocksBufferSize, (ulong)(eraConfig.ImportBlocksBufferSize - 1024));
+        using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024UL);
         ulong blockNumber = from;
 
         ulong suggestFromBlock = (blockTree.Head?.Number ?? 0UL) + 1;

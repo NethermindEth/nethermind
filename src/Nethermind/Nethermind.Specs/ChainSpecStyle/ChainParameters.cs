@@ -62,7 +62,7 @@ public class ChainParameters
 
     public UInt256? Eip1559BaseFeeMaxChangeDenominator { get; set; }
 
-    public long? Eip1559ElasticityMultiplier { get; set; }
+    public ulong? Eip1559ElasticityMultiplier { get; set; }
 
     /// <summary>
     ///  Transaction permission managing contract address.
@@ -165,7 +165,7 @@ public class ChainParameters
     /// Gets or sets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
     /// </summary>
-    public UInt256? Eip4844BlobGasPriceUpdateFraction { get; set; }
+    public ulong? Eip4844BlobGasPriceUpdateFraction { get; set; }
 
     /// <summary>
     /// Gets or sets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei, defined in

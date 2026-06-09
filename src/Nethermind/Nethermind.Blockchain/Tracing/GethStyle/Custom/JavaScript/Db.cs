@@ -15,7 +15,7 @@ public class Db(IWorldState worldState)
 
     public IJavaScriptObject getBalance(object address) => WorldState.GetBalance(address.ToAddress()).ToBigInteger();
 
-    public ulong getNonce(object address) => (ulong)WorldState.GetNonce(address.ToAddress());
+    public ulong getNonce(object address) => WorldState.GetNonce(address.ToAddress());
 
     public ITypedArray<byte> getCode(object address) => WorldState.GetCode(address.ToAddress()).ToTypedScriptArray();
 

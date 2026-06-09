@@ -24,9 +24,9 @@ public partial class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
     public static string Name => "BN254_MUL";
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-1108" />
-    public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6_000L : 40_000L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6_000UL : 40_000UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
 
     public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
     {

@@ -108,7 +108,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
 
         BlockReward[] finalRewards = rewards.ToArray();
-        _rewardsStore.SaveEpochRewards((ulong)xdcHeader.Number, finalRewards);
+        _rewardsStore.SaveEpochRewards(xdcHeader.Number, finalRewards);
         return finalRewards;
     }
 

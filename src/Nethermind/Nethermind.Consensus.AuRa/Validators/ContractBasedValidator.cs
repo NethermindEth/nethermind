@@ -189,7 +189,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             ValidatorInfo validatorsInfo = ValidatorStore.GetValidatorsInfo(block.Number);
             bool isInitialValidatorSet = validatorsInfo.FinalizingBlockNumber == InitBlockNumber
-                                        && validatorsInfo.PreviousFinalizingBlockNumber < InitBlockNumber;
+                                        && (validatorsInfo.PreviousFinalizingBlockNumber == ulong.MaxValue || validatorsInfo.PreviousFinalizingBlockNumber < InitBlockNumber);
 
             if (InitBlockNumber == block.Number || (!isInitialValidatorSet && validatorsInfo.FinalizingBlockNumber == block.Number - 1))
             {

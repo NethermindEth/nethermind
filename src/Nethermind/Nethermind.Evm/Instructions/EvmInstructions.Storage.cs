@@ -297,7 +297,7 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)) goto StackUnderflow;
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)(EvmCalculations.Div32Ceiling(c, out bool outOfGas)));
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         if (c.IsZero)
@@ -365,7 +365,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        if (!TGasPolicy.UpdateGas(ref gas, (ulong)spec.GasCosts.SStoreResetCost))
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost))
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
@@ -391,7 +391,7 @@ public static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        ulong sClearRefunds = (ulong)spec.GasCosts.SClearRefund;
+        ulong sClearRefunds = spec.GasCosts.SClearRefund;
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -509,7 +509,7 @@ public static partial class EvmInstructions
 
         if (newSameAsCurrent)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, (ulong)gasCosts.NetMeteredSStoreCost))
+            if (!TGasPolicy.UpdateGas(ref gas, gasCosts.NetMeteredSStoreCost))
                 goto OutOfGas;
         }
         else

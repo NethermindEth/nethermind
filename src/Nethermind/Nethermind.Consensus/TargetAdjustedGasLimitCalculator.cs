@@ -18,12 +18,12 @@ namespace Nethermind.Consensus
             ulong parentGasLimit = parentHeader.GasLimit;
             ulong gasLimit = parentGasLimit;
 
-            long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
+            ulong? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
             ulong newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temporary solution
             if (targetGasLimit is not null)
             {
-                ulong target = (ulong)targetGasLimit.Value;
+                ulong target = targetGasLimit.Value;
                 ulong maxGasLimitDifference = Math.Max(0UL, parentGasLimit / spec.GasLimitBoundDivisor - 1);
                 gasLimit = target > parentGasLimit
                     ? parentGasLimit + Math.Min(target - parentGasLimit, maxGasLimitDifference)

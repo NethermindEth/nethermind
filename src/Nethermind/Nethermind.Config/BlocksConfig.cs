@@ -49,7 +49,7 @@ namespace Nethermind.Config
         }
 
         public bool Enabled { get; set; }
-        public long? TargetBlockGasLimit { get; set; } = null;
+        public ulong? TargetBlockGasLimit { get; set; } = null;
 
         public UInt256 MinGasPrice { get; set; } = 1.Wei;
 

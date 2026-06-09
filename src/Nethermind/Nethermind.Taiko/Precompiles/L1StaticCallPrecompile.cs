@@ -49,20 +49,20 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, ICont
     public static ILogger Logger { get; set; }
     public static long GasCap => L1PrecompileConstants.L1CallMaxGasCap;
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1StaticCallFixedGasCost;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1StaticCallFixedGasCost;
 
     /// <summary>
     /// Returns the static overhead cost: per-call overhead + per-byte calldata cost.
     /// The dynamic L1 gas cost is handled by <see cref="Run(ReadOnlyMemory{byte}, IReleaseSpec, in PrecompileExtras)"/>.
     /// </summary>
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (inputData.Length < L1PrecompileConstants.L1StaticCallMinInputLength)
-            return 0L;
+            return 0UL;
 
         int calldataLength = inputData.Length - L1PrecompileConstants.L1StaticCallMinInputLength;
         return L1PrecompileConstants.L1StaticCallPerCallOverhead
-            + L1PrecompileConstants.L1StaticCallPerByteCalldataCost * calldataLength;
+            + L1PrecompileConstants.L1StaticCallPerByteCalldataCost * (ulong)calldataLength;
     }
 
     /// <summary>

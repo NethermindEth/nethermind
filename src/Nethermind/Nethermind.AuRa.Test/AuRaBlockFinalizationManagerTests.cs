@@ -111,9 +111,9 @@ namespace Nethermind.AuRa.Test
             blockTreeBuilder.OfChainLength(chainLength, blockBeneficiaries: blockCreators);
 
             int start = 0;
-            for (int i = start; i < chainLength; i++)
+            for (ulong i = 0; i < (ulong)chainLength; i++)
             {
-                Hash256 blockHash = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel((ulong)i).MainChainBlock.BlockHash;
+                Hash256 blockHash = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.BlockHash;
                 Block? block = blockTreeBuilder.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
                 _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, []));
             }

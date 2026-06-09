@@ -288,7 +288,7 @@ namespace Nethermind.Evm.Test.Tracing
             Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             EstimateGasTracer tracer = new();
-            tracer.MarkAsSuccess(Address.Zero, (ulong)totalGas, [], []);
+            tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new(
@@ -338,7 +338,7 @@ namespace Nethermind.Evm.Test.Tracing
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(err, Is.Null);
-                Assert.That(result, Is.EqualTo((ulong)totalGas));
+                Assert.That(result, Is.EqualTo(totalGas));
             }
         }
 

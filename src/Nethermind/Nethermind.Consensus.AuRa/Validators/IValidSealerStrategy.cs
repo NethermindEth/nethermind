@@ -16,6 +16,6 @@ namespace Nethermind.Consensus.AuRa.Validators
         /// <param name="step">Step to be checked.</param>
         /// <param name="expectedAddress">Address which should create block in current step.</param>
         /// <returns>'true' if <see cref="address"/> should seal a block at <see cref="step"/> for supplied <see cref="validators"/> collection. Otherwise 'false'.</returns>
-        bool IsValidSealer(IList<Address> validators, Address address, long step, out Address expectedAddress);
+        bool IsValidSealer(IList<Address> validators, Address address, ulong step, out Address expectedAddress);
     }
 }

@@ -28,7 +28,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
     public static string Name => "MODEXP";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
     public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData)
     {
@@ -57,7 +57,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         return low > int.MaxValue ? int.MaxValue : (int)low;
     }
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         try
         {
@@ -67,11 +67,11 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         }
         catch (OverflowException)
         {
-            return long.MaxValue;
+            return ulong.MaxValue;
         }
     }
 
-    private static long DataGasCostInternal(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    private static ulong DataGasCostInternal(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Span<byte> extendedInput = stackalloc byte[96];
         inputData[..Math.Min(96, inputData.Length)].Span
@@ -80,7 +80,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         return DataGasCostInternal(extendedInput, inputData);
     }
 
-    private static long DataGasCostInternal(ReadOnlySpan<byte> extendedInput, ReadOnlyMemory<byte> inputData)
+    private static ulong DataGasCostInternal(ReadOnlySpan<byte> extendedInput, ReadOnlyMemory<byte> inputData)
     {
         UInt256 baseLength = new(extendedInput[..32], true);
         UInt256 expLength = new(extendedInput.Slice(32, 32), true);
@@ -94,7 +94,7 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
         UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
         UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
         UInt256 gas = complexity * UInt256.Max(adjusted, UInt256.One) / 20;
-        return gas > long.MaxValue ? long.MaxValue : (long)gas;
+        return gas > ulong.MaxValue ? ulong.MaxValue : (ulong)gas;
     }
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

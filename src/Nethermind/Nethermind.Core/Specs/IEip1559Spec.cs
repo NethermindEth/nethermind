@@ -20,7 +20,7 @@ namespace Nethermind.Core.Specs
         public UInt256? Eip1559BaseFeeMinValue => null;
         public UInt256 ForkBaseFee { get; }
         public UInt256 BaseFeeMaxChangeDenominator { get; }
-        public long ElasticityMultiplier { get; }
+        public ulong ElasticityMultiplier { get; }
         public IBaseFeeCalculator BaseFeeCalculator { get; }
     }
 
@@ -32,7 +32,7 @@ namespace Nethermind.Core.Specs
         public UInt256? Eip1559BaseFeeMinValue { get; init; } = spec.Eip1559BaseFeeMinValue;
         public UInt256 ForkBaseFee { get; init; } = spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator { get; init; } = spec.BaseFeeMaxChangeDenominator;
-        public long ElasticityMultiplier { get; init; } = spec.ElasticityMultiplier;
+        public ulong ElasticityMultiplier { get; init; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; init; } = spec.BaseFeeCalculator;
     }
 }

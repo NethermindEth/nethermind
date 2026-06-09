@@ -156,16 +156,18 @@ public class SimulateTxExecutor<TTrace>(
 
                 if (blockToSimulate.BlockOverrides.Time is not null)
                 {
-                    if (blockToSimulate.BlockOverrides.Time <= lastBlockTime)
+                    ulong blockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    if (blockTime <= lastBlockTime)
                     {
                         return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block timestamp out of order {blockToSimulate.BlockOverrides.Time} is <= than given base timestamp of {lastBlockTime}!", ErrorCodes.BlockTimestampNotIncreased);
                     }
-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    lastBlockTime = blockTime;
                 }
                 else
                 {
-                    blockToSimulate.BlockOverrides.Time = lastBlockTime + _secondsPerSlot;
-                    lastBlockTime = (ulong)blockToSimulate.BlockOverrides.Time;
+                    ulong blockTime = lastBlockTime + _secondsPerSlot;
+                    blockToSimulate.BlockOverrides.Time = blockTime;
+                    lastBlockTime = blockTime;
                 }
                 lastBlockNumber = givenNumber;
 

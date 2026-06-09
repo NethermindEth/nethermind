@@ -155,7 +155,7 @@ public interface ISyncConfig : IConfig
     bool? SnapServingEnabled { get; set; }
 
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
-    int SnapServingMaxDepth { get; set; }
+    ulong SnapServingMaxDepth { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max trie paths per group accepted in snap GetTrieNodes messages. Raise if peers send slightly larger groups (e.g. Geth trienodeHealThrottle sends 1025).", DefaultValue = "1024", HiddenFromDocs = true)]
     int SnapServingMaxPathsPerGroup { get; set; }
@@ -182,13 +182,13 @@ public interface ISyncConfig : IConfig
     int StateMaxDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
-    int StateMinDistanceFromHead { get; set; }
+    ulong StateMinDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
     bool GCOnFeedFinished { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
-    int HeaderStateDistance { get; set; }
+    ulong HeaderStateDistance { get; set; }
 
     [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }

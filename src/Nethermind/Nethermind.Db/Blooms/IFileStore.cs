@@ -7,9 +7,9 @@ namespace Nethermind.Db.Blooms
 {
     public interface IFileStore : IDisposable
     {
-        void Write(long index, ReadOnlySpan<byte> element);
+        void Write(ulong index, ReadOnlySpan<byte> element);
 
-        int Read(long index, Span<byte> element);
+        int Read(ulong index, Span<byte> element);
 
         IFileReader CreateFileReader();
     }

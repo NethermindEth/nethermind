@@ -26,7 +26,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     {
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
 
-        return epochNumber < (ulong)spec.SwitchEpoch ?
+        return epochNumber < spec.SwitchEpoch ?
             CalculateBlockInfoByV1EpochNum(epochNumber) :
             GetBlockInfoByV2EpochNum(epochNumber);
     }
@@ -94,7 +94,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         ulong[] epochSwitchNumbers = new ulong[epochSwitchInfos.Length];
         for (int i = 0; i < epochSwitchInfos.Length; i++)
         {
-            epochSwitchNumbers[i] = (ulong)epochSwitchInfos[i].EpochSwitchBlockInfo.BlockNumber;
+            epochSwitchNumbers[i] = epochSwitchInfos[i].EpochSwitchBlockInfo.BlockNumber;
         }
 
         return ResultWrapper<ulong[]>.Success(epochSwitchNumbers);
@@ -208,7 +208,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         ulong round = xdcHeader.ExtraConsensusData.BlockRound;
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader);
 
-        ulong epochNum = (ulong)spec.SwitchEpoch + round / (ulong)spec.EpochLength;
+        ulong epochNum = spec.SwitchEpoch + round / spec.EpochLength;
 
         EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
         if (epochSwitchInfo is null)
@@ -223,7 +223,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         MasternodesStatus info = new()
         {
             Epoch = epochNum,
-            Number = (ulong)header.Number,
+            Number = header.Number,
             Round = round,
             MasternodesLen = masternodes.Length,
             Masternodes = masternodes,
@@ -326,7 +326,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         // No epoch switches in the requested range means no rewards to aggregate.
         foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
         {
-            ulong epochBlockNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+            ulong epochBlockNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             if (!rewardsStore.HasEpochRewards(epochBlockNumber))
             {
                 return ResultWrapper<AccountRewardResponse>.Fail($"Reward data not available for epoch block {epochBlockNumber}");

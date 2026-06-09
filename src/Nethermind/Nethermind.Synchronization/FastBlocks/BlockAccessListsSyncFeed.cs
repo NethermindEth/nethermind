@@ -29,7 +29,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 {
     protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
-    protected override ulong SyncConfigBarrierCalc => (ulong)_syncConfig.AncientBlockAccessListsBarrierCalc;
+    protected override ulong SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
     protected override Func<bool> HasPivot =>
         () =>
         {
@@ -89,16 +89,16 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     public override void InitializeFeed()
     {
-        if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != (ulong)_syncConfig.AncientBlockAccessListsBarrierCalc)
+        if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientBlockAccessListsBarrierCalc)
         {
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-            _barrier = (ulong)_syncConfig.AncientBlockAccessListsBarrierCalc;
+            _barrier = _syncConfig.AncientBlockAccessListsBarrierCalc;
             if (_logger.IsInfo) _logger.Info($"Changed pivot in block access lists sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
             ResetSyncStatusList();
             InitializeMetadataDb();
         }
         base.InitializeFeed();
-        _syncReport.FastBlockAccessLists.Reset(0, _pivotNumber - (ulong)_syncConfig.AncientBlockAccessListsBarrierCalc);
+        _syncReport.FastBlockAccessLists.Reset(0, _pivotNumber - _syncConfig.AncientBlockAccessListsBarrierCalc);
     }
 
     private void ResetSyncStatusList() =>
@@ -106,7 +106,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             _blockTree,
             _pivotNumber,
             _syncPointers.LowestInsertedBlockAccessListBlockNumber,
-            (ulong)_syncConfig.AncientBlockAccessListsBarrier);
+            _syncConfig.AncientBlockAccessListsBarrier);
 
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.FastBlockAccessLists & ~SyncMode.FastBlocks;

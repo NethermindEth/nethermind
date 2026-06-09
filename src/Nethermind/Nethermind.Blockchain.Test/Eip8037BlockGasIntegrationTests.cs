@@ -119,14 +119,14 @@ public class Eip8037BlockGasIntegrationTests
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
         Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)
             .WithCode([])
-            .WithGasLimit(53_000ul + (ulong)IntrinsicNewAccountState)
+            .WithGasLimit(53_000ul + IntrinsicNewAccountState)
             .WithNonce(1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
 
         GasValidationResultSlot[] results = ResultsForCount(2);
         // Filler used full cap; create tx used modest regular + intrinsic state.
         results[0].TrySetResult(GasResult(block, 0, 16_777_216ul, 0ul));
-        results[1].TrySetResult(GasResult(block, 1, 53_000ul, (ulong)IntrinsicNewAccountState));
+        results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None));

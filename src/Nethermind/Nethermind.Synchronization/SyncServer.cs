@@ -174,9 +174,9 @@ namespace Nethermind.Synchronization
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             ulong headNumber = _blockTree.Head?.Number ?? 0UL;
-            // Guard against underflow: MaxReorgLength is long but subtraction is on ulong.
-            bool isBlockOlderThanMaxReorgAllows = headNumber > (ulong)Sync.MaxReorgLength &&
-                                                  block.Number < headNumber - (ulong)Sync.MaxReorgLength;
+            // Guard against underflow
+            bool isBlockOlderThanMaxReorgAllows = headNumber > Sync.MaxReorgLength &&
+                                                  block.Number < headNumber - Sync.MaxReorgLength;
 
             // We skip blocks that are old
             if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
@@ -255,8 +255,8 @@ namespace Nethermind.Synchronization
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
-            // HintValidationRange takes long; cast is safe for realistic block heights.
-            _sealValidator.HintValidationRange(_sealValidatorUserGuid, (long)block.Number - 128, (long)block.Number + 1024);
+            ulong start = block.Number >= 128 ? block.Number - 128 : 0UL;
+            _sealValidator.HintValidationRange(_sealValidatorUserGuid, start, block.Number + 1024);
             return _sealValidator.ValidateSeal(block.Header, true);
         }
 

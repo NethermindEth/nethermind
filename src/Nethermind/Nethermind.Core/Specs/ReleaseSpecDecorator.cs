@@ -100,7 +100,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
     public virtual ulong MaxBlobCount => spec.MaxBlobCount;
     public virtual ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
-    public virtual UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
+    public virtual ulong BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
@@ -108,7 +108,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? FeeCollector => spec.FeeCollector;
     public virtual UInt256 ForkBaseFee => spec.ForkBaseFee;
     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
-    public virtual long ElasticityMultiplier => spec.ElasticityMultiplier;
+    public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }

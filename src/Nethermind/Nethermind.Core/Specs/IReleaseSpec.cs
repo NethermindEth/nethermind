@@ -402,7 +402,7 @@ namespace Nethermind.Core.Specs
         public ulong TargetBlobCount { get; }
         public ulong MaxBlobCount { get; }
         public ulong MaxBlobsPerTx { get; }
-        public UInt256 BlobBaseFeeUpdateFraction { get; }
+        public ulong BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 

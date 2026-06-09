@@ -51,7 +51,7 @@ namespace Nethermind.Trie.Test.Pruning
                 TrackPastKeys = false // Default disable
             };
 
-            finalizedStateProvider ??= new TestFinalizedStateProvider((ulong)pruningConfig.PruningBoundary);
+            finalizedStateProvider ??= new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
             TrieStore trieStore = new(
                 new NodeStorage(kvStore, scheme, requirePath: scheme == INodeStorage.KeyScheme.HalfPath),
                 pruningStrategy,
@@ -343,13 +343,13 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(512));
             TreePath emptyPath = TreePath.Empty;
-            for (int i = 0; i < 1024; i++)
+            for (ulong i = 0; i < 1024; i++)
             {
                 TrieNode fakeRoot = new(NodeType.Leaf, []); // 192B
                 fakeRoot.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
-                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit((ulong)i, fakeRoot))
+                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, fakeRoot))
                 {
-                    for (int j = 0; j < 1 + i % 3; j++)
+                    for (ulong j = 0; j < 1 + i % 3; j++)
                     {
                         TrieNode trieNode = new(NodeType.Leaf, []); // 192B
                         trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
@@ -904,7 +904,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void HasRoot_with_block_number_rejects_pruned_state()
         {
-            int pruningBoundary = 4;
+            ulong pruningBoundary = 4;
             TestPruningStrategy testPruningStrategy = new(shouldPrune: false);
 
             TrieStore trieStore = CreateTrieStore(
@@ -922,9 +922,10 @@ namespace Nethermind.Trie.Test.Pruning
             Hash256[] rootHashes = new Hash256[10];
             for (int i = 0; i < 10; i++)
             {
-                using (trieStore.BeginBlockCommit((ulong)i))
+                ulong blockNumber = (ulong)i;
+                using (trieStore.BeginBlockCommit(blockNumber))
                 {
-                    stateTree.Set(TestItem.AddressA, new Account((ulong)(i + 1)));
+                    stateTree.Set(TestItem.AddressA, new Account(blockNumber + 1));
                     stateTree.Commit();
                 }
                 rootHashes[i] = stateTree.RootHash;
@@ -954,7 +955,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void HasRoot_with_block_number_allows_old_blocks_in_archive_mode([Values] bool trackPastKeys)
         {
-            int pruningBoundary = 4;
+            ulong pruningBoundary = 4;
             // Archive mode: shouldPrune always true, deleteObsoleteKeys = false
             // When TrackPastKeys is false, _deleteOldNodes is always false regardless of deleteObsoleteKeys.
             // When TrackPastKeys is true, deleteObsoleteKeys = false still prevents node deletion.
@@ -973,20 +974,21 @@ namespace Nethermind.Trie.Test.Pruning
 
             // Start from block 1 (not genesis) to avoid special-casing block 0
             int startBlock = 1;
-            int blockCount = pruningBoundary * 4;
+            int blockCount = (int)(pruningBoundary * 4);
             Hash256[] rootHashes = new Hash256[startBlock + blockCount];
             for (int i = startBlock; i < startBlock + blockCount; i++)
             {
-                using (trieStore.BeginBlockCommit((ulong)i))
+                ulong blockNumber = (ulong)i;
+                using (trieStore.BeginBlockCommit(blockNumber))
                 {
-                    stateTree.Set(TestItem.AddressA, new Account((ulong)(i + 1)));
+                    stateTree.Set(TestItem.AddressA, new Account(blockNumber + 1));
                     stateTree.Commit();
                 }
                 rootHashes[i] = stateTree.RootHash;
             }
 
             trieStore.WaitForPruning();
-            Assert.That(trieStore.LastPersistedBlockNumber, Is.GreaterThan(pruningBoundary + startBlock));
+            Assert.That(trieStore.LastPersistedBlockNumber, Is.GreaterThan(pruningBoundary + (ulong)startBlock));
 
             ulong lastPersisted = trieStore.LastPersistedBlockNumber;
 
@@ -1466,7 +1468,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public async Task Will_Persist_ReCommittedPersistedNode_FromCommitBuffer()
         {
-            int pruningBoundary = 4;
+            ulong pruningBoundary = 4;
 
             ManualResetEvent writeBlocker = new(true);
             ManualResetEventSlim writeReached = new(false);
@@ -1570,7 +1572,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.FlushNonBlockingBuffer();
 
             // Write a bit more
-            for (int i = 13; i < 13 + pruningBoundary; i++)
+            for (int i = 13; i < 13 + (int)pruningBoundary; i++)
             {
                 using (fullTrieStore.BeginBlockCommit((ulong)i))
                 {
@@ -1600,7 +1602,7 @@ namespace Nethermind.Trie.Test.Pruning
                 deleteObsoleteKeys: true
             );
 
-            int pruningBoundary = 4;
+            ulong pruningBoundary = 4;
             IPruningConfig pruningConfig = new PruningConfig()
             {
                 PruningBoundary = pruningBoundary,
@@ -1609,7 +1611,7 @@ namespace Nethermind.Trie.Test.Pruning
                 TrackPastKeys = true
             };
 
-            TestFinalizedStateProvider finalizedStateProvider = new((ulong)pruningConfig.PruningBoundary);
+            TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
 
             TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
@@ -1664,7 +1666,7 @@ namespace Nethermind.Trie.Test.Pruning
                         ptree.RootHash = parentRoot;
                         WriteRandomData(seed);
                         rootsToTests.Add(ptree.RootHash);
-                        if (i >= blockNum - pruningBoundary) lastNRoots++;
+                        if (i >= blockNum - (int)pruningBoundary) lastNRoots++;
                     }
                 }
 
@@ -1678,7 +1680,7 @@ namespace Nethermind.Trie.Test.Pruning
                             ptree.RootHash = parentRoot;
                             WriteRandomData(seed * 1000);
                             rootsToTests.Add(ptree.RootHash);
-                            if (i >= blockNum - pruningBoundary) lastNRoots++;
+                            if (i >= blockNum - (int)pruningBoundary) lastNRoots++;
                         }
                     }
                 }

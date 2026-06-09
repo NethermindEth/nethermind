@@ -26,7 +26,7 @@ public partial class EthRpcModuleTests
     private static readonly ResourceAvailability Disabled = new(Disabled: true, OldestBlock: null);
 
     private static EthCapabilities GetCaps(
-        long? retentionWindow = null,
+        ulong? retentionWindow = null,
         ulong headNumber = 1000,
         long? oldestStateBlock = null,
         SyncConfig? syncConfig = null,
@@ -72,7 +72,7 @@ public partial class EthRpcModuleTests
         ResourceAvailability ExpectedReceipts,
         ResourceAvailability ExpectedBlocks)
     {
-        public long? RetentionWindow { get; init; }
+        public ulong? RetentionWindow { get; init; }
         public ulong HeadNumber { get; init; } = 1000;
         public long? OldestStateBlock { get; init; }
         public ulong? LowestInsertedBody { get; init; }
@@ -223,7 +223,7 @@ public partial class EthRpcModuleTests
             Name: "memory_pruning_window_dominates_old_floor",
             ExpectedState: memoryPruned, ExpectedStateproofs: memoryPruned,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { RetentionWindow = retention, HeadNumber = memoryHead, OldestStateBlock = 0, SyncConfig = fullSync };
+        { RetentionWindow = (ulong)retention, HeadNumber = memoryHead, OldestStateBlock = 0, SyncConfig = fullSync };
 
         // Floor dominates window — DeleteStrategy is suppressed so oldestBlock and head-retentionBlocks stay consistent.
         const long recentPivot = 950;
@@ -232,7 +232,7 @@ public partial class EthRpcModuleTests
             Name: "memory_pruning_floor_dominates_window",
             ExpectedState: postSyncMemory, ExpectedStateproofs: postSyncMemory,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { RetentionWindow = retention, HeadNumber = memoryHead, OldestStateBlock = recentPivot, SyncConfig = fullSync };
+        { RetentionWindow = (ulong)retention, HeadNumber = memoryHead, OldestStateBlock = recentPivot, SyncConfig = fullSync };
 
         yield return new CapabilitiesScenario(
             Name: "fast_sync_no_receipts_disables_tx_logs_receipts",

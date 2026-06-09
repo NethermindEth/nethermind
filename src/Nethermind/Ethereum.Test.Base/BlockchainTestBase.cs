@@ -602,7 +602,7 @@ public abstract class BlockchainTestBase
                 stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
             }
 
-            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, (ulong)accountState.Value.Nonce);
+            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 

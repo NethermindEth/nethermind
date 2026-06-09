@@ -266,7 +266,7 @@ public class BlockhashCacheTests
     {
         const ulong depth = BlockhashCache.MaxDepth * 5 + 1;
         (BlockTree tree, BlockhashCache cache) = BuildTest((int)depth);
-        for (ulong i = (ulong)BlockhashCache.MaxDepth; i < depth; i += (ulong)BlockhashCache.MaxDepth)
+        for (ulong i = BlockhashCache.MaxDepth; i < depth; i += BlockhashCache.MaxDepth)
         {
             cache.GetHash(tree.FindHeader(i, BlockTreeLookupOptions.RequireCanonical)!, BlockhashCache.MaxDepth);
         }
@@ -306,7 +306,7 @@ public class BlockhashCacheTests
 
         Hash256[] prevHashes = (await cache.Prefetch(prev, CancellationToken.None))!;
         Hash256[] headHashes = (await cache.Prefetch(head, CancellationToken.None))!;
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats((int)Math.Min(chainDepth - 1ul, (ulong)FlatCacheItemLength), 1, 2)));
+        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats((int)Math.Min(chainDepth - 1ul, FlatCacheItemLength), 1, 2)));
         Assert.Multiple(() =>
             {
                 int compareLength = headHashes.Length - 1;

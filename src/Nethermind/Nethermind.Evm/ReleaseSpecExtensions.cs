@@ -19,7 +19,7 @@ namespace Nethermind.Evm
 
             public ulong GetBaseDataCost(Transaction tx) =>
                 tx.IsContractCreation && spec.IsEip3860Enabled
-                    ? (ulong)EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
+                    ? EvmCalculations.Div32Ceiling((UInt256)tx.Data.Length) * GasCostOf.InitCodeWord
                     : 0;
         }
     }

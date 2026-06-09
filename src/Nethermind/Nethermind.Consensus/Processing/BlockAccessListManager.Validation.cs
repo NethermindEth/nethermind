@@ -192,7 +192,10 @@ public partial class BlockAccessListManager
             ReadOnlyAccountChanges? sug = suggested.GetAccountChanges(gen.Address);
             if (sug is not null)
             {
-                if (!gen.ChangesAtIndexEqual(sug, index)) ThrowIncorrectChanges(block, gen.Address, index);
+                if (!gen.ChangesAtIndexEqual(sug, index))
+                {
+                    ThrowIncorrectChanges(block, gen.Address, index);
+                }
                 continue;
             }
 

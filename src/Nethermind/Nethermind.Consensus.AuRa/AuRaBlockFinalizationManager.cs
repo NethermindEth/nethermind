@@ -342,7 +342,7 @@ namespace Nethermind.Consensus.AuRa
         private int GetMinSealersForFinalization(ulong blockNumber) =>
             blockNumber == 0
                 ? 1
-                : _validatorStore.GetValidators(blockNumber).MinSealersForFinalization(blockNumber >= (ulong)twoThirdsMajorityTransition);
+                : _validatorStore.GetValidators(blockNumber).MinSealersForFinalization(blockNumber >= twoThirdsMajorityTransition);
 
         public ulong LastFinalizedBlockLevel
         {

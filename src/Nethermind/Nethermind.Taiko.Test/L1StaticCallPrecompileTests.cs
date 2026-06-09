@@ -60,8 +60,8 @@ public class L1StaticCallPrecompileTests
         byte[] calldata = [0xAA, 0xBB, 0xCC, 0xDD];
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)100, calldata);
 
-        long expected = L1PrecompileConstants.L1StaticCallPerCallOverhead
-                      + L1PrecompileConstants.L1StaticCallPerByteCalldataCost * 4; // 10000 + 64
+        ulong expected = L1PrecompileConstants.L1StaticCallPerCallOverhead
+                      + L1PrecompileConstants.L1StaticCallPerByteCalldataCost * 4UL; // 10000 + 64
         Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(expected));
     }
 
@@ -205,9 +205,9 @@ public class L1StaticCallPrecompileTests
         byte[] input = CreateValidInput(Address.FromNumber(99), (UInt256)500, calldata);
 
         // DataGasCost returns only static overhead
-        long gasCost = _precompile.DataGasCost(input, _spec);
-        long expectedStaticGas = L1PrecompileConstants.L1StaticCallPerCallOverhead
-                               + L1PrecompileConstants.L1StaticCallPerByteCalldataCost * 4; // 10000 + 64
+        ulong gasCost = _precompile.DataGasCost(input, _spec);
+        ulong expectedStaticGas = L1PrecompileConstants.L1StaticCallPerCallOverhead
+                               + L1PrecompileConstants.L1StaticCallPerByteCalldataCost * 4UL; // 10000 + 64
         Assert.That(gasCost, Is.EqualTo(expectedStaticGas));
 
         // Run returns result + actual L1 gas consumed

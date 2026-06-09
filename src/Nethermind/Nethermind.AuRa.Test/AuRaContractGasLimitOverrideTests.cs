@@ -18,15 +18,15 @@ namespace Nethermind.AuRa.Test
 {
     public class AuRaContractGasLimitOverrideTests
     {
-        [TestCase(false, 1UL, 4000000)]
-        [TestCase(true, 1UL, 4000000)]
-        [TestCase(false, 3UL, 1000)]
-        [TestCase(false, 5UL, 3000000)]
-        [TestCase(true, 3UL, 2000000)]
-        [TestCase(true, 5UL, 3000000)]
-        [TestCase(true, 10UL, 4000000)]
-        [TestCase(false, 10UL, 4000000)]
-        public void GetGasLimit(bool minimum2MlnGasPerBlockWhenUsingBlockGasLimit, ulong blockNumber, long? expected)
+        [TestCase(false, 1UL, 4000000UL)]
+        [TestCase(true, 1UL, 4000000UL)]
+        [TestCase(false, 3UL, 1000UL)]
+        [TestCase(false, 5UL, 3000000UL)]
+        [TestCase(true, 3UL, 2000000UL)]
+        [TestCase(true, 5UL, 3000000UL)]
+        [TestCase(true, 10UL, 4000000UL)]
+        [TestCase(false, 10UL, 4000000UL)]
+        public void GetGasLimit(bool minimum2MlnGasPerBlockWhenUsingBlockGasLimit, ulong blockNumber, ulong? expected)
         {
             IBlockGasLimitContract blockGasLimitContract1 = Substitute.For<IBlockGasLimitContract>();
             blockGasLimitContract1.ActivationBlock.Returns(3UL);

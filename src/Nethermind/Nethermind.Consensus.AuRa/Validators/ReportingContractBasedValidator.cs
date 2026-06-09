@@ -175,7 +175,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                                                    $"CurrentValidators [{(string.Join(", ", validators.AsEnumerable()))}");
 
                 ISet<Address> reported = new HashSet<Address>();
-                for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
+                for (ulong step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {
                     Address? skippedValidator = validators.GetItemRoundRobin(step);
                     if (skippedValidator is not null)

@@ -113,7 +113,7 @@ public class EraImporter(
         using ProgressReporter progress = new("Era import", logManager, to - from + 1);
         ulong blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new(blockTree, (ulong)eraConfig.ImportBlocksBufferSize, (ulong)(eraConfig.ImportBlocksBufferSize - 1024));
+        using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024UL);
         CurrentPacer = pacer;
         ulong blockNumber = from;
 

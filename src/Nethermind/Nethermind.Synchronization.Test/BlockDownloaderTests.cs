@@ -80,7 +80,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = enableFastSync,
-            StateMinDistanceFromHead = fastSynclag
+            StateMinDistanceFromHead = (ulong)fastSynclag
         }));
         Context ctx = node.Resolve<Context>();
         bool withReceipts = enableFastSync;
@@ -140,7 +140,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = fastSyncLag,
+            StateMinDistanceFromHead = (ulong)fastSyncLag,
         }));
         Context ctx = node.Resolve<Context>();
 
@@ -175,7 +175,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = fastSyncLag,
+            StateMinDistanceFromHead = (ulong)fastSyncLag,
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
@@ -587,7 +587,7 @@ public partial class BlockDownloaderTests
         ISyncConfig syncConfig = new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = (int)fastSyncLag,
+            StateMinDistanceFromHead = fastSyncLag,
             PivotNumber = syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
         };
@@ -840,7 +840,7 @@ public partial class BlockDownloaderTests
         CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = fastSyncLag,
+            StateMinDistanceFromHead = (ulong)fastSyncLag,
         }));
 
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)

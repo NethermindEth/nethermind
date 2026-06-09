@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void SetValidators(ulong finalizingBlockNumber, Address[] validators)
         {
-            if (finalizingBlockNumber > _latestFinalizedValidatorsBlockNumber)
+            if (_latestFinalizedValidatorsBlockNumber == EmptyBlockNumber || finalizingBlockNumber > _latestFinalizedValidatorsBlockNumber)
             {
                 ValidatorInfo validatorInfo = new(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber ? EmptyBlockNumber : _latestFinalizedValidatorsBlockNumber, validators);
                 Rlp rlp = Rlp.Encode(validatorInfo);
@@ -45,11 +45,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
 
-        public Address[] GetValidators(in ulong? blockNumber = null) => blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber
+        public Address[] GetValidators(in ulong? blockNumber = null) => blockNumber is null || _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber || blockNumber > _latestFinalizedValidatorsBlockNumber
                 ? GetLatestValidatorInfo().Validators
                 : FindValidatorInfo(blockNumber.Value).Validators;
 
-        public ValidatorInfo GetValidatorsInfo(in ulong? blockNumber = null) => blockNumber is null || blockNumber > _latestFinalizedValidatorsBlockNumber
+        public ValidatorInfo GetValidatorsInfo(in ulong? blockNumber = null) => blockNumber is null || _latestFinalizedValidatorsBlockNumber == EmptyBlockNumber || blockNumber > _latestFinalizedValidatorsBlockNumber
                 ? GetLatestValidatorInfo()
                 : FindValidatorInfo(blockNumber.Value);
 
@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 currentValidatorInfo = LoadValidatorInfo(currentValidatorInfo.PreviousFinalizingBlockNumber);
             }
 
-            return currentValidatorInfo;
+            return currentValidatorInfo.FinalizingBlockNumber >= blockNumber ? EmptyValidatorInfo : currentValidatorInfo;
         }
 
         private ValidatorInfo GetLatestValidatorInfo()

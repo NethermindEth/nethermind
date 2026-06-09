@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Ethash
             return result;
         }
 
-        public void HintValidationRange(Guid guid, long start, long end) => _ethash.HintRange(guid, start, end);
+        public void HintValidationRange(Guid guid, ulong start, ulong end) => _ethash.HintRange(guid, start, end);
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {

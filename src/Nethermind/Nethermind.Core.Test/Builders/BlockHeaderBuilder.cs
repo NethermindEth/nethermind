@@ -172,7 +172,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithAura(long step, byte[]? signature = null)
+    public BlockHeaderBuilder WithAura(ulong step, byte[]? signature = null)
     {
         TestObjectInternal.AuRaStep = step;
         TestObjectInternal.AuRaSignature = signature;

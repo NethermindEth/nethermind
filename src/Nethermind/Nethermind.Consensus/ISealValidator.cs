@@ -18,6 +18,6 @@ namespace Nethermind.Consensus
         /// <returns><value>True</value> if seal is valid or was not checked, otherwise <value>false</value></returns>
         bool ValidateSeal(BlockHeader header, bool force);
 
-        public void HintValidationRange(Guid guid, long start, long end) { }
+        public void HintValidationRange(Guid guid, ulong start, ulong end) { }
     }
 }

@@ -217,7 +217,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                NetworkId = (ulong)status.NetworkId,
+                NetworkId = status.NetworkId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -226,7 +226,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
-            Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+            Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             NotifyProtocolInitialized(eventArgs);

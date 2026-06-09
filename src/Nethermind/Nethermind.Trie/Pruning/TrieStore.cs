@@ -32,7 +32,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly int _shardedDirtyNodeCount = 256;
     private readonly int _shardBit = 8;
     private readonly int _maxBufferedCommitCount;
-    private readonly int _maxDepth;
+    private readonly ulong _maxDepth;
     private readonly double _prunePersistedNodePortion;
     private readonly long _prunePersistedNodeMinimumTarget;
     private readonly int _pruneDelayMs;
@@ -771,14 +771,20 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             ulong finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
-            ulong pruningBoundaryBlockNumber = _commitSetQueue.MaxBlockNumber!.Value - (ulong)_maxDepth;
-            ulong effectiveFinalizedBlockNumber = Math.Min(pruningBoundaryBlockNumber, Math.Max(0UL, finalizedBlockNumber));
+            // SAFETY: Casting ulong block numbers to long is safe because block numbers are well within the positive range of a signed 64-bit integer,
+            // and we perform signed subtraction to allow negative boundary results (representing a boundary prior to block 0).
+            long pruningBoundaryBlock = (long)_commitSetQueue.MaxBlockNumber!.Value - (long)_maxDepth;
+            long effectiveFinalizedBlock = Math.Min(pruningBoundaryBlock, (long)finalizedBlockNumber);
+            effectiveFinalizedBlock = Math.Max(0, effectiveFinalizedBlock);
+            ulong effectiveFinalizedBlockNumber = (ulong)effectiveFinalizedBlock;
 
             if (effectiveFinalizedBlockNumber < _commitSetQueue.MinBlockNumber!.Value)
             {
                 // Finalized block number far behind any commit. Persist everything so that it can be pruned, but not after
                 // pruning boundary point as snap sync need it.
-                using ArrayPoolListRef<BlockCommitSet> commitSet = _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt(pruningBoundaryBlockNumber);
+                using ArrayPoolListRef<BlockCommitSet> commitSet = pruningBoundaryBlock >= 0
+                    ? _commitSetQueue.GetAndDequeueCommitSetsBeforeOrAt((ulong)pruningBoundaryBlock)
+                    : new ArrayPoolListRef<BlockCommitSet>();
 
                 if (commitSet.Count > 0)
                 {
@@ -1219,10 +1225,18 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     // long block number now receive a ulong. The only remaining call site in this file passes
     // a genuine ulong block number, so no overflow is possible here. External call sites that
     // stored a long block number must be audited to ensure they do not pass negative values.
-    public bool IsNoLongerNeeded(ulong lastCommit) =>
-        lastCommit < LastPersistedBlockNumber &&
-        LatestCommittedBlockNumber >= (ulong)_maxDepth &&
-        lastCommit < LatestCommittedBlockNumber - (ulong)_maxDepth;
+    // ulong.MaxValue is the sentinel value for no block number assigned yet (replacing previous long -1).
+    public bool IsNoLongerNeeded(ulong lastCommit)
+    {
+        if (lastCommit == ulong.MaxValue)
+        {
+            return LatestCommittedBlockNumber >= _maxDepth;
+        }
+
+        return lastCommit < LastPersistedBlockNumber &&
+               LatestCommittedBlockNumber >= _maxDepth &&
+               lastCommit < LatestCommittedBlockNumber - _maxDepth;
+    }
 
     private void AnnounceReorgBoundaries()
     {
@@ -1250,7 +1264,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             // even after we persist a block we do not really remember it as a safe checkpoint
             // until max reorgs blocks after
-            if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + (ulong)_maxDepth)
+            if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + _maxDepth)
             {
                 shouldAnnounceReorgBoundary = true;
             }
@@ -1442,7 +1456,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_deleteOldNodes)
         {
             ulong lastPersisted = LastPersistedBlockNumber;
-            if (lastPersisted > 0 && blockNumber < lastPersisted - (ulong)_maxDepth)
+            if (lastPersisted > 0 && lastPersisted >= _maxDepth && blockNumber < lastPersisted - _maxDepth)
             {
                 return false;
             }

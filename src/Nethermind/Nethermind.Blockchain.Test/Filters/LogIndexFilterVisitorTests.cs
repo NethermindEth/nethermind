@@ -374,8 +374,8 @@ public class LogIndexFilterVisitorTests
             yield return enumerator.Current;
     }
 
-    private const long FromBlock = 0;
-    private const long ToBlock = 99;
+    private const ulong FromBlock = 0;
+    private const ulong ToBlock = 99;
 
     private static readonly Ranges LogIndexRanges = GenerateLogIndexRanges();
 
@@ -386,6 +386,7 @@ public class LogIndexFilterVisitorTests
         Dictionary<Address, List<int>> addressRanges = [];
         foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE })
         {
+            // Narrowing ulong -> int is safe here: FromBlock/ToBlock are small test constants (0..99), no overflow risk.
             List<int> range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.3).ToList();
             addressRanges.Add(address, range);
         }
@@ -398,6 +399,7 @@ public class LogIndexFilterVisitorTests
         {
             foreach (Hash256 topic in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE })
             {
+                // Narrowing ulong -> int is safe here: FromBlock/ToBlock are small test constants (0..99), no overflow risk.
                 List<int> range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.2).ToList();
                 ranges.Add(topic, range);
             }
@@ -407,6 +409,6 @@ public class LogIndexFilterVisitorTests
     }
 
     private static FilterBuilder BuildFilter() => FilterBuilder.New()
-        .FromBlock((ulong)FromBlock)
-        .ToBlock((ulong)ToBlock);
+        .FromBlock(FromBlock)
+        .ToBlock(ToBlock);
 }

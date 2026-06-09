@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             if (!nonces.TryGetValue(address, out ulong nonce))
             {
-                nonce = (ulong)_stateReader.GetNonce(baseBlock, address);
+                nonce = _stateReader.GetNonce(baseBlock, address);
             }
 
             nonces[address] = nonce + 1;

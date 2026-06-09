@@ -421,7 +421,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ConsumeDataCopyGas(ref EthereumGasPolicy gas, bool isExternalCode, ulong baseCost, ulong dataCost)
-        => Consume(ref gas, (ulong)(baseCost + dataCost));
+        => Consume(ref gas, baseCost + dataCost);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void OnBeforeInstructionTrace(in EthereumGasPolicy gas, int pc, Instruction instruction, int depth) { }
@@ -459,11 +459,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         (ulong authRegularCost, ulong authStateCost) = IGasPolicy<EthereumGasPolicy>.AuthorizationListCost(tx, spec);
         ulong accessListCost = IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec, floorTokensInAccessList);
 
-        ulong regularGas = (ulong)(GasCostOf.Transaction
+        ulong regularGas = GasCostOf.Transaction
                           + DataCost(tx, spec, tokensInCallData)
                           + CreateCost(tx, spec)
                           + accessListCost
-                          + authRegularCost);
+                          + authRegularCost;
         ulong floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tx, spec, tokensInCallData, floorTokensInAccessList);
         ulong createStateCost = CreateStateCost(tx, spec);
         ulong totalStateCost = authStateCost + createStateCost;
@@ -472,8 +472,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                 new EthereumGasPolicy
                 {
                     Value = regularGas,
-                    StateReservoir = (ulong)totalStateCost,
-                    StateGasUsed = (ulong)totalStateCost,
+                    StateReservoir = totalStateCost,
+                    StateGasUsed = totalStateCost,
                 },
                 FromULong(floorCost))
             : new IntrinsicGas<EthereumGasPolicy>(FromULong(regularGas), FromULong(floorCost));

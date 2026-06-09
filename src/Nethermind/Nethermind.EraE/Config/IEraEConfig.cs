@@ -14,10 +14,10 @@ public interface IEraEConfig : IConfig
     string? ExportDirectory { get; set; }
 
     [ConfigItem(Description = "Block number to import/export from.", DefaultValue = "0")]
-    long From { get; set; }
+    ulong From { get; set; }
 
     [ConfigItem(Description = "Block number to import/export to. 0 means head.", DefaultValue = "0")]
-    long To { get; set; }
+    ulong To { get; set; }
 
     [ConfigItem(Description = "Accumulator file for trusting EraE archives.", DefaultValue = "null")]
     string? TrustedAccumulatorFile { get; set; }
@@ -32,7 +32,7 @@ public interface IEraEConfig : IConfig
     int Concurrency { get; set; }
 
     [ConfigItem(Description = "[Technical] Block buffer size during era import.", DefaultValue = "4096", HiddenFromDocs = true)]
-    long ImportBlocksBufferSize { get; set; }
+    ulong ImportBlocksBufferSize { get; set; }
 
     [ConfigItem(Description = "Beacon node URL for fetching beacon block roots and state roots during post-merge EraE export. When set, enables BeaconApiRootsProvider and HistoricalSummariesRpcProvider.", DefaultValue = "null")]
     string? BeaconNodeUrl { get; set; }

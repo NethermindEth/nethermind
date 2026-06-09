@@ -545,7 +545,7 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct gas cost for balance operation as per specification.
-        TGasPolicy.Consume(ref gas, (ulong)spec.GasCosts.BalanceCost);
+        TGasPolicy.Consume(ref gas, spec.GasCosts.BalanceCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -605,7 +605,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, (ulong)spec.GasCosts.ExtCodeHashCost);
+        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -673,7 +673,7 @@ public static partial class EvmInstructions
         if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
 
         // Push the remaining gas (as unsigned 64-bit) onto the stack.
-        return stack.PushUInt64<TTracingInst>((ulong)TGasPolicy.GetRemainingGas(in gas));
+        return stack.PushUInt64<TTracingInst>(TGasPolicy.GetRemainingGas(in gas));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

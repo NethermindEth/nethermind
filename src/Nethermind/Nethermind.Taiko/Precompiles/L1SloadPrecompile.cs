@@ -39,10 +39,10 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
     public static IL1StorageProvider? L1StorageProvider { get; set; }
     public static ILogger Logger { get; set; }
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1SloadFixedGasCost;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1SloadFixedGasCost;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength ? 0L : L1PrecompileConstants.L1SloadPerLoadGasCost;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength ? 0UL : L1PrecompileConstants.L1SloadPerLoadGasCost;
 
     /// <summary>
     /// Non-context-aware fallback. Used by callers outside the Taiko VM (caching layer, tooling)

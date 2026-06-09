@@ -22,7 +22,7 @@ namespace Nethermind.AuRa.Test.Validators
         private AuRaParameters.Validator _validator;
         private IAuRaValidatorFactory _factory;
         private ILogManager _logManager;
-        private IDictionary<long, IAuRaValidator> _innerValidators;
+        private IDictionary<ulong, IAuRaValidator> _innerValidators;
         private Block _block;
         private IAuRaBlockFinalizationManager _finalizationManager;
         private IBlockTree _blockTree;
@@ -32,7 +32,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void SetUp()
         {
             _validator = GetValidator(AuRaParameters.ValidatorType.List);
-            _innerValidators = new SortedList<long, IAuRaValidator>();
+            _innerValidators = new SortedList<ulong, IAuRaValidator>();
             _factory = Substitute.For<IAuRaValidatorFactory>();
             _logManager = LimboLogs.Instance;
             _finalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
@@ -44,7 +44,7 @@ namespace Nethermind.AuRa.Test.Validators
                 .ReturnsForAnyArgs(x =>
                 {
                     IAuRaValidator innerValidator = Substitute.For<IAuRaValidator>();
-                    _innerValidators[x.Arg<long?>() ?? 0] = innerValidator;
+                    _innerValidators[x.Arg<ulong?>() ?? 0UL] = innerValidator;
                     return innerValidator;
                 });
 
@@ -136,7 +136,7 @@ namespace Nethermind.AuRa.Test.Validators
                 return finalizedIndex == 1 ? finalizedIndex : finalizedIndex + (ulong)blocksToFinalization;
             }
 
-            EnsureInnerValidatorsCalled(i => (_innerValidators[(long)GetFinalizedIndex(i)], callCountPerValidator[i]));
+            EnsureInnerValidatorsCalled(i => (_innerValidators[GetFinalizedIndex(i)], callCountPerValidator[i]));
         }
 
         [Test]
@@ -153,9 +153,9 @@ namespace Nethermind.AuRa.Test.Validators
             EnsureInnerValidatorsCalled(i => (_innerValidators.ElementAt(i).Value, 0));
         }
 
-        [TestCase(16UL, ExpectedResult = 11)]
-        [TestCase(21UL, ExpectedResult = 21)]
-        public long initializes_validator_when_producing_block(ulong blockNumber)
+        [TestCase(16UL, ExpectedResult = 11UL)]
+        [TestCase(21UL, ExpectedResult = 21UL)]
+        public ulong initializes_validator_when_producing_block(ulong blockNumber)
         {
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
             _block.Header.Number = blockNumber;
@@ -164,13 +164,13 @@ namespace Nethermind.AuRa.Test.Validators
             return _innerValidators.Keys.Last();
         }
 
-        [TestCase(16UL, AuRaParameters.ValidatorType.List, true, ExpectedResult = 11)]
-        [TestCase(21UL, AuRaParameters.ValidatorType.List, false, ExpectedResult = 21)]
-        [TestCase(16UL, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 15)]
-        [TestCase(23UL, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 22)]
-        [TestCase(16UL, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 1)]
-        [TestCase(21UL, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 11)]
-        public long initializes_validator_when_on_nonconsecutive_block(ulong blockNumber, AuRaParameters.ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
+        [TestCase(16UL, AuRaParameters.ValidatorType.List, true, ExpectedResult = 11UL)]
+        [TestCase(21UL, AuRaParameters.ValidatorType.List, false, ExpectedResult = 21UL)]
+        [TestCase(16UL, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 15UL)]
+        [TestCase(23UL, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 22UL)]
+        [TestCase(16UL, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 1UL)]
+        [TestCase(21UL, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 11UL)]
+        public ulong initializes_validator_when_on_nonconsecutive_block(ulong blockNumber, AuRaParameters.ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
         {
             _validator = GetValidator(validatorType);
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);

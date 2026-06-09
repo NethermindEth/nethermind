@@ -13,7 +13,7 @@ public class BlobBaseFeeOverrideCalculatorDecorator(
     IBlobBaseFeeOverrideProvider overrideProvider) : ITransactionProcessor.IBlobBaseFeeCalculator
 {
     public bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
-        UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee)
+        ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee)
     {
         if (overrideProvider.BlobBaseFeeOverride is not null)
         {

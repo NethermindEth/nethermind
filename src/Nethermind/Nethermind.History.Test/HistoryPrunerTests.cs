@@ -47,27 +47,27 @@ public class HistoryPrunerTests
 
     private static IEnumerable<TestCaseData> PruningCases()
     {
-        const int blocks = 100;
+        const uint blocks = 100;
 
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 },
-            /*syncPivot:*/ (long)blocks,
+            /*syncPivot:*/ blocks,
             /*primeWithOldestRead:*/ true,
-            /*expectedPruneBelow:*/ 36L,
-            /*finalCutoff:*/ 36L
+            /*expectedPruneBelow:*/ 36UL,
+            /*finalCutoff:*/ 36UL
         ).SetName("Can_prune_blocks_older_than_specified_epochs");
 
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 },
-            /*syncPivot:*/ (long)blocks,
+            /*syncPivot:*/ blocks,
             /*primeWithOldestRead:*/ false, // regression: pruner must self-bootstrap without external OldestBlockHeader call
-            /*expectedPruneBelow:*/ 36L,
-            /*finalCutoff:*/ 36L
+            /*expectedPruneBelow:*/ 36UL,
+            /*finalCutoff:*/ 36UL
         ).SetName("Can_prune_without_prior_oldest_block_read");
 
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, RetentionEpochs = 100 /* no effect in UseAncientBarriers mode */, PruningInterval = 0 },
-            /*syncPivot:*/ (long)blocks,
+            /*syncPivot:*/ blocks,
             /*primeWithOldestRead:*/ true,
             /*expectedPruneBelow:*/ BeaconGenesisBlockNumber,
             /*finalCutoff:*/ BeaconGenesisBlockNumber
@@ -75,9 +75,9 @@ public class HistoryPrunerTests
 
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0 },
-            /*syncPivot:*/ 20L, // below BeaconGenesisBlockNumber — sync pivot caps the prune boundary
+            /*syncPivot:*/ 20UL, // below BeaconGenesisBlockNumber — sync pivot caps the prune boundary
             /*primeWithOldestRead:*/ true,
-            /*expectedPruneBelow:*/ 20L,
+            /*expectedPruneBelow:*/ 20UL,
             /*finalCutoff:*/ BeaconGenesisBlockNumber
         ).SetName("Prunes_up_to_sync_pivot");
 
@@ -85,10 +85,10 @@ public class HistoryPrunerTests
         // Retention window (5 × 32 = 160 blocks) exceeds chain length (100), so the cutoff is clamped to 0 and no pruning occurs.
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 5, PruningInterval = 0 },
-            /*syncPivot:*/ (long)blocks,
+            /*syncPivot:*/ blocks,
             /*primeWithOldestRead:*/ false,
-            /*expectedPruneBelow:*/ 1L,
-            /*finalCutoff:*/ 0L
+            /*expectedPruneBelow:*/ 1UL,
+            /*finalCutoff:*/ 0UL
         ).SetName("Rolling_mode_with_retention_larger_than_chain_age_does_not_prune");
     }
 
@@ -97,34 +97,34 @@ public class HistoryPrunerTests
         // head=100, SlotsPerEpoch=32 → cutoff = 100 - retentionEpochs*32 (clamped at 0)
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 1, PruningInterval = 0 },
-            /*expectedBlocksPointer:*/ 36L,
-            /*expectedBalsPointer:*/ 68L
+            /*expectedBlocksPointer:*/ 36UL,
+            /*expectedBalsPointer:*/ 68UL
         ).SetName("Bals_pruned_past_block_cutoff_when_bal_retention_is_shorter");
 
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 2, PruningInterval = 0 },
-            /*expectedBlocksPointer:*/ 36L,
-            /*expectedBalsPointer:*/ 36L
+            /*expectedBlocksPointer:*/ 36UL,
+            /*expectedBalsPointer:*/ 36UL
         ).SetName("Bals_pruned_alongside_blocks_when_retentions_equal");
 
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, BalRetentionEpochs = 2, PruningInterval = 0 },
-            /*expectedBlocksPointer:*/ 68L,
-            /*expectedBalsPointer:*/ 68L
+            /*expectedBlocksPointer:*/ 68UL,
+            /*expectedBalsPointer:*/ 68UL
         ).SetName("Bals_forced_forward_when_block_retention_is_shorter");
 
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, BalRetentionEpochs = 1, PruningInterval = 0 },
             /*expectedBlocksPointer:*/ BeaconGenesisBlockNumber,
-            /*expectedBalsPointer:*/ 68L
+            /*expectedBalsPointer:*/ 68UL
         ).SetName("Bals_use_separate_rolling_cutoff_in_ancient_barriers_mode");
     }
 
     [TestCaseSource(nameof(BalPruningCases))]
     public async Task Bal_pruning_uses_separate_cutoff(
         IHistoryConfig historyConfig,
-        long expectedBlocksPointer,
-        long expectedBalsPointer)
+        ulong expectedBlocksPointer,
+        ulong expectedBalsPointer)
     {
         const int blocks = 100;
 
@@ -141,10 +141,10 @@ public class HistoryPrunerTests
         }
     }
 
-    [TestCase(100L, 1u, 68L)]
-    [TestCase(100L, 4u, 0L)] // negative pre-clamp
-    [TestCase(100L, 0u, 100L)]
-    public async Task Bal_cutoff_block_number_uses_separate_retention(long head, uint balRetentionEpochs, long expectedCutoff)
+    [TestCase(100UL, 1u, 68UL)]
+    [TestCase(100UL, 4u, 0UL)] // negative pre-clamp
+    [TestCase(100UL, 0u, 100UL)]
+    public async Task Bal_cutoff_block_number_uses_separate_retention(ulong head, uint balRetentionEpochs, ulong expectedCutoff)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
@@ -163,10 +163,10 @@ public class HistoryPrunerTests
     [TestCaseSource(nameof(PruningCases))]
     public async Task Prunes_history(
         IHistoryConfig historyConfig,
-        long syncPivot,
+        ulong syncPivot,
         bool primeWithOldestRead,
-        long expectedPruneBelow,
-        long finalCutoff)
+        ulong expectedPruneBelow,
+        ulong finalCutoff)
     {
         const int blocks = 100;
 
@@ -181,12 +181,12 @@ public class HistoryPrunerTests
         historyPruner.TryPruneHistory(CancellationToken.None);
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
-        for (int i = 1; i <= blocks; i++)
+        for (uint i = 1; i <= blocks; i++)
         {
             if (i < expectedPruneBelow)
-                CheckBlockPruned(testBlockchain, blockHashes, (ulong)i);
+                CheckBlockPruned(testBlockchain, blockHashes, i);
             else
-                CheckBlockPreserved(testBlockchain, blockHashes, (ulong)i);
+                CheckBlockPreserved(testBlockchain, blockHashes, i);
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
@@ -249,9 +249,9 @@ public class HistoryPrunerTests
 
         CheckGenesisPreserved(testBlockchain, blockHashes[0]);
 
-        for (int i = 1; i <= blocks; i++)
+        for (uint i = 1; i <= blocks; i++)
         {
-            CheckBlockPreserved(testBlockchain, blockHashes, (ulong)i);
+            CheckBlockPreserved(testBlockchain, blockHashes, i);
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
@@ -326,7 +326,7 @@ public class HistoryPrunerTests
     public async Task Delete_pointer_is_not_reset_on_restart()
     {
         const int blocks = 100;
-        const long storedPointer = 50;
+        const ulong storedPointer = 50;
 
         IHistoryConfig historyConfig = new HistoryConfig
         {
@@ -389,7 +389,7 @@ public class HistoryPrunerTests
         }
     }
 
-    private static void CheckOldestAndCutoff(long oldest, long cutoff, IHistoryPruner historyPruner)
+    private static void CheckOldestAndCutoff(ulong oldest, ulong cutoff, IHistoryPruner historyPruner)
     {
         using (Assert.EnterMultipleScope())
         {
@@ -402,7 +402,7 @@ public class HistoryPrunerTests
     private static async Task<BasicTestBlockchain> CreateBlockchainWithBlocks(
         IHistoryConfig historyConfig,
         int blocks,
-        long? syncPivot = null,
+        ulong? syncPivot = null,
         List<Hash256> blockHashes = null,
         IBackgroundTaskScheduler scheduler = null)
     {
@@ -414,7 +414,7 @@ public class HistoryPrunerTests
             blockHashes?.Add(bc.BlockTree.Head!.Hash!);
         }
         if (syncPivot is { } pivot)
-            bc.BlockTree.SyncPivot = ((ulong)pivot, Hash256.Zero);
+            bc.BlockTree.SyncPivot = (pivot, Hash256.Zero);
         return bc;
     }
 

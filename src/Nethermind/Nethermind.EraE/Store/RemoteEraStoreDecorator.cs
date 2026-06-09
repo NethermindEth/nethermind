@@ -25,7 +25,10 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     private readonly IEraStore? _localStore;
     private readonly IRemoteEraClient _client;
     private readonly string _downloadDir;
-    private readonly int _maxEraSize;
+    // Changed int → uint: era size is always a small positive count (e.g. 8192),
+    // never negative, so uint is the honest type and avoids (ulong) casts in
+    // epoch arithmetic.
+    private readonly uint _maxEraSize;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockValidator _blockValidator;
     private readonly Proofs.Validator? _validator;
@@ -76,7 +79,9 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         _localStore = localStore;
         _client = client;
         _downloadDir = downloadDir;
-        _maxEraSize = maxEraSize;
+        // Boundary cast — safe: validated > 0 immediately above, and era sizes
+        // are small counts (e.g. 8192) that trivially fit in uint.
+        _maxEraSize = (uint)maxEraSize;
         _specProvider = specProvider;
         _blockValidator = blockValidator;
         _trustedAccumulators = trustedAccumulators;
@@ -95,11 +100,12 @@ public sealed class RemoteEraStoreDecorator : IEraStore
             if (b is not null) return (b, r);
         }
 
-        int epoch = (int)(number / (ulong)_maxEraSize);
+        // uint promotes cleanly to ulong — no cast needed.
+        int epoch = (int)(number / _maxEraSize);
         string localPath = await EnsureEpochAvailableAsync(epoch, ensureValidated, cancellation).ConfigureAwait(false);
 
         using EraRenter renter = RentReader(epoch, localPath);
-        if (number > (ulong)renter.Reader.LastBlock) return (null, null);
+        if (number > renter.Reader.LastBlock) return (null, null);
         (Block block, TxReceipt[] receipts) = await renter.Reader.GetBlockByNumber(number, cancellation).ConfigureAwait(false);
         return (block, receipts);
     }
@@ -111,10 +117,11 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         if (_localStore is not null && _localStore.HasEpoch(blockNumber))
             return _localStore.NextEraStart(blockNumber);
 
-        int epoch = (int)(blockNumber / (ulong)_maxEraSize);
+        // uint promotes cleanly to ulong — no cast needed.
+        int epoch = (int)(blockNumber / _maxEraSize);
         string localPath = EnsureEpochAvailableAsync(epoch, ensureValidated: false).GetAwaiter().GetResult();
         using EraReader reader = new(localPath);
-        return (ulong)reader.LastBlock + 1;
+        return reader.LastBlock + 1;
     }
 
     public void Dispose()

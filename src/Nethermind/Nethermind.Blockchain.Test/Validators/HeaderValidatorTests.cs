@@ -81,7 +81,11 @@ public class HeaderValidatorTests
     [TestCase(-1, true, TestName = "When_gas_limit_just_correct_high")]
     public void When_gas_limit_above_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = (ulong)((long)_parentBlock.Header.GasLimit + (long)_parentBlock.Header.GasLimit / 1024 + adjustment);
+        ulong delta = _parentBlock.Header.GasLimit / 1024ul;
+
+        _block.Header.GasLimit = adjustment >= 0
+            ? _parentBlock.Header.GasLimit + delta + (ulong)adjustment
+            : _parentBlock.Header.GasLimit + delta - (ulong)(-adjustment);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -93,7 +97,11 @@ public class HeaderValidatorTests
     [TestCase(0, false, TestName = "When_gas_limit_is_just_too_low")]
     public void When_gas_limit_below_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = (ulong)((long)_parentBlock.Header.GasLimit - (long)_parentBlock.Header.GasLimit / 1024 + adjustment);
+        ulong delta = _parentBlock.Header.GasLimit / 1024ul;
+
+        _block.Header.GasLimit = adjustment >= 0
+            ? _parentBlock.Header.GasLimit + delta + (ulong)adjustment
+            : _parentBlock.Header.GasLimit + delta - (ulong)(-adjustment);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);

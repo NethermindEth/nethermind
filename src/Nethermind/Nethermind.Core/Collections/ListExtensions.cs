@@ -18,6 +18,8 @@ namespace Nethermind.Core.Collections
 
         public static T? GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int)(index % array.Count)];
 
+        public static T? GetItemRoundRobin<T>(this IList<T> array, ulong index) => array.Count == 0 ? default : array[(int)(index % (ulong)array.Count)];
+
         /// <summary>
         /// Performs a binary search on the specified collection.
         /// </summary>

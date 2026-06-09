@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat;
 
 public sealed class CompactionSchedule : ICompactionSchedule
 {
-    private readonly int _compactSize;
+    private readonly ulong _compactSize;
     private readonly ulong _offset;
 
     public CompactionSchedule(
@@ -19,18 +19,18 @@ public sealed class CompactionSchedule : ICompactionSchedule
         IFlatDbConfig config,
         ILogManager logManager)
     {
-        if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
+        // Validate using the raw int value before storing.
+        int cs = config.CompactSize;
+        if (cs > 1 && (cs & (cs - 1)) != 0)
             throw new ArgumentException("Compact size must be a power of 2");
 
-        _compactSize = config.CompactSize;
+        // Safe: validated above — cs is 1 or a small positive power-of-2.
+        _compactSize = (ulong)cs;
 
         ILogger logger = logManager.GetClassLogger<CompactionSchedule>();
         _offset = ResolveOffset(metadataDb, config, logger);
     }
 
-    // Changed from long → ulong to match the backing field type.
-    // Callers that previously compared this to a long block-number should
-    // now compare against a ulong block-number (BlockHeader.Number is ulong).
     public ulong Offset => _offset;
 
     public int GetCompactSize(ulong blockNumber)
@@ -38,42 +38,29 @@ public sealed class CompactionSchedule : ICompactionSchedule
         if (_compactSize <= 1 || blockNumber == 0) return 1;
         ulong shifted = blockNumber + _offset;
 
-        // C# has no unary minus for ulong, so we use the two's-complement
-        // identity  x & -x  ≡  x & (~x + 1)  to isolate the lowest set bit.
-        // No overflow risk: if shifted == 0 the guard above already returned.
+        // Isolate the lowest set bit via two's-complement identity: x & (~x + 1).
+        // No overflow risk: shifted == 0 is excluded by the guard above.
         ulong lowestBit = shifted & (~shifted + 1UL);
 
-        // Cast to int is safe: _compactSize is a power-of-2 int, so
-        // Math.Min can never return a value larger than int.MaxValue.
-        return (int)Math.Min(lowestBit, (ulong)_compactSize);
+        // _compactSize is a small power-of-2 (≤ int.MaxValue by construction),
+        // so Math.Min never returns a value that overflows int.
+        return (int)Math.Min(lowestBit, _compactSize);
     }
 
-    // Changed return type from long → ulong.
-    // The sentinel "no compaction needed" value is now ulong.MaxValue instead
-    // of long.MaxValue; callers should be updated accordingly.
     public ulong NextFullCompactionAfter(ulong from)
     {
         if (_compactSize <= 1) return ulong.MaxValue;
 
-        if (from == ulong.MaxValue)
-        {
-            long fromSigned = -1;
-            long offsetSigned = (long)_offset;
-            long sizeSigned = (long)_compactSize;
-            long modSigned = (fromSigned + offsetSigned) % sizeSigned;
-            long distanceSigned = modSigned == 0 ? sizeSigned : sizeSigned - modSigned;
-            return (ulong)(fromSigned + distanceSigned);
-        }
+        // Sentinel: caller has no meaningful "from" block; no next compaction
+        // can be computed, so propagate the sentinel rather than wrapping into
+        // broken signed arithmetic.
+        if (from == ulong.MaxValue) return ulong.MaxValue;
 
-        ulong size = (ulong)_compactSize;          // _compactSize is a small power-of-2, always fits
-        ulong mod = (from + _offset) % size;      // all operands are ulong — no ambiguity
-        ulong distance = mod == 0 ? size : size - mod;
+        ulong mod = (from + _offset) % _compactSize;
+        ulong distance = mod == 0 ? _compactSize : _compactSize - mod;
         return from + distance;
     }
 
-    // Changed return type from long → ulong so that _offset can be assigned
-    // without a cast.  The on-disk RLP format is still encoded as long for
-    // backward-compatibility with existing databases.
     private ulong ResolveOffset(IDb metadataDb, IFlatDbConfig config, ILogger logger)
     {
         if (_compactSize <= 1) return 0;
@@ -93,8 +80,8 @@ public sealed class CompactionSchedule : ICompactionSchedule
             return generated;
         }
 
-        // The persisted value was written as a long (see GenerateAndPersist).
-        // Decode it as long first so we can detect corruption (negative values).
+        // Boundary cast — on-disk RLP format uses long for backward-compatibility.
+        // Decode as long first so we can detect DB corruption (negative values).
         long decoded = stored.AsRlpValueContext().DecodeLong();
         if (decoded < 0)
         {
@@ -103,20 +90,20 @@ public sealed class CompactionSchedule : ICompactionSchedule
         }
 
         if (logger.IsInfo) logger.Info($"Loaded FlatDb compaction offset {decoded}");
-        // Safe cast: we verified decoded >= 0 immediately above.
+        // Boundary cast — safe: negativity excluded by the guard immediately above.
         return (ulong)decoded;
     }
 
     private ulong GenerateAndPersist(IDb metadataDb)
     {
-        // Generate in the range [0, int.MaxValue) so the value fits in a
-        // non-negative long AND the resulting ulong is well within range.
+        // Generate in [0, int.MaxValue) so the value encodes cleanly as a
+        // non-negative long in the on-disk RLP format.
         long offset = Random.Shared.NextInt64(0, int.MaxValue);
 
         // Keep the on-disk encoding as long (RLP) for database compatibility.
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset).Bytes);
 
-        // Safe cast: NextInt64(0, int.MaxValue) is always in [0, 2^31 − 1].
+        // Boundary cast — safe: NextInt64(0, int.MaxValue) is always in [0, 2³¹ − 1].
         return (ulong)offset;
     }
 }

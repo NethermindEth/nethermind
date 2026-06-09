@@ -74,7 +74,7 @@ public class PruningTrieStateFactory(
             dbProvider,
             logManager,
             pruningConfig,
-            new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
+            new LastNStateRootTracker(blockTree, (int)syncConfig.SnapServingMaxDepth));
 
         disposeStack.Push(mainWorldTrieStore);
 
@@ -122,17 +122,16 @@ public class MainPruningTrieStoreFactory
 
         if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < syncConfig.SnapServingMaxDepth)
         {
-            // use PruningBoundary for log-index MaxReorgDepth before it's overwritten
-            logIndexConfig.MaxReorgDepth ??= pruningConfig.PruningBoundary;
+            logIndexConfig.MaxReorgDepth ??= (int)pruningConfig.PruningBoundary;
 
             if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than {syncConfig.SnapServingMaxDepth}. Setting to {syncConfig.SnapServingMaxDepth}.");
             pruningConfig.PruningBoundary = syncConfig.SnapServingMaxDepth;
         }
 
-        if (pruningConfig.PruningBoundary < 64)
+        if (pruningConfig.PruningBoundary < 64UL)
         {
             if (_logger.IsWarn) _logger.Warn($"Pruning boundary must be at least 64. Setting to 64.");
-            pruningConfig.PruningBoundary = 64;
+            pruningConfig.PruningBoundary = 64UL;
         }
 
         IDb stateDb = dbProvider.StateDb;
@@ -149,8 +148,8 @@ public class MainPruningTrieStoreFactory
         IPruningStrategy pruningStrategy = Prune
             .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB)
             .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB - pruningConfig.DirtyCacheMb.MB)
-            .WhenLastPersistedBlockIsTooOld(pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
-            .UnlessLastPersistedBlockIsTooNew(pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
+            .WhenLastPersistedBlockIsTooOld((ulong)pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
+            .UnlessLastPersistedBlockIsTooNew((ulong)pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
 
         if (!pruningConfig.Mode.IsMemory())
         {
@@ -167,9 +166,7 @@ public class MainPruningTrieStoreFactory
 
         if (pruningConfig.SimulateLongFinalizationDepth != 0)
         {
-            // Merge plugin also decorate this, but we want it to be the last decorator for this purpose, so its done
-            // manually here.
-            finalizedStateProvider = new DelayedFinalizedStateProvider(finalizedStateProvider, blockTree, pruningConfig.SimulateLongFinalizationDepth);
+            finalizedStateProvider = new DelayedFinalizedStateProvider(finalizedStateProvider, blockTree, (ulong)pruningConfig.SimulateLongFinalizationDepth);
         }
 
         PruningTrieStore = new TrieStore(
@@ -185,8 +182,6 @@ public class MainPruningTrieStoreFactory
     {
         if (hardwareInfo.AvailableMemoryBytes >= IHardwareInfo.StateDbLargerMemoryThreshold)
         {
-            // Default is 1280 MB, which translate to 280 MB of persisted cache memory (dirty node cache is 1000 MB).
-            // So this actually increase it from 280 MB to 1000 MB, reducing dirty node load at DB by 50%.
             if (pruningConfig.CacheMb < 2000)
             {
                 if (_logger.IsDebug) _logger.Debug($"Increasing pruning cache to 2 GB due to available additional memory.");
@@ -194,16 +189,10 @@ public class MainPruningTrieStoreFactory
             }
         }
 
-        // On a 7950x (32 logical cores), assuming write buffer is large enough, the pruning time is about 3 second
-        // with 8GB of pruning cache. Lets assume that this is a safe estimate as the ssd can be a limitation also.
         long maximumDirtyCacheMb = Environment.ProcessorCount * 250;
-        // It must be at least 1GB as on mainnet at least 500MB will remain to support snap sync. So pruning cache only drop to about 500MB after pruning.
         maximumDirtyCacheMb = Math.Max(1000, maximumDirtyCacheMb);
         if (pruningConfig.DirtyCacheMb > maximumDirtyCacheMb)
         {
-            // The user can also change `--Db.StateDbWriteBufferSize`.
-            // Which may or may not be better as each read will need to go through each write buffer.
-            // So having less of them is probably better..
             if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.DirtyCacheMb}MB of dirty pruning cache config. Dirty cache more than {maximumDirtyCacheMb}MB is not recommended with {Environment.ProcessorCount} logical core as it may cause long memory pruning time which affect attestation.");
         }
 
@@ -215,11 +204,10 @@ public class MainPruningTrieStoreFactory
 
     public IPruningTrieStore PruningTrieStore { get; }
 
-    // Used to simulate long reorg by delaying `FinalizedBlockNumber`
     private class DelayedFinalizedStateProvider(
         IFinalizedStateProvider finalizedStateProvider,
         IBlockTree blockTree,
-        int pruningConfigSimulateLongFinalizationDepth
+        ulong pruningConfigSimulateLongFinalizationDepth
     ) : IFinalizedStateProvider
     {
         private ulong? _lastFinalizedBlockNumber = null;
@@ -230,11 +218,10 @@ public class MainPruningTrieStoreFactory
             {
                 ulong baseFinalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
 
-                // Need to limit by head, otherwise it does not work for forward sync.
                 ulong headNumber = blockTree.Head?.Number ?? 0UL;
-                baseFinalizedBlockNumber = Math.Min(baseFinalizedBlockNumber, headNumber + (ulong)pruningConfigSimulateLongFinalizationDepth / 2);
+                baseFinalizedBlockNumber = Math.Min(baseFinalizedBlockNumber, headNumber + pruningConfigSimulateLongFinalizationDepth / 2);
 
-                if (_lastFinalizedBlockNumber is null || baseFinalizedBlockNumber - _lastFinalizedBlockNumber.Value > (ulong)pruningConfigSimulateLongFinalizationDepth)
+                if (_lastFinalizedBlockNumber is null || baseFinalizedBlockNumber - _lastFinalizedBlockNumber.Value > pruningConfigSimulateLongFinalizationDepth)
                 {
                     _lastFinalizedBlockNumber = baseFinalizedBlockNumber;
                 }

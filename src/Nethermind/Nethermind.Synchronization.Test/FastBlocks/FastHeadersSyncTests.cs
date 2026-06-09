@@ -155,7 +155,7 @@ public class FastHeadersSyncTests
             HeadersSyncBatch? batch = await feed.PrepareRequest();
             if (batch is null) break;
             batch.Response = remoteBlockTree.FindHeaders(
-                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash!, batch.RequestSize, 0,
+                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash!, (int)batch.RequestSize, 0,
                 false)!;
             feed.HandleResponse(batch);
         }
@@ -196,7 +196,7 @@ public class FastHeadersSyncTests
         void FulfillBatch(HeadersSyncBatch batch)
         {
             batch.Response = remoteBlockTree.FindHeaders(
-                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, (int)batch.RequestSize, 0,
                 false)!;
             batch.ResponseSourcePeer = peerInfo;
         }
@@ -251,7 +251,7 @@ public class FastHeadersSyncTests
 
         void FulfillBatch(HeadersSyncBatch batch) =>
             batch.Response = remoteBlockTree.FindHeaders(
-                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, (int)batch.RequestSize, 0,
                 false)!;
 
         using HeadersSyncBatch? r = await feed.PrepareRequest();
@@ -298,7 +298,7 @@ public class FastHeadersSyncTests
 
         void FulfillBatch(HeadersSyncBatch batch) =>
             batch.Response = remoteBlockTree.FindHeaders(
-                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, (int)batch.RequestSize, 0,
                 false)!;
 
         // First batch need to be handled first before handle dependencies can do anything
@@ -369,7 +369,7 @@ public class FastHeadersSyncTests
 
         void FulfillBatch(HeadersSyncBatch batch) =>
             batch.Response = remoteBlockTree.FindHeaders(
-                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
+                remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, (int)batch.RequestSize, 0,
                 false)!;
 
         using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
@@ -578,9 +578,9 @@ public class FastHeadersSyncTests
         void FillBatch(HeadersSyncBatch batch, ulong start, bool applyNulls)
         {
             int c = count;
-            List<BlockHeader?> list = new(batch.RequestSize);
+            List<BlockHeader?> list = new((int)batch.RequestSize);
             ulong current = start;
-            for (int j = 0; j < batch.RequestSize; j++, current++)
+            for (int j = 0; j < (int)batch.RequestSize; j++, current++)
             {
                 list.Add(peerChain.FindBlock(current, BlockTreeLookupOptions.None)!.Header);
             }
@@ -639,9 +639,9 @@ public class FastHeadersSyncTests
 
         void FillBatch(HeadersSyncBatch batch)
         {
-            List<BlockHeader?> list = new(batch.RequestSize);
+            List<BlockHeader?> list = new((int)batch.RequestSize);
             ulong current = batch.StartNumber;
-            for (int j = 0; j < batch.RequestSize; j++, current++)
+            for (int j = 0; j < (int)batch.RequestSize; j++, current++)
             {
                 list.Add(peerChain.FindBlock(current, BlockTreeLookupOptions.None)!.Header);
             }

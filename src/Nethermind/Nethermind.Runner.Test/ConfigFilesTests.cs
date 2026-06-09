@@ -334,15 +334,15 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, -1);
 
-    [TestCase("chiado", 17_000_000L, 5UL, 3000)]
-    [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
-    [TestCase("mainnet", 60_000_000L)]
-    [TestCase("sepolia", 60_000_000L)]
-    [TestCase("hoodi", 60_000_000L)]
+    [TestCase("chiado", 17_000_000UL, 5UL, 3000)]
+    [TestCase("gnosis", 17_000_000UL, 5UL, 3000)]
+    [TestCase("mainnet", 60_000_000UL)]
+    [TestCase("sepolia", 60_000_000UL)]
+    [TestCase("hoodi", 60_000_000UL)]
     [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^hoodi")]
-    public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
+    public void Blocks_defaults_are_correct(string configWildcard, ulong? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
     {
-        Test<IBlocksConfig, long?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
+        Test<IBlocksConfig, ulong?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
         Test<IBlocksConfig, ulong>(configWildcard, static c => c.SecondsPerSlot, secondsPerSlot);
         Test<IBlocksConfig, int>(configWildcard, static c => c.BlockProductionTimeoutMs, blockProductionTimeout);
 

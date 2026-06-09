@@ -20,9 +20,9 @@ public partial class Bls12381G2AddPrecompile : IPrecompile<Bls12381G2AddPrecompi
 
     public static string Name => "BLS12_G2ADD";
 
-    public long BaseGasCost(IReleaseSpec _) => 600L;
+    public ulong BaseGasCost(IReleaseSpec _) => 600UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

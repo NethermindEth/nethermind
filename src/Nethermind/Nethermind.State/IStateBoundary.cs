@@ -22,7 +22,7 @@ public interface IStateBoundary
     /// there is no rolling window (archive, full pruning, flat storage); the absolute floor
     /// is reported via <see cref="OldestStateBlock"/> instead.
     /// </summary>
-    long? RetentionWindowBlocks { get; }
+    ulong? RetentionWindowBlocks { get; }
 }
 
 /// <summary>

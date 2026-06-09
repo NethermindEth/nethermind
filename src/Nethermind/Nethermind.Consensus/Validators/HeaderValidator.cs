@@ -222,8 +222,8 @@ namespace Nethermind.Consensus.Validators
                                    && (isUncle
                                        || _daoBlockNumber is null
                                        // Safe cast: DaoBlockNumber is a known small constant (~1.9M), always fits ulong
-                                       || header.Number < (ulong)_daoBlockNumber.Value
-                                       || header.Number >= (ulong)(_daoBlockNumber.Value + 10)
+                                       || header.Number < _daoBlockNumber.Value
+                                       || header.Number >= _daoBlockNumber.Value + 10
                                        || Bytes.AreEqual(header.ExtraData, DaoExtraData));
             if (!extraDataValid)
             {

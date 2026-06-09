@@ -82,10 +82,10 @@ public class WorldStateManagerTests
         IConfigProvider configProvider = new ConfigProvider();
         // Asserts the pruning trie store's BestPersistedState reorg announcement; a patricia-only concept.
         configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
-        int reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
+        ulong reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
         IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
-        manualFinalizedStateProvider.FinalizedBlockNumber.Returns((ulong)(lastBlock - reorgDepth));
-        manualFinalizedStateProvider.GetFinalizedStateRootAt((ulong)(lastBlock - reorgDepth))
+        manualFinalizedStateProvider.FinalizedBlockNumber.Returns((ulong)lastBlock - reorgDepth);
+        manualFinalizedStateProvider.GetFinalizedStateRootAt((ulong)lastBlock - reorgDepth)
             .Returns(new Hash256("0xec6063a04d48f4b2258f36efaef76a23ba61875f5303fcf8ede2f5d160def35d"));
 
         {
@@ -126,7 +126,7 @@ public class WorldStateManagerTests
             }
         }
 
-        blockTree.Received().BestPersistedState = (ulong?)(lastBlock - reorgDepth);
+        blockTree.Received().BestPersistedState = (ulong)lastBlock - reorgDepth;
     }
 
     [Test]

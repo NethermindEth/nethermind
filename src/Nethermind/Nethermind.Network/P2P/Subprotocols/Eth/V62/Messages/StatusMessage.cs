@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     public class StatusMessage : P2PMessage
     {
         public byte ProtocolVersion { get; set; }
-        public UInt256 NetworkId { get; set; }
+        public ulong NetworkId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public Hash256? BestHash { get; set; }
         public Hash256? GenesisHash { get; set; }

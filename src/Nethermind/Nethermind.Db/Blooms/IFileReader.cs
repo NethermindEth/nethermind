@@ -7,6 +7,6 @@ namespace Nethermind.Db.Blooms
 {
     public interface IFileReader : IDisposable
     {
-        int Read(long index, Span<byte> element);
+        int Read(ulong index, Span<byte> element);
     }
 }

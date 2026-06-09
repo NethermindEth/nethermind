@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
         public bool? SnapServingEnabled { get; set; } = null;
-        public int SnapServingMaxDepth { get; set; } = 128;
+        public ulong SnapServingMaxDepth { get; set; } = 128;
         public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public int AllocationSlots { get; set; } = 2;
@@ -80,14 +80,14 @@ namespace Nethermind.Blockchain.Synchronization
         public bool VerifyTrieOnStateSyncFinished { get; set; }
         public bool TrieHealing { get; set; } = true;
         public int StateMaxDistanceFromHead { get; set; } = 128;
-        public int StateMinDistanceFromHead { get; set; } = 32;
+        public ulong StateMinDistanceFromHead { get; set; } = 32;
         public bool GCOnFeedFinished { get; set; } = true;
         /// <summary>
         /// Additional delay in blocks between best suggested header and synced state to allow faster state switching for PoW chains
         /// with higher block processing frequency. Effectively this is the max allowed difference between best header (used as sync
         /// pivot) and synced state block, to assume that state is synced and node can start processing blocks
         /// </summary>
-        public int HeaderStateDistance { get; set; } = 0;
+        public ulong HeaderStateDistance { get; set; } = 0;
 
         public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB;
         public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;

@@ -27,11 +27,11 @@ public sealed class EraCliRunner(
                     "Either disable history pruning or remove the import directory.");
             }
 
-            await eraImporter.Import(eraConfig.ImportDirectory!, (ulong)eraConfig.From, (ulong)eraConfig.To, eraConfig.TrustedAccumulatorFile, token);
+            await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, token);
         }
         else if (!string.IsNullOrEmpty(eraConfig.ExportDirectory))
         {
-            await eraExporter.Export(eraConfig.ExportDirectory!, (ulong)eraConfig.From, (ulong)eraConfig.To, token);
+            await eraExporter.Export(eraConfig.ExportDirectory!, eraConfig.From, eraConfig.To, token);
         }
     }
 }

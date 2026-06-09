@@ -79,7 +79,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.ContractBasedValidator.BlockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, blockNumber: Arg.Any<ulong>())
                 .Returns(Build.A.BlockHeader.WithNumber(blockNumber - 1).TestObject);
 
-            bool isPosDao = blockNumber >= (ulong)context.PosdaoTransition;
+            bool isPosDao = blockNumber >= context.PosdaoTransition;
 
             // resend transactions
             context.Validator.OnBlockProcessingEnd(block, []);
@@ -108,7 +108,7 @@ namespace Nethermind.AuRa.Test.Validators
             }
 
             BlockHeader parent = Build.A.BlockHeader.WithNumber(parentBlockNumber).TestObject;
-            bool isPosDao = parentBlockNumber + 1 >= (ulong)context.PosdaoTransition;
+            bool isPosDao = parentBlockNumber + 1 >= context.PosdaoTransition;
             context.ContractBasedValidator.ValidatorContract
                 .ShouldValidatorReport(parent, NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>())
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());

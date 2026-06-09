@@ -34,19 +34,19 @@ public class RpcModuleTests
     private XdcRpcModule _rpcModule;
 
 
-    private EpochSwitchInfo[] GenerateEpochSwitchInfos(long begin, long end, int switchEpoch, int epochLength)
+    private EpochSwitchInfo[] GenerateEpochSwitchInfos(ulong begin, ulong end, uint switchEpoch, uint epochLength)
     {
         List<EpochSwitchInfo> epochSwitchInfos = [];
-        for (long blockNum = begin; blockNum <= end; blockNum += epochLength)
+        for (ulong blockNum = begin; blockNum <= end; blockNum += epochLength)
         {
-            ulong epochNumber = (ulong)(blockNum / epochLength);
-            if (epochNumber >= (ulong)switchEpoch)
+            ulong epochNumber = blockNum / epochLength;
+            if (epochNumber >= switchEpoch)
             {
                 epochSwitchInfos.Add(new EpochSwitchInfo(
                     Array.Empty<Address>(),
                     Array.Empty<Address>(),
                     Array.Empty<Address>(),
-                    new BlockRoundInfo(TestItem.KeccakA, 100, (ulong)blockNum)));
+                    new BlockRoundInfo(TestItem.KeccakA, 100, blockNum)));
             }
         }
         return epochSwitchInfos.ToArray();

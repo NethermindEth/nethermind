@@ -48,7 +48,7 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public long? RetentionWindowBlocks => null;
+    public ulong? RetentionWindowBlocks => null;
 
     public long? OldestStateBlock
     {

@@ -30,6 +30,11 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
+    // BCL Math.Min/Math.Max have no ulong overloads; use these helpers to avoid
+    // boundary casts and the unsafe negative-then-cast-to-ulong pattern.
+    private static ulong ULongMin(ulong a, ulong b) => a < b ? a : b;
+    private static ulong ULongMax(ulong a, ulong b) => a > b ? a : b;
+
     [TestCase(16UL, 32UL, false, 32, 32UL)]
     [TestCase(16UL, 32UL, false, 32, 29UL)]
     [TestCase(16UL, 32UL, true, 0, 32UL)]
@@ -39,14 +44,14 @@ public partial class BlockDownloaderTests
     public async Task Merge_Happy_path(ulong beaconPivot, ulong headNumber, bool enableFastSync, int fastSyncLag, ulong insertedBeaconBlocks)
     {
         bool withReceipts = enableFastSync;
-        int notSyncedTreeStartingBlockNumber = 3;
+        ulong notSyncedTreeStartingBlockNumber = 3;
 
         InMemoryReceiptStorage? receiptStorage = withReceipts ? new InMemoryReceiptStorage() : null;
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(notSyncedTreeStartingBlockNumber + 1, (int)headNumber + 1, receiptStorage: receiptStorage)
+            .WithBlockTrees((int)notSyncedTreeStartingBlockNumber + 1, (int)headNumber + 1, receiptStorage: receiptStorage)
             .InsertBeaconPivot(beaconPivot)
-            .InsertBeaconHeaders((ulong)(notSyncedTreeStartingBlockNumber + 1), beaconPivot - 1)
+            .InsertBeaconHeaders(notSyncedTreeStartingBlockNumber + 1, beaconPivot - 1)
             .InsertBeaconBlocks(beaconPivot + 1, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree syncedTree = blockTrees.SyncedTree;
 
@@ -54,7 +59,7 @@ public partial class BlockDownloaderTests
             new SyncConfig()
             {
                 FastSync = enableFastSync,
-                StateMinDistanceFromHead = fastSyncLag
+                StateMinDistanceFromHead = (ulong)fastSyncLag
             },
             new MergeConfig()
             {
@@ -62,6 +67,7 @@ public partial class BlockDownloaderTests
             });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
+        // BOUNDARY CAST: FindHeader overload takes `ulong`; no cast needed.
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None));
         ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None);
 
@@ -77,14 +83,16 @@ public partial class BlockDownloaderTests
         if (enableFastSync)
         {
             await ctx.FastSyncUntilNoRequest(peerInfo);
-            long expectedDownloadStart = notSyncedTreeStartingBlockNumber;
-            long expectedDownloadEnd = Math.Min((long)headNumber, (long)insertedBeaconBlocks - fastSyncLag);
+            ulong expectedDownloadStart = notSyncedTreeStartingBlockNumber;
+            // fastSyncLag is a non-negative int test parameter; cast to ulong is safe.
+            // ULongMin avoids the old pattern of (long) subtraction → negative → cast-to-ulong wrap-around.
+            ulong expectedDownloadEnd = ULongMin(headNumber, insertedBeaconBlocks - (ulong)fastSyncLag);
 
-            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max((ulong)notSyncedTreeStartingBlockNumber, (ulong)expectedDownloadEnd)));
-            Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(Math.Max((ulong)notSyncedTreeStartingBlockNumber, (ulong)expectedDownloadEnd)));
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(ULongMax(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
+            Assert.That(ctx.BlockTree.BestKnownNumber, Is.EqualTo(ULongMax(notSyncedTreeStartingBlockNumber, expectedDownloadEnd)));
 
-            int receiptCount = 0;
-            for (long i = expectedDownloadStart; i < expectedDownloadEnd; i++)
+            ulong receiptCount = 0;
+            for (ulong i = expectedDownloadStart; i < expectedDownloadEnd; i++)
             {
                 if (i % 3 == 0)
                 {
@@ -92,8 +100,8 @@ public partial class BlockDownloaderTests
                 }
             }
 
-            Assert.That(ctx.ReceiptStorage.Count, Is.EqualTo(withReceipts ? receiptCount : 0));
-            Assert.That(ctx.BeaconPivot.ProcessDestination?.Number, Is.EqualTo(Math.Max(insertedBeaconBlocks - (ulong)fastSyncLag, beaconPivot)));
+            Assert.That(ctx.ReceiptStorage.Count, Is.EqualTo(withReceipts ? (int)receiptCount : 0));
+            Assert.That(ctx.BeaconPivot.ProcessDestination?.Number, Is.EqualTo(ULongMax(insertedBeaconBlocks - (ulong)fastSyncLag, beaconPivot)));
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -120,7 +128,8 @@ public partial class BlockDownloaderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16UL, BlockTreeLookupOptions.None));
+            // BOUNDARY CAST: FindHeader overload takes `long`; safe while block numbers < long.MaxValue
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16L, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
@@ -155,7 +164,8 @@ public partial class BlockDownloaderTests
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
         if (withBeaconPivot)
-            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16UL, BlockTreeLookupOptions.None));
+            // BOUNDARY CAST: FindHeader overload takes `long`; safe while block numbers < long.MaxValue
+            ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16L, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
@@ -178,10 +188,11 @@ public partial class BlockDownloaderTests
         await using IContainer container = CreateMergeNode(blockTrees, new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = blocksToIgnore
+            StateMinDistanceFromHead = (ulong)blocksToIgnore
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
+        // BOUNDARY CAST: FindHeader overload takes `ulong`; no cast needed.
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
         ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
 
@@ -262,7 +273,7 @@ public partial class BlockDownloaderTests
         }, new SyncConfig()
         {
             FastSync = true,
-            StateMinDistanceFromHead = fastSyncLag,
+            StateMinDistanceFromHead = (ulong)fastSyncLag,
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
 
@@ -292,7 +303,8 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         await ctx.FastSyncUntilNoRequest(peerInfo);
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag))));
+        // fastSyncLag is non-negative; subtraction is safe as headNumber > fastSyncLag in this test
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo((ulong)Math.Max(0, Math.Min(headNumber, headNumber - fastSyncLag))));
 
         syncPeerInternal.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
@@ -318,6 +330,7 @@ public partial class BlockDownloaderTests
         });
 
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
+        // BOUNDARY CAST: FindHeader overload takes `ulong`; no cast needed.
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
         ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
 

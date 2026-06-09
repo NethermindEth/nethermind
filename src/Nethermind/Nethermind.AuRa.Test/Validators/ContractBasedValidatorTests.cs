@@ -481,7 +481,7 @@ public class ContractBasedValidatorTests
     [TestCaseSource(nameof(ConsecutiveInitiateChangeData))]
     public void consecutive_initiate_change_gets_finalized_and_switch_validators(ConsecutiveInitiateChangeTestParameters test)
     {
-        Dictionary<ulong, int> hashSeeds = [];
+        Dictionary<ulong, ulong> hashSeeds = [];
 
         Address[] currentValidators = GenerateValidators(1);
         SetupInitialValidators(currentValidators);
@@ -500,18 +500,18 @@ public class ContractBasedValidatorTests
                 blockNumber = test.Current.BlockNumber + i;
             }
 
-            if (hashSeeds.TryGetValue(blockNumber, out int value))
-                value++;
+            if (hashSeeds.TryGetValue(blockNumber, out ulong value))
+                hashSeeds[blockNumber] = value + 1;
             else
-                hashSeeds[blockNumber] = 0;
+                hashSeeds[blockNumber] = 0UL;
 
             _block.Header.Number = blockNumber;
             _block.Header.Beneficiary = currentValidators[blockNumber % (ulong)currentValidators.Length];
-            _block.Header.AuRaStep = (long)blockNumber;
-            _block.Header.Hash = Keccak.Compute((blockNumber + (ulong)hashSeeds[blockNumber]).ToString());
+            _block.Header.AuRaStep = blockNumber;
+            _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
             _block.Header.ParentHash = blockNumber == test.StartBlockNumber
                 ? Keccak.Zero
-                : Keccak.Compute(((blockNumber - 1UL) + (ulong)hashSeeds[blockNumber - 1UL]).ToString());
+                : Keccak.Compute(((blockNumber - 1UL) + hashSeeds[blockNumber - 1UL]).ToString());
 
             TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
 
@@ -529,7 +529,7 @@ public class ContractBasedValidatorTests
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
             _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
                 new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
-                        .WithHash(Keccak.Compute((finalizedNumber + (ulong)hashSeeds[finalizedNumber]).ToString())).TestObject));
+                        .WithHash(Keccak.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));
 
             currentValidators = test.GetCurrentValidators(blockNumber);
             Assert.That(validator.Validators, Is.EqualTo(currentValidators), $"Validator address should be recognized in block {blockNumber}");

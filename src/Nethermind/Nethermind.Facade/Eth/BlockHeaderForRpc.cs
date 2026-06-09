@@ -85,8 +85,8 @@ public class BlockHeaderForRpc
 
     public byte[]? Signature { get; set; }
 
-    [JsonConverter(typeof(NullableRawLongConverter))]
-    public long? Step { get; set; }
+    [JsonConverter(typeof(NullableRawULongConverter))]
+    public ulong? Step { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom? LogsBloom { get; set; }

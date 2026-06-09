@@ -181,6 +181,6 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
 
 public static class LogIndexFilterVisitorExtensions
 {
-    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, long fromBlock, long toBlock) =>
+    public static IEnumerable<long> EnumerateBlockNumbersFor(this ILogIndexStorage storage, LogFilter filter, ulong fromBlock, ulong toBlock) =>
         new LogIndexFilterVisitor(storage, filter, (int)fromBlock, (int)toBlock).Select(static i => (long)i);
 }

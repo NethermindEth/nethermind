@@ -14,7 +14,7 @@ namespace Nethermind.Db.Blooms
         private readonly int _elementSize = elementSize;
         private readonly SafeFileHandle _file = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
 
-        public void Write(long index, ReadOnlySpan<byte> element)
+        public void Write(ulong index, ReadOnlySpan<byte> element)
         {
             if (element.Length != _elementSize)
             {
@@ -42,11 +42,11 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        public int Read(long index, Span<byte> element) => RandomAccess.Read(_file, element, GetPosition(index));
+        public int Read(ulong index, Span<byte> element) => RandomAccess.Read(_file, element, GetPosition(index));
 
         public IFileReader CreateFileReader() => new FileReader(_path, _elementSize);
 
-        private long GetPosition(long index) => index * _elementSize;
+        private long GetPosition(ulong index) => (long)index * _elementSize;
 
         public void Dispose() => _file.Dispose();
     }

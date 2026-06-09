@@ -53,7 +53,7 @@ public class IndexedLogFinder(
 
         // EnumerateBlockNumbersFor returns IEnumerable<long> (log-index contract kept as long for performance).
         // Block numbers from the index are non-negative so the cast is safe.
-        IEnumerable<ulong> indexNumbers = _logIndexStorage.EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to)
+        IEnumerable<ulong> indexNumbers = _logIndexStorage.EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
             .Select(static n => (ulong)n);
         foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexNumbers, cancellationToken))
         {

@@ -32,5 +32,5 @@ public interface IEraConfig : IConfig
     int Concurrency { get; set; }
 
     [ConfigItem(Description = "[Technical] Buffer size during full sync when era importing. Lower number reduces memory usage.", DefaultValue = "4096", HiddenFromDocs = true)]
-    long ImportBlocksBufferSize { get; set; }
+    ulong ImportBlocksBufferSize { get; set; }
 }

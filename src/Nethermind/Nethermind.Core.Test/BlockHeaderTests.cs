@@ -180,7 +180,7 @@ public class BlockHeaderTests
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = (ulong)(gasTarget * Eip1559Constants.DefaultElasticityMultiplier);
+        blockHeader.GasLimit = (ulong)gasTarget * Eip1559Constants.DefaultElasticityMultiplier;
         blockHeader.BaseFeePerGas = (UInt256)baseFee;
         blockHeader.GasUsed = gasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
@@ -194,8 +194,9 @@ public class BlockHeaderTests
     public class BaseFeeTestCases
     {
         public int ParentBaseFee { get; set; }
-        public int ParentGasUsed { get; set; }
-        public int ParentTargetGasUsed { get; set; }
+        // Gas quantities are always non-negative; ulong matches BlockHeader.GasUsed and GasLimit post-migration.
+        public ulong ParentGasUsed { get; set; }
+        public ulong ParentTargetGasUsed { get; set; }
         public int ExpectedBaseFee { get; set; }
     }
 
@@ -210,9 +211,12 @@ public class BlockHeaderTests
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = (ulong)(testCase.Info.ParentTargetGasUsed * Eip1559Constants.DefaultElasticityMultiplier);
+        // No cast needed: ParentTargetGasUsed is ulong, GasLimit is ulong post-migration.
+        // ElasticityMultiplier is a small protocol constant (currently 2); product fits in ulong.
+        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * (ulong)Eip1559Constants.DefaultElasticityMultiplier;
         blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
-        blockHeader.GasUsed = (ulong)testCase.Info.ParentGasUsed;
+        // No cast needed: ParentGasUsed is ulong, GasUsed is ulong post-migration.
+        blockHeader.GasUsed = testCase.Info.ParentGasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)testCase.Info.ExpectedBaseFee), testCase.Description);
     }

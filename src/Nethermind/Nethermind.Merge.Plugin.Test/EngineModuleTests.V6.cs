@@ -199,7 +199,7 @@ public partial class EngineModuleTests
     }
 
 
-    [TestCase("0x0981253ff1b66ee40650f7fa7efe53f772bc11bd4fef3a3574cf91495a1533dd", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0x42a80ba6d5783c392ffcc6b3c15d7ef06be8ae71c2ff5f42377acdec67a5766c", false, false)]
+    [TestCase("0x6b27ccfc34cb820499507cdb9a995b99076530865f8fa3f566bef04616696717", "0xac3989a5349b5efc7f2f6847e76c4d6d4c5fcbf54939c80b05b57142ae1236fb", "0x037cf8a53c12d06101bdca6d35e8541f5160a481f79f7bfacc7e9db5efe29a48", false, false)]
     [TestCase(null, null, null, false, true)]
     [TestCase("0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae", "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2", "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29", true, false)]
     [TestCase("0xc7ca0c8c9d0b29e9c432d34bcc6b0dd5adef6732ed94096465847ade2da72aae", "0x056b23fbba480696b65fe5a59b8f2148a1299103c4f57df839233af2cf4ca2d2", "0xfad798172a2bbd423c90a023d345c7a7812e067918edb7630c2388736f197f29", true, true)]
@@ -306,10 +306,10 @@ public partial class EngineModuleTests
     {
         (string blockHash, BalErrorKind errorKind)[] perKindCases =
         [
-            ("0x2753a5a3fe321381e637a7c0d7673b61555a366bdf75359616b0035f9b405fab", BalErrorKind.IncorrectChange),
-            ("0x9f19c60fe32bb002e4b959abddd1ebfd396ddae2e65e9ff87b1c4a0715ade9ad", BalErrorKind.MissingChange),
-            ("0x383a5a61b956150bc79762844dc40395c9f85e9caae8930a0de2b9e687902eae", BalErrorKind.SurplusChange),
-            ("0x66478724575325c99be695cc33d2698b6c87bdc7fe4ee0a54813de367f2bf037", BalErrorKind.SurplusReads),
+            ("0x156c33a4bbaaf1897ca35e10da9ad62eb3f17916de93faf8978de3f8e825c82c", BalErrorKind.IncorrectChange),
+            ("0xd8438b041f741b31cf32f22fa1b260873d6705fef298766d3a8b7a56dd2d1aea", BalErrorKind.MissingChange),
+            ("0xdb032fbc4d225916a9bd8707ead4bb0d1d440dc08c87d67fb4e8ae3a2ed52b15", BalErrorKind.SurplusChange),
+            ("0xbdf40c921b753e220ff3075e10f62c0abc1b9462a2dd842b103b6807e3060b9e", BalErrorKind.SurplusReads),
         ];
 
         foreach ((string blockHash, BalErrorKind errorKind) in perKindCases)
@@ -551,8 +551,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        const long gasUsed = 167340;
-        const long gasUsedBeforeFinal = 92100;
+        const long gasUsed = 167352;
+        const long gasUsedBeforeFinal = 92112;
         const ulong gasPrice = 2;
         const long gasLimit = 100000;
         const ulong timestamp = 1000000;

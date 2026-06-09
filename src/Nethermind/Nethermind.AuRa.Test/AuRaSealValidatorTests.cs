@@ -30,7 +30,7 @@ namespace Nethermind.AuRa.Test
         private IWallet _wallet;
         private Address _address;
         private IEthereumEcdsa _ethereumEcdsa;
-        private static int _currentStep;
+        private static ulong _currentStep;
         private IReportingValidator _reportingValidator;
         private IBlockTree _blockTree;
         private IValidSealerStrategy _validSealerStrategy;
@@ -45,7 +45,7 @@ namespace Nethermind.AuRa.Test
             _address = _wallet.NewAccount(new NetworkCredential(string.Empty, "AAA").SecurePassword);
 
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
-            _currentStep = 11;
+            _currentStep = 11UL;
             _auRaStepCalculator.CurrentStep.Returns(_currentStep);
 
             _reportingValidator = Substitute.For<IReportingValidator>();
@@ -72,11 +72,11 @@ namespace Nethermind.AuRa.Test
         {
             get
             {
-                long step = 10;
-                long parentStep = 9;
+                ulong step = 10UL;
+                ulong parentStep = 9UL;
 
                 BlockHeaderBuilder GetBlock() => Build.A.BlockHeader
-                        .WithAura(10, [])
+                        .WithAura(10UL, [])
                         .WithBeneficiary(TestItem.AddressA)
                         .WithDifficulty(AuraDifficultyCalculator.CalculateDifficulty(parentStep, step));
 
@@ -175,8 +175,8 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void validate_params_out_of_order()
         {
-            _auRaStepCalculator.CurrentStep.Returns(15L);
-            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), Arg.Any<Address>(), Arg.Any<long>(), out _).Returns(true);
+            _auRaStepCalculator.CurrentStep.Returns(15UL);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), Arg.Any<Address>(), Arg.Any<ulong>(), out _).Returns(true);
 
             object cause = null;
             _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<ulong>(), Arg.Any<byte[]>(),
@@ -222,9 +222,9 @@ namespace Nethermind.AuRa.Test
         {
             get
             {
-                yield return new TestCaseData(0, null, TestItem.AddressA).Returns(true).SetName("Genesis valid.").SetCategory("ValidSeal");
-                yield return new TestCaseData(1, null, TestItem.AddressA).Returns(false).SetName("Wrong sealer.").SetCategory("ValidSeal");
-                yield return new TestCaseData(1, null, null).Returns(true).SetName("General valid.").SetCategory("ValidSeal");
+                yield return new TestCaseData(0UL, null, TestItem.AddressA).Returns(true).SetName("Genesis valid.").SetCategory("ValidSeal");
+                yield return new TestCaseData(1UL, null, TestItem.AddressA).Returns(false).SetName("Wrong sealer.").SetCategory("ValidSeal");
+                yield return new TestCaseData(1UL, null, null).Returns(true).SetName("General valid.").SetCategory("ValidSeal");
             }
         }
 

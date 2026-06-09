@@ -8,13 +8,13 @@ namespace Nethermind.Db.Blooms
 {
     public class InMemoryDictionaryFileStore : IFileStore
     {
-        readonly IDictionary<long, byte[]> _store = new Dictionary<long, byte[]>();
+        readonly IDictionary<ulong, byte[]> _store = new Dictionary<ulong, byte[]>();
 
         public void Dispose() => _store.Clear();
 
-        public void Write(long index, ReadOnlySpan<byte> element) => _store[index] = element.ToArray();
+        public void Write(ulong index, ReadOnlySpan<byte> element) => _store[index] = element.ToArray();
 
-        public int Read(long index, Span<byte> element)
+        public int Read(ulong index, Span<byte> element)
         {
             if (_store.TryGetValue(index, out byte[] found))
             {

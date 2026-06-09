@@ -221,7 +221,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithAura(long step, byte[]? signature = null)
+        public BlockBuilder WithAura(ulong step, byte[]? signature = null)
         {
             TestObjectInternal.Header.AuRaStep = step;
             TestObjectInternal.Header.AuRaSignature = signature;

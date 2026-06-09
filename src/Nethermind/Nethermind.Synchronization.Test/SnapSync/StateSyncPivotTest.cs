@@ -35,7 +35,7 @@ public class StateSyncPivotTest
             {
                 PivotNumber = (ulong)syncPivot,
                 FastSync = true,
-                StateMinDistanceFromHead = minDistance,
+                StateMinDistanceFromHead = (ulong)minDistance,
                 StateMaxDistanceFromHead = maxDistance,
             }, LimboLogs.Instance);
         blockTree.SyncPivot = ((ulong)syncPivot, Keccak.Zero);

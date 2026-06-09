@@ -230,7 +230,8 @@ public class PowForwardHeaderProvider(
 
     private async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, ulong currentNumber, int headersToRequest)
     {
-        sealValidator.HintValidationRange(_sealValidatorUserGuid, (long)currentNumber - 1028, (long)currentNumber + 30000);
+        ulong start = currentNumber >= 1028 ? currentNumber - 1028 : 0UL;
+        sealValidator.HintValidationRange(_sealValidatorUserGuid, start, currentNumber + 30000);
 
         IOwnedReadOnlyList<BlockHeader> headers = await peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
         cancellation.ThrowIfCancellationRequested();

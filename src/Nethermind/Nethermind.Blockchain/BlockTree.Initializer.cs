@@ -346,7 +346,7 @@ public partial class BlockTree
         byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
         if (pivotFromDb is null)
         {
-            _syncPivot = ((ulong)_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 
@@ -356,7 +356,7 @@ public partial class BlockTree
 
         if (updatedPivotBlockHash.IsZero)
         {
-            _syncPivot = ((ulong)_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
+            _syncPivot = (_syncConfig.PivotNumber, _syncConfig.PivotHash is null ? null : new Hash256(Bytes.FromHexString(_syncConfig.PivotHash)));
             return;
         }
 

@@ -54,7 +54,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddDecorator<ILogIndexConfig>((ctx, config) =>
             {
                 IPruningConfig pruningConfig = ctx.Resolve<IPruningConfig>();
-                config.MaxReorgDepth ??= pruningConfig.PruningBoundary;
+                config.MaxReorgDepth ??= (int)pruningConfig.PruningBoundary;
                 return config;
             });
 

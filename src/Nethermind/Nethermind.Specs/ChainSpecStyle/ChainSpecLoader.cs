@@ -338,7 +338,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
         byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
-        long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
+        ulong? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
 
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;

@@ -22,7 +22,7 @@ public class XdcGasLimitCalculatorTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.TargetBlockGasLimit.Returns((long)targetGasLimit);
+        blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000UL);
@@ -43,7 +43,7 @@ public class XdcGasLimitCalculatorTests
         // Arrange
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.TargetBlockGasLimit.Returns((long?)null);
+        blocksConfig.TargetBlockGasLimit.Returns((ulong?)null);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000UL);
@@ -67,7 +67,7 @@ public class XdcGasLimitCalculatorTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.TargetBlockGasLimit.Returns((long)targetGasLimit);
+        blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000UL, parentGasLimit);
@@ -95,7 +95,7 @@ public class XdcGasLimitCalculatorTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.TargetBlockGasLimit.Returns((long)targetGasLimit);
+        blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000UL, parentGasLimit);
@@ -120,7 +120,7 @@ public class XdcGasLimitCalculatorTests
         const ulong targetGasLimit = 100_000_000UL;
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.TargetBlockGasLimit.Returns((long)targetGasLimit);
+        blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1UL);
@@ -147,7 +147,7 @@ public class XdcGasLimitCalculatorTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.TargetBlockGasLimit.Returns((long)targetGasLimit);
+        blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000UL, targetGasLimit);
@@ -172,7 +172,7 @@ public class XdcGasLimitCalculatorTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.TargetBlockGasLimit.Returns((long)targetGasLimit);
+        blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
         XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader genesisHeader = CreateParentHeader(0UL, 5_000_000UL);

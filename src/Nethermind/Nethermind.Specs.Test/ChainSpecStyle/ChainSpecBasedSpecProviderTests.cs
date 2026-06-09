@@ -249,7 +249,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(3338477UL));
             Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(786432));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei));
             Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(393216));
@@ -260,7 +260,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)5007716));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(5007716UL));
             Assert.That(spec.MaxBlobCount, Is.EqualTo(9));
             Assert.That(spec.TargetBlobCount, Is.EqualTo(6));
             Assert.That(spec.Eip2935ContractAddress, Is.EqualTo(Eip2935Constants.BlockHashHistoryAddress));
@@ -294,10 +294,10 @@ public class ChainSpecBasedSpecProviderTests
         VerifyPragueSpecificsForMainnetHoodiAndSepolia(chainId, postOsakaSpec);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)8346193));
+            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo(8346193UL));
             Assert.That(postBPO1Spec.MaxBlobCount, Is.EqualTo(15));
             Assert.That(postBPO1Spec.TargetBlobCount, Is.EqualTo(10));
-            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)11684671));
+            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo(11684671UL));
             Assert.That(postBPO2Spec.MaxBlobCount, Is.EqualTo(21));
             Assert.That(postBPO2Spec.TargetBlobCount, Is.EqualTo(14));
         }
@@ -522,7 +522,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(1112826UL));
             Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei));
             Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(131072));
@@ -1161,7 +1161,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider.GenesisSpec.TargetBlobCount, Is.EqualTo(expectedTargetBlobs));
             Assert.That(provider.GenesisSpec.MaxBlobCount, Is.EqualTo(expectedMaxBlobs));
-            Assert.That(provider.GenesisSpec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)expectedBlobBaseFeeUpdateFraction));
+            Assert.That(provider.GenesisSpec.BlobBaseFeeUpdateFraction, Is.EqualTo(expectedBlobBaseFeeUpdateFraction));
         }
     }
 

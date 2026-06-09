@@ -3,15 +3,15 @@
 
 namespace Nethermind.Trie.Pruning;
 
-public class MaxBlockInCachePruneStrategy(IPruningStrategy baseStrategy, long maxBlockFromPersisted, long pruneBoundary) : IPruningStrategy
+public class MaxBlockInCachePruneStrategy(IPruningStrategy baseStrategy, ulong maxBlockFromPersisted, ulong pruneBoundary) : IPruningStrategy
 {
     public bool DeleteObsoleteKeys => baseStrategy.DeleteObsoleteKeys;
 
     public bool ShouldPruneDirtyNode(TrieStoreState state)
     {
-        ulong reorgBoundary = state.LatestCommittedBlock - (ulong)pruneBoundary;
+        ulong reorgBoundary = state.LatestCommittedBlock - pruneBoundary;
         // Persist snapshot if the last persisted block is too old. Prevent very long memory prune
-        if (reorgBoundary - state.LastPersistedBlock >= (ulong)maxBlockFromPersisted) return true;
+        if (reorgBoundary - state.LastPersistedBlock >= maxBlockFromPersisted) return true;
         return baseStrategy.ShouldPruneDirtyNode(state);
     }
 

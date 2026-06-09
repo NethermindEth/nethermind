@@ -162,7 +162,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
         ClearReadOnlyBundleCache();
-        ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached((ulong)currentPersistedStateId.BlockNumber)); // Safe: PreGenesis (-1) is filtered above
+        ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)

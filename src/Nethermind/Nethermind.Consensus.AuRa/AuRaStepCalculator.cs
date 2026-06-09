@@ -23,22 +23,22 @@ namespace Nethermind.Consensus.AuRa
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         }
 
-        public long CurrentStep
+        public ulong CurrentStep
         {
             get
             {
                 ulong timestampSeconds = _timestamper.UnixTime.Seconds;
-                return (long)GetStepInfo(timestampSeconds).GetCurrentStep(timestampSeconds);
+                return GetStepInfo(timestampSeconds).GetCurrentStep(timestampSeconds);
             }
         }
 
         public TimeSpan TimeToNextStep => new(TimeToNextStepInTicks);
 
-        public TimeSpan TimeToStep(long step)
+        public TimeSpan TimeToStep(ulong step)
         {
             UnixTime epoch = _timestamper.UnixTime;
             StepDurationInfo currentStepInfo = GetStepInfo(epoch.Seconds);
-            long currentStep = (long)currentStepInfo.GetCurrentStep(epoch.Seconds);
+            ulong currentStep = currentStepInfo.GetCurrentStep(epoch.Seconds);
             if (step <= currentStep)
             {
                 return TimeSpan.Zero;
@@ -47,16 +47,16 @@ namespace Nethermind.Consensus.AuRa
             {
                 TimeSpan timeToNextStep = new(GetTimeToNextStepInTicks(epoch, currentStepInfo));
                 // Safe cast: StepDuration is capped at UInt16.MaxValue (65535) so fits in long
-                return timeToNextStep + TimeSpan.FromSeconds((long)currentStepInfo.StepDuration * (step - currentStep - 1));
+                return timeToNextStep + TimeSpan.FromSeconds((long)currentStepInfo.StepDuration * (long)(step - currentStep - 1));
             }
         }
 
-        public long CurrentStepDuration
+        public ulong CurrentStepDuration
         {
             get
             {
                 UnixTime epoch = _timestamper.UnixTime;
-                return (long)GetStepInfo(epoch.Seconds).StepDuration;
+                return GetStepInfo(epoch.Seconds).StepDuration;
             }
         }
 

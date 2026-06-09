@@ -47,7 +47,7 @@ public static partial class EvmInstructions
         where TOpBitwise : struct, IOpBitwise
     {
         // Deduct the operation's gas cost.
-        TGasPolicy.Consume(ref gas, (ulong)TOpBitwise.GasCost);
+        TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();

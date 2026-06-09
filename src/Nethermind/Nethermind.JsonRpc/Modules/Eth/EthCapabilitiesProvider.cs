@@ -67,11 +67,11 @@ public sealed class EthCapabilitiesProvider(
         if (stateBoundary.RetentionWindowBlocks is not { } retention)
             return new ResourceAvailability(Disabled: false, OldestBlock: stateFloor, DeleteStrategy: null);
 
-        long windowOldest = head.Number >= (ulong)retention ? (long)(head.Number - (ulong)retention) : 0L;
+        long windowOldest = head.Number >= retention ? (long)(head.Number - retention) : 0L;
         long stateOldest = Math.Max(stateFloor, windowOldest);
         // Emit the window only when it's the binding constraint, and report the configured
         // retention so the value stays accurate before head reaches it.
-        DeleteStrategy? window = windowOldest >= stateFloor ? BuildWindow(retention) : null;
+        DeleteStrategy? window = windowOldest >= stateFloor ? BuildWindow((long)retention) : null;
         return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
     }
 

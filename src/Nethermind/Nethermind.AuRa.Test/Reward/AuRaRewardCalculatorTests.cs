@@ -124,9 +124,9 @@ namespace Nethermind.AuRa.Test.Reward
         {
             get
             {
-                yield return new TestCaseData(10, 100ul, TestItem.AddressA);
-                yield return new TestCaseData(50, 150ul, TestItem.AddressB);
-                yield return new TestCaseData(150, 200ul, TestItem.AddressC);
+                yield return new TestCaseData(10UL, 100ul, TestItem.AddressA);
+                yield return new TestCaseData(50UL, 150ul, TestItem.AddressB);
+                yield return new TestCaseData(150UL, 200ul, TestItem.AddressC);
             }
         }
 

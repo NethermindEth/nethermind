@@ -88,7 +88,7 @@ namespace Nethermind.Specs.Test
         public ulong TargetBlobCount { get; set; } = spec.TargetBlobCount;
         public ulong MaxBlobCount { get; set; } = spec.MaxBlobCount;
         public ulong MaxBlobsPerTx { get; set; } = spec.MaxBlobsPerTx;
-        public UInt256 BlobBaseFeeUpdateFraction { get; set; } = spec.BlobBaseFeeUpdateFraction;
+        public ulong BlobBaseFeeUpdateFraction { get; set; } = spec.BlobBaseFeeUpdateFraction;
         public bool IsEip1153Enabled { get; set; } = spec.IsEip1153Enabled;
         public bool IsEip3651Enabled { get; set; } = spec.IsEip3651Enabled;
         public bool IsEip3855Enabled { get; set; } = spec.IsEip3855Enabled;
@@ -113,7 +113,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7825Enabled { get; set; } = spec.IsEip7825Enabled;
         public UInt256 ForkBaseFee { get; set; } = spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator { get; set; } = spec.BaseFeeMaxChangeDenominator;
-        public long ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
+        public ulong ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; set; } = spec.BaseFeeCalculator;
         public bool IsEip8024Enabled { get; set; } = spec.IsEip8024Enabled;
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;

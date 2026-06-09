@@ -17,7 +17,7 @@ public partial struct SszForkActivation
 
     public static SszForkActivation From(ForkActivation forkActivation) => new()
     {
-        BlockNumber = [(ulong)forkActivation.BlockNumber],
+        BlockNumber = [forkActivation.BlockNumber],
         Timestamp = [forkActivation.Timestamp ?? 0ul]
     };
 

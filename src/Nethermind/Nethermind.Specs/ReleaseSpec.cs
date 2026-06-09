@@ -73,7 +73,7 @@ public class ReleaseSpec : IReleaseSpec
     public UInt256? Eip1559BaseFeeMinValue { get; set; }
     public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
     public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
-    public long ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
+    public ulong ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
     public IBaseFeeCalculator BaseFeeCalculator { get; set; } = new DefaultBaseFeeCalculator();
     public bool IsEip1153Enabled { get; set; }
     public bool IsEip3651Enabled { get; set; }
@@ -106,7 +106,7 @@ public class ReleaseSpec : IReleaseSpec
     public ulong TargetBlobCount { get; set; }
     public ulong MaxBlobCount { get; set; }
     public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
-    public UInt256 BlobBaseFeeUpdateFraction { get; set; }
+    public ulong BlobBaseFeeUpdateFraction { get; set; }
     [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
     public Address? Eip7251ContractAddress { get => IsEip7251Enabled ? field : null; set; }
     [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]

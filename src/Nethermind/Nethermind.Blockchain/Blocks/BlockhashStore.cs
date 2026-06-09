@@ -26,7 +26,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         if (!worldState.IsContract(eip2935Account)) return;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
-        UInt256 parentBlockIndex = new((blockHeader.Number - 1) % (ulong)spec.Eip2935RingBufferSize);
+        UInt256 parentBlockIndex = new((blockHeader.Number - 1) % spec.Eip2935RingBufferSize);
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
         worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
@@ -39,7 +39,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         {
             return null;
         }
-        UInt256 blockIndex = new((ulong)(requiredBlockNumber % spec.Eip2935RingBufferSize));
+        UInt256 blockIndex = new(requiredBlockNumber % spec.Eip2935RingBufferSize);
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);

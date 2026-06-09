@@ -222,7 +222,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
         }
 
         ulong epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-        ulong epochBase = epochSwitchNumber - (epochSwitchNumber % (ulong)spec.EpochLength);
+        ulong epochBase = epochSwitchNumber - (epochSwitchNumber % spec.EpochLength);
         ulong gapNumber = epochBase >= spec.Gap ? epochBase - spec.Gap : 0UL;
 
         if (gapNumber != qc.GapNumber)

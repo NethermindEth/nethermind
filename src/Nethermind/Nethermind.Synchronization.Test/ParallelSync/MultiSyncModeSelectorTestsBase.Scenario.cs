@@ -638,7 +638,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder WhenStateAndBestHeaderCanBeBeDifferent(int maxBlockDiff)
                 {
-                    _overwrites.Add(() => SyncConfig.HeaderStateDistance = maxBlockDiff);
+                    _overwrites.Add(() => SyncConfig.HeaderStateDistance = (ulong)maxBlockDiff);
                     return this;
                 }
 

@@ -82,7 +82,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
 
     private static void RunTestCore(TestCase testCase, string? reason = null)
     {
-        long gas = Instance.BaseGasCost(testCase.Spec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
+        ulong gas = Instance.BaseGasCost(testCase.Spec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
 
         Result<byte[]> result = Instance.Run(testCase.Input, testCase.Spec);
 
@@ -93,7 +93,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
 
             if (testCase.Gas is not null)
             {
-                Assert.That(gas, Is.EqualTo(testCase.Gas), reason);
+                Assert.That((long)gas, Is.EqualTo(testCase.Gas), reason);
             }
         }
     }

@@ -31,8 +31,8 @@ namespace Nethermind.Consensus.Test
             Assert.That(actualValue, Is.EqualTo(gasLimit * (ulong)Eip1559Constants.DefaultElasticityMultiplier));
         }
 
-        [TestCase(30_000_000ul, 100_000_000, 30029295)]
-        public void Is_calculating_correct_gasLimit(ulong currentGasLimit, long targetGasLimit, long expectedGasLimit)
+        [TestCase(30_000_000ul, 100_000_000UL, 30029295UL)]
+        public void Is_calculating_correct_gasLimit(ulong currentGasLimit, ulong targetGasLimit, ulong expectedGasLimit)
         {
             ulong blockNumber = 20_000_000;
             ulong gasLimit = currentGasLimit;
