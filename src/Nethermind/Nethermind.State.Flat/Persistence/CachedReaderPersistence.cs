@@ -133,15 +133,43 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     private class ClearCacheOnWriteBatchComplete(IPersistence.IWriteBatch inner, CachedReaderPersistence parent)
         : IPersistence.IWriteBatch
     {
-        public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
+        // Per-slot invalidation keeps the value cache warm across blocks (hot, unchanged slots
+        // stay cached). Writes we cannot map to a (address, slot) cache key — raw/hashed writes
+        // from sync, self-destructs, range deletes — force a full clear on completion instead.
+        private bool _requiresFullClear;
+
+        public void SelfDestruct(Address addr)
+        {
+            inner.SelfDestruct(addr);
+            _requiresFullClear = true;
+        }
+
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => inner.SetStorage(addr, slot, value);
+
+        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        {
+            inner.SetStorage(addr, slot, value);
+            parent._storageCache.Delete(new StorageCell(addr, in slot));
+        }
+
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) => inner.SetStorageRaw(addrHash, slotHash, value);
+
+        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value)
+        {
+            inner.SetStorageRaw(addrHash, slotHash, value);
+            _requiresFullClear = true;
+        }
+
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) => inner.SetAccountRaw(addrHash, account);
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
-        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteStorageRange(addressHash, fromPath, toPath);
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            inner.DeleteStorageRange(addressHash, fromPath, toPath);
+            _requiresFullClear = true;
+        }
+
         public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) => inner.DeleteStateTrieNodeRange(fromPath, toPath);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) => inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
 
@@ -152,9 +180,12 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             // not in lock as it has its own lock
             parent.ClearReaderCache();
 
-            // A persisted write may have changed slot values; drop the value cache so reads
-            // never serve stale entries.
-            parent._storageCache.Clear();
+            // Value cache is kept warm across blocks — SetStorage already invalidated the changed
+            // slots. Only writes that couldn't be mapped to a cache key force a full clear.
+            if (_requiresFullClear)
+            {
+                parent._storageCache.Clear();
+            }
         }
     }
 }

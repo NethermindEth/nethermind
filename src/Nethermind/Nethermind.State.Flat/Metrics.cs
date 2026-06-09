@@ -15,6 +15,14 @@ public static class Metrics
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
 
+    [CounterMetric]
+    [Description("Flat persisted-storage read cache hits")]
+    public static long FlatStorageReadCacheHits { get; set; }
+
+    [CounterMetric]
+    [Description("Flat persisted-storage read cache misses")]
+    public static long FlatStorageReadCacheMisses { get; set; }
+
     [DetailedMetric]
     [Description("Time for persistence job")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]

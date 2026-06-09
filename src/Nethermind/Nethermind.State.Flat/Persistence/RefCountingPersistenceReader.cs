@@ -54,11 +54,13 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         StorageCell cell = new(address, in slot);
         if (cache.TryGet(in cell, out CachedSlot? cached) && cached is not null)
         {
+            Metrics.FlatStorageReadCacheHits++;
             if (!cached.Found) return false;
             outValue = cached.Value;
             return true;
         }
 
+        Metrics.FlatStorageReadCacheMisses++;
         bool found = _innerReader.TryGetSlot(address, in slot, ref outValue);
         cache.Set(in cell, new CachedSlot(found ? outValue : default, found));
         return found;
