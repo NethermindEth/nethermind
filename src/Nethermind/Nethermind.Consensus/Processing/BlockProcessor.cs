@@ -302,7 +302,7 @@ public partial class BlockProcessor(
             ? auraHandler!.CreateBlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, in bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData)
             : new BlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData);
 
-        CopyHeaderShape(bh, headerForProcessing);
+        CopyHeaderForProcessing(bh, headerForProcessing);
         if (hasAuRaSeal) auraHandler!.SetSeal(headerForProcessing, auRaStep, auRaSignature);
 
         if (!ShouldComputeStateRoot(bh))
@@ -316,7 +316,12 @@ public partial class BlockProcessor(
         return block;
     }
 
-    private static void CopyHeaderShape(BlockHeader src, BlockHeader dst)
+    /// <remarks>
+    /// Bloom is reset (recomputed during processing); every other field is copied verbatim from
+    /// <paramref name="src"/>. <c>BlockAccessListHash</c> is carried so the verify-only fast path
+    /// can skip recomputing it.
+    /// </remarks>
+    private static void CopyHeaderForProcessing(BlockHeader src, BlockHeader dst)
     {
         dst.Bloom = Bloom.Empty;
         dst.Author = src.Author;
@@ -332,7 +337,6 @@ public partial class BlockProcessor(
         dst.IsPostMerge = src.IsPostMerge;
         dst.ParentBeaconBlockRoot = src.ParentBeaconBlockRoot;
         dst.SlotNumber = src.SlotNumber;
-        // Carried for the verify-only fast path which doesn't recompute it.
         dst.BlockAccessListHash = src.BlockAccessListHash;
         dst.BlobGasUsed = src.BlobGasUsed;
         dst.ExcessBlobGas = src.ExcessBlobGas;
