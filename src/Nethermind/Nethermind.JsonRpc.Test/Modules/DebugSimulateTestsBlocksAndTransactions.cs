@@ -34,87 +34,26 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     protected override void AssertSerializationBlockResult(SimulateBlockResult<GethLikeTxTrace> blockResult) =>
         Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EqualTo(new[] { false, false }));
 
-    [Test]
-    public async Task Test_debug_simulate_caps_gas_to_gas_cap()
+    [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
+    public async Task Test_debug_simulate_respects_gas_cap(long gasCap, long? requestGas, bool expectCapped)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        long gasCap = 50_000;
         chain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns remaining gas
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = contractAddress,
-                            Gas = 100_000,
-                            GasPrice = 0
-                        }
-                    ]
-                }
-            ]
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(
+            EthRpcSimulateTestsBase.CreateGasProbePayload(requestGas),
+            BlockParameter.Latest);
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         GethLikeTxTrace trace = result.Data.First().Traces.First();
         Assert.That(trace.Failed, Is.False);
 
         UInt256 gasAvailable = new(trace.ReturnValue, isBigEndian: true);
-        Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
-        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
-    }
-
-    [Test]
-    public async Task Test_debug_simulate_with_gas_cap_zero_treats_missing_gas_as_uncapped()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        chain.Container.Resolve<IJsonRpcConfig>().GasCap = 0;
-
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-        SimulatePayload<TransactionForRpc> payload = new()
+        if (expectCapped)
         {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = contractAddress,
-                            GasPrice = 0
-                        }
-                    ]
-                }
-            ]
-        };
+            Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        }
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(payload, BlockParameter.Latest);
-        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
-
-        GethLikeTxTrace trace = result.Data.First().Traces.First();
-        Assert.That(trace.Failed, Is.False, "GasCap=0 should keep debug_simulateV1 on the uncapped simulate path");
-
-        UInt256 gasAvailable = new(trace.ReturnValue, isBigEndian: true);
         Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
     }
 

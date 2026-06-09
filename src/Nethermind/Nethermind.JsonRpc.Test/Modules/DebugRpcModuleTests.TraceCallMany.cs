@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Test.Modules.Eth;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -24,6 +26,24 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     private static TransactionBundle CreateBundle(params TransactionForRpc[] transactions) => new() { Transactions = transactions };
+
+    private static TransactionBundle CreateGasProbeBundle() => new()
+    {
+        Transactions = [new LegacyTransactionForRpc { To = EthRpcSimulateTestsBase.GasProbeContractAddress }],
+        StateOverrides = new Dictionary<Address, AccountOverride>
+        {
+            [EthRpcSimulateTestsBase.GasProbeContractAddress] = new()
+            {
+                Code = Bytes.FromHexString("0x5a60005260206000f3")
+            }
+        }
+    };
+
+    private static IEnumerable<TestCaseData> DebugTraceCallManyMissingGasCases()
+    {
+        yield return new TestCaseData((long?)null, false).SetName("defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData(0L, true).SetName("zero_gas_cap_uncapped");
+    }
 
     private static LegacyTransactionForRpc CreateTransaction(
         Address? from = null,
@@ -246,63 +266,29 @@ public partial class DebugRpcModuleTests
         Assert.That(gasAvailable, Is.GreaterThan(0));
     }
 
-    [Test]
-    public async Task Debug_traceCallMany_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]
+    public async Task Debug_traceCallMany_without_gas_respects_gas_cap(long? configuredGasCap, bool uncapped)
     {
         using Context ctx = await CreateContext();
 
         long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
-        long gasCap = blockGasLimit * 10;
-        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
-        config.GasCap = gasCap;
+        long gasCap = configuredGasCap ?? blockGasLimit * 10;
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a uint256
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-
-        // No Gas set — debug_traceCallMany defaults missing gas to gasCap, not blockGasLimit
-        LegacyTransactionForRpc tx = new() { To = contractAddress };
-
-        TransactionBundle bundle = new()
-        {
-            Transactions = [tx],
-            StateOverrides = new Dictionary<Address, AccountOverride>
-            {
-                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
-            }
-        };
-
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(
+            [CreateGasProbeBundle()],
+            BlockParameter.Latest);
 
         GethLikeTxTrace trace = result.Data.First().First();
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
-        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
-    }
-
-    [Test]
-    public async Task Debug_traceCallMany_with_gas_cap_zero_treats_missing_gas_as_uncapped()
-    {
-        using Context ctx = await CreateContext();
-
-        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
-        config.GasCap = 0;
-
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-        LegacyTransactionForRpc tx = new() { To = contractAddress };
-
-        TransactionBundle bundle = new()
+        if (uncapped)
         {
-            Transactions = [tx],
-            StateOverrides = new Dictionary<Address, AccountOverride>
-            {
-                [contractAddress] = new() { Code = Bytes.FromHexString("0x5a60005260206000f3") }
-            }
-        };
-
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-
-        GethLikeTxTrace trace = result.Data.First().First();
-        Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
-        Assert.That(trace.ReturnValue.ToUInt256(), Is.GreaterThan(UInt256.Zero));
+            Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
+            Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+        }
+        else
+        {
+            Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+        }
     }
 }
