@@ -38,12 +38,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
-    internal volatile bool _pausePrewarmer = false;
+    private int _triePrewarmSuppressionDepth;
 
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
+    internal bool IsTriePrewarmSuppressed => Volatile.Read(ref _triePrewarmSuppressionDepth) != 0;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -156,7 +157,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void HintGet(Address address, Account? account)
     {
         _snapshotBundle.SetAccount(address, account);
-        if (_snapshotBundle.ShouldQueuePrewarm(address))
+        if (!IsTriePrewarmSuppressed && _snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
                 Interlocked.Increment(ref _outstandingWarmups);
@@ -190,12 +191,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
                 Parallel.For(0, accountCount, parallelOptions, (i) =>
                 {
-                    if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
+                    if (token.IsCancellationRequested || _hintSequenceId != snapshot || IsTriePrewarmSuppressed) return;
 
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                    if (!IsTriePrewarmSuppressed
+                        && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -228,7 +230,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
                             UInt256 key = slotChanges.Key;
-                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                            if (!IsTriePrewarmSuppressed
+                                && _snapshotBundle.ShouldQueuePrewarm(address, key)
                                 && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
                                 Interlocked.Increment(ref _outstandingWarmups);
                         }
@@ -284,7 +287,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         Parallel.For(0, idx, parallelOptions, (j) =>
         {
-            if (_pausePrewarmer) return;
+            if (IsTriePrewarmSuppressed) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         });
@@ -306,7 +309,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         try
         {
-            if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+            if (_hintSequenceId != sequenceId || IsTriePrewarmSuppressed) return false;
 
             // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
             // this is just for warming up
@@ -351,9 +354,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
+    public IDisposable? BeginTriePrewarmSuppression()
+    {
+        Interlocked.Increment(ref _triePrewarmSuppressionDepth);
+        return new Reactive.AnonymousDisposable(() => Interlocked.Decrement(ref _triePrewarmSuppressionDepth));
+    }
+
     public void Commit(long blockNumber)
     {
-        _pausePrewarmer = true;
+        using IDisposable? triePrewarmSuppression = BeginTriePrewarmSuppression();
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
@@ -379,7 +388,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         _currentStateId = newStateId;
-        _pausePrewarmer = false;
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.

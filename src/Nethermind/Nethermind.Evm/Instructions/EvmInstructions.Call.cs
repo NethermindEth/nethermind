@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -271,7 +272,88 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL &&
+            codeInfo.IsPrecompile &&
+            !TTracingInst.IsActive &&
+            !vm.TxTracer.IsTracingActions &&
+            vm.CanExecutePrecompileCallDirectlyForOpcode(codeInfo.Precompile!))
+        {
+            return ExecuteStaticPrecompileCallDirectly(
+                vm,
+                ref stack,
+                ref gas,
+                in dataOffset,
+                dataLength,
+                in outputOffset,
+                outputLength,
+                codeInfo.Precompile!,
+                target,
+                gasLimitUl);
+        }
+
         return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static EvmExceptionType ExecuteStaticPrecompileCallDirectly(
+            VirtualMachine<TGasPolicy> vm,
+            ref EvmStack stack,
+            ref TGasPolicy gas,
+            in UInt256 dataOffset,
+            UInt256 dataLength,
+            in UInt256 outputOffset,
+            UInt256 outputLength,
+            IPrecompile precompile,
+            Address target,
+            long gasLimitUl)
+        {
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+                return EvmExceptionType.OutOfGas;
+
+            TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
+
+            IReleaseSpec spec = vm.Spec;
+            long baseGasCost = precompile.BaseGasCost(spec);
+            long dataGasCost = precompile.DataGasCost(callData, spec);
+            ulong precompileGasCost = (ulong)baseGasCost + (ulong)dataGasCost;
+
+            if (precompileGasCost > (ulong)long.MaxValue ||
+                !TGasPolicy.UpdateGas(ref childGas, (long)precompileGasCost))
+            {
+                TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                vm.ReturnData = null;
+                return stack.PushZero<TTracingInst>();
+            }
+
+            bool success = vm.TryRunPrecompileDirectly(precompile, callData, spec, out Result<byte[]> output) && output;
+
+            if (!success)
+            {
+                TGasPolicy.SetOutOfGas(ref childGas);
+                TGasPolicy.RestoreChildStateGas(ref gas, in childGas);
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                vm.ReturnData = null;
+                return stack.PushZero<TTracingInst>();
+            }
+
+            vm.WorldState.AddToBalanceAndCreateIfNotExists(target, UInt256.Zero, spec);
+
+            TGasPolicy.Refund(ref gas, in childGas);
+
+            ReadOnlyMemory<byte> outputData = output.Data;
+            vm.ReturnDataBuffer = outputData;
+
+            int copyLength = Math.Min(outputData.Length, (int)outputLength.ToLong());
+            if (copyLength > 0)
+            {
+                ZeroPaddedSpan callOutput = outputData.Span.SliceWithZeroPadding(0, copyLength);
+                if (!vm.VmState.Memory.TrySave(in outputOffset, in callOutput))
+                    return EvmExceptionType.OutOfGas;
+            }
+
+            vm.ReturnData = null;
+            return stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         static EvmExceptionType CreateFullCallFrame(

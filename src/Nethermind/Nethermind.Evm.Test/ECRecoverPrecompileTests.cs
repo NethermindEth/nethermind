@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -16,6 +20,41 @@ public class ECRecoverPrecompileTests : PrecompileTests<ECRecoverPrecompile, ECR
     [TestCase("18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c000000000000000000000000000000000000001000000000000000000000001c73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75feeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549", "", true)]
     [TestCase("18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c000000000000000000000000000000000000001000000000000000000000011c73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75feeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549", "", true)]
     public void Test(string input, string output, bool status) => RunTest(input, output, status);
+
+    [Test]
+    public void Repeated_effective_input_returns_cached_result()
+    {
+        byte[] input = FirstValidInput();
+        byte[] repeatedInput = (byte[])input.Clone();
+
+        Result<byte[]> first = ECRecoverPrecompile.Instance.Run(input, Prague.Instance);
+        Result<byte[]> second = ECRecoverPrecompile.Instance.Run(repeatedInput, Prague.Instance);
+
+        Assert.That(first.IsSuccess, Is.True);
+        Assert.That(second.IsSuccess, Is.True);
+        Assert.That(second.Data, Is.SameAs(first.Data));
+    }
+
+    [Test]
+    public void Repeated_effective_input_returns_process_cached_result_across_threads()
+    {
+        byte[] currentThreadInput = FirstValidInput();
+        byte[] otherThreadInput = SecondValidInput();
+
+        Result<byte[]> currentThreadLocalResult = ECRecoverPrecompile.Instance.Run(currentThreadInput, Prague.Instance);
+        Result<byte[]> otherThreadResult = default;
+
+        Thread thread = new(() => otherThreadResult = ECRecoverPrecompile.Instance.Run(otherThreadInput, Prague.Instance));
+        thread.Start();
+        thread.Join();
+
+        Result<byte[]> result = ECRecoverPrecompile.Instance.Run(otherThreadInput, Prague.Instance);
+
+        Assert.That(currentThreadLocalResult.IsSuccess, Is.True);
+        Assert.That(otherThreadResult.IsSuccess, Is.True);
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(result.Data, Is.SameAs(otherThreadResult.Data));
+    }
 
     [TestCase(
         "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e000000000000000000000000000000000000000000000000000000000000001b38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e789d1dd423d25f0772d2748d60f7e4b81bb14d086eba8e8e8efb6dcff8a4ae02"
@@ -39,4 +78,16 @@ public class ECRecoverPrecompileTests : PrecompileTests<ECRecoverPrecompile, ECR
         TestName = "oversized input clamped to 128 then trailing zeros trimmed"
     )]
     public void NormalizedInput_SameOutput(string input) => RunEffectiveInputTest(input);
+
+    private static byte[] FirstValidInput() => Convert.FromHexString(
+        "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e" +
+        "000000000000000000000000000000000000000000000000000000000000001b" +
+        "38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e" +
+        "789d1dd423d25f0772d2748d60f7e4b81bb14d086eba8e8e8efb6dcff8a4ae02");
+
+    private static byte[] SecondValidInput() => Convert.FromHexString(
+        "18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c" +
+        "000000000000000000000000000000000000000000000000000000000000001c" +
+        "73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75f" +
+        "eeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549");
 }

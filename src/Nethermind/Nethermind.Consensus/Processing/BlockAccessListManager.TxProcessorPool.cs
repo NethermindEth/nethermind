@@ -85,6 +85,7 @@ public partial class BlockAccessListManager
         private readonly IWorldState _stateProvider;
         private readonly ILogManager _logManager;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
+        private readonly ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? _precompileCache;
         private int _processorCount;
 
         public ParallelTxProcessorWithWorldStateManager(
@@ -94,6 +95,7 @@ public partial class BlockAccessListManager
             ILogManager logManager,
             PrewarmerEnvFactory? prewarmerEnvFactory,
             PreBlockCaches? preBlockCaches,
+            ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache,
             IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory)
         {
             _blockHashProvider = blockHashProvider;
@@ -101,6 +103,7 @@ public partial class BlockAccessListManager
             _stateProvider = stateProvider;
             _logManager = logManager;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
+            _precompileCache = precompileCache;
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
                 _processors.Enqueue(NewProcessor());
@@ -223,7 +226,7 @@ public partial class BlockAccessListManager
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _precompileCache);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -329,9 +332,10 @@ public partial class BlockAccessListManager
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager);
+            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, precompileCache);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -361,6 +365,8 @@ public partial class BlockAccessListManager
 
     private class TxProcessorWithWorldState
     {
+        private static readonly IPrecompileProvider PrecompileProvider = new EthereumPrecompileProvider();
+
         public readonly TracedAccessWorldState WorldState;
         public readonly TransactionProcessor<EthereumGasPolicy> TxProcessor;
         public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
@@ -372,7 +378,8 @@ public partial class BlockAccessListManager
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -383,7 +390,11 @@ public partial class BlockAccessListManager
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
-            EthereumCodeInfoRepository codeInfoRepository = new(WorldState);
+            ICodeInfoRepository codeInfoRepository = new EthereumCodeInfoRepository(WorldState);
+            if (precompileCache is not null)
+            {
+                codeInfoRepository = new PrecompileCachedCodeInfoRepository(WorldState, PrecompileProvider, codeInfoRepository, precompileCache);
+            }
             TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
             TxProcessorAdapter = new(TxProcessor);
         }

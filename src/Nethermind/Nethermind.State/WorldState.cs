@@ -275,6 +275,23 @@ namespace Nethermind.State
             return _currentScope!.HintBal(bal);
         }
 
+        public IDisposable? BeginTriePrewarmSuppression()
+        {
+            GuardInScope();
+            return _currentScope!.BeginTriePrewarmSuppression();
+        }
+
+        public bool TryApplyBlockAccessListAccountChanges(ReadOnlyBlockAccessList blockAccessList)
+        {
+            GuardInScope();
+            foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
+            {
+                _stateProvider.ApplyBlockAccessListAccountChanges(accountChanges);
+            }
+
+            return true;
+        }
+
         public ref readonly UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();

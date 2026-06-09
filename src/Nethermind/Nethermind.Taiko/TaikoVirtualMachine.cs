@@ -44,6 +44,9 @@ public class TaikoVirtualMachine<TGasPolicy>(
             : null;
     }
 
+    protected override bool CanExecutePrecompileCallDirectly(IPrecompile precompile) =>
+        precompile is not IContextAwarePrecompile;
+
     protected override CallResult ExecutePrecompileCall(
         VmState<TGasPolicy> state,
         IPrecompile precompile,

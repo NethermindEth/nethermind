@@ -36,6 +36,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
+        public IDisposable? BeginTriePrewarmSuppression() => baseScope.BeginTriePrewarmSuppression();
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);

@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -66,6 +67,10 @@ public class PrecompileCachedCodeInfoRepository(
         IPrecompile precompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
     {
+        [ThreadStatic] private static CachedPrecompile? t_lastPrecompile;
+        [ThreadStatic] private static byte[]? t_lastInput;
+        [ThreadStatic] private static Result<byte[]> t_lastResult;
+
         public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
@@ -73,8 +78,13 @@ public class PrecompileCachedCodeInfoRepository(
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
+            if (TryGetThreadCachedResult(effectiveInput.Span, out Result<byte[]> result))
+            {
+                return result;
+            }
+
             PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput);
-            if (!cache.TryGetValue(key, out Result<byte[]> result))
+            if (!cache.TryGetValue(key, out result))
             {
                 result = precompile.Run(inputData, releaseSpec);
 
@@ -85,11 +95,48 @@ public class PrecompileCachedCodeInfoRepository(
 
                 // we need to rebuild the key with data copy as the data can be changed by VM processing
                 // effective-input bounds are expected to remain the same
-                key = new(address, effectiveInput.ToArray());
+                byte[] copiedInput = effectiveInput.ToArray();
+                key = new(address, copiedInput);
                 cache.TryAdd(key, result);
+                CacheThreadResult(copiedInput, result);
+                return result;
             }
 
+            CacheThreadResult(effectiveInput.Span, result);
             return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool TryGetThreadCachedResult(ReadOnlySpan<byte> effectiveInput, out Result<byte[]> result)
+        {
+            byte[]? lastInput = t_lastInput;
+            if (ReferenceEquals(t_lastPrecompile, this)
+                && lastInput is not null
+                && effectiveInput.SequenceEqual(lastInput))
+            {
+                result = t_lastResult;
+                return true;
+            }
+
+            result = default;
+            return false;
+        }
+
+        private void CacheThreadResult(ReadOnlySpan<byte> effectiveInput, Result<byte[]> result)
+        {
+            byte[]? lastInput = t_lastInput;
+            if (lastInput is null || lastInput.Length != effectiveInput.Length)
+            {
+                lastInput = effectiveInput.ToArray();
+                t_lastInput = lastInput;
+            }
+            else
+            {
+                effectiveInput.CopyTo(lastInput);
+            }
+
+            t_lastPrecompile = this;
+            t_lastResult = result;
         }
     }
 }

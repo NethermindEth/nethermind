@@ -41,7 +41,9 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
 using Nethermind.Core.Threading;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Test;
@@ -95,6 +97,30 @@ public class BlockProcessorTests
                 {
                     Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
                     Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)25));
+                }
+            });
+    }
+
+    [Test]
+    public void ApplyStateChanges_applies_account_changes_without_storage_changes()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 175))
+                .WithNonceChanges(new NonceChange(0, 4))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
+            assertState: stateProvider =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)175));
+                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)4));
                 }
             });
     }
@@ -657,6 +683,72 @@ public class BlockProcessorTests
     [TestCase(2)]
     public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
         WithScopedAmsterdamBalManager(balManager => AssertParallelBalExecutionEnabled(balManager, txCount));
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Bal_transaction_processors_use_shared_precompile_cache(bool cachePrecompilesOnBlockProcessing)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        PreBlockCaches preBlockCaches = new();
+        Address contractAddress = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode
+            .StaticCall(ECRecoverPrecompile.Address, 50_000)
+            .Op(Instruction.POP)
+            .StaticCall(ECRecoverPrecompile.Address, 50_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        Hash256 parentStateRoot;
+        using (stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 1.Ether);
+            stateProvider.CreateAccount(contractAddress, UInt256.Zero);
+            stateProvider.InsertCode(contractAddress, ValueKeccak.Compute(code), code, Amsterdam.Instance);
+            stateProvider.Commit(Amsterdam.Instance);
+            stateProvider.CommitTree(0);
+            parentStateRoot = stateProvider.StateRoot;
+        }
+
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithNumber(0)
+            .WithHash(TestItem.KeccakA)
+            .WithStateRoot(parentStateRoot)
+            .TestObject;
+
+        using IDisposable scope = stateProvider.BeginScope(parentHeader);
+        using BlockAccessListManager balManager = new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false, CachePrecompilesOnBlockProcessing = cachePrecompilesOnBlockProcessing },
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            preBlockCaches: preBlockCaches);
+
+        EthereumEcdsa ecdsa = new(MainnetSpecProvider.Instance.ChainId);
+        Transaction tx = Build.A.Transaction
+            .WithTo(contractAddress)
+            .WithGasLimit(200_000)
+            .SignedAndResolved(ecdsa, TestItem.PrivateKeyA, true)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithParentHash(TestItem.KeccakA)
+            .WithGasLimit(1_000_000)
+            .WithTransactions(tx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+        TransactionResult result = balManager.GetTxProcessor().Execute(tx, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(preBlockCaches.PrecompileCache, Has.Count.EqualTo(1));
+        }
+    }
 
     [Test]
     public void PrepareForProcessing_disables_parallel_bal_execution_when_state_provider_is_not_scoped()

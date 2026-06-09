@@ -97,6 +97,8 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public Task HintBal(ReadOnlyBlockAccessList bal) => _innerWorldState.HintBal(bal);
 
+    public IDisposable? BeginTriePrewarmSuppression() => _innerWorldState.BeginTriePrewarmSuppression();
+
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(storageCell.Address);

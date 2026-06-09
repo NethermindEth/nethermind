@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -462,6 +463,45 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         if (!AccountExists(address))
         {
             CreateAccount(address, balance, nonce);
+        }
+    }
+
+    public void ApplyBlockAccessListAccountChanges(ReadOnlyAccountChanges accountChanges)
+    {
+        bool hasBalanceChanges = accountChanges.BalanceChanges.Length > 0;
+        bool hasNonceChanges = accountChanges.NonceChanges.Length > 0;
+        if (!hasBalanceChanges && !hasNonceChanges)
+        {
+            return;
+        }
+
+        Address address = accountChanges.Address;
+        Account? account = GetThroughCache(address);
+        bool isNewAccount = account is null;
+        account ??= Account.TotallyEmpty;
+
+        UInt256 balance = account.Balance;
+        if (hasBalanceChanges)
+        {
+            balance = accountChanges.BalanceChanges[^1].Value;
+        }
+
+        UInt256 nonce = account.Nonce;
+        if (hasNonceChanges)
+        {
+            nonce = accountChanges.NonceChanges[^1].Value;
+        }
+
+        Account changedAccount = new(nonce, balance, account.StorageRoot, account.CodeHash);
+        if (isNewAccount)
+        {
+            _needsStateRootUpdate = true;
+            PushNew(address, changedAccount);
+        }
+        else if (hasNonceChanges || account.Balance != balance)
+        {
+            _needsStateRootUpdate = true;
+            PushUpdate(address, changedAccount);
         }
     }
 
