@@ -94,4 +94,4 @@ jobs:
               --target "$TARGET_URL" \
               --reference "${{ matrix.reference_url }}" \
               --tests "${{ matrix.test_glob }}" \
-              --stats-interval "00:05:00"
+              --stats-interval "1.00:00:00"
