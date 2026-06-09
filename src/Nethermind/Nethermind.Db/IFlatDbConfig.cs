@@ -48,4 +48,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Dedicated reader threads used to resolve large hinted-read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. 0 or 1 to keep thread-pool parallelism.", DefaultValue = "-1")]
+    int WarmReadConcurrency { get; set; }
 }

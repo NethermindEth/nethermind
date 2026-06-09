@@ -251,6 +251,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }, token);
     }
 
+    /// <summary>
+    /// Minimum job count before sink reads are pumped on dedicated reader threads instead of the
+    /// shared thread pool. Below this the thread-spawn cost outweighs the latency win.
+    /// </summary>
+    private const int DedicatedWarmReadThreshold = 1024;
+
     private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
         Account?[] accounts,
@@ -282,12 +288,76 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
-        Parallel.For(0, idx, parallelOptions, (j) =>
+        int concurrency = ResolveWarmReadConcurrency(idx);
+        if (concurrency > 1 && idx >= DedicatedWarmReadThreshold)
         {
-            if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        });
+            PumpSinkSlotReads(jobs, idx, sink, concurrency, parallelOptions.CancellationToken);
+        }
+        else
+        {
+            Parallel.For(0, idx, parallelOptions, (j) =>
+            {
+                if (_pausePrewarmer) return;
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+            });
+        }
+    }
+
+    private int ResolveWarmReadConcurrency(int jobCount)
+    {
+        int configured = _configuration.WarmReadConcurrency;
+        int concurrency = configured < 0 ? Math.Min(4 * Environment.ProcessorCount, 64) : configured;
+        // No point spinning up more readers than ~64-job slices of work.
+        return Math.Min(concurrency, Math.Max(1, jobCount / 64));
+    }
+
+    /// <summary>
+    /// Resolves the hinted slot reads on dedicated reader threads that pull from a shared job cursor.
+    /// </summary>
+    /// <remarks>
+    /// These reads are disk-latency-bound, so getting them into the pre-block cache before block
+    /// execution needs them is purely a question of read concurrency. The shared thread pool cannot
+    /// provide it: block execution occupies the pool workers for the whole block, so pool-scheduled
+    /// reads (Parallel.For, Task.Run) get starved exactly when they are most valuable. Dedicated
+    /// threads sidestep the pool entirely; they spend most of their lifetime blocked on I/O, so
+    /// oversubscribing the processor count is intended and harmless.
+    /// </remarks>
+    private void PumpSinkSlotReads(
+        ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs,
+        int jobCount,
+        IWorldStateScopeProvider.IAsyncBalReaderSink sink,
+        int concurrency,
+        CancellationToken token)
+    {
+        int nextJob = -1;
+        int started = 0;
+        Task[] readers = new Task[concurrency];
+        try
+        {
+            for (int t = 0; t < concurrency; t++)
+            {
+                readers[t] = Task.Factory.StartNew(() =>
+                {
+                    while (!token.IsCancellationRequested)
+                    {
+                        int j = Interlocked.Increment(ref nextJob);
+                        if (j >= jobCount) return;
+                        if (_pausePrewarmer) continue; // Same semantics as the pooled path: skip, don't retry.
+                        (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                        ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+                    }
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                started++;
+            }
+        }
+        finally
+        {
+            // Join every reader that actually started — also on a thread-creation failure mid-loop —
+            // so the caller's pooled jobs buffer is never disposed under a live reader. This blocks
+            // the hint task's pool worker, the same worker the pooled Parallel.For used to occupy.
+            Task.WaitAll(readers.AsSpan(0, started));
+        }
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
