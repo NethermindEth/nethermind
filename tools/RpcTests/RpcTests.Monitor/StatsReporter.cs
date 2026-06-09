@@ -7,7 +7,10 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal class StatsReporter(INotifier notifier, TimeSpan period) : IStatsReporter
 {
-    private DateTime _since = DateTime.UtcNow;
+    private static ulong UnixNow() => (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    private static DateTime FromUnix(ulong seconds) => DateTimeOffset.FromUnixTimeSeconds((long)seconds).UtcDateTime;
+
+    private ulong _since = UnixNow();
     private long _testRuns;
     private long _requestRuns;
     private long _testFailures;
@@ -18,18 +21,13 @@ internal class StatsReporter(INotifier notifier, TimeSpan period) : IStatsReport
     public void RecordTestFailure() => Interlocked.Increment(ref _testFailures);
     public void RecordError() => Interlocked.Increment(ref _errors);
 
-    private MonitorStats GetAndReset()
-    {
-        DateTime since = _since;
-        _since = DateTime.UtcNow;
-
-        return new MonitorStats(since,
-            Interlocked.Exchange(ref _testRuns, 0),
-            Interlocked.Exchange(ref _requestRuns, 0),
-            Interlocked.Exchange(ref _testFailures, 0),
-            Interlocked.Exchange(ref _errors, 0)
-        );
-    }
+    private MonitorStats GetAndReset() => new(
+        FromUnix(Interlocked.Exchange(ref _since, UnixNow())),
+        Interlocked.Exchange(ref _testRuns, 0),
+        Interlocked.Exchange(ref _requestRuns, 0),
+        Interlocked.Exchange(ref _testFailures, 0),
+        Interlocked.Exchange(ref _errors, 0)
+    );
 
     public async Task RunAsync(CancellationToken ct)
     {
