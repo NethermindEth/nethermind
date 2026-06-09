@@ -49,7 +49,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             {
                 inclusionListTxSource.Set(ilTxs, spec);
             }
-            catch (Exception ex) when (ex is RlpException or ArgumentException or IndexOutOfRangeException)
+            catch (Exception ex) when (ex is RlpException or ArgumentException)
             {
                 if (_logger.IsDebug) _logger.Debug($"engine_forkchoiceUpdatedV5: discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message})");
             }

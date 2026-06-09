@@ -142,12 +142,15 @@ public class PayloadAttributes
 
     private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
     {
+        // Length-prefix each entry so [empty, tx1] and [tx1] don't collide on the same payload-id.
+        Span<byte> lengthPrefix = stackalloc byte[sizeof(uint)];
         KeccakHash hash = KeccakHash.Create();
         for (int i = 0; i < inclusionListTransactions.Length; i++)
         {
-            byte[]? entry = inclusionListTransactions[i];
-            if (entry is null || entry.Length == 0) continue;
-            hash.Update(entry);
+            byte[] entry = inclusionListTransactions[i] ?? [];
+            BinaryPrimitives.WriteUInt32BigEndian(lengthPrefix, (uint)entry.Length);
+            hash.Update(lengthPrefix);
+            if (entry.Length > 0) hash.Update(entry);
         }
         return hash.GenerateValueHash();
     }
