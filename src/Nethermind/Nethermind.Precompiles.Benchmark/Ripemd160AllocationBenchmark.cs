@@ -46,7 +46,7 @@ namespace Nethermind.Precompiles.Benchmark
             return result;
         }
 
-        // PR behaviour: a single digest is reused per thread; only the 32-byte output array is allocated.
+        // Optimized: reuses a single thread-static digest; only the 32-byte output array is allocated per call.
         [Benchmark]
         public byte[] ReusedThreadStaticDigest() => Ripemd.Compute(_input);
     }
