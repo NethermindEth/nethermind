@@ -422,6 +422,7 @@ public class PersistenceManager(
             else if (persistedToPersist is not null)
             {
                 using PersistedSnapshot _ = persistedToPersist;
+                _snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                 PersistPersistedSnapshot(persistedToPersist);
                 _currentPersistedStateId = persistedToPersist.To;
                 PrunePersistedTierBefore(persistedToPersist.To);
@@ -569,6 +570,7 @@ public class PersistenceManager(
             if (persisted is not null)
             {
                 using PersistedSnapshot persistedScope = persisted;
+                _snapshotRepository.RemoveSiblingAndDescendents(persisted.To);
                 PersistPersistedSnapshot(persisted);
                 _currentPersistedStateId = persisted.To;
                 currentPersistedState = _currentPersistedStateId;

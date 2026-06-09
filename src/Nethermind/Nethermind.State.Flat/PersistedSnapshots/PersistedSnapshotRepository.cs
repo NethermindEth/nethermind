@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
@@ -622,23 +623,97 @@ public sealed class PersistedSnapshotRepository(
         int pruned = 0;
         foreach (StateId to in toRemove)
         {
-            ordered.Remove(to);
-            if (!dict.TryRemove(to, out PersistedSnapshot? snapshot)) continue;
-            // Capture depth before Dispose — From/To stay valid on the still-alive object,
-            // but the underlying reservation/file leases are released by Dispose. The catalog
-            // key now scopes the removal to this bucket's entry (the other buckets' entries
-            // at the same To carry a different depth and stay put).
-            long depth = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
-            Interlocked.Add(ref bucketMemory, -snapshot.Size);
-            Interlocked.Decrement(ref bucketCount);
-            Interlocked.Add(ref globalMemory, -snapshot.Size);
-            Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
-            Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-            RemoveFromCatalog(to, depth);
-            snapshot.Dispose();
-            pruned++;
+            if (RemoveEntryLocked(dict, ordered, to, ref bucketMemory, ref bucketCount, ref globalMemory))
+                pruned++;
         }
         return pruned;
+    }
+
+    /// <summary>
+    /// Tear down one bucket's entry at <paramref name="to"/>: drop it from the ordered set and
+    /// dictionary, release its leases, and update counters/metrics/catalog. Caller holds
+    /// <see cref="_catalogLock"/>; returns <c>true</c> when an entry was present.
+    /// </summary>
+    private bool RemoveEntryLocked(
+        ConcurrentDictionary<StateId, PersistedSnapshot> dict,
+        SortedSet<StateId> ordered,
+        in StateId to,
+        ref long bucketMemory,
+        ref long bucketCount,
+        ref long globalMemory)
+    {
+        ordered.Remove(to);
+        if (!dict.TryRemove(to, out PersistedSnapshot? snapshot)) return false;
+        // Capture depth before Dispose — From/To stay valid on the still-alive object,
+        // but the underlying reservation/file leases are released by Dispose. The catalog
+        // key now scopes the removal to this bucket's entry (the other buckets' entries
+        // at the same To carry a different depth and stay put).
+        long depth = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
+        Interlocked.Add(ref bucketMemory, -snapshot.Size);
+        Interlocked.Decrement(ref bucketCount);
+        Interlocked.Add(ref globalMemory, -snapshot.Size);
+        Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
+        Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
+        RemoveFromCatalog(to, depth);
+        snapshot.Dispose();
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public ArrayPoolList<StateId> GetPersistedStatesInRange(long startBlockInclusive, long endBlockInclusive)
+    {
+        if (endBlockInclusive < startBlockInclusive) return ArrayPoolList<StateId>.Empty();
+
+        StateId min = new(startBlockInclusive, ValueKeccak.Zero);
+        StateId max = new(endBlockInclusive, ValueKeccak.MaxValue);
+
+        // A `To` can live in more than one bucket (a base and a compacted snapshot can share it),
+        // so dedupe across the three block-ordered sets.
+        HashSet<StateId> union = [];
+        lock (_catalogLock)
+        {
+            foreach (SortedSet<StateId> set in (ReadOnlySpan<SortedSet<StateId>>)
+                     [_baseStateIds, _compactedStateIds, _persistableStateIds])
+            {
+                foreach (StateId to in set.GetViewBetween(min, max))
+                    union.Add(to);
+            }
+        }
+
+        ArrayPoolList<StateId> result = new(union.Count);
+        foreach (StateId to in union) result.Add(to);
+        return result;
+    }
+
+    /// <inheritdoc/>
+    public bool RemovePersistedStateExact(in StateId toState)
+    {
+        lock (_catalogLock)
+        {
+            // `|` (not `||`): every bucket must be attempted — a `To` can appear in more than one.
+            bool removed =
+                RemoveEntryLocked(_baseSnapshots, _baseStateIds, toState,
+                    ref _baseSnapshotMemoryBytes, ref _baseSnapshotCount,
+                    ref Metrics._persistedSnapshotMemory)
+              | RemoveEntryLocked(_compactedSnapshots, _compactedStateIds, toState,
+                    ref _compactedSnapshotMemoryBytes, ref _compactedSnapshotCount,
+                    ref Metrics._compactedPersistedSnapshotMemory)
+              | RemoveEntryLocked(_persistableCompactedSnapshots, _persistableStateIds, toState,
+                    ref _persistableSnapshotMemoryBytes, ref _persistableSnapshotCount,
+                    ref Metrics._compactedPersistedSnapshotMemory);
+
+            if (removed
+                && _lastRegisteredState is { } tip
+                && !_baseStateIds.Contains(tip)
+                && !_compactedStateIds.Contains(tip)
+                && !_persistableStateIds.Contains(tip))
+                _lastRegisteredState = ComputeLastRegisteredLocked();
+
+            // The bloom slot for `toState` is left in place: it self-prunes via PruneBefore once
+            // the block falls below the persisted frontier, and a stale slot only yields a
+            // correctness-safe false positive (the follow-up TryLease* miss).
+            return removed;
+        }
     }
 
     public bool HasBaseSnapshot(in StateId stateId) => _baseSnapshots.ContainsKey(stateId);

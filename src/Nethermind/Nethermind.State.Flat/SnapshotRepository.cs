@@ -461,32 +461,58 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
 
     public void RemoveSiblingAndDescendents(in StateId canonicalStateId)
     {
-        // Fast-fail when the persisted block has no sibling state: nothing above it can be orphaned.
-        if (!HasForkAt(canonicalStateId.BlockNumber)) return;
+        long canonicalBlock = canonicalStateId.BlockNumber;
 
-        StateId? lastStateId = GetLastSnapshotId();
-        if (lastStateId is null || lastStateId.Value.BlockNumber <= canonicalStateId.BlockNumber) return;
+        // Fast-fail when the persisted block has no sibling state in either tier: with a single
+        // state at the block, every state above it chains down through the canonical one, so
+        // nothing above it can be orphaned. A non-canonical sibling may live in-memory or — if it
+        // was converted before the reorg pruned it — in the persisted tier.
+        if (!HasForkAt(canonicalBlock) && !HasPersistedForkAt(canonicalStateId)) return;
 
-        long maxBlock = lastStateId.Value.BlockNumber;
-        long batchStart = canonicalStateId.BlockNumber + 1;
+        long maxBlock = Math.Max(
+            GetLastSnapshotId()?.BlockNumber ?? long.MinValue,
+            _persisted.LastRegisteredState?.BlockNumber ?? long.MinValue);
+        if (maxBlock <= canonicalBlock) return;
+
+        long batchStart = canonicalBlock + 1;
         int totalPruned = 0;
 
-        using PooledStack<StateId> stack = new();
+        using PooledStack<(StateId State, bool IsPersisted)> stack = new();
         using PooledSet<StateId> seen = new();
 
         while (batchStart <= maxBlock)
         {
             long batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
-            using ArrayPoolListRef<StateId> batch = GetStatesInRange(batchStart, batchEnd);
-            foreach (StateId stateId in batch)
+
+            // In-memory orphans above the persisted block.
+            using (ArrayPoolListRef<StateId> inMemory = GetStatesInRange(batchStart, batchEnd))
             {
-                if (!CanReachState(stateId, canonicalStateId, stack, seen))
+                foreach (StateId stateId in inMemory)
                 {
-                    RemoveAndReleaseCompactedKnownState(stateId);
-                    RemoveAndReleaseKnownState(stateId);
-                    totalPruned++;
+                    if (!CanReachState(stateId, canonicalStateId, stack, seen))
+                    {
+                        RemoveAndReleaseCompactedKnownState(stateId);
+                        RemoveAndReleaseKnownState(stateId);
+                        totalPruned++;
+                    }
                 }
             }
+
+            // Persisted-tier orphans above the persisted block — e.g. non-canonical siblings
+            // converted into the tier (DoConvert applies no canonicality filter) before the
+            // reorg orphaned them, which the in-memory pass above can no longer reach.
+            using (ArrayPoolList<StateId> persisted = _persisted.GetPersistedStatesInRange(batchStart, batchEnd))
+            {
+                foreach (StateId stateId in persisted)
+                {
+                    if (!CanReachState(stateId, canonicalStateId, stack, seen)
+                        && _persisted.RemovePersistedStateExact(stateId))
+                    {
+                        totalPruned++;
+                    }
+                }
+            }
+
             batchStart = batchEnd + 1;
         }
 
@@ -496,39 +522,73 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
         }
     }
 
-    private bool CanReachState(in StateId from, in StateId target, PooledStack<StateId> stack, PooledSet<StateId> seen)
+    /// <summary>True when the persisted tier holds a state at <paramref name="canonicalStateId"/>'s
+    /// block that is not the canonical state itself — a fork the canonical persist orphans.</summary>
+    private bool HasPersistedForkAt(in StateId canonicalStateId)
+    {
+        using ArrayPoolList<StateId> atBlock =
+            _persisted.GetPersistedStatesInRange(canonicalStateId.BlockNumber, canonicalStateId.BlockNumber);
+        foreach (StateId stateId in atBlock)
+            if (stateId != canonicalStateId) return true;
+        return false;
+    }
+
+    /// <remarks>
+    /// Walks parent (<c>From</c>) edges from <paramref name="from"/> toward <paramref name="target"/>
+    /// across both tiers, mirroring <see cref="AssembleSnapshots"/>'s 4-edge expansion: in-memory
+    /// compacted/base then persisted compacted/base, with the "once persisted, stay persisted" gate.
+    /// Each lease is read for its <c>From</c> then disposed immediately. Crossing into the persisted
+    /// tier is required so a canonical in-memory state whose ancestry descends through a converted
+    /// snapshot is not mistaken for an orphan.
+    /// </remarks>
+    private bool CanReachState(in StateId from, in StateId target, PooledStack<(StateId State, bool IsPersisted)> stack, PooledSet<StateId> seen)
     {
         if (from == target) return true;
         if (from.BlockNumber <= target.BlockNumber) return false;
 
         stack.Clear();
         seen.Clear();
-        stack.Push(from);
+        stack.Push((from, false));
         seen.Add(from);
 
         while (stack.Count > 0)
         {
-            StateId current = stack.Pop();
+            (StateId current, bool currentPersisted) = stack.Pop();
 
-            for (int edge = 0; edge < 2; edge++)
+            for (int edge = 0; edge < 4; edge++)
             {
-                Snapshot? snapshot;
-                if (edge == 0)
-                {
-                    if (!TryLeaseCompactedState(current, out snapshot)) continue;
-                }
-                else
-                {
-                    if (!TryLeaseState(current, out snapshot)) continue;
-                }
+                bool edgeInMemory = edge < 2;
+                // Persisted snapshots only chain back to persisted ones, so once on a persisted
+                // edge the in-memory edges are guaranteed misses — skip them.
+                if (currentPersisted && edgeInMemory) continue;
 
-                StateId parent = snapshot.From;
+                IDisposable? snapshot;
+                StateId parent;
+                switch (edge)
+                {
+                    case 0:
+                        if (!TryLeaseCompactedState(current, out Snapshot? sc)) continue;
+                        snapshot = sc; parent = sc.From;
+                        break;
+                    case 1:
+                        if (!TryLeaseState(current, out Snapshot? sb)) continue;
+                        snapshot = sb; parent = sb.From;
+                        break;
+                    case 2:
+                        if (!_persisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pc)) continue;
+                        snapshot = pc; parent = pc.From;
+                        break;
+                    default:
+                        if (!_persisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pb)) continue;
+                        snapshot = pb; parent = pb.From;
+                        break;
+                }
                 snapshot.Dispose();
 
                 if (parent == target) return true;
                 if (parent.BlockNumber > target.BlockNumber && seen.Add(parent))
                 {
-                    stack.Push(parent);
+                    stack.Push((parent, !edgeInMemory));
                 }
             }
         }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -54,5 +55,20 @@ public interface IPersistedSnapshotRepository : IDisposable
 
     // Lifecycle
     void RemoveStatesUntil(long blockNumber);
+
+    /// <summary>
+    /// Enumerate persisted <c>To</c>-StateIds across all buckets whose <c>To.BlockNumber</c> is
+    /// in <c>[startBlockInclusive, endBlockInclusive]</c>. Snapshot taken under the repository's
+    /// catalog lock; caller disposes the returned pooled list.
+    /// </summary>
+    ArrayPoolList<StateId> GetPersistedStatesInRange(long startBlockInclusive, long endBlockInclusive);
+
+    /// <summary>
+    /// Remove the persisted snapshot(s) at exactly <paramref name="toState"/> from every bucket it
+    /// appears in (base/compacted/persistable), releasing their leases. Returns <c>true</c> when
+    /// anything was removed. Used by orphan-fork pruning to drop a single non-canonical state.
+    /// </summary>
+    bool RemovePersistedStateExact(in StateId toState);
+
     bool HasBaseSnapshot(in StateId stateId);
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -30,6 +31,8 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public void RemoveStatesUntil(long blockNumber) { }
+    public ArrayPoolList<StateId> GetPersistedStatesInRange(long startBlockInclusive, long endBlockInclusive) => ArrayPoolList<StateId>.Empty();
+    public bool RemovePersistedStateExact(in StateId toState) => false;
     public bool HasBaseSnapshot(in StateId stateId) => false;
     public void Dispose() { }
 }
