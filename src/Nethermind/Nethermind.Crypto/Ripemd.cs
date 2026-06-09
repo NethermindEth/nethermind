@@ -17,14 +17,21 @@ public static class Ripemd
     public static byte[] Compute(ReadOnlySpan<byte> input)
     {
         RipeMD160Digest digest = _digest ??= new();
-        digest.BlockUpdate(input);
-        byte[] result = new byte[HashOutputLength];
-        RipeMD160Digest digest = _digest ??= new();
-        digest.BlockUpdate(input);
-        int length = digest.GetDigestSize();
-        Span<byte> span = result.AsSpan(HashOutputLength - length, length);
-        digest.DoFinal(span);
-        return result;
+        try
+        {
+            byte[] result = new byte[HashOutputLength];
+            digest.BlockUpdate(input);
+            int length = digest.GetDigestSize();
+            Span<byte> span = result.AsSpan(HashOutputLength - length, length);
+            digest.DoFinal(span);
+            return result;
+        }
+        finally
+        {
+            // Reset on every path so an exception between BlockUpdate and DoFinal can't leave the
+            // thread-static digest partially fed and corrupt the next call on this thread.
+            digest.Reset();
+        }
     }
 
     public static string ComputeString(ReadOnlySpan<byte> input) => Compute(input).ToHexString(false);
