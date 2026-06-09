@@ -47,10 +47,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     //   bits 46..61: 16-bit tag (bytes 4..6 of the raw Address).
     //   bits 0..45: 46-bit absolute offset of the entry's FlagByte in the outer address
     //               column entry. 46 bits = 64 TiB, ample for any real snapshot.
-    // The cache is layout-agnostic across the address column's possible forms: a plain
-    // key-after-value BTree (0x01) or the partitioned PartitionedBTree (0x0A, with a one-entry
-    // directory when there is a single partition) — all use the same per-entry shape, so only the
-    // miss-path resolution differs (see _addressColumnPartitioned).
+    // The cache is layout-agnostic across the address column's possible forms: the column is
+    // always a key-after-value BTree (0x01), whose root may be a plain BTree node, a Hashtable
+    // node (single partition), or a directory Intermediate over per-partition Hashtable nodes
+    // (multi-partition) — all share the same per-entry shape, so the cache and its miss path
+    // (cached-root TrySeekFromRoot, which dispatches the node kinds) are identical across them.
     // Layout: keyFirst=false BTree entry shape is [Value][FlagByte][LEB128][FullKey]. On a
     // tag match we read 27 bytes at the FlagByte covering it, the LEB128 (≤ 6 bytes) and the
     // 20-byte stored raw Address, then compare to the lookup Address to catch tag collisions /
@@ -99,13 +100,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private readonly long _addressBtreeRootStart;
     private readonly long _addressBtreeBufferEnd;
     private readonly byte[] _addressBtreeRootPrefix = [];
-    // True when the address column is a partitioned HSST (PartitionedBTree 0x0A — a one-entry
-    // directory when there is a single partition) rather than a plain key-after-value BTree (0x01).
-    // The cached-root miss path is only valid for 0x01; for the partitioned forms the miss
-    // path routes through the generic HsstReader dispatch instead. The address-bound value
-    // cache (resolved flag-offset + length) stays valid either way — partitioned entries are
-    // the same [Value][Flag][LEB128][Key] shape.
-    private readonly bool _addressColumnPartitioned;
 
     private readonly ArenaReservation _reservation;
     // Manager that owns the per-id blob arena slots. The repository acquires one lease per
@@ -197,41 +191,33 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                     in probeReader, out Bound addrColBound) &&
                 addrColBound.Length >= 5 + 12)
             {
-                Span<byte> idxBuf = stackalloc byte[1];
-                bool partitioned = probeReader.TryRead(addrColBound.Offset + addrColBound.Length - 1, idxBuf)
-                    && ((IndexType)idxBuf[0] is IndexType.PartitionedBTree or IndexType.PartitionedBTreeKeyFirst);
-                if (partitioned)
+                // The column is always a key-after-value BTree (0x01). Its root node may be a
+                // plain BTree node, a single-partition Hashtable node, or a directory Intermediate
+                // over per-partition Hashtable nodes — TrySeekFromRoot dispatches all three from
+                // the cached root, so caching the trailer-derived root descriptor is valid for every
+                // form. The trailer is [RootPrefix][RootPrefixLen u8][RootSize u16][KeyLength u8][IndexType u8].
+                Span<byte> tailBuf = stackalloc byte[5];
+                if (probeReader.TryRead(addrColBound.Offset + addrColBound.Length - 5, tailBuf))
                 {
-                    // Partitioned address column (0x0A multi / single-with-hashtable): the cached-root
-                    // walk is invalid; the miss path dispatches through HsstReader over the column bound.
-                    _addressBtreeBound = addrColBound;
-                    _addressColumnPartitioned = true;
-                }
-                else
-                {
-                    Span<byte> tailBuf = stackalloc byte[5];
-                    if (probeReader.TryRead(addrColBound.Offset + addrColBound.Length - 5, tailBuf))
+                    int rootPrefixLen = tailBuf[0];
+                    int rootSize = tailBuf[1] | (tailBuf[2] << 8);
+                    // tailBuf[3] is the trailer key length — fixed at AddressKeyLength (= 20)
+                    // for column 0x01; the miss path passes the constant rather than caching it.
+                    byte[] rootPrefix = [];
+                    bool prefixOk = true;
+                    if (rootPrefixLen > 0)
                     {
-                        int rootPrefixLen = tailBuf[0];
-                        int rootSize = tailBuf[1] | (tailBuf[2] << 8);
-                        // tailBuf[3] is the trailer key length — fixed at AddressKeyLength (= 20)
-                        // for column 0x01; the miss path passes the constant rather than caching it.
-                        byte[] rootPrefix = [];
-                        bool prefixOk = true;
-                        if (rootPrefixLen > 0)
-                        {
-                            rootPrefix = new byte[rootPrefixLen];
-                            prefixOk = probeReader.TryRead(
-                                addrColBound.Offset + addrColBound.Length - 5 - rootPrefixLen, rootPrefix);
-                        }
-                        if (prefixOk)
-                        {
-                            long trailerLen = 5L + rootPrefixLen;
-                            _addressBtreeBound = addrColBound;
-                            _addressBtreeRootStart = addrColBound.Offset + addrColBound.Length - trailerLen - rootSize;
-                            _addressBtreeBufferEnd = addrColBound.Offset + addrColBound.Length - trailerLen;
-                            _addressBtreeRootPrefix = rootPrefix;
-                        }
+                        rootPrefix = new byte[rootPrefixLen];
+                        prefixOk = probeReader.TryRead(
+                            addrColBound.Offset + addrColBound.Length - 5 - rootPrefixLen, rootPrefix);
+                    }
+                    if (prefixOk)
+                    {
+                        long trailerLen = 5L + rootPrefixLen;
+                        _addressBtreeBound = addrColBound;
+                        _addressBtreeRootStart = addrColBound.Offset + addrColBound.Length - trailerLen - rootSize;
+                        _addressBtreeBufferEnd = addrColBound.Offset + addrColBound.Length - trailerLen;
+                        _addressBtreeRootPrefix = rootPrefix;
                     }
                 }
             }
@@ -379,16 +365,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             addressBound = default;
             return false;
         }
-        if (_addressColumnPartitioned)
-        {
-            // Partitioned address column (0x0A): dispatch through the generic reader,
-            // which floor-seeks the directory / reads the single-partition trailer and probes
-            // the per-partition hashtable. No cached-root shortcut applies.
-            HsstReader<ArenaByteReader, NoOpPin> r = new(in reader, _addressBtreeBound);
-            if (!r.TrySeek(address.Bytes, out addressBound))
-                return false;
-        }
-        else if (!HsstBTreeReader.TrySeekFromRoot<ArenaByteReader, NoOpPin>(
+        // The cached root may be a plain BTree node, a Hashtable node, or a directory
+        // Intermediate — TrySeekFromRoot dispatches each (the Hashtable case probes the
+        // per-partition bucket and falls back to the inner B-tree on a miss).
+        if (!HsstBTreeReader.TrySeekFromRoot<ArenaByteReader, NoOpPin>(
                 in reader, _addressBtreeBound, _addressBtreeRootStart, _addressBtreeBufferEnd,
                 _addressBtreeRootPrefix, PersistedSnapshotTags.AddressKeyLength,
                 address.Bytes, exactMatch: true, keyFirst: false, out addressBound))

@@ -199,7 +199,7 @@ public class PersistedSnapshotCompactorTests
 
     // A storage slot whose first-30-byte prefix is distinct per id (id in the low limb, above
     // the 2-byte suffix), so N ids yield N distinct slot-prefix groups — the input shape that
-    // drives the slot-prefix HSST past the hashtable threshold into the 0x08 partitioned layout.
+    // drives the slot-prefix HSST past the hashtable threshold into the partitioned hashtabled layout.
     private static UInt256 DistinctPrefixSlot(int id) => new((ulong)id << 16);
     private static byte[] DistinctPrefixSlotValue(int id) => [(byte)(id % 255 + 1)];
 
@@ -211,8 +211,47 @@ public class PersistedSnapshotCompactorTests
         return new Address(b);
     }
 
+    // Counts BTreeNodeKind.Hashtable leaf children in a partitioned column bound — the post-refactor
+    // structural signal for "partitioned/hashtabled". The trailer is the ordinary 0x07/0x01 byte, so
+    // partition layout is read by walking the directory B-tree (the enumerator would transparently
+    // redirect through Hashtable nodes and yield the underlying KVs, hiding the structure).
+    private static int CountHashtableNodes<TReader, TPin>(scoped in TReader reader, Bound bound)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        Span<byte> t = stackalloc byte[5];
+        if (!reader.TryRead(bound.Offset + bound.Length - 5, t)) return 0;
+        int rootPrefixLen = t[0];
+        int rootSize = t[1] | (t[2] << 8);
+        long bufferEnd = bound.Offset + bound.Length - (5 + rootPrefixLen);
+        return CountHashtableNodesFrom<TReader, TPin>(in reader, bound.Offset, bufferEnd - rootSize, bufferEnd);
+    }
+
+    private static int CountHashtableNodesFrom<TReader, TPin>(scoped in TReader reader, long scopeStart, long absStart, long bufferEnd)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        Span<byte> flag = stackalloc byte[1];
+        if (!reader.TryRead(absStart, flag)) return 0;
+        switch ((BTreeNodeKind)(flag[0] & 0x03))
+        {
+            case BTreeNodeKind.Hashtable: return 1;
+            case BTreeNodeKind.Entry: return 0;
+        }
+        if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, absStart, bufferEnd, default, out BTreeNodeReader node, out TPin pin))
+            return 0;
+        int total = 0;
+        using (pin)
+        {
+            int n = node.EntryCount;
+            for (int i = 0; i < n; i++)
+                total += CountHashtableNodesFrom<TReader, TPin>(in reader, scopeStart, scopeStart + (long)node.GetUInt64Value(i), bufferEnd);
+        }
+        return total;
+    }
+
     /// <summary>
-    /// End-to-end of the partitioned slot HSST (IndexType 0x08) on the BASE build path: one
+    /// End-to-end of the partitioned slot HSST (partitioned) on the BASE build path: one
     /// snapshot with 200 distinct slot prefixes (~6 KiB of 30-byte keys, above the 4 KiB
     /// hashtable threshold) forces a hashtable-bearing partitioned blob, then every slot is
     /// read back through the real mmap reader stack via <c>TryGetSlot</c>.
@@ -261,7 +300,7 @@ public class PersistedSnapshotCompactorTests
     /// End-to-end of the partitioned slot HSST on the COMPACTION path: four base snapshots each
     /// write a disjoint 50-slot distinct-prefix range on AddressA (each base stays sub-threshold
     /// → 0x07), but the merged 200-prefix output crosses the hashtable threshold, so
-    /// <c>NWayMergeKeyFirstPartitioned</c> emits a 0x08 blob. Every slot must survive and read
+    /// <c>NWayMergeKeyFirstPartitioned</c> emits a partitioned blob. Every slot must survive and read
     /// back through the compacted snapshot's real reader.
     /// </summary>
     [Test]
@@ -269,7 +308,7 @@ public class PersistedSnapshotCompactorTests
     {
         // n is a power of 2 ≥ minCompactSize (CompactSize*2 = 8) so a single merge fires (mirrors
         // TryCompactPersistedSnapshots_MergesNBaseSnapshots). 8 × 25 = 200 distinct merged prefixes
-        // → > 4 KiB of 30-byte keys → the merged slot HSST is the 0x08 partitioned layout.
+        // → > 4 KiB of 30-byte keys → the merged slot HSST is the partitioned hashtabled layout.
         const int n = 8;
         const int slotsPerSnapshot = 25;
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
@@ -334,7 +373,7 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void Compact_PerAddressNewestWins_AcrossVaryingMatchCount()
     {
-        const int A = 64; // 0x0A address column
+        const int A = 64; // partitioned address column
         const int S = 8;
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(testDir);
@@ -409,7 +448,7 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void Compact_PartitionedColumns_MergeBuiltBloom_HasNoFalseNegatives()
     {
-        const int n = 8; // shared 32 + unique 8×4 = 64 distinct addresses ⇒ 0x0A
+        const int n = 8; // shared 32 + unique 8×4 = 64 distinct addresses ⇒ partitioned
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(testDir);
         try
@@ -492,7 +531,7 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// High-entropy stress over partitioned ADDRESS (0x0A) + partitioned SLOT (0x08) columns,
+    /// High-entropy stress over partitioned ADDRESS (partitioned) + partitioned SLOT (partitioned) columns,
     /// targeting "random invalid block" style corruption: 40 addresses, each present in all 8
     /// base snapshots (so per-address <c>MergeValues</c> runs with matchCount == 8), with a
     /// per-snapshot account update (newest wins), disjoint accumulating slot ranges, and one
@@ -504,7 +543,7 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void Compact_RichOverlappingState_PartitionedColumns_AllReadsCorrect()
     {
-        const int A = 40;   // 40 × 20 = 800 key bytes ≫ 200 threshold ⇒ 0x0A address column
+        const int A = 40;   // 40 × 20 = 800 key bytes ≫ 200 threshold ⇒ partitioned address column
         const int S = 8;    // one merge fires at minCompactSize = CompactSize*2 = 8
         const int slotsPerSnap = 4;
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
@@ -602,18 +641,19 @@ public class PersistedSnapshotCompactorTests
 
     /// <summary>
     /// The persistence walk (PersistenceManager.PersistSnapshot → PersistedSnapshotScanner) over a
-    /// partitioned ADDRESS column (0x0A) must yield the correct address, account, and per-slot
-    /// VALUES — not just the right keys. A wrong/missing value here is written verbatim to the
-    /// backing store and resurfaces as a "random invalid block" after the snapshot is persisted.
-    /// Builds a 0x0A snapshot with distinct balances + slot values, scans it exactly as the
-    /// persistence path does, and asserts every yielded value (and the exact address/slot counts).
+    /// partitioned ADDRESS column must yield the correct address, account, and per-slot VALUES — not
+    /// just the right keys. A wrong/missing value here is written verbatim to the backing store and
+    /// resurfaces as a "random invalid block" after the snapshot is persisted. Builds a hashtabled
+    /// snapshot with distinct balances + slot values, scans it exactly as the persistence path does,
+    /// and asserts every yielded value (and the exact address/slot counts).
     /// </summary>
-    // Both cases are 0x0A: a low threshold (200) yields several partitions; a high threshold
-    // (4 MiB, the common compacted-address case) yields a single partition — still a one-entry
-    // directory 0x0A. Both with htMin 0 so the hashtable is forced.
-    [TestCase(200L, IndexType.PartitionedBTree)]
-    [TestCase(4L * 1024 * 1024, IndexType.PartitionedBTree)]
-    public void Scan_PartitionedAddressColumn_YieldsCorrectAccountAndSlotValues(long thresholdBytes, IndexType expectedTail)
+    // Both cases are hashtabled key-after-value columns (ordinary 0x01 trailer): a low threshold
+    // (200) yields several partitions; a high threshold (4 MiB, the common compacted-address case)
+    // yields a single partition whose root is the lone Hashtable node. Both with htMin 0 so the
+    // hashtable is forced. expectMultiPartition distinguishes the two structurally.
+    [TestCase(200L, true)]
+    [TestCase(4L * 1024 * 1024, false)]
+    public void Scan_PartitionedAddressColumn_YieldsCorrectAccountAndSlotValues(long thresholdBytes, bool expectMultiPartition)
     {
         const int A = 50;
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
@@ -652,13 +692,17 @@ public class PersistedSnapshotCompactorTests
                 new Snapshot(new StateId(0, Keccak.EmptyTreeHash), new StateId(1, Keccak.Compute("s1")), c, _pool, ResourcePool.Usage.MainBlockProcessing));
             try
             {
-                // Confirm the column is partitioned 0x0A, then scan exactly as persistence does.
+                // Confirm the column is a hashtabled key-after-value column (ordinary 0x01 trailer),
+                // with the expected partition multiplicity, then scan exactly as persistence does.
                 using WholeReadSession tailSession = snap.BeginWholeReadSession();
                 WholeReadSessionReader tailReader = tailSession.GetReader();
                 Assert.That(PersistedSnapshotReader.TryGetAddressColumnBound<WholeReadSessionReader, NoOpPin>(in tailReader, out Bound addrCol), Is.True);
                 Span<byte> tb = stackalloc byte[1];
                 tailReader.TryRead(addrCol.Offset + addrCol.Length - 1, tb);
-                Assert.That((IndexType)tb[0], Is.EqualTo(expectedTail), $"column must be {expectedTail}");
+                Assert.That((IndexType)tb[0], Is.EqualTo(IndexType.BTree), "column keeps the ordinary 0x01 trailer");
+                int htNodes = CountHashtableNodes<WholeReadSessionReader, NoOpPin>(in tailReader, addrCol);
+                Assert.That(htNodes, Is.GreaterThan(0), "column must carry per-partition hashtables");
+                Assert.That(htNodes > 1, Is.EqualTo(expectMultiPartition), "partition multiplicity must match the threshold");
 
                 int seenAddrs = 0;
                 Dictionary<int, UInt256> gotBalance = [];
@@ -700,7 +744,7 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// Concurrent reads over a partitioned ADDRESS column (0x0A): many threads hammer the
+    /// Concurrent reads over a partitioned ADDRESS column (partitioned): many threads hammer the
     /// lock-free 8-way address-bound cache (eviction + refill races) while reading accounts and
     /// slots. Every read must return the correct value on every thread — a data race in the
     /// cache or the partitioned resolver would surface here as a "random" wrong/missing read.
@@ -768,7 +812,7 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// Persistence-side iteration over a partitioned ADDRESS column (0x0A): the bloom-rebuild
+    /// Persistence-side iteration over a partitioned ADDRESS column (partitioned): the bloom-rebuild
     /// scan (<see cref="PersistedSnapshotBloomBuilder"/> → <see cref="PersistedSnapshotScanner"/>
     /// → <see cref="HsstRefEnumerator{TReader,TPin}"/>) must walk every address entry. Builds a
     /// partitioned-address base snapshot, rebuilds its bloom by scanning, and asserts every
@@ -777,7 +821,7 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void Scan_PartitionedAddressColumn_BloomRebuild_VisitsAllEntries()
     {
-        const int addrCount = 64; // 64 × 20 = 1280 key bytes ≫ 200-byte threshold ⇒ multi-partition 0x0A
+        const int addrCount = 64; // 64 × 20 = 1280 key bytes ≫ 200-byte threshold ⇒ multi-partition
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(testDir);
         try
@@ -807,19 +851,17 @@ public class PersistedSnapshotCompactorTests
                 using WholeReadSession session = baseSnap.BeginWholeReadSession();
                 WholeReadSessionReader reader = session.GetReader();
 
-                // Precondition: the address column really is partitioned (0x0A), so the scan
-                // exercises the partitioned enumerator rather than the plain 0x01 walk.
+                // Precondition: the address column really is partitioned (multiple per-partition
+                // Hashtable nodes under the directory), so the scan exercises the directory walk.
                 Assert.That(PersistedSnapshotReader.TryGetAddressColumnBound<WholeReadSessionReader, NoOpPin>(
                     in reader, out Bound addrCol), Is.True);
                 Span<byte> tailByte = stackalloc byte[1];
                 Assert.That(reader.TryRead(addrCol.Offset + addrCol.Length - 1, tailByte), Is.True);
-                Assert.That((IndexType)tailByte[0], Is.EqualTo(IndexType.PartitionedBTree), "address column must be multi-partition 0x0A");
+                Assert.That((IndexType)tailByte[0], Is.EqualTo(IndexType.BTree), "address column keeps the ordinary 0x01 trailer");
 
-                // Explicitly confirm there really is more than one partition: the 0x0A blob's
-                // top-level tree IS the directory (key-first), one entry per partition.
-                int partitions = 0;
-                HsstBTreeEnumerator<WholeReadSessionReader, NoOpPin> dir = new(in reader, addrCol, keyFirst: true);
-                while (dir.MoveNext(in reader)) partitions++;
+                // Explicitly confirm there really is more than one partition: count the directory's
+                // Hashtable nodes (one per partition).
+                int partitions = CountHashtableNodes<WholeReadSessionReader, NoOpPin>(in reader, addrCol);
                 Assert.That(partitions, Is.GreaterThan(1), "test must span multiple address partitions");
 
                 // The persistence bloom-rebuild scan must visit every address (and its slot).
@@ -841,13 +883,13 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// End-to-end of the partitioned ADDRESS column (key-after-value 0x0A) on the
+    /// End-to-end of the partitioned ADDRESS column (key-after-value) on the
     /// COMPACTION path. A low address-partition threshold + zero hashtable-min (both reuse the
     /// slot-options config) forces the merged 64-address column through
     /// <c>NWayMergePartitioned</c> into a hashtable-bearing partitioned layout. Every account
     /// and slot must read back through the compacted snapshot's real reader, and the column's
     /// tail byte must be a partitioned index type — confirming the merge actually partitioned
-    /// rather than silently degrading to a plain 0x01.
+    /// rather than silently degrading to a hashtable-less plain B-tree.
     /// </summary>
     [Test]
     public void Compact_PartitionedAddressColumn_RoundTrips_ThroughPartitionedHsst()
@@ -861,7 +903,7 @@ public class PersistedSnapshotCompactorTests
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 4 * 1024 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Persisted);
             // Low partition threshold + zero hashtable-min ⇒ the address column partitions and
-            // every partition carries a hashtable (0x0A, single partition = one-entry directory).
+            // every partition carries a hashtable (Hashtable nodes under the directory).
             FlatDbConfig config = new()
             {
                 CompactSize = 4,
@@ -900,7 +942,8 @@ public class PersistedSnapshotCompactorTests
             Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
             try
             {
-                // The address column must be a partitioned layout, not a plain 0x01 BTree.
+                // The compacted address column must be a partitioned hashtabled layout (Hashtable
+                // nodes under the directory), not a plain hashtable-less B-tree.
                 using (WholeReadSession session = compacted!.BeginWholeReadSession())
                 {
                     WholeReadSessionReader reader = session.GetReader();
@@ -908,8 +951,9 @@ public class PersistedSnapshotCompactorTests
                         in reader, out Bound addrCol), Is.True);
                     Span<byte> tail = stackalloc byte[1];
                     Assert.That(reader.TryRead(addrCol.Offset + addrCol.Length - 1, tail), Is.True);
-                    Assert.That((IndexType)tail[0], Is.EqualTo(IndexType.PartitionedBTree),
-                        "compacted address column must be partitioned (0x0A)");
+                    Assert.That((IndexType)tail[0], Is.EqualTo(IndexType.BTree), "address column keeps the ordinary 0x01 trailer");
+                    Assert.That(CountHashtableNodes<WholeReadSessionReader, NoOpPin>(in reader, addrCol), Is.GreaterThan(0),
+                        "compacted address column must carry per-partition hashtables");
                 }
 
                 for (int id = 1; id <= n * addrsPerSnapshot; id++)
@@ -937,7 +981,7 @@ public class PersistedSnapshotCompactorTests
     /// <c>IFlatDbConfig</c> into the base build: a very low
     /// <c>PersistedSnapshotSlotPartitionThresholdBytes</c> (plus
     /// <c>PersistedSnapshotSlotHashtableMinBytes = 0</c>) forces a 100-distinct-prefix contract
-    /// into a hashtable-bearing partitioned (0x08) layout, and every slot still round-trips
+    /// into a hashtable-bearing partitioned layout, and every slot still round-trips
     /// through the real mmap reader. The config value reaching the builder without breaking
     /// reads is the behavior under test.
     /// </summary>

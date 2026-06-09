@@ -8,22 +8,23 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Builds an <see cref="IndexType.PartitionedBTreeKeyFirst"/> (0x08) HSST: a key-first
-/// table split into partitions, each an ordinary key-first data + index region optionally
-/// followed by a 64-byte-aligned 8-way hashtable, plus a trailing directory B-tree mapping
-/// partition-first-keys to partition metadata. Entries MUST be added in sorted key order
-/// (one call per key); the builder closes a partition once its accumulated key bytes reach
-/// <see cref="HsstBTreeOptions.PartitionThresholdBytes"/> or its on-disk span approaches
-/// <see cref="HsstBTreeOptions.PartitionMaxSpanBytes"/>.
+/// Builds a hashtable-accelerated <see cref="IndexType.BTreeKeyFirst"/> (0x07) /
+/// <see cref="IndexType.BTree"/> (0x01) HSST: a table split into partitions, each an ordinary
+/// data + index region followed by a 64-byte-aligned 8-way hashtable. Entries MUST be added in
+/// sorted key order; the builder closes a partition once its accumulated key bytes reach
+/// <see cref="HsstBTreeOptions.PartitionThresholdBytes"/> (this bounds the per-partition hashtable
+/// build buffer).
 /// </summary>
 /// <remarks>
-/// Composition over modification: each partition and the directory are produced by an
-/// ordinary <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/> (key-first) driven over the
-/// same writer with <c>baseOffsetOverride = </c> this blob's byte 0, so every recorded
-/// offset shares one byte-0-relative coordinate system that a reader walks with a single
-/// whole-blob bound. The per-partition hashtable stores, per key, the forward distance from
-/// the partition's data-section start to the entry; a reader probes one bucket and, on a miss,
-/// falls back to the partition's inner B-tree (located via the directory metadata). See FORMAT.md.
+/// Each partition's hashtable + metadata is emitted as a <see cref="BTreeNodeKind.Hashtable"/>
+/// node (<c>[Flag][28-byte record][InnerRootPrefix]</c>). The Hashtable-node bytes are buffered as
+/// partitions close, then written together just before a trailing **directory** B-tree whose
+/// leaf-level children point at those nodes (built via <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.RecordNodeChild"/>);
+/// a single partition skips the directory and is the root node itself. So the whole blob is an
+/// ordinary B-tree the standard reader walks — directory → Hashtable node → (probe; on miss/floor)
+/// the partition's inner B-tree — with no special index type. Everything shares one byte-0-relative
+/// coordinate system (<c>baseOffsetOverride = </c> this blob's byte 0). A sub-<see cref="HsstBTreeOptions.HashtableMinBytes"/>
+/// single partition degrades to a plain B-tree (no node). See FORMAT.md.
 /// </remarks>
 public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     where TWriter : IByteBufferWriterWithReader<TReader, TPin>
@@ -57,8 +58,8 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     /// slot levels — use <see cref="Add"/>) or key-after-value (<c>[Value][Flag][LEB128][Key]</c>,
     /// for the per-address column whose value sizes are unknown up front — use
     /// <see cref="BeginValueWrite"/>/<see cref="FinishValueWrite"/> streaming). The trailing
-    /// directory B-tree is always key-first regardless. Selects the 0x07/0x08 (key-first) vs
-    /// 0x01/0x0A (key-after-value) trailers.
+    /// directory index is the same either way; the blob's trailer IndexType reflects the inner
+    /// entry layout: 0x07 (key-first) vs 0x01 (key-after-value).
     /// </param>
     public HsstPartitionedBTreeBuilder(ref TWriter writer, ref HsstPartitionedBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, bool keyFirst = true)
     {
@@ -140,41 +141,61 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Close the final partition (if open), then emit the trailer. A single hashtable-less
-    /// partition collapses to a plain B-tree (0x07 key-first / 0x01 key-after-value),
-    /// byte-identical to a standalone build — the "don't partition tiny blobs" case. Otherwise a
-    /// directory B-tree maps each partition's first key to its metadata (0x08 / 0x0A), including
-    /// the single-partition-with-hashtable case, which becomes a one-entry directory.
+    /// Close the final partition (if open), then emit the buffered Hashtable nodes and the trailer.
+    /// A single hashtable-less partition collapses to a plain B-tree (0x07 key-first / 0x01
+    /// key-after-value), byte-identical to a standalone build — the "don't partition tiny blobs"
+    /// case. A single hashtabled partition writes its Hashtable node as the root. Otherwise the
+    /// nodes are written bunched and a directory B-tree (built over them as leaf children) is the
+    /// root. The blob's trailer IndexType is 0x07/0x01 — the standard reader walks it.
     /// </summary>
     public void Build()
     {
         if (_partitionOpen) ClosePartition(closedByBuild: true);
 
+        int partitionCount = _buffers.DirValueLengths.Count;
+        IndexType indexType = _keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree;
+
         // Single hashtable-less partition: the lone partition's inner index is already a complete
-        // byte-0-relative B-tree, so skip the directory entirely and expose it as a plain
-        // 0x07/0x01 blob (byte-identical to a standalone build).
-        if (_buffers.DirValueLengths.Count == 1 && !_lastHadHashtable)
+        // byte-0-relative B-tree, so skip everything and expose it as a plain 0x07/0x01 blob
+        // (byte-identical to a standalone build).
+        if (partitionCount == 1 && !_lastHadHashtable)
         {
-            WriteSinglePlainTrailer(_keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree);
+            WriteSinglePlainTrailer(indexType);
             return;
         }
 
-        // The directory B-tree is always key-first (its values are the fixed metadata records);
-        // only its trailing IndexType distinguishes the partition entry layout (0x08 vs 0x0A).
+        ReadOnlySpan<byte> dirKeys = _buffers.DirKeys.AsSpan();
+        ReadOnlySpan<byte> nodeBytes = _buffers.DirValues.AsSpan();
+        ReadOnlySpan<int> nodeLengths = _buffers.DirValueLengths.AsSpan();
+
+        // Single hashtabled partition: the lone Hashtable node is the blob root.
+        if (partitionCount == 1)
+        {
+            int len = nodeLengths[0];
+            nodeBytes[..len].CopyTo(_writer.GetSpan(len));
+            _writer.Advance(len);
+            WriteHashtableRootTrailer(len, indexType);
+            return;
+        }
+
+        // Multi-partition: emit the Hashtable nodes contiguously (bunched, just before the
+        // directory — keeps them cache-local to the directory walk), and build a directory B-tree
+        // whose leaf children point at those nodes.
         HsstBTreeBuilder<TWriter, TReader, TPin> dir = new(
             ref _writer, ref _buffers.Inner, _keyLength, _options, keyFirst: true, baseOffsetOverride: _hsstBase);
         try
         {
-            ReadOnlySpan<byte> dirKeys = _buffers.DirKeys.AsSpan();
-            ReadOnlySpan<byte> dirValues = _buffers.DirValues.AsSpan();
-            ReadOnlySpan<int> dirLengths = _buffers.DirValueLengths.AsSpan();
-            int valOff = 0;
-            for (int p = 0; p < dirLengths.Length; p++)
+            int off = 0;
+            for (int p = 0; p < partitionCount; p++)
             {
-                dir.Add(dirKeys.Slice(p * _keyLength, _keyLength), dirValues.Slice(valOff, dirLengths[p]));
-                valOff += dirLengths[p];
+                long nodeOffset = _writer.Written - _hsstBase;
+                int len = nodeLengths[p];
+                nodeBytes.Slice(off, len).CopyTo(_writer.GetSpan(len));
+                _writer.Advance(len);
+                off += len;
+                dir.RecordNodeChild(nodeOffset, dirKeys.Slice(p * _keyLength, _keyLength));
             }
-            dir.Build(_keyFirst ? IndexType.PartitionedBTreeKeyFirst : IndexType.PartitionedBTree);
+            dir.Build(indexType);
         }
         finally
         {
@@ -200,6 +221,22 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         tail[rootPrefixLen + 3] = (byte)_keyLength;
         tail[rootPrefixLen + 4] = (byte)indexType;
         _writer.Advance(trailerLen);
+    }
+
+    /// <summary>
+    /// Append the trailer for a single-partition blob whose root is the lone Hashtable node (just
+    /// written). The node carries its own inner-root prefix, so the trailer's RootPrefix is empty;
+    /// <c>RootSize = nodeSize</c> locates the node at <c>HSST end − 5 − nodeSize</c>.
+    /// </summary>
+    private void WriteHashtableRootTrailer(int nodeSize, IndexType indexType)
+    {
+        Span<byte> tail = _writer.GetSpan(5);
+        tail[0] = 0; // RootPrefixLen
+        tail[1] = (byte)nodeSize;
+        tail[2] = (byte)(nodeSize >> 8);
+        tail[3] = (byte)_keyLength;
+        tail[4] = (byte)indexType;
+        _writer.Advance(5);
     }
 
     // Opens a partition without its first key — the first key is recorded by RecordEntry on the
@@ -258,7 +295,7 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
             _writer.Advance(regionSize);
         }
 
-        EncodeDirValue(innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix[..rootPrefixLen]);
+        BufferHashtableNode(innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix[..rootPrefixLen]);
 
         // Stash the lone partition's plain-trailer descriptor for the single hashtable-less-partition
         // fast path in Build() (used only when this turns out to be the sole, hashtable-less partition).
@@ -282,17 +319,23 @@ public ref struct HsstPartitionedBTreeBuilder<TWriter, TReader, TPin>
         _writer.Advance(pad);
     }
 
-    private void EncodeDirValue(long innerRootOffset, long innerBufferEnd, long hashtableOffset, long dataRegionStart, int bucketCount, scoped ReadOnlySpan<byte> rootPrefix)
+    /// <summary>
+    /// Buffer the partition's Hashtable-node bytes (<c>[Flag=Hashtable][28-byte record][InnerRootPrefix]</c>)
+    /// into <c>DirValues</c>; they are emitted contiguously at <see cref="Build"/> time. Buffering
+    /// (rather than writing inline after each partition) keeps every node adjacent to the directory.
+    /// </summary>
+    private void BufferHashtableNode(long innerRootOffset, long innerBufferEnd, long hashtableOffset, long dataRegionStart, int bucketCount, scoped ReadOnlySpan<byte> rootPrefix)
     {
-        Span<byte> rec = stackalloc byte[HsstPartitionHashtable.DirRecordFixedSize];
-        WriteRecord(rec, innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix.Length);
-        _buffers.DirValues.AddRange(rec);
+        Span<byte> head = stackalloc byte[1 + HsstPartitionHashtable.NodeRecordFixedSize];
+        head[0] = (byte)BTreeNodeKind.Hashtable;
+        WriteRecord(head[1..], innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix.Length);
+        _buffers.DirValues.AddRange(head);
         if (rootPrefix.Length > 0) _buffers.DirValues.AddRange(rootPrefix);
-        _buffers.DirValueLengths.Add(HsstPartitionHashtable.DirRecordFixedSize + rootPrefix.Length);
+        _buffers.DirValueLengths.Add(head.Length + rootPrefix.Length);
     }
 
     /// <summary>
-    /// Write the 28-byte partition metadata record (the directory entry's value):
+    /// Write the 28-byte hashtable-node metadata record:
     /// <c>[InnerRootOffset 6][InnerBufferEnd 6][HashtableOffset 6][DataRegionStart 6][HashtableBucketCount u24][InnerRootPrefixLen u8]</c>.
     /// </summary>
     private static void WriteRecord(Span<byte> rec, long innerRootOffset, long innerBufferEnd, long hashtableOffset, long dataRegionStart, int bucketCount, int rootPrefixLen)

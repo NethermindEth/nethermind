@@ -78,8 +78,8 @@ public sealed record HsstBTreeOptions
     /// byte-length gate.</summary>
     public int MinIntermediateBytes { get; init; } = DefaultMinIntermediateBytes;
 
-    /// <summary>Default per-partition key-bytes budget for the partitioned
-    /// (<see cref="IndexType.PartitionedBTreeKeyFirst"/>) builder — once the running sum
+    /// <summary>Default per-partition key-bytes budget for the partitioned builder
+    /// (<see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/>) — once the running sum
     /// of entry key bytes reaches this, the partition is closed at the next group
     /// boundary and a fresh one starts. 4 MiB.</summary>
     public const long DefaultPartitionThresholdBytes = 4L * 1024 * 1024;
@@ -94,11 +94,11 @@ public sealed record HsstBTreeOptions
     public const long DefaultPartitionMaxSpanBytes = 1L << 48;
 
     /// <summary>Minimum key-bytes for a <b>whole single-partition blob</b> to bother with a
-    /// hashtable. Below this the blob is emitted as a plain key-first B-tree (0x07) with no
-    /// directory and no hashtable — a one- or two-level B-tree already reaches the entry — to
-    /// save the space. This gates partitioning itself: once a blob partitions (a 0x08/0x0A
-    /// directory, with one entry if there is a single partition), <b>every</b> partition carries
-    /// a hashtable, so a directory never holds a hashtable-less partition. 4 KiB.</summary>
+    /// hashtable. Below this the blob is emitted as a plain B-tree (0x07/0x01) with no
+    /// Hashtable node — a one- or two-level B-tree already reaches the entry — to save the space.
+    /// This gates partitioning itself: once a blob partitions (a directory of per-partition
+    /// Hashtable nodes, or a single root Hashtable node), <b>every</b> partition carries a
+    /// hashtable, so a directory never holds a hashtable-less partition. 4 KiB.</summary>
     public const int DefaultHashtableMinBytes = 4 * 1024;
 
     /// <summary>Per-partition key-bytes budget for the partitioned builder; a partition

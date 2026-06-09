@@ -63,29 +63,8 @@ public enum IndexType : byte
     /// builder requires <c>Add(key, valueSpan)</c>.
     /// </summary>
     BTreeKeyFirst = 0x07,
-    /// <summary>
-    /// Partitioned key-first B-tree HSST. The blob is split into K partitions, each a
-    /// self-contained <see cref="BTreeKeyFirst"/>-shaped data + index region optionally
-    /// followed by a 64-byte-aligned 8-way hashtable; a trailing directory B-tree maps
-    /// each partition's first key to its metadata (inner root offset, inner buffer end, hashtable
-    /// offset + bucket count). A reader floor-seeks the directory, then either probes the
-    /// partition hashtable in a single cache-line read (jumping straight to the entry) or,
-    /// on a miss, falls back to walking the partition's inner B-tree. Selected for the
-    /// large slot-prefix HSSTs whose deep B-tree walk is memory-latency bound. See
-    /// FORMAT.md for the full layout / lookup procedure.
-    /// </summary>
-    PartitionedBTreeKeyFirst = 0x08,
-    // 0x09 reserved (was SinglePartitionHashtableBTreeKeyFirst — a single partition with a
-    // hashtable now emits a one-entry directory 0x08 rather than a special trailer).
-    /// <summary>
-    /// Key-after-value sibling of <see cref="PartitionedBTreeKeyFirst"/> (0x08): a partitioned
-    /// table whose entries are <c>[Value][Flag][LEB128 ValueLength][FullKey]</c> (so values can
-    /// be streamed without knowing their length up front). Used for the per-address column,
-    /// whose value sizes are unknown ahead of time. Same directory + per-partition hashtable
-    /// layout as 0x08; only the per-entry layout (and the single-no-hashtable fallback, which is
-    /// plain <see cref="BTree"/> 0x01) differ. See FORMAT.md.
-    /// </summary>
-    PartitionedBTree = 0x0A,
-    // 0x0B reserved (was SinglePartitionHashtableBTree — key-after-value sibling of the removed
-    // 0x09; a single partition with a hashtable now emits a one-entry directory 0x0A).
+    // 0x08–0x0B reserved (were the partitioned variants — partitioning + the per-partition
+    // hashtable are now folded into 0x01 / 0x07 via the BTreeNodeKind.Hashtable node, so a
+    // partitioned blob is an ordinary BTree / BTreeKeyFirst whose directory leaf children are
+    // Hashtable nodes; no distinct index type. See FORMAT.md and BTreeNodeKind.
 }

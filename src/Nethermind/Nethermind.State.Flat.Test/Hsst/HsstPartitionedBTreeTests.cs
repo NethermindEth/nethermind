@@ -139,6 +139,63 @@ public class HsstPartitionedBTreeTests
         return result;
     }
 
+    // ---- Structural inspection of the hashtable-node layout. The blob is an ordinary 0x07/0x01
+    // B-tree whose directory leaf children are BTreeNodeKind.Hashtable nodes (one per partition).
+    // The enumerator redirects transparently through Hashtable nodes (it yields the underlying
+    // KVs, not the partition records), so structural checks walk the directory tree directly. ----
+
+    private static (long rootStart, long bufferEnd) Trailer(byte[] data)
+    {
+        int rootPrefixLen = data[^5];
+        int rootSize = data[^4] | (data[^3] << 8);
+        long bufferEnd = data.Length - (5 + rootPrefixLen);
+        return (bufferEnd - rootSize, bufferEnd);
+    }
+
+    private static BTreeNodeKind RootNodeKind(byte[] data)
+    {
+        (long rootStart, _) = Trailer(data);
+        return (BTreeNodeKind)(data[(int)rootStart] & 0x03);
+    }
+
+    // All BTreeNodeKind.Hashtable leaf children in the directory, in directory order (one per
+    // partition). A single-partition hashtabled blob has exactly one (the root); a plain blob none.
+    private static List<long> CollectHashtableNodes(byte[] data)
+    {
+        (long rootStart, long bufferEnd) = Trailer(data);
+        SpanByteReader reader = new(data);
+        List<long> nodes = [];
+        CollectHashtableNodes(in reader, data, rootStart, bufferEnd, nodes);
+        return nodes;
+    }
+
+    private static void CollectHashtableNodes(scoped in SpanByteReader reader, byte[] data, long absStart, long bufferEnd, List<long> nodes)
+    {
+        switch ((BTreeNodeKind)(data[(int)absStart] & 0x03))
+        {
+            case BTreeNodeKind.Hashtable:
+                nodes.Add(absStart);
+                return;
+            case BTreeNodeKind.Entry:
+                return;
+        }
+        if (!HsstBTreeReader.TryLoadNode<SpanByteReader, NoOpPin>(in reader, absStart, bufferEnd, default, out BTreeNodeReader node, out NoOpPin pin))
+            return;
+        using (pin)
+        {
+            int n = node.EntryCount;
+            for (int i = 0; i < n; i++)
+                CollectHashtableNodes(in reader, data, (long)node.GetUInt64Value(i), bufferEnd, nodes);
+        }
+    }
+
+    // u24 HashtableBucketCount at record bytes 24..26 (node = [Flag][28-byte record][prefix]).
+    private static int HashtableBucketCount(byte[] data, long nodeOffset)
+    {
+        int o = (int)nodeOffset + 1 + 24;
+        return data[o] | (data[o + 1] << 8) | (data[o + 2] << 16);
+    }
+
     // Forces several partitions, each with a hashtable.
     private static HsstBTreeOptions MultiPartitionWithHashtable => new()
     {
@@ -147,11 +204,14 @@ public class HsstPartitionedBTreeTests
     };
 
     [Test]
-    public void IndexType_Byte_Is_PartitionedBTreeKeyFirst_At_Tail()
+    public void MultiPartition_Tail_Is_KeyFirst_With_Directory_Of_Hashtable_Nodes()
     {
-        // Many keys with hashtables forced → directory + 0x08 trailer.
+        // Many keys with hashtables forced → directory B-tree over per-partition Hashtable nodes,
+        // stamped with the ordinary 0x07 (key-first) trailer — no distinct index type.
         byte[] data = BuildPartitioned(50, MultiPartitionWithHashtable);
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTreeKeyFirst));
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst));
+        Assert.That(RootNodeKind(data), Is.EqualTo(BTreeNodeKind.Intermediate), "multi-partition root is the directory");
+        Assert.That(CollectHashtableNodes(data).Count, Is.GreaterThan(1), "directory must hold multiple Hashtable nodes");
     }
 
     [Test]
@@ -161,6 +221,7 @@ public class HsstPartitionedBTreeTests
         // byte-identical to a standalone key-first build.
         byte[] partitioned = BuildPartitioned(5, HsstBTreeOptions.Default);
         Assert.That(partitioned[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst), "small contract must stay 0x07");
+        Assert.That(CollectHashtableNodes(partitioned), Is.Empty, "plain blob has no Hashtable nodes");
         byte[] plain = BuildPlainKeyFirst(5);
         Assert.That(partitioned, Is.EqualTo(plain), "single hashtable-less partition must be byte-identical to plain key-first");
     }
@@ -217,13 +278,14 @@ public class HsstPartitionedBTreeTests
     [Test]
     public void Span_Triggered_Split_RoundTrips()
     {
-        // Large values + a tiny span cap force span-based partition splits (no hashtable),
-        // exercising the PartitionMaxSpanBytes path without materialising 2 GiB.
+        // Large values + a tiny span cap force span-based partition splits, exercising the
+        // PartitionMaxSpanBytes path without materialising 2 GiB. HashtableMinBytes only suppresses
+        // the hashtable for a *sole* partition, so once this splits, every partition is hashtabled.
         HsstBTreeOptions opts = new()
         {
             PartitionThresholdBytes = long.MaxValue, // never trigger the key-bytes split
             PartitionMaxSpanBytes = 256,             // split on span instead
-            HashtableMinBytes = int.MaxValue,        // never write a hashtable
+            HashtableMinBytes = int.MaxValue,        // would suppress a sole partition's hashtable
         };
         using PooledByteBufferWriter pooled = new(1 << 20);
         using HsstPartitionedBTreeBuilderBuffersContainer buffers = new();
@@ -235,7 +297,8 @@ public class HsstPartitionedBTreeTests
         byte[] data = pooled.WrittenSpan.ToArray();
         b.Dispose();
 
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTreeKeyFirst), "span split must yield ≥2 partitions → 0x08");
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst), "blob keeps the ordinary 0x07 trailer");
+        Assert.That(CollectHashtableNodes(data).Count, Is.GreaterThan(1), "span split must yield ≥2 partitions");
         for (int i = 0; i < 30; i++)
         {
             Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i}");
@@ -260,20 +323,24 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // Crossing the configurable upper threshold (PartitionThresholdBytes) is what splits the
-    // blob into multiple partitions (→ 0x08); staying under it leaves a single partition that,
-    // sub-HashtableMinBytes, degrades to a plain 0x07. Every key must read back either way.
-    [TestCase(300L, 0, 50, (byte)0x08)]            // over upper threshold → multi-partition + hashtable
-    [TestCase(300L, int.MaxValue, 50, (byte)0x08)] // multi-partition: HashtableMinBytes does NOT suppress per-partition hashtables → still 0x08, reads OK
-    [TestCase(4L * 1024 * 1024, 4096, 5, (byte)0x07)] // under both thresholds → single partition degrades to 0x07
-    [TestCase(4L * 1024 * 1024, 0, 50, (byte)0x08)]  // single partition + hashtable → one-entry directory 0x08
+    // Crossing the configurable upper threshold (PartitionThresholdBytes) is what splits the blob
+    // into multiple partitions (→ Hashtable nodes under a directory); staying under it leaves a
+    // single partition that, sub-HashtableMinBytes, degrades to a plain B-tree (no Hashtable node).
+    // The trailer is the ordinary 0x07 either way; "partitioned" is now read structurally. Every
+    // key must read back regardless.
+    [TestCase(300L, 0, 50, true)]            // over upper threshold → multi-partition + hashtables
+    [TestCase(300L, int.MaxValue, 50, true)] // multi-partition: HashtableMinBytes does NOT suppress per-partition hashtables
+    [TestCase(4L * 1024 * 1024, 4096, 5, false)] // under both thresholds → single plain partition, no Hashtable node
+    [TestCase(4L * 1024 * 1024, 0, 50, true)]  // single partition + hashtable → root is a Hashtable node
     public void Upper_Threshold_Controls_Partitioning_And_Reads_Stay_Correct(
-        long partitionThresholdBytes, int hashtableMinBytes, int count, byte expectedTail)
+        long partitionThresholdBytes, int hashtableMinBytes, int count, bool expectPartitioned)
     {
         HsstBTreeOptions opts = new() { PartitionThresholdBytes = partitionThresholdBytes, HashtableMinBytes = hashtableMinBytes };
         byte[] data = BuildPartitioned(count, opts);
 
-        Assert.That(data[^1], Is.EqualTo(expectedTail), "partition layout (0x08) must engage exactly when the upper threshold is exceeded");
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst), "blob keeps the ordinary 0x07 trailer");
+        Assert.That(CollectHashtableNodes(data).Count > 0, Is.EqualTo(expectPartitioned),
+            "Hashtable nodes must appear exactly when the upper threshold is exceeded (or a sole hashtabled partition)");
         for (int i = 0; i < count; i++)
         {
             Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i} not found (incl. keys in non-first partitions)");
@@ -281,16 +348,18 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // One partition that warrants a hashtable is emitted as a normal one-entry directory 0x08
-    // (no special single-partition trailer). Hit, fallback (floor), and iteration all work.
+    // One partition that warrants a hashtable is emitted as a plain 0x07 blob whose root node IS
+    // the Hashtable node (no directory). Hit, fallback (floor), and iteration all work.
     [Test]
-    public void Single_Partition_With_Hashtable_Is_0x08()
+    public void Single_Partition_With_Hashtable_Root_Is_Hashtable_Node()
     {
         const int count = 60;
         // Default 4 MiB partition threshold ⇒ one partition; HashtableMinBytes=0 ⇒ it gets a hashtable.
         byte[] data = BuildPartitioned(count, new HsstBTreeOptions { HashtableMinBytes = 0 });
 
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTreeKeyFirst), "single partition + hashtable must be a one-entry directory 0x08");
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst), "blob keeps the ordinary 0x07 trailer");
+        Assert.That(RootNodeKind(data), Is.EqualTo(BTreeNodeKind.Hashtable), "single hashtabled partition → root is the Hashtable node");
+        Assert.That(CollectHashtableNodes(data).Count, Is.EqualTo(1), "exactly one Hashtable node");
 
         // Hashtable-hit path: every key resolves with the right value.
         for (int i = 0; i < count; i++)
@@ -306,7 +375,7 @@ public class HsstPartitionedBTreeTests
         Assert.That(HsstTestUtil.TryGetFloor(data, Key(count + 500), out byte[] floorVal), Is.True);
         Assert.That(floorVal, Is.EqualTo(Val(count - 1)));
 
-        // Enumeration drains the one-entry directory → same sequence as the plain 0x07 build.
+        // Enumeration redirects through the root Hashtable node → same sequence as the plain 0x07 build.
         List<(byte[] key, byte[] val)> partitioned = Enumerate(data);
         List<(byte[] key, byte[] val)> plain = Enumerate(BuildPlainKeyFirst(count));
         Assert.That(partitioned.Count, Is.EqualTo(count));
@@ -327,21 +396,14 @@ public class HsstPartitionedBTreeTests
         // Tiny partition threshold ⇒ several partitions, each (incl. the tail) well under the
         // default 4 KiB HashtableMinBytes.
         byte[] data = BuildPartitioned(count, new HsstBTreeOptions { PartitionThresholdBytes = 300 });
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTreeKeyFirst), "expected a multi-partition 0x08 blob");
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst), "blob keeps the ordinary 0x07 trailer");
 
-        // The top-level tree of a 0x08 blob IS the directory; walk it directly and check each
-        // partition's metadata record carries a hashtable (u24 HashtableBucketCount at record bytes 24..27 > 0).
-        SpanByteReader reader = new(data);
-        HsstBTreeEnumerator<SpanByteReader, NoOpPin> dir = new(in reader, new Bound(0, data.Length), keyFirst: true);
-        int partitions = 0;
-        while (dir.MoveNext(in reader))
-        {
-            int o = (int)dir.CurrentValue.Offset;
-            int bucketCount = data[o + 24] | (data[o + 25] << 8) | (data[o + 26] << 16);
-            Assert.That(bucketCount, Is.GreaterThan(0), $"partition {partitions} has no hashtable");
-            partitions++;
-        }
-        Assert.That(partitions, Is.GreaterThan(1), "test must produce multiple partitions");
+        // Collect the directory's Hashtable nodes and check each carries a live hashtable
+        // (u24 HashtableBucketCount in its record > 0).
+        List<long> nodes = CollectHashtableNodes(data);
+        Assert.That(nodes.Count, Is.GreaterThan(1), "test must produce multiple partitions");
+        for (int p = 0; p < nodes.Count; p++)
+            Assert.That(HashtableBucketCount(data, nodes[p]), Is.GreaterThan(0), $"partition {p} has no hashtable");
 
         // And every key still reads back.
         for (int i = 0; i < count; i++)
@@ -411,20 +473,20 @@ public class HsstPartitionedBTreeTests
     }
 
     // The key-after-value partitioned builder (the per-address layout) round-trips via streaming
-    // BeginValueWrite/FinishValueWrite and Add: multi-partition and single+hashtable both → 0x0A
-    // (a one-entry directory in the single case), single small → plain 0x01. Every key reads back
-    // (hashtable hit + floor fallback), and enumeration matches the plain 0x01 build. (A mixed
-    // Add/streaming build is not byte-identical to an all-Add build — a streamed value flushes any
-    // pending leaf first — so only the trailer tag is asserted for the single-small case.)
-    [TestCase(60, /*threshold*/ 300L, /*htMin*/ 0, (byte)0x0A)]   // multi-partition + hashtable
-    [TestCase(60, 4L * 1024 * 1024, 0, (byte)0x0A)]               // single partition + hashtable → one-entry directory 0x0A
-    [TestCase(5, 4L * 1024 * 1024, 4096, (byte)0x01)]             // single small → plain 0x01
-    public void KeyAfterValue_Partitioned_Streaming_RoundTrips(int count, long thresholdBytes, int htMinBytes, byte expectedTail)
+    // BeginValueWrite/FinishValueWrite and Add: multi-partition and single+hashtable both carry
+    // Hashtable nodes (the root is the lone node in the single case), single small → plain 0x01 with
+    // no node. The trailer is the ordinary 0x01 either way. Every key reads back (hashtable hit +
+    // floor fallback), and enumeration matches the plain 0x01 build.
+    [TestCase(60, /*threshold*/ 300L, /*htMin*/ 0, true)]   // multi-partition + hashtable
+    [TestCase(60, 4L * 1024 * 1024, 0, true)]               // single partition + hashtable → root is a Hashtable node
+    [TestCase(5, 4L * 1024 * 1024, 4096, false)]            // single small → plain 0x01, no node
+    public void KeyAfterValue_Partitioned_Streaming_RoundTrips(int count, long thresholdBytes, int htMinBytes, bool expectPartitioned)
     {
         HsstBTreeOptions opts = new() { PartitionThresholdBytes = thresholdBytes, HashtableMinBytes = htMinBytes };
         byte[] data = BuildPartitionedKeyAfterValue(count, opts);
 
-        Assert.That(data[^1], Is.EqualTo(expectedTail), "key-after-value trailer must match the partition layout");
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTree), "key-after-value blob keeps the ordinary 0x01 trailer");
+        Assert.That(CollectHashtableNodes(data).Count > 0, Is.EqualTo(expectPartitioned), "Hashtable nodes present iff partitioned/hashtabled");
 
         // Hashtable-hit path: every key resolves with the right value.
         for (int i = 0; i < count; i++)
@@ -449,9 +511,10 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // A single streamed key-after-value entry that warrants a hashtable (htMin 0) → one-entry
-    // directory 0x0A, with a large value (mirrors the per-address column: one address, big nested
-    // value). The lone entry must read back via the hashtable probe and the floor/inner-tree fallback.
+    // A single streamed key-after-value entry that warrants a hashtable (htMin 0) → plain 0x01 blob
+    // whose root is the lone Hashtable node, with a large value (mirrors the per-address column: one
+    // address, big nested value). The lone entry must read back via the hashtable probe and the
+    // floor/inner-tree fallback.
     [TestCase(1)]
     [TestCase(4000)]
     public void KeyAfterValue_Single_Streamed_Entry_With_Hashtable_RoundTrips(int valueLen)
@@ -472,7 +535,8 @@ public class HsstPartitionedBTreeTests
         byte[] data = pooled.WrittenSpan.ToArray();
         b.Dispose();
 
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTree), "single streamed entry + hashtable must be a one-entry directory 0x0A");
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTree), "key-after-value blob keeps the ordinary 0x01 trailer");
+        Assert.That(RootNodeKind(data), Is.EqualTo(BTreeNodeKind.Hashtable), "single hashtabled partition → root is the Hashtable node");
         Assert.That(HsstTestUtil.TryGet(data, key, out byte[] got), Is.True, "hashtable hit must find the lone entry");
         Assert.That(got, Is.EqualTo(val), "value mismatch");
         // Floor of a higher key skips the hashtable → inner-tree fallback must still resolve it.
@@ -500,10 +564,10 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // SINGLE partition + hashtable — a one-entry directory 0x08 (key-first) / 0x0A (key-after-value).
-    // PartitionThresholdBytes is unbounded so all keys land in one partition; HashtableMinBytes=0
-    // forces the hashtable. Every KV reads back by point lookup and via the enumerator, across small
-    // counts and a count that spans several hashtable buckets.
+    // SINGLE partition + hashtable — a plain 0x07 (key-first) / 0x01 (key-after-value) blob whose
+    // root node IS the Hashtable node. PartitionThresholdBytes is unbounded so all keys land in one
+    // partition; HashtableMinBytes=0 forces the hashtable. Every KV reads back by point lookup and
+    // via the enumerator, across small counts and a count that spans several hashtable buckets.
     [TestCase(true, 1)]
     [TestCase(true, 6)]
     [TestCase(true, 7)]
@@ -517,17 +581,17 @@ public class HsstPartitionedBTreeTests
         HsstBTreeOptions opts = new() { HashtableMinBytes = 0, PartitionThresholdBytes = long.MaxValue };
         byte[] data = keyFirst ? BuildPartitioned(count, opts) : BuildPartitionedKeyAfterValue(count, opts);
 
-        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
-            ? IndexType.PartitionedBTreeKeyFirst
-            : IndexType.PartitionedBTree)), "single partition + hashtable → one-entry directory expected");
+        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree)), "ordinary 0x07/0x01 trailer");
+        Assert.That(RootNodeKind(data), Is.EqualTo(BTreeNodeKind.Hashtable), "single hashtabled partition → root is the Hashtable node");
 
         AssertEveryKvReadableAndEnumerable(data, count);
     }
 
-    // MULTI partition — 0x08 (key-first) / 0x0A (key-after-value). A small per-partition threshold
-    // (~10 keys/partition) forces ≥2 partitions, so reads exercise the directory floor-seek + each
-    // partition's hashtable, and enumeration drains partitions in directory order. Every KV reads
-    // back by point lookup and via the enumerator.
+    // MULTI partition — plain 0x07 (key-first) / 0x01 (key-after-value) blob, directory over per-
+    // partition Hashtable nodes. A small per-partition threshold (~10 keys/partition) forces ≥2
+    // partitions, so reads exercise the directory floor-seek + each partition's hashtable, and
+    // enumeration drains partitions in directory order. Every KV reads back by point lookup and via
+    // the enumerator.
     [TestCase(true, 25)]
     [TestCase(true, 80)]
     [TestCase(true, 200)]
@@ -539,27 +603,21 @@ public class HsstPartitionedBTreeTests
         HsstBTreeOptions opts = new() { HashtableMinBytes = 0, PartitionThresholdBytes = 10 * KeyLength };
         byte[] data = keyFirst ? BuildPartitioned(count, opts) : BuildPartitionedKeyAfterValue(count, opts);
 
-        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
-            ? IndexType.PartitionedBTreeKeyFirst
-            : IndexType.PartitionedBTree)), "multi-partition expected");
+        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree)), "ordinary 0x07/0x01 trailer");
 
-        // The 0x08/0x0A blob's top-level tree IS the directory (always key-first); count its
-        // entries = partition count and require more than one so this really is multi-partition.
-        SpanByteReader reader = new(data);
-        HsstBTreeEnumerator<SpanByteReader, NoOpPin> dir = new(in reader, new Bound(0, data.Length), keyFirst: true);
-        int partitions = 0;
-        while (dir.MoveNext(in reader)) partitions++;
-        Assert.That(partitions, Is.GreaterThan(1), "test must produce multiple partitions");
+        // Count the directory's Hashtable nodes = partition count; require more than one so this
+        // really is multi-partition.
+        Assert.That(CollectHashtableNodes(data).Count, Is.GreaterThan(1), "test must produce multiple partitions");
 
         AssertEveryKvReadableAndEnumerable(data, count);
     }
 
     // Force a MULTI-LEVEL directory B-tree: with PartitionThresholdBytes == KeyLength every entry
-    // is its own partition, so 700 entries ⇒ 700 directory entries ⇒ the directory leaf splits and
+    // is its own partition, so 700 entries ⇒ 700 Hashtable nodes ⇒ the directory leaf splits and
     // gains intermediate nodes. Exercises the directory floor-seek across B-tree levels (every
-    // earlier partitioned test had a single-leaf directory). Run for 0x08 (key-first) and 0x0A
-    // (key-after-value); every key must resolve (hashtable hit and directory→inner-tree fallback),
-    // floor works, and absent keys return false.
+    // earlier partitioned test had a single-leaf directory). Run for key-first (0x07) and
+    // key-after-value (0x01); every key must resolve (hashtable hit and directory→inner-tree
+    // fallback), floor works, and absent keys return false.
     [TestCase(true)]
     [TestCase(false)]
     public void MultiLevel_Directory_AllKeys_RoundTrip(bool keyFirst)
@@ -568,15 +626,12 @@ public class HsstPartitionedBTreeTests
         HsstBTreeOptions opts = new() { PartitionThresholdBytes = KeyLength, HashtableMinBytes = 0 };
         byte[] data = keyFirst ? BuildPartitioned(count, opts) : BuildPartitionedKeyAfterValue(count, opts);
 
-        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
-            ? IndexType.PartitionedBTreeKeyFirst : IndexType.PartitionedBTree)), "multi-partition expected");
+        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree)), "ordinary 0x07/0x01 trailer");
+        Assert.That(RootNodeKind(data), Is.EqualTo(BTreeNodeKind.Intermediate), "multi-partition root is the directory");
 
-        // The blob's top-level tree IS the directory (always key-first); count its entries =
-        // partition count, and require it to exceed one leaf so the directory is multi-level.
-        SpanByteReader reader = new(data);
-        HsstBTreeEnumerator<SpanByteReader, NoOpPin> dir = new(in reader, new Bound(0, data.Length), keyFirst: true);
-        int partitions = 0;
-        while (dir.MoveNext(in reader)) partitions++;
+        // One Hashtable node per partition; with each entry its own partition that is `count` nodes,
+        // exceeding one leaf's worth so the directory is genuinely multi-level (intermediate nodes).
+        int partitions = CollectHashtableNodes(data).Count;
         Assert.That(partitions, Is.EqualTo(count), "each entry should be its own partition");
         Assert.That(partitions, Is.GreaterThan(HsstBTreeOptions.DefaultMaxLeafEntries), "directory must be multi-level (intermediate nodes)");
 
@@ -607,7 +662,7 @@ public class HsstPartitionedBTreeTests
     // the bucketCount the builder derives from 12 keys), so bucket 0 holds 12 keys but only 8
     // ways. The 4 that overflow are dropped from the hashtable and can only be found via the
     // inner-B-tree fallback. Every key must still read back with the right value — for both the
-    // key-first (0x08) and key-after-value (0x0A) entry layouts (the latter exercises the
+    // key-first (0x07) and key-after-value (0x01) entry layouts (the latter exercises the
     // DecodeEntry/TrySeekFromRoot keyFirst:false fallback that a non-overflowing table never hits).
     [TestCase(true)]
     [TestCase(false)]
@@ -653,9 +708,8 @@ public class HsstPartitionedBTreeTests
         finally { b.Dispose(); }
         byte[] data = pooled.WrittenSpan.ToArray();
 
-        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
-            ? IndexType.PartitionedBTreeKeyFirst
-            : IndexType.PartitionedBTree)), "single partition + hashtable → one-entry directory expected");
+        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst ? IndexType.BTreeKeyFirst : IndexType.BTree)), "ordinary 0x07/0x01 trailer");
+        Assert.That(RootNodeKind(data), Is.EqualTo(BTreeNodeKind.Hashtable), "single hashtabled partition → root is the Hashtable node");
 
         // All 12 keys must resolve — the 4 that overflowed bucket 0 only via the B-tree fallback.
         foreach (int i in ids)

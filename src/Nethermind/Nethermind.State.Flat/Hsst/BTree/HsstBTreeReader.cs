@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Hsst;
@@ -123,6 +124,8 @@ internal static class HsstBTreeReader
         long currentAbsStart = rootStart;
 
         Span<byte> flagBuf = stackalloc byte[1];
+        Span<byte> htRec = stackalloc byte[HsstPartitionHashtable.NodeRecordFixedSize];
+        Span<byte> htBucket = stackalloc byte[HsstPartitionHashtable.BucketBytes];
         while (true)
         {
             if (!reader.TryRead(currentAbsStart, flagBuf)) return false;
@@ -132,6 +135,56 @@ internal static class HsstBTreeReader
             {
                 return DecodeEntry<TReader, TPin>(in reader, bound, currentAbsStart, key,
                     exactMatch, keyFirst, trailerKeyLength, out resultBound);
+            }
+
+            if (kind == BTreeNodeKind.Hashtable)
+            {
+                // Hashtable node: [Flag][28-byte record][InnerRootPrefix]. On an exact lookup probe
+                // one bucket and decode on a hit; on a miss (or a floor) descend into the partition's
+                // inner B-tree root the record carries.
+                if (!reader.TryRead(currentAbsStart + 1, htRec)) return false;
+                long innerRootOffset = ReadU48(htRec);
+                long innerBufferEnd = ReadU48(htRec[6..]);
+                long hashtableOffset = ReadU48(htRec[12..]);
+                long dataRegionStart = ReadU48(htRec[18..]);
+                int bucketCount = ReadU24(htRec[24..]);
+                int htPrefixLen = htRec[27];
+
+                if (exactMatch && bucketCount > 0)
+                {
+                    ulong hash = HsstPartitionHashtable.Hash(key);
+                    int bucket = HsstPartitionHashtable.BucketIndex(hash, bucketCount);
+                    ushort tag = HsstPartitionHashtable.Tag(hash);
+                    long bucketAbs = bound.Offset + hashtableOffset + (long)bucket * HsstPartitionHashtable.BucketBytes;
+                    if (reader.TryRead(bucketAbs, htBucket))
+                    {
+                        uint matchMask = HsstPartitionHashtable.MatchMask(htBucket, tag);
+                        while (matchMask != 0)
+                        {
+                            int way = BitOperations.TrailingZeroCount(matchMask);
+                            long entryAbs = bound.Offset + dataRegionStart + HsstPartitionHashtable.OffsetAt(htBucket, way);
+                            // exactMatch:true — DecodeEntry verifies the full key, so a tag collision
+                            // with a different key returns false and we try the next matching way.
+                            if (DecodeEntry<TReader, TPin>(in reader, bound, entryAbs, key, exactMatch: true, keyFirst, trailerKeyLength, out resultBound))
+                                return true;
+                            matchMask &= matchMask - 1;
+                        }
+                    }
+                }
+
+                // Miss or floor: fall through to this partition's inner B-tree from the recorded root.
+                if (htPrefixLen > 0)
+                {
+                    if (!reader.TryRead(currentAbsStart + 1 + HsstPartitionHashtable.NodeRecordFixedSize, separatorScratch[..htPrefixLen])) return false;
+                    parentSeparator = separatorScratch[..htPrefixLen];
+                }
+                else
+                {
+                    parentSeparator = default;
+                }
+                currentAbsStart = bound.Offset + innerRootOffset;
+                bufferEnd = bound.Offset + innerBufferEnd;
+                continue;
             }
 
             // The flag-byte read above faulted this node's page and warmed its TLB entry, so a prefetch
@@ -314,4 +367,15 @@ internal static class HsstBTreeReader
         node = BTreeNodeReader.ReadFromStart(pin.Buffer, 0, parentSeparator);
         return true;
     }
+
+    private static long ReadU48(scoped ReadOnlySpan<byte> src) =>
+        src[0]
+        | ((long)src[1] << 8)
+        | ((long)src[2] << 16)
+        | ((long)src[3] << 24)
+        | ((long)src[4] << 32)
+        | ((long)src[5] << 40);
+
+    private static int ReadU24(scoped ReadOnlySpan<byte> src) =>
+        src[0] | (src[1] << 8) | (src[2] << 16);
 }

@@ -28,5 +28,15 @@ public enum BTreeNodeKind : byte
     /// leftmost child's flag byte (see <c>HsstEnumerator.DescendToLeaf</c>).
     /// </summary>
     Intermediate = 1,
-    // Values 2 and 3 are reserved.
+    /// <summary>
+    /// A hashtable-acceleration node: <c>[Flag][28-byte record][InnerRootPrefix]</c> where the
+    /// record (see <see cref="HsstPartitionHashtable"/>) points at a per-partition bucket region
+    /// plus the partition's inner B-tree root. On an exact-match walk the reader probes one bucket
+    /// and, on a hit, decodes the entry directly; on a miss (or a floor / iteration) it descends
+    /// into the inner B-tree root the node carries. It is reached the same way as any other node —
+    /// as the blob root (single partition) or as a directory leaf-level child (multi-partition) —
+    /// so no separate index type is needed. See FORMAT.md.
+    /// </summary>
+    Hashtable = 2,
+    // Value 3 is reserved.
 }

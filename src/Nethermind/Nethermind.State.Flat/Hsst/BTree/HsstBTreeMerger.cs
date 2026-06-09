@@ -200,7 +200,7 @@ internal static class HsstBTreeMerger
 
     /// <summary>
     /// Partitioned key-first variant of <see cref="NWayMergeKeyFirst{TBuilderWriter,TBuilderReader,TBuilderPin,TReader,TPin,TSource,TFactory,TValueMerger}"/>:
-    /// emits an <see cref="IndexType.PartitionedBTreeKeyFirst"/> outer build via
+    /// emits a partitioned key-first (<see cref="IndexType.BTreeKeyFirst"/>) outer build via
     /// <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/> instead of a plain
     /// key-first B-tree, so compacted slot-prefix HSSTs keep the partition hashtables. Same
     /// merge loop and value-merger contract; the partitioned builder offers only
@@ -261,7 +261,7 @@ internal static class HsstBTreeMerger
     /// <summary>
     /// Partitioned variant of the streaming key-after-value
     /// <see cref="NWayMerge{TWriter,TWriterReader,TWriterPin,TReader,TPin,TSource,TFactory,TValueMerger}(ref TWriter,int,ref NWayMergeCursor{TReader,TPin,TSource,TFactory},TValueMerger,ref HsstBTreeBuilderBuffers,HsstBTreeOptions?,int,bool)"/>:
-    /// emits an <see cref="IndexType.PartitionedBTree"/> (key-after-value) outer build via
+    /// emits a partitioned key-after-value (<see cref="IndexType.BTree"/>) outer build via
     /// <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/> so the compacted
     /// per-address column keeps its per-partition hashtables. Same value-merger contract and
     /// streaming model as the non-partitioned overload — the merger writes the value straight

@@ -103,27 +103,6 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
         }
     }
 
-    /// <summary>
-    /// Trailer-free constructor for a partition's inner index inside a
-    /// <see cref="IndexType.PartitionedBTreeKeyFirst"/> blob: the root descriptor comes
-    /// from the directory metadata, not a per-partition trailer. <paramref name="scopeStart"/>
-    /// is the whole partitioned-blob byte 0 (the base every byte-0-relative child offset is
-    /// added to), <paramref name="scopeEnd"/> the partition's <c>InnerBufferEnd</c> (the pin
-    /// ceiling for node loads — there is no trailer to subtract), <paramref name="rootAbsStart"/> the
-    /// absolute start of the partition's inner root node, and <paramref name="rootPrefix"/>
-    /// its common-key-prefix bytes.
-    /// </summary>
-    internal HsstBTreeEnumerator(long scopeStart, long scopeEnd, long rootAbsStart, byte[] rootPrefix, int keyLength, bool keyFirst)
-    {
-        _scopeStart = scopeStart;
-        _scopeEnd = scopeEnd;
-        _rootAbsStart = rootAbsStart;
-        _rootPrefix = rootPrefix ?? [];
-        _keyLength = keyLength;
-        _keyFirst = keyFirst;
-        _trailerLen = 0;
-    }
-
     // Streaming variant: total entry count is unknown without a full walk. Not used by
     // any caller today — keep the property for variant-shape parity but return -1.
     public long Count => -1;
@@ -175,6 +154,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
         int depth = depthHint;
         long bufferEnd = _scopeEnd - _trailerLen;
         Span<byte> flagBuf = stackalloc byte[1];
+        Span<byte> htInnerRoot = stackalloc byte[6];
         while (depth < MaxDepth)
         {
             // Peek the flag byte to detect Entry-kind children (an entry record sitting
@@ -191,6 +171,20 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 _leafCount = 1;
                 _leafIdx = 0;
                 return true;
+            }
+
+            if ((BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Hashtable)
+            {
+                // Hashtable node (blob root or a directory leaf child): transparent to iteration —
+                // skip the buckets and descend into the partition's inner B-tree root (the first
+                // u48 of the node's record), at this same depth. Any ancestor directory frame stays
+                // intact, so ascent later advances to the next partition.
+                if (!reader.TryRead(currentStart + 1, htInnerRoot)) return false;
+                long innerRootOffset = htInnerRoot[0]
+                    | ((long)htInnerRoot[1] << 8) | ((long)htInnerRoot[2] << 16) | ((long)htInnerRoot[3] << 24)
+                    | ((long)htInnerRoot[4] << 32) | ((long)htInnerRoot[5] << 40);
+                currentStart = _scopeStart + innerRootOffset;
+                continue;
             }
 
             ReadOnlySpan<byte> parentSeparator = depth == 0 ? _rootPrefix : default;

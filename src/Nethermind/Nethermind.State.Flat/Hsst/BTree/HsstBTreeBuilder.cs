@@ -471,6 +471,32 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
+    /// Record a pre-written node at <paramref name="childOffset"/> (base-relative) as a
+    /// <b>sealed</b> leaf-level child of the index, keyed by <paramref name="firstKey"/>. Unlike
+    /// <see cref="Add"/> it writes no entry bytes and never marks the child as a pending entry
+    /// (so <see cref="BuildIndexCore"/> won't wrap it in an inline leaf) — the index's intermediate
+    /// nodes point straight at the supplied node offsets. Used to build the directory B-tree whose
+    /// children are per-partition <see cref="BTreeNodeKind.Hashtable"/> nodes written beforehand.
+    /// Keys must be strictly ascending and exactly the declared key length.
+    /// </summary>
+    public void RecordNodeChild(long childOffset, scoped ReadOnlySpan<byte> firstKey)
+    {
+        if (_keyLength < 0)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(firstKey.Length, 255);
+            _keyLength = firstKey.Length;
+        }
+        else if (firstKey.Length != _keyLength)
+            throw new ArgumentException($"key length {firstKey.Length} != declared keyLength {_keyLength}", nameof(firstKey));
+
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        bufs.CurrentLevel.Add(new HsstIndexNodeInfo(childOffset, _entryCount, _entryCount, prefixLen: 0));
+        if (firstKey.Length > 0) bufs.CurrentLevelFirstKeys.AddRange(firstKey);
+        _entryCount++;
+        OnEntryAdded(ref bufs, firstKey, precomputedLcp: -1);
+    }
+
+    /// <summary>
     /// Build index, then append the trailing
     /// <c>[RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8]</c>
     /// (5 + RootPrefixLen bytes). Reader locates the root via
@@ -487,9 +513,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Build the index region and append the trailer. <paramref name="indexTypeOverride"/>
     /// replaces the trailer's final <see cref="IndexType"/> byte when non-null — used by
-    /// the partitioned builder to stamp its directory B-tree as
-    /// <see cref="IndexType.PartitionedBTreeKeyFirst"/> while reusing the ordinary
-    /// key-first build. When null the byte is the natural
+    /// the partitioned builder to stamp its directory B-tree with the column's natural
+    /// <see cref="IndexType.BTreeKeyFirst"/> / <see cref="IndexType.BTree"/> byte while building
+    /// the directory itself key-first. When null the byte is the natural
     /// <see cref="IndexType.BTreeKeyFirst"/> / <see cref="IndexType.BTree"/> for this builder.
     /// </summary>
     public void Build(IndexType? indexTypeOverride)

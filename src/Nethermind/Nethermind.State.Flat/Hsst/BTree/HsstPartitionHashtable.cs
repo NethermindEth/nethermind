@@ -11,10 +11,10 @@ using System.Runtime.Intrinsics;
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Shared on-disk layout, hash, and bucket/way codec for the per-partition hashtable of
-/// the <see cref="IndexType.PartitionedBTreeKeyFirst"/> variant — the single source of
-/// truth used by both <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/> and
-/// <see cref="HsstPartitionedBTreeReader"/>.
+/// Shared on-disk layout, hash, and bucket/way codec for the per-partition hashtable carried
+/// by a <see cref="BTreeNodeKind.Hashtable"/> node — the single source of truth used by both
+/// <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/> (which buffers the node bytes)
+/// and the <see cref="BTreeNodeKind.Hashtable"/> dispatch in <see cref="HsstBTreeReader"/>.
 /// </summary>
 /// <remarks>
 /// A hashtable is an array of cache-line buckets. Each bucket is <see cref="BucketBytes"/>
@@ -45,11 +45,11 @@ internal static class HsstPartitionHashtable
     internal const long MaxOffset = (1L << 48) - 1;
 
     /// <summary>
-    /// Fixed size of a directory / single-partition metadata record (before the inner-root
-    /// prefix bytes):
+    /// Fixed size of a <see cref="BTreeNodeKind.Hashtable"/> node's metadata record (the bytes
+    /// after the node's flag byte, before the inner-root prefix bytes):
     /// <c>[InnerRootOffset: 6][InnerBufferEnd: 6][HashtableOffset: 6][DataRegionStart: 6][HashtableBucketCount: u24][InnerRootPrefixLen: u8]</c>.
     /// </summary>
-    internal const int DirRecordFixedSize = 28;
+    internal const int NodeRecordFixedSize = 28;
 
     /// <summary>Hard cap on the bucket count (≈ 16 M buckets, ≈ 1 GiB region) — a runaway guard
     /// that fits the u24 record field; real partitions are bounded by the key-bytes threshold
