@@ -39,7 +39,7 @@ public sealed class TestWriter(Filter filter, Format outputFormat) : IAsyncDispo
         _currentOutFile = outputPath;
         OutputCount++;
 
-        _fileStream = new FileStream(outputPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+        _fileStream = new FileStream(outputPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None, 4096, useAsync: true);
         _jsonWriter = new Utf8JsonWriter(_fileStream, new JsonWriterOptions { Indented = true });
 
         _jsonWriter.WriteStartArray();
