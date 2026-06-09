@@ -482,7 +482,12 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rpc-int-results
-          path: rpc-results/
+          # rpc-results/ = our summary (report.csv + captured stdout);
+          # integration/<network>/results/ = rpc_int's per-test diffs/responses.
+          path: |
+            rpc-results/
+            integration/*/results/
+          if-no-files-found: warn
 
 
   # Tear down whatever this workflow spawned (Nethermind and/or Geth). IP nodes untouched.
