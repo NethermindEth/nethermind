@@ -21,7 +21,8 @@ public class InclusionListBuilder(ITxPool txPool)
     private static Transaction[] ReservoirSampleNonBlobTxs(Transaction[] mempool)
     {
         const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
-        Transaction[] reservoir = new Transaction[capacity];
+        // Cap the initial allocation to mempool size — avoids the 256-slot waste when the pool is small.
+        Transaction[] reservoir = new Transaction[Math.Min(mempool.Length, capacity)];
         Random rnd = Random.Shared;
         int seen = 0;
 

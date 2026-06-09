@@ -3,9 +3,11 @@
 
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -16,7 +18,7 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class InclusionListValidatorTests
 {
-    private IAccountStateProvider _state = null!;
+    private IReadOnlyStateProvider _state = null!;
     private ISpecProvider _specProvider = null!;
     private Transaction _validTx = null!;
 
@@ -74,14 +76,15 @@ public class InclusionListValidatorTests
     }
 
     [Test]
-    public void When_no_inclusion_list_then_reject()
+    public void When_no_inclusion_list_then_accept()
     {
+        // Null IL = non-engine-API path (genesis, RLP import); validator treats as not applicable.
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.False);
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
     [Test]
@@ -245,7 +248,7 @@ public class InclusionListValidatorTests
             .TestObject;
 
         // Post-execution: AddressA's nonce moved to 1, so _validTx (nonce 0) is no longer appendable.
-        IAccountStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, (UInt256)1);
+        IReadOnlyStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, (UInt256)1);
         Assert.That(InclusionListValidator.IsSatisfied(block, postExec, _specProvider.GetSpec(block.Header)), Is.True);
     }
 
@@ -277,9 +280,102 @@ public class InclusionListValidatorTests
         Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.False);
     }
 
-    private static IAccountStateProvider StateWith(Address sender, UInt256 balance, UInt256 nonce)
+    [Test]
+    public void Blob_il_tx_is_treated_as_not_appendable()
     {
-        IAccountStateProvider state = Substitute.For<IAccountStateProvider>();
+        // Blob txs MUST NOT appear in the IL per EIP-7805; treat as not-appendable.
+        Transaction blobTx = Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(10.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(10.GWei)
+            .WithBlobVersionedHashes(1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithNonce(0)
+            .WithValue(UInt256.One)
+            .WithTo(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithInclusionListTransactions([blobTx])
+            .TestObject;
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
+    }
+
+    [Test]
+    public void Sender_with_non_delegated_code_is_treated_as_not_appendable()
+    {
+        // EIP-3607: a sender that has deployed (non-delegation) code cannot send a tx.
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
+        {
+            call[1] = new AccountStruct((UInt256)0, 10.Ether, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString.ValueHash256);
+            return true;
+        });
+        // Non-default codehash here would also work; just ensure HasCode is true.
+        state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
+        {
+            // Any non-empty codehash → HasCode = true.
+            call[1] = new AccountStruct((UInt256)0, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
+            return true;
+        });
+        state.IsDelegatedCode(TestItem.AddressA).Returns(false);
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithInclusionListTransactions([_validTx])
+            .TestObject;
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header)), Is.True);
+    }
+
+    [Test]
+    public void Sender_with_delegated_code_is_appendable()
+    {
+        // EIP-7702 delegation: sender with delegation code IS allowed to send txs.
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
+        {
+            call[1] = new AccountStruct((UInt256)0, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
+            return true;
+        });
+        state.IsDelegatedCode(TestItem.AddressA).Returns(true);
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithInclusionListTransactions([_validTx])
+            .TestObject;
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header)), Is.False);
+    }
+
+    [Test]
+    public void Duplicate_il_entries_do_not_cause_spurious_rejection_when_block_includes_tx()
+    {
+        // Spec disallows duplicates, but adversarial input must not cause false rejection.
+        // If the block includes the tx, post-state nonce advances → the duplicate's appendability
+        // check correctly returns false (nonce mismatch).
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithTransactions(_validTx)
+            .WithInclusionListTransactions([_validTx, _validTx])
+            .TestObject;
+
+        IReadOnlyStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, (UInt256)1);
+        Assert.That(InclusionListValidator.IsSatisfied(block, postExec, _specProvider.GetSpec(block.Header)), Is.True);
+    }
+
+    private static IReadOnlyStateProvider StateWith(Address sender, UInt256 balance, UInt256 nonce)
+    {
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
         state.TryGetAccount(sender, out Arg.Any<AccountStruct>()).Returns(call =>
         {
             call[1] = new AccountStruct(nonce, balance);

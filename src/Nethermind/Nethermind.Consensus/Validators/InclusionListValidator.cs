@@ -6,17 +6,19 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Validators;
 
 public static class InclusionListValidator
 {
-    public static bool IsSatisfied(Block block, IAccountStateProvider state, IReleaseSpec spec)
+    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
         if (!spec.InclusionListsEnabled) return true;
         Transaction[]? il = block.InclusionListTransactions;
-        if (il is null) return false;
+        // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
+        if (il is null) return true;
 
         // FOCIL is conditional: no gas left for a base-cost transfer → nothing is appendable.
         if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit) return true;
@@ -25,12 +27,13 @@ public static class InclusionListValidator
             ? stackalloc bool[il.Length]
             : new bool[il.Length];
 
-        // O(N+M) inclusion marking: hash → IL index, one dict lookup per block tx.
+        // hash → first IL index. TryAdd preserves the first occurrence; on duplicates the later
+        // entry stays unmarked but post-state appendability checks fail (nonce advanced).
         Dictionary<Hash256, int> ilByHash = new(il.Length);
         for (int i = 0; i < il.Length; i++)
         {
             Hash256? h = il[i].Hash;
-            if (h is not null) ilByHash[h] = i;
+            if (h is not null) ilByHash.TryAdd(h, i);
         }
 
         foreach (Transaction blockTx in block.Transactions)
@@ -39,7 +42,6 @@ public static class InclusionListValidator
                 included[idx] = true;
         }
 
-        // Dedup sender state reads: spam IL with many txs from one sender → 1 TryGetAccount.
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
@@ -48,9 +50,11 @@ public static class InclusionListValidator
         return true;
     }
 
-    private static bool CouldIncludeTx(Transaction tx, Block block, IAccountStateProvider state, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
+    private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
+        // Blob txs MUST NOT appear in an IL; cost formula here doesn't include blob gas anyway.
+        if (tx.SupportsBlobs) return false;
         if (block.GasUsed + tx.GasLimit > block.GasLimit) return false;
 
         // EIP-1559: compare baseFee against the cap (MaxFeePerGas), not the priority tip
@@ -60,9 +64,14 @@ public static class InclusionListValidator
         senderCache ??= [];
         if (!senderCache.TryGetValue(tx.SenderAddress, out AccountStruct account))
         {
-            if (!state.TryGetAccount(tx.SenderAddress, out account)) return false;
+            // Cache the negative result too (default struct = balance 0, nonce 0, empty codehash).
+            state.TryGetAccount(tx.SenderAddress, out account);
             senderCache[tx.SenderAddress] = account;
         }
+
+        // EIP-3607: a sender with non-delegated code cannot send a tx.
+        if (account.HasCode && !state.IsDelegatedCode(tx.SenderAddress)) return false;
+
         UInt256 txCost = tx.Value + (UInt256)tx.GasLimit * tx.MaxFeePerGas;
         return account.Balance >= txCost && account.Nonce == tx.Nonce;
     }

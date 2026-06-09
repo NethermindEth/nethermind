@@ -153,10 +153,7 @@ public class BlockValidator(
     {
         if (options.ContainsFlag(ProcessingOptions.NoValidation)) return true;
         IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
-        if (!spec.InclusionListsEnabled) return true;
-
-        if (suggestedBlock.InclusionListTransactions is null) return true;
-
+        // The IL travels on the suggested block; mirror it onto the processed copy for the spec rule.
         processedBlock.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
         return InclusionListValidator.IsSatisfied(processedBlock, worldState, spec);
     }

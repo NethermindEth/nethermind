@@ -20,6 +20,7 @@ public class InclusionListTxSource(
     private InclusionListDecoder Decoder => _decoder ??= new InclusionListDecoder(ecdsa, specProvider, logManager);
     private IEnumerable<Transaction> _inclusionListTransactions = [];
 
+    // gasLimit is ignored — the downstream producer-side tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         => Volatile.Read(ref _inclusionListTransactions);
 
