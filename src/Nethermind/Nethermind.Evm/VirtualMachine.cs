@@ -1289,6 +1289,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
+            // Poll the (interface-dispatched) cancellation flag once per this many opcodes instead
+            // of on every opcode. Power-of-two-minus-one so the gate is a cheap mask; a runaway
+            // frame is still aborted within microseconds.
+            const int CancellationCheckInterval = 0xFFF;
             int opCodeCount = 0;
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             ref Instruction code = ref Unsafe.As<byte, Instruction>(ref stack.Code);
@@ -1305,8 +1309,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
 
-                // If cancellation is enabled and cancellation has been requested, throw an exception.
-                if (TCancelable.IsActive && _txTracer.IsCancelled)
+                // If cancellation is enabled and requested, throw. IsCancelled is an interface call
+                // on the tracer, so for cancelable execution (e.g. eth_call) we poll it every
+                // CancellationCheckInterval opcodes rather than on every opcode — removing a
+                // per-opcode interface dispatch while still aborting a runaway frame within microseconds.
+                if (TCancelable.IsActive && (opCodeCount & CancellationCheckInterval) == 0 && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
                 // Call gas policy hook before instruction execution.
