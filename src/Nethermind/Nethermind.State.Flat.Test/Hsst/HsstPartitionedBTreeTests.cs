@@ -480,6 +480,44 @@ public class HsstPartitionedBTreeTests
         Assert.That(floor, Is.EqualTo(val), "floor value mismatch");
     }
 
+    // Force a MULTI-LEVEL directory B-tree: with PartitionThresholdBytes == KeyLength every entry
+    // is its own partition, so 700 entries ⇒ 700 directory entries ⇒ the directory leaf splits and
+    // gains intermediate nodes. Exercises the directory floor-seek across B-tree levels (every
+    // earlier partitioned test had a single-leaf directory). Run for 0x08 (key-first) and 0x0A
+    // (key-after-value); every key must resolve (hashtable hit and directory→inner-tree fallback),
+    // floor works, and absent keys return false.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void MultiLevel_Directory_AllKeys_RoundTrip(bool keyFirst)
+    {
+        const int count = 700;
+        HsstBTreeOptions opts = new() { PartitionThresholdBytes = KeyLength, HashtableMinBytes = 0 };
+        byte[] data = keyFirst ? BuildPartitioned(count, opts) : BuildPartitionedKeyAfterValue(count, opts);
+
+        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
+            ? IndexType.PartitionedBTreeKeyFirst : IndexType.PartitionedBTree)), "multi-partition expected");
+
+        // The blob's top-level tree IS the directory (always key-first); count its entries =
+        // partition count, and require it to exceed one leaf so the directory is multi-level.
+        SpanByteReader reader = new(data);
+        HsstBTreeEnumerator<SpanByteReader, NoOpPin> dir = new(in reader, new Bound(0, data.Length), keyFirst: true);
+        int partitions = 0;
+        while (dir.MoveNext(in reader)) partitions++;
+        Assert.That(partitions, Is.EqualTo(count), "each entry should be its own partition");
+        Assert.That(partitions, Is.GreaterThan(HsstBTreeOptions.DefaultMaxLeafEntries), "directory must be multi-level (intermediate nodes)");
+
+        // Every key resolves with the correct value (across the multi-level directory).
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i} not found (keyFirst={keyFirst})");
+            Assert.That(value, Is.EqualTo(Val(i)), $"value {i} (keyFirst={keyFirst})");
+        }
+        // Floor of an odd-perturbed past-the-end key lands on the last key; a below-range key is absent.
+        Assert.That(HsstTestUtil.TryGetFloor(data, Key(count + 5000), out byte[] floorVal), Is.True);
+        Assert.That(floorVal, Is.EqualTo(Val(count - 1)));
+        Assert.That(HsstTestUtil.TryGet(data, Key(count + 5000), out _), Is.False, "above-range key absent");
+    }
+
     // Force a bucket overflow: pick 12 strictly-ascending keys that ALL hash to bucket 0 (for
     // the bucketCount the builder derives from 12 keys), so bucket 0 holds 12 keys but only 8
     // ways. The 4 that overflow are dropped from the hashtable and can only be found via the
