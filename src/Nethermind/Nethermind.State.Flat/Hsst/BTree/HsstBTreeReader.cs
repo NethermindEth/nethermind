@@ -18,13 +18,10 @@ internal static class HsstBTreeReader
 {
     /// <summary>
     /// Exact-match or floor lookup over a BTree HSST. On success sets
-    /// <paramref name="resultBound"/> to the value region of the matched entry. Caller
-    /// has already read the trailing <see cref="IndexType"/> byte and signals the entry
-    /// layout via <paramref name="keyFirst"/>:
-    /// <c>false</c> = <c>[Value][FlagByte][LEB128][FullKey]</c> with the pointer at FlagByte
-    /// (= MetadataStart);
-    /// <c>true</c> = <c>[FlagByte][FullKey][LEB128][Value]</c> with the pointer at FlagByte
-    /// (= EntryStart).
+    /// <paramref name="resultBound"/> to the value region of the matched entry. Caller has
+    /// already read the trailing <see cref="IndexType"/> byte and signals the entry layout
+    /// via <paramref name="keyFirst"/> (<c>false</c> = "BTree variant", <c>true</c> =
+    /// "BTreeKeyFirst variant"; see <c>Hsst/FORMAT.md</c>).
     /// </summary>
     /// <remarks>
     /// The dispatch loop reads the 1-byte flag at the current cursor and switches on its
@@ -44,9 +41,9 @@ internal static class HsstBTreeReader
     {
         resultBound = default;
 
-        // Trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
-        // Read the fixed 5-byte tail first to learn RootPrefixLen / RootSize / KeyLength;
-        // the prefix bytes (if any) sit immediately before that.
+        // Read the fixed 5-byte trailer tail first to learn RootPrefixLen / RootSize /
+        // KeyLength; the prefix bytes (if any) sit immediately before it. Trailer layout:
+        // see Hsst/FORMAT.md, "BTree variant".
         // Smallest valid HSST: trailer (5 bytes) + root header (12 bytes).
         if (bound.Length < 5 + 12) return false;
         Span<byte> tailBuf = stackalloc byte[5];
@@ -162,9 +159,8 @@ internal static class HsstBTreeReader
 
     /// <summary>
     /// Decode an entry whose leading flag byte sits at <paramref name="absFlagByteStart"/>.
-    /// Splits on <paramref name="keyFirst"/>: <c>true</c> walks forward through
-    /// FullKey → LEB128 → Value; <c>false</c> walks forward through LEB128 → FullKey and
-    /// derives the value position back-referentially from <c>flagByteStart − valueLength</c>.
+    /// Entry layout depends on <paramref name="keyFirst"/>; see <c>Hsst/FORMAT.md</c>,
+    /// "BTree variant" / "BTreeKeyFirst variant".
     /// </summary>
     [SkipLocalsInit]
     private static bool DecodeEntry<TReader, TPin>(

@@ -9,30 +9,22 @@ namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 /// <summary>
 /// Builds a keys-first TwoByteSlot value HSST: fixed 2-byte keys, variable values, packed
-/// start-offset section. The wire shape lets the reader prefetch keys/offsets ahead of the
-/// bulk values. The on-disk offset width is selected per build via <c>offsetSize</c>:
+/// start-offset section. The on-disk offset width is selected per build via <c>offsetSize</c>:
 /// <c>2</c> emits <see cref="IndexType.TwoByteSlotValue"/> (u16 offsets, values capped at
 /// <c>ushort.MaxValue</c>); <c>3</c> emits <see cref="IndexType.TwoByteSlotValueLarge"/>
 /// (u24 offsets, ~16 MiB cap).
-///
-/// Output:
-/// <c>[IndexType: u8][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: offsetSize LE]…[Offset_{N-1}: offsetSize LE][Value_0]…[Value_{N-1}]</c>.
-///
-/// The <see cref="IndexType"/> byte leads the blob (not a trailer) so a reader that already
-/// knows it is descending into a keys-first sub-slot dispatches on byte 0 and then reads
-/// <c>KeyCount</c>, keys and offsets in the same forward pass — no tail seek.
-///
-/// <c>Offset_i</c> is the exclusive start offset of <c>Value_i</c> measured from the start of
-/// the values section (= byte after the offsets array). <c>Offset_0</c> is omitted because it
-/// is always 0; <c>Offset_N</c> (one-past-end of the values section) is derived by the reader
-/// as the blob's end. Hence per-entry value bounds are <c>[Offset_i, Offset_{i+1})</c>.
-///
+/// </summary>
+/// <remarks>
+/// Wire layout (leading IndexType byte, key/offset/value sections): see <c>Hsst/FORMAT.md</c>,
+/// "TwoByteSlotValue variant" / "TwoByteSlotValueLarge variant".
+/// <para>
 /// <see cref="Build"/> throws when the cumulative value bytes exceed the chosen width's cap;
 /// the caller is expected to gate on <see cref="FitsInOffsetWidth"/> to pick <c>offsetSize</c>.
 /// Values must be known up-front because the offset section is emitted ahead of them: the
 /// builder buffers value bytes into pooled scratch during <see cref="Add"/> and flushes them
 /// in <see cref="Build"/>.
-/// </summary>
+/// </para>
+/// </remarks>
 public ref struct HsstTwoByteSlotValueBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {

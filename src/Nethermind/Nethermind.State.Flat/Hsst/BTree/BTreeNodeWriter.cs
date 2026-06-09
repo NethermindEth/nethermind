@@ -8,49 +8,13 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
 /// Writes a B-tree index node in one call from already-laid-out caller buffers.
-///
-/// Index node layout (low → high address):
-///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][CommonPrefixLen: u8][BaseOffset: 6-byte LE]
-///   [Keys section][Values section]
-///
-/// Header is a fixed 12 bytes. <c>BaseOffset</c> sits at the end of the header so that the
-/// fields needed to parse the keys section (KeyCount, KeySize, KeyType / IsKeyLittleEndian
-/// from Flags, CommonPrefixLen) live in the first 6 bytes; the cold-cache parse of the
-/// key-section layout completes before paying for the BaseOffset read, which is only
-/// consumed by value resolution after a successful floor match. The trailing
-/// <c>CommonPrefixLen</c> may be 0 — meaning no prefix optimization for this node. When
-/// non-zero, the actual prefix bytes are supplied by the descending caller (via the
-/// parent's separator — the builder guarantees every separator length ≥ the matching
-/// child's prefix length). Readers parse forward from the first byte; the parent stores
-/// the child's first-byte offset. Putting the metadata header before the keys/values
-/// section lets the hardware prefetcher pull the entry data into L1/L2 while the search
-/// code is still parsing the header.
-///
-/// The <c>Flags</c> byte is shared with the data-region's per-entry flag byte; bits 0-1 carry a
-/// <see cref="BTreeNodeKind"/> (Entry or Intermediate) so the BTree reader's dispatch loop
-/// can recognize what kind of thing it is sitting on from a single byte read. For
-/// <see cref="BTreeNodeKind.Intermediate"/>, bits 2-3 carry <c>KeyType</c>, bits 4-5
-/// <c>ValueSizeCode</c>, bit 6 <c>IsKeyLittleEndian</c>, and bit 7 is reserved.
-/// <see cref="BTreeNodeKind.Entry"/> uses bits 2-7 as reserved zero.
-///
-/// Values are always Uniform: each entry's value slot is a fixed-width LE integer whose
-/// width is one of <c>{2, 3, 4, 6}</c> — encoded as the 2-bit field at Flags bits 4-5
-/// (00→2, 01→3, 10→4, 11→6). There is no Variable-value shape in b-tree index nodes.
-///
-/// Variable-encoded KEYS (KeyType=0) use a Structure-of-Arrays layout that inlines the
-/// first 2 bytes of every key for cache-friendly binary search:
-///   [ prefixArr: N × u16 LE ][ offsetArr: N × u16 LE ][ remainingkeys bytes ]
-/// where each <c>offsetArr[i]</c> packs <c>(lenTag &lt;&lt; 14) | tailOffset</c>:
-///   tag 00 = key length 0, tag 01 = length 1, tag 10 = length 2 (no tail),
-///   tag 11 = length ≥ 3 (tail bytes start at <c>tailOffset</c> in remainingkeys).
-/// Tail length for tag 11 is sentinel-derived: <c>offsetArr[i+1].tailOffset - offsetArr[i].tailOffset</c>
-/// (the implicit sentinel for i = N is <c>remainingkeys.Length</c>). Tags 00/01/10 don't
-/// advance the tail cursor, so their offset equals the next tag-11 entry's offset.
-/// Prefixes are byte-reversed on disk (Flags bit 6 / IsKeyLittleEndian set unconditionally
-/// for KeyType=0) so a u16 LE load yields a value with the same ordering as a lex compare
-/// on the original 2 bytes — feeding the existing 2-byte SIMD floor-scan path.
-/// The 14-bit tailOffset caps remainingkeys at 16 KiB per section.
-///
+/// </summary>
+/// <remarks>
+/// Node wire layout (header, Flags bits, value-slot widths, Variable-key SoA section):
+/// see <c>Hsst/FORMAT.md</c>, "B-tree index node layout" and "Keys section (Variable)".
+/// When <c>CommonPrefixLen &gt; 0</c> the prefix bytes themselves are supplied by the
+/// descending caller (the parent's separator), not stored in the node.
+/// <para>
 /// Inputs to <see cref="Write{TWriter}"/> are already in their final shape:
 /// <c>fullKeys</c> is a flat <c>count * fullKeyLength</c> buffer (entry i lives at
 /// <c>fullKeys[i * fullKeyLength ..][..fullKeyLength]</c>); each entry's emitted key is
@@ -58,7 +22,8 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// <c>[prefixLen, prefixLen + metadata.KeySlotSize)</c> (Uniform). <c>values</c> is a
 /// flat <c>count * metadata.ValueSlotSize</c> buffer, each entry already encoded LE with
 /// any <c>metadata.BaseOffset</c> subtracted.
-/// </summary>
+/// </para>
+/// </remarks>
 internal static class BTreeNodeWriter<TWriter>
     where TWriter : IByteBufferWriter
 {
@@ -309,20 +274,7 @@ internal static class BTreeNodeWriter<TWriter>
         int prefixLen,
         scoped ReadOnlySpan<int> sepLengths)
     {
-        // SoA layout: [ prefixArr N×u16 LE ][ offsetArr N×u16 LE ][ remainingkeys ].
-        //
-        // prefixArr[i]: first 2 bytes of key i, byte-reversed (LE-stored). A u16 LE
-        // load of the slot yields a value whose unsigned numeric order matches the
-        // lex order of the original 2-byte prefix. Keys < 2 bytes pad with 0; the
-        // length tag in offsetArr disambiguates from a real 0x00 byte.
-        //
-        // offsetArr[i]: u16 LE = (lenTag << 14) | tailOffset.
-        //   tag 00 = length 0, 01 = length 1, 10 = length 2, 11 = length ≥ 3.
-        //   tailOffset is the cumulative byte position into remainingkeys; tags
-        //   00/01/10 freeze the cursor (offset == next tag-11 entry's offset).
-        //   Tail length for tag 11 = offsetArr[i+1].tailOffset - offsetArr[i].tailOffset
-        //   (sentinel for i=N is remainingkeys.Length).
-
+        // Wire layout: see Hsst/FORMAT.md, "Keys section (Variable)".
         int prefixArrSize = count * 2;
         int offsetArrSize = count * 2;
         Span<byte> prefixArr = writer.GetSpan(prefixArrSize)[..prefixArrSize];

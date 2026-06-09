@@ -13,31 +13,11 @@ namespace Nethermind.State.Flat.Hsst.PackedArray;
 /// Builds an HSST in the <see cref="IndexType.PackedArray"/> layout from key-value entries.
 /// Every key must be exactly <c>keySize</c> bytes and every value exactly <c>valueSize</c>
 /// bytes. Entries MUST be added in strictly ascending key order.
-///
-/// Binary layout (read backward from the trailing discriminator byte):
-///   [Data: EntryCount * (KeySize+ValueSize)]
-///   [Summary L0: Count_0 * KeySize]
-///   [Summary L1: Count_1 * KeySize]
-///   ...
-///   [Summary L(D-1): Count_{D-1} * KeySize]
-///   [Metadata (fixed 10 B): KeySize (u8), ValueSize (u8), EntryCount (u32 LE),
-///              EntriesPerCkLevel0Log2 (u8), RecordsPerCkHigherLog2 (u8), Depth (u8),
-///              Flags (u8): bit 0 = IsLittleEndian, other bits reserved=0]
-/// When <c>IsLittleEndian</c> is set (only allowed for <c>KeySize ∈ {2,4,8}</c>), every stored
-/// key — both data and summary — is byte-reversed at write time so a native LE int load
-/// recovers the lex value, matching the BTreeNode LE-stored convention. This unlocks
-/// the AVX-512 floor-scan fast path in <c>UniformKeySearch</c>.
-/// Per-level record counts are derivable: Count_0 = ceil(EntryCount / 1<<L0),
-/// Count_{k+1} = ceil(Count_k / 1<<Lh) — the reader recomputes them on parse.
-///   [MetadataLength: u8]
-///   [IndexType: u8 = 0x02]
-///
-/// Each summary record is just the checkpoint key — the slab boundaries at the level below
-/// are derived from the level's strides (<c>EntriesPerCkLevel0</c> for level 0, which spans
-/// data; <c>RecordsPerCkHigher</c> for level k+1, which spans level k). Level 0 ck i covers
-/// data entries [i*N, min((i+1)*N - 1, EntryCount - 1)]; higher-level ck i covers level-below
-/// records [i*M, min((i+1)*M - 1, prevCount - 1)].
 /// </summary>
+/// <remarks>
+/// Wire layout (data, recursive summary index, fixed 10-byte metadata, checkpoint strides):
+/// see <c>Hsst/FORMAT.md</c>, "PackedArray variant".
+/// </remarks>
 public ref struct HsstPackedArrayBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {

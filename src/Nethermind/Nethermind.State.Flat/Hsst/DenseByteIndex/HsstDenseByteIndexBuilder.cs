@@ -14,19 +14,15 @@ namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
 /// than the previous one. Byte positions skipped between two consecutive Adds (and any
 /// positions below the lowest-written tag) are auto-filled with zero-length entries so
 /// the on-disk <c>Ends</c> array remains contiguous and indexable by the lookup-key byte.
-///
-/// Output: concatenated values (laid down high-tag first → low-tag last, so the low-tag
-/// blobs sit adjacent to <c>Ends</c>) followed by
-/// <c>[Ends: N·OffsetSize LE][Count: u8 = N − 1][OffsetSize: u8][IndexType: u8 = 0x04]</c>.
-/// <c>OffsetSize</c> is chosen at <see cref="Build"/> time from the running values total
-/// (1, 2, 4, or 6 bytes — the same policy as <see cref="HsstOffset.ChooseOffsetSize"/>).
-/// <c>N</c> equals <c>(firstWrittenTag + 1)</c> and is capped at 256.
 /// </summary>
 /// <remarks>
+/// Wire layout (descending-tag values, variable-width <c>Ends</c> table, trailer): see
+/// <c>Hsst/FORMAT.md</c>, "DenseByteIndex variant".
+/// <para>
 /// The descending insertion contract puts hot small-blob tags (low tag values) at the end
 /// of the data section so they share OS pages with the <c>Ends</c> table that lookup-time
-/// reads always pin. The reader's per-tag math becomes
-/// <c>valueLen = Ends[tag] − (tag == N − 1 ? 0 : Ends[tag + 1])</c>.
+/// reads always pin.
+/// </para>
 ///
 /// <para>
 /// <c>N</c> is fixed by the first <see cref="FinishValueWrite(byte)"/>. Callers can therefore

@@ -7,61 +7,20 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Reads a B-tree index block. An index block stores sorted key-value pairs with a
-/// fixed-width metadata header at the front, followed by the keys and values sections.
-///
-/// Layout (low → high address):
-///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][CommonPrefixLen: u8][BaseOffset: 6-byte LE]
-///   [Keys section][Values section]
-///
-/// Header is a fixed 12 bytes. <c>BaseOffset</c> sits at the end of the header so the
-/// fields needed to parse keys (KeyCount, KeySize, KeyType / IsKeyLittleEndian from Flags,
-/// CommonPrefixLen) group into the first 6 bytes; BaseOffset is only consumed by
-/// <see cref="GetUInt64Value"/> after a successful floor match.
-///
-/// Flags: bits 0-1 = <see cref="BTreeNodeKind"/> (00=Entry, 01=Leaf, 10=Intermediate, 11=reserved),
-/// bits 2-3 = KeyType, bits 4-5 = ValueSizeCode, bit 6 = IsKeyLittleEndian. Bit 7 is reserved.
-/// The same Flags byte appears at the front of every addressable thing — data-region entries
-/// (NodeKind = Entry, bits 2-7 = 0) and BTreeNode nodes (NodeKind = Leaf | Intermediate) —
-/// so the BTree reader can dispatch on a single byte read without consulting the parent.
-///
-/// ValueSizeCode (bits 4-5) packs the per-entry value width into 2 bits: 00→2, 01→3,
-/// 10→4, 11→6. There is no Variable-value shape for b-tree index nodes; widths outside
-/// the supported set are not encodable.
-///
-/// IsKeyLittleEndian (bit 6) marks that fixed-width key slots are stored byte-reversed so an
-/// x86 LE integer load of a slot equals its semantic numeric/lex value. Set for Uniform
-/// with KeySize ∈ {2,4,8}, and unconditionally for Variable (KeyType=0) where the prefixArr
-/// is uniformly 2 bytes/slot — the SIMD floor scan exploits this to drop its per-lane
-/// byte-swap shuffle. Stored slots are LE-reversed under this flag; <see cref="GetFullKey"/>
-/// always emits lex/original-order bytes.
-///
-/// All header fields are fixed-width — no varint decoding on parse. With the 64 KiB
-/// node-size cap, every count/size field fits in u16. Header at the front lets the hardware
-/// prefetcher pull the keys/values forward into cache while the search code is still parsing
-/// the header.
-///
-/// KeyType:
-///   0 = Variable: SoA layout — [prefixArr: N×u16 LE][offsetArr: N×u16 LE][remainingkeys].
-///       prefixArr[i] holds the first 2 bytes of key i, byte-reversed (LE-stored) so a
-///       u16 LE load yields a value with the same unsigned-int order as a lex compare on
-///       the original 2-byte prefix. offsetArr[i] = (lenTag &lt;&lt; 14) | tailOffset:
-///       tag 00=len 0, 01=len 1, 10=len 2 (no tail), 11=len ≥ 3 (tail at tailOffset in
-///       remainingkeys; tail length sentinel-derived from offsetArr[i+1].tailOffset, with
-///       the implicit sentinel for i=N being remainingkeys.Length). Tags 00/01/10 freeze
-///       the cursor (offset == next tag-11 entry's offset). 14-bit tailOffset caps
-///       remainingkeys at 16 KiB per section.
-///   1 = Uniform: packed fixed-width entries.
-///
-/// When CommonPrefixLen &gt; 0 every stored key equals (CommonKeyPrefix || stored slot i);
-/// the keys section holds suffixes only — use <see cref="GetFullKey"/> to reconstruct lex
-/// bytes. The actual prefix bytes are supplied by the caller via
-/// <see cref="ReadFromStart"/>'s <c>parentSeparator</c> parameter, which the descent loop
-/// derives from the parent's matched separator (or, for the root, from the HSST trailer).
-/// The builder guarantees that each separator length is at least the child's prefix length,
-/// so the first <c>CommonPrefixLen</c> bytes of the parent's full separator are the child's
-/// prefix bytes.
+/// Reads a B-tree index block: a fixed-width metadata header followed by the keys and
+/// values sections, parsed forward from the node's start offset.
 /// </summary>
+/// <remarks>
+/// Node wire layout (header, Flags bits, KeyType, value-slot widths, Variable-key SoA
+/// section): see <c>Hsst/FORMAT.md</c>, "B-tree index node layout" and "Keys section
+/// (Variable)".
+/// <para>
+/// When <c>CommonPrefixLen &gt; 0</c> the keys section holds suffixes only; the prefix
+/// bytes are supplied by the caller via <see cref="ReadFromStart"/>'s <c>parentSeparator</c>
+/// (the parent's matched separator, or the HSST trailer for the root). Use
+/// <see cref="GetFullKey"/> to reconstruct lex bytes.
+/// </para>
+/// </remarks>
 public readonly ref struct BTreeNodeReader(
     NodeMetadata metadata,
     ReadOnlySpan<byte> values,

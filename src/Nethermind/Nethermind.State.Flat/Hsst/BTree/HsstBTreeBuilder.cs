@@ -11,49 +11,24 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Builds an HSST (Hierarchical Static Sorted Table) from key-value entries.
-/// Entries MUST be added in sorted key order. No internal sorting is performed.
-///
-/// Two data-region entry layouts are supported, selected by the <c>keyFirst</c>
-/// constructor flag:
-///
-/// Binary layout (BTree, <c>keyFirst = false</c>; trailer <c>IndexType = 0x01</c>):
-///   [Data Region: entries...][Index Region: B-tree nodes...][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]
-///   The root node's start is computed as (HSST end - 4 - RootSize); its header sits at that
-///   first byte. Per-node fields run header → keys → values (low → high) so a forward read of
-///   the metadata pulls the keys/values into cache via the hardware prefetcher.
-///
-/// Entry format (key-after-value):
-///   [optional pad][Value][ValueLength: LEB128][FullKey]
-/// MetadataStart points at the ValueLength LEB128. Key length is invariant per HSST and
-/// lives in the trailer (single byte, 0–255 by format contract), so the data-section
-/// entry does not repeat it. The reader recovers the value via
-/// <c>ValueStart = MetadataStart − ValueLength</c>. Leading pad bytes inserted between
-/// <see cref="BeginValueWrite"/> and the real value are inert; use
-/// <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> to declare the real
-/// value length.
-///
-/// Binary layout (BTreeKeyFirst, <c>keyFirst = true</c>; trailer <c>IndexType = 0x07</c>):
-///   Same overall shape, but per-entry layout is keys-first to mirror the keys-first
-///   sub-slot HSST: the entry's per-entry metadata (key + length) sits at the entry's
-///   front, so a forward scan crossing nested HSSTs walks key → length → value
-///   throughout.
-///
-/// Entry format (key-first):
-///   [FullKey: KeyLength bytes][ValueLength: LEB128][Value: V bytes]
-/// The leaf index pointer targets <c>EntryStart</c> (FullKey byte 0). The reader walks
-/// forward: <c>KeyLength</c> from the trailer locates the LEB128; the LEB128 yields the
-/// value length; the value follows. Streaming writes are not supported in this mode —
-/// the value length must be known when the entry is laid down, so callers must use
-/// <see cref="Add(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte})"/>.
-///
+/// Builds an HSST (Hierarchical Static Sorted Table) from key-value entries, which MUST be
+/// added in sorted key order (no internal sorting). The <c>keyFirst</c> constructor flag
+/// selects the data-region entry layout: <c>false</c> is key-after-value and supports the
+/// streaming <see cref="BeginValueWrite"/> / <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/>
+/// API; <c>true</c> is key-first and requires <see cref="Add(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte})"/>.
+/// </summary>
+/// <remarks>
+/// Wire layout: see <c>Hsst/FORMAT.md</c>, "BTree variant" (<c>keyFirst = false</c>) and
+/// "BTreeKeyFirst variant" (<c>keyFirst = true</c>).
+/// <para>
 /// Memory: while the data section is being written, the only per-key state held in
 /// memory is one <c>long</c> per entry (the entry's index pointer target — MetadataStart
 /// in key-after-value mode, EntryStart in key-first mode). Separators and the previous
 /// key are not buffered — at <see cref="Build"/> time the index builder is handed a
 /// reader over the just-written data section and recomputes separators on-demand from
 /// the flushed bytes.
-/// </summary>
+/// </para>
+/// </remarks>
 public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     where TWriter : IByteBufferWriterWithReader<TReader, TPin>
     where TReader : IHsstByteReader<TPin>, allows ref struct
@@ -401,18 +376,12 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         OnEntryAdded(ref bufs, key, precomputedLcp);
     }
 
-    /// <summary>
-    /// Build index, then append the trailing
-    /// <c>[RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8]</c>
-    /// (5 + RootPrefixLen bytes). Reader locates the root via
-    /// <c>HSST end − 5 − RootPrefixLen − RootSize</c> and supplies the trailer's
-    /// <c>RootPrefix</c> bytes to the root node's <c>BTreeNodeReader.ReadFromStart</c>
-    /// — non-root nodes get their prefix bytes from the parent's separator, but the root
-    /// has no parent so the bytes ride the trailer instead. A node is capped at 64 KiB
-    /// so RootSize fits in u16. KeyLength is the fixed key length for every entry in this
-    /// HSST (the builder enforces uniformity); 0 when the build was empty and no length
-    /// was declared.
-    /// </summary>
+    /// <summary>Builds the index region and appends the trailer.</summary>
+    /// <remarks>
+    /// Trailer layout and root-location arithmetic: see <c>Hsst/FORMAT.md</c>, "BTree variant".
+    /// <c>RootPrefix</c> carries the root's common-key-prefix bytes (the root has no parent
+    /// separator to inherit them from). <c>KeyLength</c> is 0 when the build was empty.
+    /// </remarks>
     public unsafe void Build()
     {
         int maxIntermediateEntries = _options.MaxIntermediateEntries;

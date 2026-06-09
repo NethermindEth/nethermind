@@ -18,31 +18,13 @@ internal struct BTreeNodeMetadata
 
     /// <summary>0=Variable, 1=Uniform.</summary>
     public int KeyType;
-    /// <summary>
-    /// Base offset subtracted from values before writing. 0 means no base offset.
-    /// When non-zero, caller must subtract this from each value before calling AddKey.
-    /// Encoded on disk as a fixed 6-byte LE field (max 2^48 − 1 ≈ 256 TiB).
-    /// </summary>
+    /// <summary>Base offset subtracted from values before writing; caller subtracts it before AddKey. 0 means none.</summary>
     public ulong BaseOffset;
-    /// <summary>
-    /// Uniform: fixed key length or slot size.
-    /// Variable: ignored.
-    /// </summary>
+    /// <summary>Uniform: fixed key length or slot size. Variable: ignored.</summary>
     public int KeySlotSize;
-    /// <summary>
-    /// Fixed value size in bytes. The on-disk Flags byte encodes the slot width in 2 bits
-    /// (bits 3-4), so only the four widths <c>{2, 3, 4, 6}</c> are valid; the writer rejects
-    /// anything else. B-tree index nodes always use Uniform values; there is no
-    /// Variable-value shape. Default: 4 bytes.
-    /// </summary>
+    /// <summary>Fixed value slot width in bytes; only <c>{2, 3, 4, 6}</c> are valid (the writer rejects others).</summary>
     public int ValueSlotSize = 4;
-    /// <summary>
-    /// When true, fixed-width key slots are written byte-reversed on disk so that an x86
-    /// little-endian integer load of a slot equals its semantic numeric/lex value. The SIMD
-    /// floor scan can then drop the per-lane byte-swap shuffle. Honored only for Uniform with
-    /// <see cref="KeySlotSize"/> ∈ {2,4,8}; ignored for other shapes. Encoded as Flags bit 6
-    /// in the on-disk header.
-    /// </summary>
+    /// <summary>When true, fixed-width key slots are written byte-reversed so an LE integer load matches lex order (Uniform with <see cref="KeySlotSize"/> ∈ {2,4,8} only).</summary>
     public bool IsKeyLittleEndian = false;
 
     public BTreeNodeMetadata() => NodeKind = BTreeNodeKind.Intermediate;

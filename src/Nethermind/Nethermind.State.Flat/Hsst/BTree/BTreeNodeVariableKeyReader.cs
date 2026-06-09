@@ -8,12 +8,8 @@ using System.Runtime.InteropServices;
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Reads the Variable (KeyType=0) key section of a B-tree index node. Uses the SoA layout
-/// <c>[prefixArr: N×u16 LE][offsetArr: N×u16 LE][remainingkeys]</c>: each prefix slot stores
-/// the first 2 bytes of the key byte-reversed so an x86 u16 LE load preserves lex order,
-/// and the offset slot packs a 2-bit lenTag in the high bits with a 14-bit tailOffset in
-/// the low bits (capping the tail section at 16 KiB). See <see cref="BTreeNodeReader"/>
-/// for the full layout reference.
+/// Reads the Variable (KeyType=0) key section of a B-tree index node. Wire layout: see
+/// <c>Hsst/FORMAT.md</c>, "Keys section (Variable)".
 /// </summary>
 internal readonly ref struct BTreeNodeVariableKeyReader(ReadOnlySpan<byte> keys, int count)
 {

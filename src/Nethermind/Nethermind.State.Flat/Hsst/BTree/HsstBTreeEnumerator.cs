@@ -16,11 +16,10 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// window per entry. Memory is O(tree depth) for the ancestor stack plus one leaf's
 /// worth of long offsets (typically a few hundred at most).
 ///
-/// Heap-allocated so the dispatcher struct can be value-copied without losing
-/// iteration state. Handles both <see cref="IndexType.BTree"/> (keyFirst=false:
-/// per-entry layout is <c>[Value][LEB128][FullKey]</c> with the pointer at the
-/// LEB128 byte) and <see cref="IndexType.BTreeKeyFirst"/> (keyFirst=true: per-entry
-/// layout is <c>[FullKey][LEB128][Value]</c> with the pointer at FullKey byte 0).
+/// Heap-allocated so the dispatcher struct can be value-copied without losing iteration
+/// state. Handles both <see cref="IndexType.BTree"/> (keyFirst=false) and
+/// <see cref="IndexType.BTreeKeyFirst"/> (keyFirst=true); entry layouts in
+/// <c>Hsst/FORMAT.md</c>.
 /// </summary>
 internal sealed class HsstBTreeEnumerator<TReader, TPin>
     where TPin : struct, IBufferPin, allows ref struct
@@ -36,9 +35,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     // Fixed key length read from the BTree trailer. Every entry in the HSST has a
     // key of exactly this many bytes — the data-section entry no longer repeats it.
     private readonly int _keyLength;
-    // True for IndexType.BTreeKeyFirst: per-entry layout is [FullKey][LEB128][Value]
-    // with the index pointer at FullKey byte 0. False for IndexType.BTree:
-    // [Value][LEB128][FullKey] with the pointer at the LEB128 byte.
+    // True for IndexType.BTreeKeyFirst, false for IndexType.BTree (entry layouts in FORMAT.md).
     private readonly bool _keyFirst;
     private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
 
@@ -70,8 +67,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
         _scopeEnd = scope.Offset + scope.Length;
         _keyFirst = keyFirst;
         _rootPrefix = [];
-        // BTree trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
-        // Root starts at scopeEnd - 5 - rootPrefixLen - rootSize.
+        // BTree trailer / root-location arithmetic: see Hsst/FORMAT.md, "BTree variant".
         // Smallest valid HSST: trailer (5 bytes) + root header (12 bytes).
         if (scope.Length >= 5 + 12)
         {
