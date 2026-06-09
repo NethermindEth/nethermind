@@ -5,17 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -48,7 +45,7 @@ public class WitnessGeneratingWorldState(
     IWorldState inner,
     IStateReader stateReader,
     WitnessGeneratingHeaderFinder headerFinder,
-    WitnessCapturingTrieStore? trieStore = null) : IWorldState
+    WitnessCapturingTrieStore? trieStore = null) : WorldStateDecorator(inner)
 {
     private readonly object _lock = new();
 
@@ -155,189 +152,154 @@ public class WitnessGeneratingWorldState(
         };
     }
 
-    public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
-
-    public void Restore(Snapshot snapshot) => inner.Restore(snapshot);
-
-    public bool TryGetAccount(Address address, out AccountStruct account)
+    public override bool TryGetAccount(Address address, out AccountStruct account)
     {
         RecordEmptySlots(address);
-        return inner.TryGetAccount(address, out account);
+        return base.TryGetAccount(address, out account);
     }
 
-    public UInt256 GetNonce(Address address)
+    public override UInt256 GetNonce(Address address)
     {
         RecordEmptySlots(address);
-        return inner.GetNonce(address);
-    }
-
-    public bool IsStorageEmpty(Address address)
-    {
-        RecordEmptySlots(address);
-        return inner.IsStorageEmpty(address);
+        return base.GetNonce(address);
     }
 
     public bool HasCode(Address address)
     {
         RecordEmptySlots(address);
-        byte[]? code = inner.GetCode(address);
+        byte[]? code = base.GetCode(address);
         RecordBytecode(code);
         return code is { Length: > 0 };
-    }
-
-    public bool IsNonZeroAccount(Address address, out bool accountExists)
-    {
-        RecordEmptySlots(address);
-        return inner.IsNonZeroAccount(address, out accountExists);
     }
 
     public bool IsDelegatedCode(Address address)
     {
         RecordEmptySlots(address);
-        byte[]? code = inner.GetCode(address);
+        byte[]? code = base.GetCode(address);
         RecordBytecode(code);
         return Eip7702Constants.IsDelegatedCode(code);
     }
 
     public bool IsDelegatedCode(in ValueHash256 codeHash)
     {
-        byte[]? code = inner.GetCode(in codeHash);
+        byte[]? code = base.GetCode(in codeHash);
         RecordBytecode(codeHash, code);
         return Eip7702Constants.IsDelegatedCode(code);
     }
 
-    public void AddAccountRead(Address address)
+    public override void AddAccountRead(Address address)
     {
         RecordEmptySlots(address);
-        inner.AddAccountRead(address);
+        base.AddAccountRead(address);
     }
 
-    public IDisposable? BeginSystemAccountReadSuppression() =>
-        inner.BeginSystemAccountReadSuppression();
-
-    public Hash256 StateRoot => inner.StateRoot;
-
-    public bool IsInScope => inner.IsInScope;
-
-    public IWorldStateScopeProvider ScopeProvider => inner.ScopeProvider;
-
-    public byte[]? GetCode(Address address)
+    public override bool IsStorageEmpty(Address address)
     {
         RecordEmptySlots(address);
-        byte[] code = inner.GetCode(address);
+        return base.IsStorageEmpty(address);
+    }
+
+    public override byte[]? GetCode(Address address)
+    {
+        RecordEmptySlots(address);
+        byte[]? code = base.GetCode(address);
         RecordBytecode(code);
         return code;
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash)
+    public override byte[]? GetCode(in ValueHash256 codeHash)
     {
-        byte[] code = inner.GetCode(in codeHash);
-        RecordBytecode(codeHash, code);
+        byte[]? code = base.GetCode(in codeHash);
+        RecordBytecode(code);
         return code;
     }
 
-    public bool IsContract(Address address)
+    public override bool IsContract(Address address)
     {
         RecordEmptySlots(address);
-        byte[]? code = inner.GetCode(address);
+        byte[]? code = base.GetCode(address);
         RecordBytecode(code);
         return code is { Length: > 0 };
     }
 
-    public bool AccountExists(Address address)
+    public override bool AccountExists(Address address)
     {
         RecordEmptySlots(address);
-        return inner.AccountExists(address);
+        return base.AccountExists(address);
     }
 
-    public bool IsDeadAccount(Address address)
+    public override bool IsDeadAccount(Address address)
     {
         RecordEmptySlots(address);
-        return inner.IsDeadAccount(address);
+        return base.IsDeadAccount(address);
     }
 
-    public ref readonly UInt256 GetBalance(Address address)
+    public override ref readonly UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
-        return ref inner.GetBalance(address);
+        return ref base.GetBalance(address);
     }
 
-    public ref readonly ValueHash256 GetCodeHash(Address address)
+    public override ref readonly ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
-        return ref inner.GetCodeHash(address);
+        return ref base.GetCodeHash(address);
     }
 
-    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+    public override ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
-        return inner.GetOriginal(in storageCell);
+        return base.GetOriginal(in storageCell);
     }
 
-    public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
-        return inner.Get(in storageCell);
+        return base.Get(in storageCell);
     }
 
-    public void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         RecordSlot(storageCell);
-        inner.Set(in storageCell, newValue);
+        base.Set(in storageCell, newValue);
     }
 
-    // Transient state does not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
-    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-        => inner.GetTransientState(in storageCell);
-
-    // Transient state does not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
-    public void SetTransientState(in StorageCell storageCell, byte[] newValue)
-        => inner.SetTransientState(in storageCell, newValue);
-
-    public void Reset(bool resetBlockChanges = true) => inner.Reset(resetBlockChanges);
-
-    public Snapshot TakeSnapshot(bool newTransactionStart = false) => inner.TakeSnapshot(newTransactionStart);
-
-    public void WarmUp(AccessList? accessList) => inner.WarmUp(accessList);
-
-    public void WarmUp(Address address)
+    public override void WarmUp(Address address)
     {
         // Record the address so its state proof is included in the witness even when
         // execution reverts before any read (e.g. EXTCODECOPY OOG at cold access).
         RecordEmptySlots(address);
         // Also record the code so a stateless verifier can validate the code hash of
         // any account that incurred a cold-access charge (EIP-7928 requirement).
-        RecordBytecode(inner.GetCode(address));
-        inner.WarmUp(address);
+        RecordBytecode(base.GetCode(address));
+        base.WarmUp(address);
     }
 
-    public void ClearStorage(Address address)
+    public override void ClearStorage(Address address)
     {
         RecordEmptySlots(address);
-        inner.ClearStorage(address);
+        base.ClearStorage(address);
     }
 
-    public void RecalculateStateRoot() => inner.RecalculateStateRoot();
-
-    public void DeleteAccount(Address address)
+    public override void DeleteAccount(Address address)
     {
         RecordEmptySlots(address);
-        inner.DeleteAccount(address);
+        base.DeleteAccount(address);
     }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordEmptySlots(address);
-        inner.CreateAccount(address, in balance, in nonce);
+        base.CreateAccount(address, in balance, in nonce);
     }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordEmptySlots(address);
-        inner.CreateAccountIfNotExists(address, in balance, in nonce);
+        base.CreateAccountIfNotExists(address, in balance, in nonce);
     }
 
-    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+    public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         RecordEmptySlots(address);
         if (!isGenesis)
@@ -348,70 +310,49 @@ public class WitnessGeneratingWorldState(
             if (code.Length > 0)
                 _deployedCodeHashes.Add(codeHash);
         }
-        return inner.InsertCode(address, in codeHash, code, spec, isGenesis);
+        return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
-        inner.AddToBalance(address, in balanceChange, spec);
+        base.AddToBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
-        inner.AddToBalance(address, in balanceChange, spec, out oldBalance);
+        return base.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
     }
 
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
-        return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
+        base.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
         RecordEmptySlots(address);
-        inner.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
+        base.IncrementNonce(address, delta, out oldNonce);
     }
 
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public override void DecrementNonce(Address address, UInt256 delta)
     {
         RecordEmptySlots(address);
-        inner.IncrementNonce(address, delta, out oldNonce);
+        base.DecrementNonce(address, delta);
     }
 
-    public void DecrementNonce(Address address, UInt256 delta)
+    public override void SetNonce(Address address, in UInt256 nonce)
     {
         RecordEmptySlots(address);
-        inner.DecrementNonce(address, delta);
+        base.SetNonce(address, in nonce);
     }
 
-    public void SetNonce(Address address, in UInt256 nonce)
+    public override void CreateEmptyAccountIfDeleted(Address address)
     {
         RecordEmptySlots(address);
-        inner.SetNonce(address, nonce);
-    }
-
-    public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true) =>
-        inner.Commit(releaseSpec, isGenesis, commitRoots);
-
-    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) =>
-        inner.Commit(releaseSpec, tracer, isGenesis, commitRoots);
-
-    public void CommitTree(long blockNumber) => inner.CommitTree(blockNumber);
-
-    public ArrayPoolList<AddressAsKey>? GetAccountChanges() => inner.GetAccountChanges();
-
-    public void ResetTransient() => inner.ResetTransient();
-
-    public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
-    public Task HintBal(ReadOnlyBlockAccessList bal) => inner.HintBal(bal);
-
-    public void CreateEmptyAccountIfDeleted(Address address)
-    {
-        RecordEmptySlots(address);
-        inner.CreateEmptyAccountIfDeleted(address);
+        base.CreateEmptyAccountIfDeleted(address);
     }
 
     private void RecordSlot(in StorageCell storageCell)
@@ -526,23 +467,23 @@ public class WitnessGeneratingWorldState(
         }
     }
 
-    public void RecordAccountAccess(Address address)
+    public override void RecordAccountAccess(Address address)
     {
         RecordEmptySlots(address);
-        inner.RecordAccountAccess(address);
+        base.RecordAccountAccess(address);
     }
 
-    public void RecordBytecodeAccess(Address address)
+    public override void RecordBytecodeAccess(Address address)
     {
         RecordEmptySlots(address);
         try
         {
-            RecordBytecode(inner.GetCode(address));
+            RecordBytecode(base.GetCode(address));
         }
         catch (InvalidOperationException)
         {
             // Code is missing from the database (e.g. selfdestructed or not committed yet).
         }
-        inner.RecordBytecodeAccess(address);
+        base.RecordBytecodeAccess(address);
     }
 }

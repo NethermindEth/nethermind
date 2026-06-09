@@ -86,10 +86,6 @@ SimultaneousRequests (nethermind)
 TestBlobTxWithMismatchedSidecar (nethermind)
 TestBlobTxWithoutSidecar (nethermind)
 
-#sync
-
-snapsync/sync nethermind from nethermind
-
 # zkevm pyspec
 
 test_bal_7002_partial_sweep[fork_Amsterdam-blockchain_test_engine]

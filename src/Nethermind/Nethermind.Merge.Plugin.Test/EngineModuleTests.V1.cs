@@ -10,7 +10,9 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -409,6 +411,81 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+    }
+
+    [Test]
+    public async Task executePayloadV1_invalid_hash_records_bad_block()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ExecutionPayload payload = await BuildAndGetPayloadResult(chain, rpc);
+        long blockNumber = payload.BlockNumber;
+        payload.BlockHash = TestItem.KeccakC;
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(payload);
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+        IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
+        Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(blockNumber));
+    }
+
+    [Test]
+    public async Task executePayloadV1_invalid_orphan_records_bad_block()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ExecutionPayload payload = await BuildAndGetPayloadResult(chain, rpc);
+        long blockNumber = payload.BlockNumber;
+
+        // Detach from any known parent so `NewPayloadHandler` enters the orphaned-block validation
+        // branch, then break a header-level invariant (`GasUsed > GasLimit`) so
+        // `IBlockValidator.ValidateOrphanedBlock` fails and `RecordBadBlock` is invoked.
+        payload.ParentHash = TestItem.KeccakF;
+        payload.GasUsed = payload.GasLimit + 1;
+        if (TryCalculateHash(payload, out Hash256? hash))
+        {
+            payload.BlockHash = hash;
+        }
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(payload);
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+        IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
+        Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(blockNumber));
+    }
+
+    [Test]
+    public async Task executePayloadV1_invalid_suggested_records_bad_block()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        // Build parent + child on top of head, then insert only the parent header (BeaconBlockInsert).
+        // Because the parent header is known but never processed, `ShouldProcessBlock` returns `false`
+        // for the child, routing it through the `ValidateSuggestedBlock` branch. Break a parent-relative
+        // header invariant (`Timestamp <= parent.Timestamp`) so suggested-block validation fails and
+        // `RecordBadBlock` is invoked.
+        ExecutionPayload headPayload = ExecutionPayload.Create(chain.BlockTree.Head!);
+        ExecutionPayload[] branch = CreateBlockRequestBranch(chain, headPayload, Address.Zero, 2);
+        ExecutionPayload parentPayload = branch[0];
+        ExecutionPayload childPayload = branch[1];
+
+        chain.BlockTree.Insert(
+            parentPayload.TryGetBlock().Data!.Header,
+            BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain);
+
+        childPayload.Timestamp = parentPayload.Timestamp;
+        if (TryCalculateHash(childPayload, out Hash256? childHash))
+        {
+            childPayload.BlockHash = childHash;
+        }
+        long childNumber = childPayload.BlockNumber;
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(childPayload);
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+        IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
+        Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(childNumber));
     }
 
     [Test]

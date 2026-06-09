@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -25,7 +26,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -1248,6 +1248,36 @@ public class BlockTreeTests
         Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
     }
 
+    [Test]
+    public void Report_bad_block_stores_block_and_does_not_alter_main_chain()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTree blockTree = builder.TestObject;
+        BlockHeader originalSuggested = blockTree.BestSuggestedHeader!;
+        Block bad = Build.A.Block.WithNumber(4).WithParent(blockTree.Head!).TestObject;
+
+        blockTree.ReportBadBlock(bad);
+
+        Block[] stored = builder.BadBlockStore.GetAll().ToArray();
+        Assert.That(stored, Has.Length.EqualTo(1));
+        Assert.That(stored[0].Hash, Is.EqualTo(bad.Hash!));
+        Assert.That(blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
+        Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(originalSuggested),
+            "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
+    }
+
+    [Test]
+    public void Report_bad_block_ignores_block_without_hash()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTree blockTree = builder.TestObject;
+        Block badNoHash = new(new BlockHeader(), new BlockBody());
+
+        blockTree.ReportBadBlock(badNoHash);
+
+        Assert.That(builder.BadBlockStore.GetAll(), Is.Empty);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
     public void When_lowestInsertedHeaderWasNotPersisted_useBinarySearchToLoadLowestInsertedHeader(long beginIndex, long insertedBlocks)
     {
@@ -1576,7 +1606,7 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Inserts_blooms()
+    public void Persists_chain_level_info()
     {
         long pivotNumber = 5L;
 
@@ -1585,12 +1615,10 @@ public class BlockTreeTests
             PivotNumber = pivotNumber,
         };
 
-        IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
         IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
 
         BlockTree tree = Build.A.BlockTree()
             .WithChainLevelInfoRepository(chainLevelInfoRepository)
-            .WithBloomStorage(bloomStorage)
             .WithSyncConfig(syncConfig)
             .TestObject;
 
@@ -1602,7 +1630,6 @@ public class BlockTreeTests
             tree.Insert(block.Header);
             Received.InOrder(() =>
             {
-                bloomStorage.Store(block.Header.Number, block.Bloom!);
                 chainLevelInfoRepository.PersistLevel(block.Header.Number, Arg.Any<ChainLevelInfo>(), Arg.Any<BatchWrite>());
             });
         }
@@ -1641,32 +1668,6 @@ public class BlockTreeTests
             .TestObject;
         loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
     }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_block_is_moved_to_main_blooms_are_stored()
-    {
-        Transaction t1 = Build.A.Transaction.TestObject;
-        Transaction t2 = Build.A.Transaction.TestObject;
-
-        IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
-        BlockTree blockTree = Build.A.BlockTree()
-            .WithoutSettingHead
-            .WithBloomStorage(bloomStorage)
-            .TestObject;
-        // new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);
-        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-        Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
-        Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
-
-        AddToMain(blockTree, block0);
-
-        blockTree.SuggestBlock(block1B);
-        blockTree.SuggestBlock(block1A);
-        blockTree.UpdateMainChain(block1A);
-
-        bloomStorage.Received().Store(block1A.Number, block1A.Bloom!);
-    }
-
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_find_genesis_level()
