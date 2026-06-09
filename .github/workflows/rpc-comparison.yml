@@ -3,79 +3,107 @@ name: Compare JSON-RPC between clients and versions
 on:
   workflow_dispatch:
     inputs:
+      node_type:
+        type: choice
+        description: "Node type under test. Maps to the rpc_int flag: archive -> --archive, pruned -> --pruned, full -> (none)."
+        default: "full"
+        required: true
+        options:
+          - full
+          - pruned
+          - archive
+      nethermind_ip:
+        type: string
+        description: "IP of an already-synced Nethermind node, used as the daemon under test (-H) when node_type is 'full' or 'archive'. Ignored for 'pruned' (a node is spawned instead)."
+        default: ""
+        required: false
+      geth_url:
+        type: string
+        description: "Optional Geth RPC URL. When set, passed to rpc_int as -e (external reference): each fixture request is sent to both Nethermind and Geth and the responses compared (the stored fixtures are not used in this mode)."
+        default: ""
+        required: false
+      network:
+        type: string
+        description: "Network whose fixtures rpc_int runs (passed as -b); also the network a spawned node syncs."
+        default: "mainnet"
+        required: false
       allowed_ips:
         type: string
-        description: "A comma-separated list of ips allowed to connect to the node"
+        description: "A comma-separated list of ips allowed to connect to a spawned node"
         default: ''
-        required: false
-      branch_to_compare:
-        type: string
-        description: "A branch to compare with. Example: \"release/1.25.1\""
-        default: ""
-        required: false
-      compare_with:
-        type: string
-        description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'INFURA_ENDPOINT', 'NETHERMIND_ARCHIVE_ENDPOINT'"
-        default: ""
-        required: false
-      is_performance_check:
-        type: boolean
-        description: "Checked = Load Testing on identical spec. Not checked = RPC Equality Testing (no identical spec)."
-        default: false
         required: false
       convert_to_paprika:
         type: boolean
-        description: "When checked, attempts to convert synced node to paprika"
+        description: "When checked, attempts to convert a spawned node to paprika"
         default: false
         required: false
       timeout:
         type: string
-        description: "How long should node be kept alive"
+        description: "How long should a spawned node be kept alive (hours)"
         default: "24"
         required: false
 
 jobs:
   verify_correctness_of_setup:
-    name: Verify if inputs are correct
+    name: Verify inputs and resolve node mode
     runs-on: ubuntu-latest
     outputs:
       custom_machine_type: ${{ steps.compute_machine_type.outputs.custom_machine_type }}
+      rpc_flag: ${{ steps.resolve.outputs.rpc_flag }}
+      spawn_nm: ${{ steps.resolve.outputs.spawn_nm }}
     steps:
-      - name: Verify if inputs are correctly applied
-        run: |
-          if [ "$IS_PERFORMANCE_CHECK" == "true" ] && [ ! -z "$COMPARE_WITH" ]; then
-            echo "Error: 'compare_with' should not be provided when 'is_performance_check' is true."
-            exit 1
-          fi
-
-          if [ "$IS_PERFORMANCE_CHECK" == "false" ] && [ -z "$BRANCH_TO_COMPARE" ] && [ -z "$COMPARE_WITH" ]; then
-            echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to false."
-            exit 1
-          fi
+      - name: Resolve node_type to rpc_int flag and validate inputs
+        id: resolve
         env:
-          IS_PERFORMANCE_CHECK: ${{ inputs.is_performance_check }}
-          BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
-          COMPARE_WITH: ${{ inputs.compare_with }}
+          NODE_TYPE: ${{ inputs.node_type }}
+          NETHERMIND_IP: ${{ inputs.nethermind_ip }}
+        run: |
+          set -euo pipefail
+          # Map node_type to the rpc_int flag and decide whether to spawn a node.
+          #   archive -> --archive : include @archive historic-state tests
+          #   pruned  -> --pruned  : skip @pruned historic tests a pruned node can't serve
+          #   full    -> (none)    : skip @archive state tests, keep @pruned historic tests
+          case "$NODE_TYPE" in
+            pruned)
+              echo "spawn_nm=true" >> "$GITHUB_OUTPUT"
+              echo "rpc_flag=--pruned" >> "$GITHUB_OUTPUT"
+              ;;
+            archive)
+              echo "spawn_nm=false" >> "$GITHUB_OUTPUT"
+              echo "rpc_flag=--archive" >> "$GITHUB_OUTPUT"
+              ;;
+            full)
+              echo "spawn_nm=false" >> "$GITHUB_OUTPUT"
+              echo "rpc_flag=" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Error: unknown node_type '$NODE_TYPE' (expected full|pruned|archive)."
+              exit 1
+              ;;
+          esac
+
+          # full/archive use an already-synced node addressed by IP; pruned is spawned.
+          if [ "$NODE_TYPE" != "pruned" ] && [ -z "$NETHERMIND_IP" ]; then
+            echo "Error: 'nethermind_ip' must be provided when node_type is 'full' or 'archive'."
+            exit 1
+          fi
 
       - name: Compute Machine Type
         id: compute_machine_type
         run: |
-          convert_to_paprika="${{ github.event.inputs.convert_to_paprika }}"
-          is_performance_check="${{ github.event.inputs.is_performance_check }}"
+          convert_to_paprika="${{ inputs.convert_to_paprika }}"
           machine_type=""
-          if [[ "$convert_to_paprika" == 'true' && "$is_performance_check" == 'true' ]]; then
-            machine_type="g7-premium-16"
-          elif [[ "$convert_to_paprika" == 'true' ]]; then
+          if [[ "$convert_to_paprika" == 'true' ]]; then
             machine_type="g6-standard-8"
-          elif [[ "$is_performance_check" == 'true' ]]; then
-            machine_type="g7-premium-8"
           fi
           echo "custom_machine_type=$machine_type" >> $GITHUB_OUTPUT
 
+  # Only spawned for node_type = 'pruned'; full/archive use an existing node by IP.
   create_main_node:
-    name: Create node from current branch
+    name: Spawn Nethermind from current branch (snap sync)
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     needs: [verify_correctness_of_setup]
+    if: needs.verify_correctness_of_setup.outputs.spawn_nm == 'true'
     secrets: inherit
     with:
       additional_options: >-
@@ -88,132 +116,62 @@ jobs:
           "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       non_validator_mode: true
-      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
+      additional_nethermind_flags: Sync.SnapSync=true JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
-      network: "${{ 'mainnet' }}"
+      network: ${{ inputs.network }}
       convert_to_paprika: "${{ inputs.convert_to_paprika }}"
 
-  create_compare_node:
-    name: Create node from branch to compare
-    uses: ./.github/workflows/run-a-single-node-from-branch.yml
-    if: inputs.branch_to_compare != ''
-    secrets: inherit
-    needs: [verify_correctness_of_setup]
-    with:
-      additional_options: >-
-        {
-          "timeout": "${{ inputs.timeout }}",
-          "default_dockerfile": "Dockerfile",
-          "default_dockerfile_build_type": "release",
-          "ssh_keys": "",
-          "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
-        }
-      non_validator_mode: true
-      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
-      nethermind_repo_ref: ${{ inputs.branch_to_compare }}
-      custom_run_id: ${{ github.run_id }}
-      network: "${{ 'mainnet' }}"
-
-  aggregate_rpcs:
-    name: Collect all RPC Urls and pass it further
+  resolve_urls:
+    name: Resolve Nethermind RPC URL
     runs-on: ubuntu-latest
-    needs: [create_main_node, create_compare_node]
-    if: always() && needs.create_main_node.result == 'success' && (needs.create_compare_node.result == 'skipped' || needs.create_compare_node.result == 'success')
+    needs: [verify_correctness_of_setup, create_main_node]
+    if: always() && needs.verify_correctness_of_setup.result == 'success' && (needs.create_main_node.result == 'success' || needs.create_main_node.result == 'skipped')
     outputs:
-      rpc_urls: ${{ steps.process_artifacts.outputs.rpc_urls }}
+      nm_url: ${{ steps.resolve.outputs.nm_url }}
     steps:
-      - name: Prepare clean main ref
-        id: prepare_main_ref
+      - name: Assemble Nethermind URL
+        id: resolve
+        env:
+          SPAWN_NM: ${{ needs.verify_correctness_of_setup.outputs.spawn_nm }}
+          SPAWNED_URL: ${{ needs.create_main_node.outputs.rpc_url }}
+          NETHERMIND_IP: ${{ inputs.nethermind_ip }}
         run: |
-          REF_NAME=${{ github.ref }}
-          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-          echo "CLEAN_MAIN_REF=$CLEAN_REF" >> $GITHUB_ENV
-
-      - name: Prepare clean compare ref
-        id: prepare_compare_ref
-        if: inputs.branch_to_compare != ''
-        run: |
-          REF_NAME=${{ inputs.branch_to_compare }}
-          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-          echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
-
-      - name: Download RPC Artifact for current branch
-        uses: actions/download-artifact@v8
-        with:
-          name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
-          path: artifacts
-
-      - name: Download RPC Artifact for branch to compare
-        if: inputs.branch_to_compare != ''
-        uses: actions/download-artifact@v8
-        with:
-          name: rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
-          path: artifacts
-
-      - name: Process Artifacts Content
-        id: process_artifacts
-        run: |
-          rpc_urls=""
-          main_branch_file="rpc_url%${{ env.CLEAN_MAIN_REF }}%${{ github.run_id }}.txt"
-          compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}.txt"
-
-          # Check and add the main branch file
-          if [ -f "artifacts/$main_branch_file" ]; then
-            url_content=$(cat "artifacts/$main_branch_file")
-            rpc_urls+="${{ env.CLEAN_MAIN_REF }}::$url_content,"
+          set -euo pipefail
+          if [ "$SPAWN_NM" == "true" ]; then
+            nm_url="$SPAWNED_URL"
+            if [ -z "$nm_url" ]; then
+              echo "Error: spawned Nethermind node did not report an RPC URL."
+              exit 1
+            fi
+          else
+            nm_url="http://${NETHERMIND_IP}:8545"
           fi
-
-          # Check and add the compare branch file
-          if [ -f "artifacts/$compare_branch_file" ]; then
-            url_content=$(cat "artifacts/$compare_branch_file")
-            rpc_urls+="${{ env.CLEAN_COMPARE_REF }}::$url_content,"
-          fi
-
-          rpc_urls=${rpc_urls%,}
-          echo $rpc_urls
-          echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
+          echo "Nethermind URL: $nm_url"
+          echo "nm_url=$nm_url" >> "$GITHUB_OUTPUT"
 
   wait_for_node_to_sync:
-    name: Wait for the nodes to sync
+    name: Wait for spawned Nethermind to finish syncing
     runs-on: [vpn]
-    needs: [aggregate_rpcs]
-    if: always() && needs.aggregate_rpcs.result == 'success'
+    needs: [verify_correctness_of_setup, resolve_urls]
+    if: always() && needs.resolve_urls.result == 'success' && needs.verify_correctness_of_setup.outputs.spawn_nm == 'true'
     timeout-minutes: 1440
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Wait for the nodes to sync
+      - name: Wait for the node to sync
         timeout-minutes: 1440
         env:
+          NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         shell: bash
         run: |
           set -o pipefail
 
-          # ------------------------------------------------------------
-          # Parse aggregated RPCs from previous job output
-          # Format: "label::http://ip:port,label::http://ip:port"
-          # ------------------------------------------------------------
-          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
-          if [[ -z "$rpc_urls_str" ]]; then
-            echo "No RPC URLs provided in needs.aggregate_rpcs.outputs.rpc_urls"
+          # Only the spawned node is waited on; IP nodes are assumed already synced.
+          if [[ -z "$NM_URL" ]]; then
+            echo "No Nethermind URL provided by resolve_urls."
             exit 1
           fi
-
-          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
-
-          processed_rpc_urls=()
-          for url_entry in "${rpc_urls_array[@]}"; do
-            processed_url="${url_entry#*::}"  # strip 'label::'
-            processed_rpc_urls+=("$processed_url")
-          done
-
-          if [[ ${#processed_rpc_urls[@]} -eq 0 ]]; then
-            echo "Parsed RPC list is empty after processing."
-            exit 1
-          fi
+          processed_rpc_urls=("$NM_URL")
 
           # ------------------------------------------------------------
           # Helper: guarded curl POST with timeouts/retries and JSON header
@@ -431,139 +389,85 @@ jobs:
           sleep 1152
 
   compare:
-    name: Compare JSON-RPC responses between clients and versions
+    name: Run rpc_int against the Nethermind node
     runs-on: [vpn]
-    needs: [wait_for_node_to_sync, aggregate_rpcs]
-    if: always() && needs.aggregate_rpcs.result == 'success' && needs.wait_for_node_to_sync.result == 'success'
+    needs: [verify_correctness_of_setup, resolve_urls, wait_for_node_to_sync]
+    if: always() && needs.resolve_urls.result == 'success' && (needs.wait_for_node_to_sync.result == 'success' || needs.wait_for_node_to_sync.result == 'skipped')
     steps:
-      - uses: actions/checkout@v6
-      - name: Install flood
-        run: pip install --force-reinstall --no-deps git+https://github.com/kamilchodola/flood.git
-        
-      - name: Prepare Comparison Flags
-        id: prep_comparison
-        env:          
-          INFURA_ENDPOINT: '${{ secrets.INFURA_ENDPOINT }}'
-          NETHERMIND_ARCHIVE_ENDPOINT: '${{ secrets.NETHERMIND_ARCHIVE_ENDPOINT }}'
+      - name: Checkout rpc-tests
+        uses: actions/checkout@v6
+        with:
+          repository: NethermindEth/rpc-tests
+          ref: rpc-changes
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+          check-latest: true
+          cache: true
+
+      - name: Build rpc_int
+        run: make rpc_int
+
+      - name: Run rpc_int
+        env:
+          NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
+          GETH_URL: ${{ inputs.geth_url }}
+          RPC_FLAG: ${{ needs.verify_correctness_of_setup.outputs.rpc_flag }}
+          NETWORK: ${{ inputs.network }}
         run: |
-          others_str="${{ github.event.inputs.compare_with }}"
-          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          set -uo pipefail
+          mkdir -p rpc-results
 
-          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
-          unset IFS
-          IFS=' ' read -r -a others_str_array <<< "$others_str"
-          unset IFS
+          # Nethermind is the daemon under test; parse host:port from its URL.
+          hostport="${NM_URL#*://}"   # strip scheme
+          hostport="${hostport%%/*}"  # strip any path
+          host="${hostport%%:*}"
+          port="${hostport##*:}"
+          [ "$port" == "$host" ] && port=8545
 
-          # Construct nethermind_urls_str as an array
-          nethermind_urls_str=()
-          for url_entry in "${rpc_urls_array[@]}"; do
-            branch="${url_entry%%::*}"  # Extract the branch part
-            url="${url_entry#*::}"     # Extract the URL part
-            nethermind_urls_str+=("nethermind_$branch=$url")
-          done
+          # When a Geth URL is given, pass it as -e (external reference): each fixture
+          # request is sent to both Nethermind and Geth and the responses compared.
+          ext=()
+          [ -n "$GETH_URL" ] && ext=(-e "$GETH_URL")
 
-          # Construct others_prepared_str as an array
-          others_prepared_str=()
-          for other in "${others_str_array[@]}"; do
-            if [[ "$other" == "INFURA_ENDPOINT" ]]; then
-              others_prepared_str+=("$other=${INFURA_ENDPOINT}")
-            elif [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then
-              others_prepared_str+=("$other=${NETHERMIND_ARCHIVE_ENDPOINT}")
-            fi
-          done
+          echo "=== rpc_int: $NM_URL  [-b $NETWORK $RPC_FLAG] ${ext[*]:-} ==="
+          ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
+            -c -f -R rpc-results/report.csv | tee rpc-results/output.txt
+          rc=${PIPESTATUS[0]}
+          echo "rpc_int exit code: $rc"
+          exit $rc
 
-          # Flag for comparing to other branch
-          if [ ${#nethermind_urls_str[@]} -eq 1 ]; then
-            echo "compare_to_other_branch=true" >> $GITHUB_ENV
-            echo "compare_to_other_branch_params=${nethermind_urls_str[0]}" >> $GITHUB_ENV
-
-          elif [ ${#nethermind_urls_str[@]} -eq 2 ]; then
-            echo "compare_to_other_branch=true" >> $GITHUB_ENV
-            echo "compare_to_other_branch_params=${nethermind_urls_str[0]} ${nethermind_urls_str[1]}" >> $GITHUB_ENV
-
-          else
-            echo "compare_to_other_branch=false" >> $GITHUB_ENV
-          fi
-
-          # Flags for comparing to INFURA and ARCHIVE endpoints
-          compare_to_infura=false
-          compare_to_archive=false
-          for (( j = 0; j < ${#others_prepared_str[@]}; j++ )); do
-            if [[ "${others_prepared_str[j]}" == "INFURA_ENDPOINT=${INFURA_ENDPOINT}" ]]; then
-              compare_to_infura=true
-              echo "compare_to_infura_params=${nethermind_urls_str[0]} ${others_prepared_str[j]}" >> $GITHUB_ENV
-            elif [[ "${others_prepared_str[j]}" == "NETHERMIND_ARCHIVE_ENDPOINT=${NETHERMIND_ARCHIVE_ENDPOINT}" ]]; then
-              compare_to_archive=true
-              echo "compare_to_archive_params=${nethermind_urls_str[0]} ${others_prepared_str[j]}" >> $GITHUB_ENV
-            fi
-          done
-          echo "compare_to_infura=$compare_to_infura" >> $GITHUB_ENV
-          echo "compare_to_archive=$compare_to_archive" >> $GITHUB_ENV
-
-      - name: Compare to Other Branch
-        if: env.compare_to_other_branch == 'true'
-        run: |
-          if [ "${{ inputs.is_performance_check }}" == "true" ]; then
-
-            # Install Vegeta
-            wget https://github.com/tsenart/vegeta/releases/download/v12.11.1/vegeta_12.11.1_linux_amd64.tar.gz
-            tar -xzvf vegeta_12.11.1_linux_amd64.tar.gz
-            current_dir=$(pwd)
-            export PATH="$current_dir:$PATH"
-
-            # Prepare test files
-            mapfile -t tests < <(flood ls | sed -n '/Single Load Tests/,/Multi Load Tests/{/Single Load Tests\|Multi Load Tests\|───/d; s/- //p}')
-
-            for TEST in "${tests[@]}"; do
-                TEST_perf_result="${TEST}_perf_result"
-                echo "flood "$TEST" ${compare_to_other_branch_params} --rates 10 10 10 100 100 100 500 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
-                flood "$TEST" ${compare_to_other_branch_params} --rates 10 10 10 100 100 100 500 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
-            done
-          else
-            echo "flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt"
-            flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt
-          fi
-
-      - name: Compare to INFURA Endpoint
-        if: env.compare_to_infura == 'true' && inputs.is_performance_check != true
-        run: |
-          echo "flood all ${compare_to_infura_params} --equality | tee output_infura.txt"
-          flood all ${compare_to_infura_params} --equality | tee output_infura.txt
-
-      - name: Compare to Nethermind Archive Endpoint
-        if: env.compare_to_archive == 'true' && inputs.is_performance_check != true
-        run: |
-          echo "flood all ${compare_to_archive_params} --equality | tee output_archive.txt"
-          flood all ${compare_to_archive_params} --equality | tee output_archive.txt
-
-      - name: Generate report
-        run: |
-          if [ "${{ inputs.is_performance_check }}" == "true" ]; then
-            echo "Processing performance check repositories:"
-            for repo in $(ls -d *_perf_result); do
-              echo "Flood report for $repo"
-              flood report "$repo"
-            done
-          else
-            if [ "$COMPARE_TO_OTHER_BRANCH" == "true" ]; then
-              flood report equality_result_other
-            fi
-            if [ "$COMPARE_TO_INFURA" == "true" ]; then
-              flood report equality_result_infura
-            fi
-            if [ "$COMPARE_TO_ARCHIVE" == "true" ]; then
-              flood report equality_result_archive
-            fi
-          fi
-
-      - name: Upload results as files
+      - name: Upload rpc_int results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: flood-results
-          path: |
-            output_other_branch.txt
-            output_infura.txt
-            output_archive.txt
-            *_perf_result
-            *_perf_result.txt
-            equality_result_*
+          name: rpc-int-results
+          path: rpc-results/
+
+
+  cleanup_spawned_node:
+    name: Destroy spawned Nethermind node
+    runs-on: ubuntu-latest
+    needs: [verify_correctness_of_setup, create_main_node, compare]
+    if: always() && needs.verify_correctness_of_setup.outputs.spawn_nm == 'true' && needs.create_main_node.outputs.base_tag != ''
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
+      - name: Destroy VM
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        continue-on-error: true
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ steps.gh-app.outputs.token }}"
+          action: "destroy-machine"
+          search_phrase: ${{ needs.create_main_node.outputs.base_tag }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
