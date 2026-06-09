@@ -38,13 +38,19 @@ Option<bool> devOption = new("--dev")
     DefaultValueFactory = _ => false
 };
 
+Option<TimeSpan?> statsIntervalOption = new("--stats-interval", "-s")
+{
+    Description = "Interval for notifying about execution statistics (e.g. 00:30:00)"
+};
+
 RootCommand rootCommand = new("Monitors a running node by periodically executing dynamic RPC tests against a reference node")
 {
     targetOption,
     referenceOption,
     testsOption,
     parallelismOption,
-    devOption
+    devOption,
+    statsIntervalOption
 };
 
 rootCommand.SetAction(async (parseResult, ct) =>
@@ -59,10 +65,16 @@ rootCommand.SetAction(async (parseResult, ct) =>
 
     using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(1) };
     using INotifier notifier = GetNotifier(parseResult.GetRequiredValue(devOption));
-    MonitorRunner runner = new(args, notifier, client);
+
+    TimeSpan? statsInterval = parseResult.GetValue(statsIntervalOption);
+    MonitorStats? stats = statsInterval is { } interval ? new MonitorStats(notifier, interval) : null;
+    MonitorRunner runner = new(args, notifier, stats ?? (IMonitorStats)NullMonitorStats.Instance, client);
 
     await notifier.NotifyInfoAsync("Starting monitoring...");
-    await runner.RunAsync(ct);
+    await Task.WhenAll(
+        runner.RunAsync(ct),
+        stats?.RunAsync(ct) ?? Task.CompletedTask
+    );
 
     Console.WriteLine("Monitoring finished");
 });
@@ -92,6 +104,6 @@ static INotifier GetNotifier(bool isDevelopment)
     }
 
     return isDevelopment
-        ? new NullNotifier()
+        ? NullNotifier.Instance
         : throw new Exception("No remote notification method configured.");
 }

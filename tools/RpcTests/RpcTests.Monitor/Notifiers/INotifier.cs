@@ -9,3 +9,13 @@ internal interface INotifier : IDisposable
     Task NotifyErrorAsync(string error);
     Task NotifyInfoAsync(string message);
 }
+
+internal class NullNotifier : INotifier
+{
+    public static readonly NullNotifier Instance = new();
+
+    public Task NotifyFailureAsync(TestFailure failure, CancellationToken ct) => Task.CompletedTask;
+    public Task NotifyErrorAsync(string error) => Task.CompletedTask;
+    public Task NotifyInfoAsync(string message) => Task.CompletedTask;
+    public void Dispose() { }
+}

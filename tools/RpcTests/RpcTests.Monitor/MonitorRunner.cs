@@ -6,11 +6,11 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient client)
+internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IMonitorStats stats, HttpClient client)
 {
     private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
-    private readonly TestExecutor _executor = new(client);
-    private readonly ErrorReporter _errorReporter = new(notifier);
+    private readonly TestExecutor _executor = new(stats, client);
+    private readonly ErrorReporter _errorReporter = new(notifier, stats);
 
     public async Task RunAsync(CancellationToken ct)
     {
@@ -97,6 +97,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, HttpClient 
             if (await _executor.ExecuteAsync(args, test, ct) is not { } testFailure)
                 return null;
 
+            stats.RecordTestFailure();
             Console.Error.WriteLine($"Mismatch on test \"{test.Definition.FilePath}\" at block #{test.Head:#}");
             return testFailure;
         }

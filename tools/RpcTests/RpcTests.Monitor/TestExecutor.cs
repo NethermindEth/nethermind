@@ -7,12 +7,13 @@ using System.Text.Json.Nodes;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class TestExecutor(HttpClient httpClient)
+internal class TestExecutor(IMonitorStats stats, HttpClient httpClient)
 {
     private long _requestNumber;
 
     public async Task<TestFailure?> ExecuteAsync(ExecutionArgs args, TestContext test, CancellationToken ct = default)
     {
+        stats.RecordTestRun();
         RequestContext requestContext = new(Interlocked.Increment(ref _requestNumber));
         test = test with { Request = requestContext };
 
@@ -32,6 +33,7 @@ internal class TestExecutor(HttpClient httpClient)
 
     private async Task<JsonNode> SendAsync(Uri url, JsonContent content, CancellationToken ct)
     {
+        stats.RecordRequestRun();
         using HttpResponseMessage response = await httpClient.PostAsync(url, content, ct);
         response.EnsureSuccessStatusCode();
 
