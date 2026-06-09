@@ -266,7 +266,7 @@ public class HsstPartitionedBTreeTests
     [TestCase(300L, 0, 50, (byte)0x08)]            // over upper threshold → multi-partition + hashtable
     [TestCase(300L, int.MaxValue, 50, (byte)0x08)] // multi-partition: HashtableMinBytes does NOT suppress per-partition hashtables → still 0x08, reads OK
     [TestCase(4L * 1024 * 1024, 4096, 5, (byte)0x07)] // under both thresholds → single partition degrades to 0x07
-    [TestCase(4L * 1024 * 1024, 0, 50, (byte)0x09)]  // single partition + hashtable → 0x09 (no directory)
+    [TestCase(4L * 1024 * 1024, 0, 50, (byte)0x08)]  // single partition + hashtable → one-entry directory 0x08
     public void Upper_Threshold_Controls_Partitioning_And_Reads_Stay_Correct(
         long partitionThresholdBytes, int hashtableMinBytes, int count, byte expectedTail)
     {
@@ -281,16 +281,16 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // One partition that warrants a hashtable drops the (single-entry) directory and emits 0x09,
-    // with the hashtable metadata in the trailer. Hit, fallback (floor), and iteration all work.
+    // One partition that warrants a hashtable is emitted as a normal one-entry directory 0x08
+    // (no special single-partition trailer). Hit, fallback (floor), and iteration all work.
     [Test]
-    public void Single_Partition_With_Hashtable_Is_0x09()
+    public void Single_Partition_With_Hashtable_Is_0x08()
     {
         const int count = 60;
         // Default 4 MiB partition threshold ⇒ one partition; HashtableMinBytes=0 ⇒ it gets a hashtable.
         byte[] data = BuildPartitioned(count, new HsstBTreeOptions { HashtableMinBytes = 0 });
 
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.SinglePartitionHashtableBTreeKeyFirst), "single partition + hashtable must be 0x09");
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTreeKeyFirst), "single partition + hashtable must be a one-entry directory 0x08");
 
         // Hashtable-hit path: every key resolves with the right value.
         for (int i = 0; i < count; i++)
@@ -302,11 +302,11 @@ public class HsstPartitionedBTreeTests
         // Absent key (above range) → not found.
         Assert.That(HsstTestUtil.TryGet(data, Key(count + 500), out _), Is.False);
 
-        // Floor skips the hashtable → exercises the inner-B-tree fallback in 0x09.
+        // Floor skips the hashtable → exercises the inner-B-tree fallback.
         Assert.That(HsstTestUtil.TryGetFloor(data, Key(count + 500), out byte[] floorVal), Is.True);
         Assert.That(floorVal, Is.EqualTo(Val(count - 1)));
 
-        // Enumeration walks the inner B-tree directly → same sequence as the plain 0x07 build.
+        // Enumeration drains the one-entry directory → same sequence as the plain 0x07 build.
         List<(byte[] key, byte[] val)> partitioned = Enumerate(data);
         List<(byte[] key, byte[] val)> plain = Enumerate(BuildPlainKeyFirst(count));
         Assert.That(partitioned.Count, Is.EqualTo(count));
@@ -411,13 +411,13 @@ public class HsstPartitionedBTreeTests
     }
 
     // The key-after-value partitioned builder (the per-address layout) round-trips via streaming
-    // BeginValueWrite/FinishValueWrite and Add: multi-partition → 0x0A, single+hashtable → 0x0B,
-    // single small → plain 0x01. Every key reads back (hashtable hit + floor fallback), and
-    // enumeration matches the plain 0x01 build. (A mixed Add/streaming build is not byte-identical
-    // to an all-Add build — a streamed value flushes any pending leaf first — so only the trailer
-    // tag is asserted for the single-small case, not byte equality.)
+    // BeginValueWrite/FinishValueWrite and Add: multi-partition and single+hashtable both → 0x0A
+    // (a one-entry directory in the single case), single small → plain 0x01. Every key reads back
+    // (hashtable hit + floor fallback), and enumeration matches the plain 0x01 build. (A mixed
+    // Add/streaming build is not byte-identical to an all-Add build — a streamed value flushes any
+    // pending leaf first — so only the trailer tag is asserted for the single-small case.)
     [TestCase(60, /*threshold*/ 300L, /*htMin*/ 0, (byte)0x0A)]   // multi-partition + hashtable
-    [TestCase(60, 4L * 1024 * 1024, 0, (byte)0x0B)]               // single partition + hashtable
+    [TestCase(60, 4L * 1024 * 1024, 0, (byte)0x0A)]               // single partition + hashtable → one-entry directory 0x0A
     [TestCase(5, 4L * 1024 * 1024, 4096, (byte)0x01)]             // single small → plain 0x01
     public void KeyAfterValue_Partitioned_Streaming_RoundTrips(int count, long thresholdBytes, int htMinBytes, byte expectedTail)
     {
@@ -449,9 +449,9 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // A single streamed key-after-value entry that warrants a hashtable (htMin 0) → 0x0B, with a
-    // large value (mirrors the per-address column: one address, big nested value). The lone
-    // entry must read back via the hashtable probe and the floor/inner-tree fallback.
+    // A single streamed key-after-value entry that warrants a hashtable (htMin 0) → one-entry
+    // directory 0x0A, with a large value (mirrors the per-address column: one address, big nested
+    // value). The lone entry must read back via the hashtable probe and the floor/inner-tree fallback.
     [TestCase(1)]
     [TestCase(4000)]
     public void KeyAfterValue_Single_Streamed_Entry_With_Hashtable_RoundTrips(int valueLen)
@@ -472,7 +472,7 @@ public class HsstPartitionedBTreeTests
         byte[] data = pooled.WrittenSpan.ToArray();
         b.Dispose();
 
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.SinglePartitionHashtableBTree), "single streamed entry + hashtable must be 0x0B");
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PartitionedBTree), "single streamed entry + hashtable must be a one-entry directory 0x0A");
         Assert.That(HsstTestUtil.TryGet(data, key, out byte[] got), Is.True, "hashtable hit must find the lone entry");
         Assert.That(got, Is.EqualTo(val), "value mismatch");
         // Floor of a higher key skips the hashtable → inner-tree fallback must still resolve it.
@@ -500,10 +500,10 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // SINGLE partition + hashtable — 0x09 (key-first) / 0x0B (key-after-value). PartitionThresholdBytes
-    // is unbounded so all keys land in one partition; HashtableMinBytes=0 forces the hashtable.
-    // Every KV reads back by point lookup and via the enumerator, across small counts and a
-    // count that spans several hashtable buckets.
+    // SINGLE partition + hashtable — a one-entry directory 0x08 (key-first) / 0x0A (key-after-value).
+    // PartitionThresholdBytes is unbounded so all keys land in one partition; HashtableMinBytes=0
+    // forces the hashtable. Every KV reads back by point lookup and via the enumerator, across small
+    // counts and a count that spans several hashtable buckets.
     [TestCase(true, 1)]
     [TestCase(true, 6)]
     [TestCase(true, 7)]
@@ -518,8 +518,8 @@ public class HsstPartitionedBTreeTests
         byte[] data = keyFirst ? BuildPartitioned(count, opts) : BuildPartitionedKeyAfterValue(count, opts);
 
         Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
-            ? IndexType.SinglePartitionHashtableBTreeKeyFirst
-            : IndexType.SinglePartitionHashtableBTree)), "single partition + hashtable expected");
+            ? IndexType.PartitionedBTreeKeyFirst
+            : IndexType.PartitionedBTree)), "single partition + hashtable → one-entry directory expected");
 
         AssertEveryKvReadableAndEnumerable(data, count);
     }
@@ -607,7 +607,7 @@ public class HsstPartitionedBTreeTests
     // the bucketCount the builder derives from 12 keys), so bucket 0 holds 12 keys but only 8
     // ways. The 4 that overflow are dropped from the hashtable and can only be found via the
     // inner-B-tree fallback. Every key must still read back with the right value — for both the
-    // key-first (0x09) and key-after-value (0x0B) entry layouts (the latter exercises the
+    // key-first (0x08) and key-after-value (0x0A) entry layouts (the latter exercises the
     // DecodeEntry/TrySeekFromRoot keyFirst:false fallback that a non-overflowing table never hits).
     [TestCase(true)]
     [TestCase(false)]
@@ -654,8 +654,8 @@ public class HsstPartitionedBTreeTests
         byte[] data = pooled.WrittenSpan.ToArray();
 
         Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
-            ? IndexType.SinglePartitionHashtableBTreeKeyFirst
-            : IndexType.SinglePartitionHashtableBTree)), "single partition + hashtable expected");
+            ? IndexType.PartitionedBTreeKeyFirst
+            : IndexType.PartitionedBTree)), "single partition + hashtable → one-entry directory expected");
 
         // All 12 keys must resolve — the 4 that overflowed bucket 0 only via the B-tree fallback.
         foreach (int i in ids)

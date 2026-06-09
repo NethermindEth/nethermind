@@ -9,19 +9,19 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
 /// Read-side helper for the <see cref="IndexType.PartitionedBTreeKeyFirst"/> (0x08) and
-/// <see cref="IndexType.SinglePartitionHashtableBTreeKeyFirst"/> (0x09) layouts. Stateless
-/// static methods so <see cref="HsstReader{TReader,TPin}"/> can dispatch into them without
-/// copying its ref-struct state.
+/// <see cref="IndexType.PartitionedBTree"/> (0x0A) layouts. Stateless static methods so
+/// <see cref="HsstReader{TReader,TPin}"/> can dispatch into them without copying its
+/// ref-struct state.
 /// </summary>
 /// <remarks>
-/// Both variants resolve a partition's hashtable metadata, then run the same
+/// A lookup floor-seeks the directory B-tree (reusing <see cref="HsstBTreeReader"/>) to pick a
+/// partition, reads that partition's hashtable metadata, then runs
 /// <see cref="ProbeAndFallback{TReader,TPin}"/>: probe one 64-byte bucket and decode the entry
-/// directly, falling back to the partition's inner key-first B-tree (via
-/// <see cref="HsstBTreeReader.TrySeekFromRoot"/>) on any miss. They differ only in where the
-/// metadata comes from: 0x08 floor-seeks a directory B-tree (reusing <see cref="HsstBTreeReader"/>)
-/// to pick a partition; 0x09 has exactly one partition, so the metadata sits straight in the
-/// trailer (no directory). All in-blob offsets are byte-0-relative, so every descent uses the
-/// whole-blob <paramref name="bound"/>. See FORMAT.md.
+/// directly, falling back to the partition's inner B-tree (via
+/// <see cref="HsstBTreeReader.TrySeekFromRoot"/>) on any miss. A blob that collapses to a single
+/// partition still carries a one-entry directory, so there is no special single-partition path.
+/// All in-blob offsets are byte-0-relative, so every descent uses the whole-blob
+/// <paramref name="bound"/>. See FORMAT.md.
 /// </remarks>
 internal static class HsstPartitionedBTreeReader
 {
@@ -71,73 +71,6 @@ internal static class HsstPartitionedBTreeReader
 
         return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyFirst, keyLength,
             innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, rootPrefix, out resultBound);
-    }
-
-    /// <summary>
-    /// 0x09 / 0x0B lookup: read the single partition's metadata from the trailer, then probe +
-    /// fall back. <paramref name="keyFirst"/>: true for 0x09, false for 0x0B (key-after-value).
-    /// </summary>
-    [SkipLocalsInit]
-    public static bool TrySeekSingle<TReader, TPin>(
-        scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
-        bool exactMatch, bool keyFirst, out Bound resultBound)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        resultBound = default;
-        Span<byte> prefixBuf = stackalloc byte[256];
-        if (!ReadSinglePartitionTrailer<TReader, TPin>(in reader, bound, out int keyLength,
-                out long innerRootOffset, out long innerBufferEnd, out long hashtableOffset,
-                out long dataRegionStart, out int bucketCount, prefixBuf, out int rootPrefixLen))
-            return false;
-
-        return ProbeAndFallback<TReader, TPin>(in reader, bound, key, exactMatch, keyFirst, keyLength,
-            innerRootOffset, innerBufferEnd, hashtableOffset, dataRegionStart, bucketCount, prefixBuf[..rootPrefixLen], out resultBound);
-    }
-
-    /// <summary>
-    /// Parse the <see cref="IndexType.SinglePartitionHashtableBTreeKeyFirst"/> (0x09) trailer.
-    /// Tail layout (low→high): <c>[InnerRootPrefix: prefixLen][Metadata: 28][KeyLength: u8][IndexType: u8]</c>.
-    /// Reads the fixed record first (it carries prefixLen), then the prefix bytes that precede it
-    /// into <paramref name="rootPrefixDest"/>. Shared by the reader and enumerator.
-    /// </summary>
-    [SkipLocalsInit]
-    internal static bool ReadSinglePartitionTrailer<TReader, TPin>(
-        scoped in TReader reader, Bound bound,
-        out int keyLength, out long innerRootOffset, out long innerBufferEnd,
-        out long hashtableOffset, out long dataRegionStart, out int bucketCount,
-        scoped Span<byte> rootPrefixDest, out int rootPrefixLen)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        keyLength = 0;
-        innerRootOffset = innerBufferEnd = hashtableOffset = dataRegionStart = 0;
-        bucketCount = rootPrefixLen = 0;
-
-        int recSize = HsstPartitionHashtable.DirRecordFixedSize;
-        if (bound.Length < 2 + recSize) return false;
-
-        Span<byte> klBuf = stackalloc byte[1];
-        if (!reader.TryRead(bound.Offset + bound.Length - 2, klBuf)) return false;
-        keyLength = klBuf[0];
-
-        long recPos = bound.Offset + bound.Length - 2 - recSize;
-        Span<byte> rec = stackalloc byte[HsstPartitionHashtable.DirRecordFixedSize];
-        if (!reader.TryRead(recPos, rec)) return false;
-        innerRootOffset = ReadU48(rec);
-        innerBufferEnd = ReadU48(rec[6..]);
-        hashtableOffset = ReadU48(rec[12..]);
-        dataRegionStart = ReadU48(rec[18..]);
-        bucketCount = ReadU24(rec[24..]);
-        rootPrefixLen = rec[27];
-
-        if (rootPrefixLen > 0)
-        {
-            if (rootPrefixLen > rootPrefixDest.Length) return false;
-            if (recPos - rootPrefixLen < bound.Offset) return false;
-            if (!reader.TryRead(recPos - rootPrefixLen, rootPrefixDest[..rootPrefixLen])) return false;
-        }
-        return true;
     }
 
     /// <summary>

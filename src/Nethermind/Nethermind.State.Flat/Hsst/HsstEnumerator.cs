@@ -93,29 +93,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                     keyFirst: tag == IndexType.PartitionedBTreeKeyFirst);
                 _kind = VariantKind.PartitionedBTreeKeyFirst;
                 break;
-            case IndexType.SinglePartitionHashtableBTreeKeyFirst:
-            case IndexType.SinglePartitionHashtableBTree:
-                {
-                    // One partition: walk its inner B-tree directly (the hashtable is ignored —
-                    // entries are already key-sorted). Metadata comes from the trailer. keyFirst
-                    // distinguishes 0x09 (true) from 0x0B (key-after-value, false).
-                    Span<byte> prefixBuf = stackalloc byte[256];
-                    if (HsstPartitionedBTreeReader.ReadSinglePartitionTrailer<TReader, TPin>(in reader, scope,
-                            out int spKeyLength, out long spRootOffset, out long spBufferEnd,
-                            out long _, out long _, out int _, prefixBuf, out int spPrefixLen))
-                    {
-                        byte[] rootPrefix = spPrefixLen > 0 ? prefixBuf[..spPrefixLen].ToArray() : [];
-                        _btree = new HsstBTreeEnumerator<TReader, TPin>(
-                            scope.Offset, scope.Offset + spBufferEnd, scope.Offset + spRootOffset,
-                            rootPrefix, spKeyLength, keyFirst: tag == IndexType.SinglePartitionHashtableBTreeKeyFirst);
-                        _kind = VariantKind.BTreeKeyFirst;
-                    }
-                    else
-                    {
-                        _kind = VariantKind.Empty;
-                    }
-                    break;
-                }
             // DenseByteIndex is used for the persisted-snapshot outer + per-address
             // containers, which the merge code accesses directly via TryGet rather
             // than via this enumerator. TwoByteSlotValue / TwoByteSlotValueLarge lead

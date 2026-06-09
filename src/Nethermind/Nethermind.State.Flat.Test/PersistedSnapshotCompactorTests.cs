@@ -608,10 +608,11 @@ public class PersistedSnapshotCompactorTests
     /// Builds a 0x0A snapshot with distinct balances + slot values, scans it exactly as the
     /// persistence path does, and asserts every yielded value (and the exact address/slot counts).
     /// </summary>
-    // 0x0A = multi-partition (threshold 200), 0x0B = single partition + hashtable (the common
-    // production case for compacted address columns, threshold 4 MiB), both with htMin 0.
+    // Both cases are 0x0A: a low threshold (200) yields several partitions; a high threshold
+    // (4 MiB, the common compacted-address case) yields a single partition — still a one-entry
+    // directory 0x0A. Both with htMin 0 so the hashtable is forced.
     [TestCase(200L, IndexType.PartitionedBTree)]
-    [TestCase(4L * 1024 * 1024, IndexType.SinglePartitionHashtableBTree)]
+    [TestCase(4L * 1024 * 1024, IndexType.PartitionedBTree)]
     public void Scan_PartitionedAddressColumn_YieldsCorrectAccountAndSlotValues(long thresholdBytes, IndexType expectedTail)
     {
         const int A = 50;
@@ -840,7 +841,7 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// End-to-end of the partitioned ADDRESS column (key-after-value 0x0A / 0x0B) on the
+    /// End-to-end of the partitioned ADDRESS column (key-after-value 0x0A) on the
     /// COMPACTION path. A low address-partition threshold + zero hashtable-min (both reuse the
     /// slot-options config) forces the merged 64-address column through
     /// <c>NWayMergePartitioned</c> into a hashtable-bearing partitioned layout. Every account
@@ -860,7 +861,7 @@ public class PersistedSnapshotCompactorTests
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 4 * 1024 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, PersistedSnapshotTier.Persisted);
             // Low partition threshold + zero hashtable-min ⇒ the address column partitions and
-            // every partition carries a hashtable (0x0A multi / 0x0B single).
+            // every partition carries a hashtable (0x0A, single partition = one-entry directory).
             FlatDbConfig config = new()
             {
                 CompactSize = 4,
@@ -907,9 +908,8 @@ public class PersistedSnapshotCompactorTests
                         in reader, out Bound addrCol), Is.True);
                     Span<byte> tail = stackalloc byte[1];
                     Assert.That(reader.TryRead(addrCol.Offset + addrCol.Length - 1, tail), Is.True);
-                    Assert.That((IndexType)tail[0],
-                        Is.EqualTo(IndexType.PartitionedBTree).Or.EqualTo(IndexType.SinglePartitionHashtableBTree),
-                        "compacted address column must be partitioned (0x0A/0x0B)");
+                    Assert.That((IndexType)tail[0], Is.EqualTo(IndexType.PartitionedBTree),
+                        "compacted address column must be partitioned (0x0A)");
                 }
 
                 for (int id = 1; id <= n * addrsPerSnapshot; id++)

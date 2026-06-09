@@ -75,17 +75,8 @@ public enum IndexType : byte
     /// FORMAT.md for the full layout / lookup procedure.
     /// </summary>
     PartitionedBTreeKeyFirst = 0x08,
-    /// <summary>
-    /// Degenerate single-partition form of <see cref="PartitionedBTreeKeyFirst"/>: when a
-    /// partitioned build collapses to exactly one partition that warrants a hashtable, the
-    /// 1-entry directory B-tree (whose key would never discriminate) is dropped and the
-    /// partition's hashtable metadata is written straight into the trailer. A reader reads the
-    /// fixed tail record and goes directly to the hashtable probe, falling back to the
-    /// partition's inner key-first B-tree on a miss. The single-partition no-hashtable case
-    /// stays <see cref="BTreeKeyFirst"/> (0x07); the multi-partition case stays 0x08. See
-    /// FORMAT.md for the full layout / lookup procedure.
-    /// </summary>
-    SinglePartitionHashtableBTreeKeyFirst = 0x09,
+    // 0x09 reserved (was SinglePartitionHashtableBTreeKeyFirst — a single partition with a
+    // hashtable now emits a one-entry directory 0x08 rather than a special trailer).
     /// <summary>
     /// Key-after-value sibling of <see cref="PartitionedBTreeKeyFirst"/> (0x08): a partitioned
     /// table whose entries are <c>[Value][Flag][LEB128 ValueLength][FullKey]</c> (so values can
@@ -95,10 +86,6 @@ public enum IndexType : byte
     /// plain <see cref="BTree"/> 0x01) differ. See FORMAT.md.
     /// </summary>
     PartitionedBTree = 0x0A,
-    /// <summary>
-    /// Key-after-value sibling of <see cref="SinglePartitionHashtableBTreeKeyFirst"/> (0x09):
-    /// the single-partition-with-hashtable form for key-after-value data (metadata in the
-    /// trailer, no directory). See FORMAT.md.
-    /// </summary>
-    SinglePartitionHashtableBTree = 0x0B,
+    // 0x0B reserved (was SinglePartitionHashtableBTree — key-after-value sibling of the removed
+    // 0x09; a single partition with a hashtable now emits a one-entry directory 0x0A).
 }

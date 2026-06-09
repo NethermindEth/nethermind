@@ -96,9 +96,9 @@ public sealed record HsstBTreeOptions
     /// <summary>Minimum key-bytes for a <b>whole single-partition blob</b> to bother with a
     /// hashtable. Below this the blob is emitted as a plain key-first B-tree (0x07) with no
     /// directory and no hashtable — a one- or two-level B-tree already reaches the entry — to
-    /// save the space. This gates partitioning itself: once a blob partitions (a 0x08 directory
-    /// or a 0x09 single partition), <b>every</b> partition carries a hashtable, so a directory
-    /// never holds a hashtable-less partition. 4 KiB.</summary>
+    /// save the space. This gates partitioning itself: once a blob partitions (a 0x08/0x0A
+    /// directory, with one entry if there is a single partition), <b>every</b> partition carries
+    /// a hashtable, so a directory never holds a hashtable-less partition. 4 KiB.</summary>
     public const int DefaultHashtableMinBytes = 4 * 1024;
 
     /// <summary>Per-partition key-bytes budget for the partitioned builder; a partition

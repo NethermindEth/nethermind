@@ -48,8 +48,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     //   bits 0..45: 46-bit absolute offset of the entry's FlagByte in the outer address
     //               column entry. 46 bits = 64 TiB, ample for any real snapshot.
     // The cache is layout-agnostic across the address column's possible forms: a plain
-    // key-after-value BTree (0x01) or the partitioned PartitionedBTree (0x0A) /
-    // SinglePartitionHashtableBTree (0x0B) — all use the same per-entry shape, so only the
+    // key-after-value BTree (0x01) or the partitioned PartitionedBTree (0x0A, with a one-entry
+    // directory when there is a single partition) — all use the same per-entry shape, so only the
     // miss-path resolution differs (see _addressColumnPartitioned).
     // Layout: keyFirst=false BTree entry shape is [Value][FlagByte][LEB128][FullKey]. On a
     // tag match we read 27 bytes at the FlagByte covering it, the LEB128 (≤ 6 bytes) and the
@@ -99,8 +99,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private readonly long _addressBtreeRootStart;
     private readonly long _addressBtreeBufferEnd;
     private readonly byte[] _addressBtreeRootPrefix = [];
-    // True when the address column is a partitioned HSST (PartitionedBTree 0x0A /
-    // SinglePartitionHashtableBTree 0x0B) rather than a plain key-after-value BTree (0x01).
+    // True when the address column is a partitioned HSST (PartitionedBTree 0x0A — a one-entry
+    // directory when there is a single partition) rather than a plain key-after-value BTree (0x01).
     // The cached-root miss path is only valid for 0x01; for the partitioned forms the miss
     // path routes through the generic HsstReader dispatch instead. The address-bound value
     // cache (resolved flag-offset + length) stays valid either way — partitioned entries are
@@ -199,12 +199,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             {
                 Span<byte> idxBuf = stackalloc byte[1];
                 bool partitioned = probeReader.TryRead(addrColBound.Offset + addrColBound.Length - 1, idxBuf)
-                    && ((IndexType)idxBuf[0] is IndexType.PartitionedBTree or IndexType.SinglePartitionHashtableBTree
-                        or IndexType.PartitionedBTreeKeyFirst or IndexType.SinglePartitionHashtableBTreeKeyFirst);
+                    && ((IndexType)idxBuf[0] is IndexType.PartitionedBTree or IndexType.PartitionedBTreeKeyFirst);
                 if (partitioned)
                 {
-                    // Partitioned address column (0x0A/0x0B): the cached-root walk is invalid;
-                    // the miss path dispatches through HsstReader over the column bound instead.
+                    // Partitioned address column (0x0A multi / single-with-hashtable): the cached-root
+                    // walk is invalid; the miss path dispatches through HsstReader over the column bound.
                     _addressBtreeBound = addrColBound;
                     _addressColumnPartitioned = true;
                 }
@@ -382,7 +381,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         }
         if (_addressColumnPartitioned)
         {
-            // Partitioned address column (0x0A/0x0B): dispatch through the generic reader,
+            // Partitioned address column (0x0A): dispatch through the generic reader,
             // which floor-seeks the directory / reads the single-partition trailer and probes
             // the per-partition hashtable. No cached-root shortcut applies.
             HsstReader<ArenaByteReader, NoOpPin> r = new(in reader, _addressBtreeBound);

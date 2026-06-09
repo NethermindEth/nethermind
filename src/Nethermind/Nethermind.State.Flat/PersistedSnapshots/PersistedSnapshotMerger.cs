@@ -807,7 +807,7 @@ public static class PersistedSnapshotMerger
         NWayMergeCursor<WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory> cursor =
             new(sources, enumerators, state, AddrKeyLen);
 
-        // The compacted address column is partitioned (key-after-value 0x0A/0x0B) so it carries
+        // The compacted address column is partitioned (key-after-value 0x0A) so it carries
         // the same per-partition address hashtable the base builder emits. The address-level
         // partition threshold reuses slotOptions (parallel to the base builder).
         using HsstPartitionedBTreeBuilderBuffersContainer addressBuffers = new();
