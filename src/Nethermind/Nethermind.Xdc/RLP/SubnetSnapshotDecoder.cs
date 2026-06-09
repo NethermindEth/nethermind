@@ -16,7 +16,7 @@ internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot
         if (subnetSnapshot is null)
             return null;
 
-        subnetSnapshot.NextEpochPenalties = DecodeAddressArray(ref decoderContext);
+        subnetSnapshot.NextEpochPenalties = XdcRlpHelpers.DecodeAddressArray(ref decoderContext);
         return subnetSnapshot;
     }
 
@@ -27,7 +27,7 @@ internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot
         if (item.NextEpochPenalties is null)
             stream.EncodeArray<Address>([]);
         else
-            EncodeAddressSequence(stream, item.NextEpochPenalties);
+            XdcRlpHelpers.EncodeAddressSequence(stream, item.NextEpochPenalties);
     }
 
     protected override int GetContentLength(SubnetSnapshot item, RlpBehaviors rlpBehaviors)
@@ -35,7 +35,7 @@ internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot
         if (item is null)
             return 0;
         int length = base.GetContentLength(item, rlpBehaviors);
-        length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.NextEpochPenalties?.Length ?? 0);
+        length += XdcRlpHelpers.LengthOfAddressSequence(item.NextEpochPenalties);
         return length;
     }
 
