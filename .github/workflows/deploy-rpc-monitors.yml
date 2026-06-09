@@ -1,4 +1,4 @@
-name: Deploy RPC Monitor
+name: Deploy RPC Monitors
 
 on:
   workflow_dispatch:
