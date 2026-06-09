@@ -28,6 +28,16 @@ on:
         description: "Checked = Load Testing on identical spec. Not checked = RPC Equality Testing (no identical spec)."
         default: false
         required: false
+      load_rates:
+        type: string
+        description: "Load testing only: space-separated request rates (req/s) passed to flood --rates. Example: \"500\" for a single rate, or \"10 100 500\"."
+        default: "10 10 10 100 100 100 500"
+        required: false
+      load_duration:
+        type: string
+        description: "Load testing only: duration in seconds per rate, passed to flood --duration."
+        default: "30"
+        required: false
       convert_to_paprika:
         type: boolean
         description: "When checked, attempts to convert synced node to paprika"
@@ -559,6 +569,9 @@ jobs:
 
       - name: Compare to Other Branch
         if: env.compare_to_other_branch == 'true'
+        env:
+          LOAD_RATES: ${{ inputs.load_rates }}
+          LOAD_DURATION: ${{ inputs.load_duration }}
         run: |
           if [ "${{ inputs.is_performance_check }}" == "true" ]; then
 
@@ -573,8 +586,8 @@ jobs:
 
             for TEST in "${tests[@]}"; do
                 TEST_perf_result="${TEST}_perf_result"
-                echo "flood "$TEST" ${compare_to_other_branch_params} --rates 10 10 10 100 100 100 500 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
-                flood "$TEST" ${compare_to_other_branch_params} --rates 10 10 10 100 100 100 500 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
+                echo "flood "$TEST" ${compare_to_other_branch_params} --rates ${LOAD_RATES} --output "$TEST_perf_result" --duration ${LOAD_DURATION} --deep-check | tee -a "$TEST_perf_result.txt""
+                flood "$TEST" ${compare_to_other_branch_params} --rates ${LOAD_RATES} --output "$TEST_perf_result" --duration ${LOAD_DURATION} --deep-check | tee -a "$TEST_perf_result.txt"
             done
           else
             echo "flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt"
