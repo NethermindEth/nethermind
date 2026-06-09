@@ -624,6 +624,25 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder AndAPeerExactlyAtThePivotIsKnown()
+                {
+                    AddPeeringSetup("peer at pivot", AddPeer(Pivot));
+                    return this;
+                }
+
+                public ScenarioBuilder WhenStaticSnapPivotIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.SnapSync = true;
+                        SyncConfig.StaticSnapPivot = true;
+                        return "static snap pivot";
+                    });
+
+                    return this;
+                }
+
                 public ScenarioBuilder WhenSynchronizationIsDisabled()
                 {
                     _overwrites.Add(() => SyncConfig.SynchronizationEnabled = false);

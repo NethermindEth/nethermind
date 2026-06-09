@@ -122,6 +122,8 @@ public class StateSyncRunner(
     {
         await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
 
+        if (syncConfig.StaticSnapPivot) return;
+
         int totalSyncLag = syncConfig.StateMinDistanceFromHead + syncConfig.HeaderStateDistance;
 
         while (!token.IsCancellationRequested)
