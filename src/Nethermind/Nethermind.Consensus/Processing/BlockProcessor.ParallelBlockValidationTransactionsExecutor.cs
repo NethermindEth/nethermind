@@ -149,6 +149,27 @@ public partial class BlockProcessor
                             {
                                 if (i == 0)
                                 {
+                                    // ApplyStateChanges commits a write batch, which cancels the read-warming
+                                    // task BlockProcessor started at the top of the block. Reissue the hint
+                                    // and let it drain BEFORE applying, so the BAL-declared reads land in the
+                                    // pre-block cache while the shared state still serves pre-block values —
+                                    // exactly what the tx workers read through their parent-state readers.
+                                    // Warming post-apply state instead would poison the shared cache and
+                                    // invalidate the block. The tx workers run concurrently and start hitting
+                                    // the cache as it fills.
+                                    if (state.balManager.BatchReadEnabled && state.block.BlockAccessList is not null)
+                                    {
+                                        try
+                                        {
+                                            state.stateProvider.HintBal(state.block.BlockAccessList).GetAwaiter().GetResult();
+                                        }
+                                        catch (Exception)
+                                        {
+                                            // Warm reads are best-effort: a cancelled or faulted hint only
+                                            // means fewer cache hits and must never fail the block.
+                                        }
+                                    }
+
                                     // ApplyStateChanges mutates the shared stateProvider so runs inside
                                     // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
                                     // workers read from BAL-backed world states, not stateProvider, so
