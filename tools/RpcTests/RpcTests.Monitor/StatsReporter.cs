@@ -7,19 +7,18 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal class StatsReporter(INotifier notifier, TimeSpan period) : IStatsReporter
 {
+    private DateTime _since = DateTime.UtcNow;
     private long _testRuns;
     private long _requestRuns;
     private long _testFailures;
     private long _errors;
-
-    private DateTime _since = DateTime.UtcNow;
 
     public void RecordTestRun() => Interlocked.Increment(ref _testRuns);
     public void RecordRequestRun() => Interlocked.Increment(ref _requestRuns);
     public void RecordTestFailure() => Interlocked.Increment(ref _testFailures);
     public void RecordError() => Interlocked.Increment(ref _errors);
 
-    public MonitorStats GetAndReset()
+    private MonitorStats GetAndReset()
     {
         DateTime since = _since;
         _since = DateTime.UtcNow;

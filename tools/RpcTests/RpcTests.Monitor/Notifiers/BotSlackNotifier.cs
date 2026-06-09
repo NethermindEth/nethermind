@@ -13,20 +13,22 @@ internal class BotSlackConfig
     public required string ChannelId { get; init; }
 }
 
-internal sealed class BotSlackNotifier(BotSlackConfig config) : INotifier
+internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INotifier
 {
     private readonly HttpClient _httpClient = new();
     private readonly ISlackApiClient _slack = new SlackServiceBuilder()
         .UseApiToken(config.BotToken)
         .GetApiClient();
 
+    private readonly string _prefix = $"*RPC monitor `{name}`*";
+
     public async Task NotifyFailureAsync(TestFailure failure, CancellationToken ct)
     {
         string header =
             $"""
-             ❌ *RPC response mismatch at block #`{failure.Head:#}`*
-             Test: `{failure.Test.Definition.FilePath}`
-             Method: `{failure.Request.MethodOrUnknown}`
+             ❌ {_prefix} response mismatch at block `{failure.Head}`
+             - Method: `{failure.Request.MethodOrUnknown}`
+             - Test: `{failure.Test.Definition.FilePath}`
              """;
 
         try
@@ -59,7 +61,7 @@ internal sealed class BotSlackNotifier(BotSlackConfig config) : INotifier
             {
                 Channel = config.ChannelId,
                 Text = $"""
-                        ⚠ *RPC monitoring error*:
+                        ⚠ {_prefix} error:
                         ```{error}```
                         """
             });
@@ -78,11 +80,11 @@ internal sealed class BotSlackNotifier(BotSlackConfig config) : INotifier
             {
                 Channel = config.ChannelId,
                 Text = $"""
-                         ℹ *RPC Monitor statistic since `{stats.Since:u}`*:
-                         - `{stats.TestRuns}` tests executed
-                         - `{stats.RequestRuns}` requests sent
-                         - `{stats.TestFailures}` test failures
-                         - `{stats.Errors}` errors
+                        ℹ {_prefix} statistic since `{stats.Since:u}`:
+                        - `{stats.TestRuns}` tests executed
+                        - `{stats.RequestRuns}` requests sent
+                        - `{stats.TestFailures}` test failures
+                        - `{stats.Errors}` errors
                         """
             });
         }

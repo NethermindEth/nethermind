@@ -26,6 +26,12 @@ Option<string[]> testsOption = new("--tests", "-g")
     DefaultValueFactory = _ => ["mainnet/**/*"]
 };
 
+Option<string> nameOption = new("--name", "-n")
+{
+    Description = "Monitor instance name, defaults to glob pattern",
+    AllowMultipleArgumentsPerToken = true
+};
+
 Option<int> parallelismOption = new("--parallelism", "-p")
 {
     Description = "Test execution parallelism",
@@ -48,6 +54,7 @@ RootCommand rootCommand = new("Monitors a running node by periodically executing
     targetOption,
     referenceOption,
     testsOption,
+    nameOption,
     parallelismOption,
     devOption,
     statsIntervalOption
@@ -63,8 +70,9 @@ rootCommand.SetAction(async (parseResult, ct) =>
         Parallelism = parseResult.GetValue(parallelismOption)
     };
 
+    string name = parseResult.GetValue(nameOption) ?? string.Join('|', parseResult.GetRequiredValue(testsOption));
     using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(1) };
-    using INotifier notifier = GetNotifier(parseResult.GetRequiredValue(devOption));
+    using INotifier notifier = GetNotifier(name, parseResult.GetRequiredValue(devOption));
 
     TimeSpan? statsInterval = parseResult.GetValue(statsIntervalOption);
     IStatsReporter stats = statsInterval is { } interval ? new StatsReporter(notifier, interval) : NullStatsReporter.Instance;
@@ -86,13 +94,13 @@ static Uri UriParser(ArgumentResult arg)
     return new Uri(str.Contains("://") ? str : $"http://{str}");
 }
 
-static INotifier GetNotifier(bool isDevelopment)
+static INotifier GetNotifier(string name, bool isDevelopment)
 {
 
     if (Environment.GetEnvironmentVariable("RPC_MONITOR_BOT_TOKEN") is { } botToken &&
         Environment.GetEnvironmentVariable("RPC_MONITOR_CHANNEL_ID") is { } channelId)
     {
-        return new BotSlackNotifier(new BotSlackConfig { BotToken = botToken, ChannelId = channelId })
+        return new BotSlackNotifier(name, new BotSlackConfig { BotToken = botToken, ChannelId = channelId })
             .RateLimited(10, TimeSpan.FromMinutes(1));
     }
 

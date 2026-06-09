@@ -77,6 +77,7 @@ internal record struct RequestContext(long Number) { }
 internal record TestFailure(TestContext Test, JsonNode Request, JsonNode ActualResponse, JsonNode ExpectedResponse)
 {
     public BlockInfo Head => Test.Head;
+    public string MonitorName { get; init; } = "";
 }
 
 internal class KnownTopics
