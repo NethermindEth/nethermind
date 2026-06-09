@@ -33,10 +33,13 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Optimism.Precompiles;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.Optimism;
 
@@ -221,6 +224,10 @@ public class OptimismModule(ChainSpec chainSpec) : Module
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
             .AddSingleton<ICostHelper, OptimismCostHelper>()
+
+            .AddSingleton<ISpecProvider, OptimismChainSpecBasedSpecProvider>()
+            .AddSingleton<IPrecompileProvider, OptimismPrecompileProvider>()
+            .AddSingleton<IRpcCapabilitiesProvider, OptimismEngineRpcCapabilitiesProvider>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()

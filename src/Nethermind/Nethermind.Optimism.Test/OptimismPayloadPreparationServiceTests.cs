@@ -25,7 +25,6 @@ using FluentAssertions;
 using Nethermind.Crypto;
 using System.Threading;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Test;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism.Test;
@@ -55,7 +54,7 @@ public class OptimismPayloadPreparationServiceTests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
-        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        IOptimismReleaseSpec releaseSpec = OptimismReleaseSpecSubstitute.Create();
         releaseSpec.IsOpHoloceneEnabled.Returns(true);
         releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
         releaseSpec.ElasticityMultiplier.Returns(6);

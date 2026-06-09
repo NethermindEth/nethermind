@@ -14,6 +14,13 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
     private readonly ConcurrentDictionary<string, (bool Enabled, bool WarnIfMissing)> _capabilities = new();
 
 
+    /// <summary>
+    /// Whether the V4 engine API methods (<c>engine_getPayloadV4</c>, <c>engine_newPayloadV4</c>) are exposed.
+    /// Default: L1 condition (post-Pectra execution requests). Plugins may override to add chain-specific triggers
+    /// (e.g. OP Isthmus activation) via subclassing.
+    /// </summary>
+    protected virtual bool IsV4Enabled(IReleaseSpec spec) => spec.RequestsEnabled;
+
     public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
     {
         if (_capabilities.IsEmpty)
@@ -41,7 +48,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
             _capabilities[nameof(IEngineRpcModule.engine_getBlobsV1)] = (spec.IsEip4844Enabled, false);
 
             // Prague
-            bool v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
+            bool v4 = IsV4Enabled(spec);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (v4, v4);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (v4, v4);
 
