@@ -10,6 +10,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public sealed class InclusionListBytes(int capacity) : IReadOnlyList<ArrayPoolList<byte>>, IDisposable
 {
+    // JsonRpc dispose chain: JsonRpcResponse → ResultWrapper.TryDispose → InclusionListBytes.Dispose → DisposeRecursive.
     private readonly ArrayPoolList<ArrayPoolList<byte>> _items = new(capacity);
 
     public void Add(ArrayPoolList<byte> item) => _items.Add(item);

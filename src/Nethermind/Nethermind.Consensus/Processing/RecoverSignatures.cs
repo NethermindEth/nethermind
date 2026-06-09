@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -65,7 +66,7 @@ namespace Nethermind.Consensus.Processing
                         state.recover.RecoverAuthorities(tx, state.releaseSpec);
                         if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                     }
-                    catch (Exception e) when (state.skipErrors && e is InvalidDataException or ArgumentException or CryptographicException)
+                    catch (Exception e) when (state.skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
                     {
                         if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
                     }
@@ -83,7 +84,7 @@ namespace Nethermind.Consensus.Processing
                         RecoverAuthorities(tx, releaseSpec);
                         if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                     }
-                    catch (Exception e) when (skipErrors && e is InvalidDataException or ArgumentException or CryptographicException)
+                    catch (Exception e) when (skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
                     }

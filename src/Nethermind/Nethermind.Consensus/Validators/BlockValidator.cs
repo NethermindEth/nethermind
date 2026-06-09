@@ -153,7 +153,8 @@ public class BlockValidator(
     {
         if (options.ContainsFlag(ProcessingOptions.NoValidation)) return true;
         IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
-        // The IL travels on the suggested block; mirror it onto the processed copy for the spec rule.
+        // IL is engine-API only — block RLP wire format doesn't carry it, so P2P-decoded blocks
+        // legitimately reach here with null IL. IsSatisfied treats null as "not applicable".
         processedBlock.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
         return InclusionListValidator.IsSatisfied(processedBlock, worldState, spec);
     }
