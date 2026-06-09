@@ -61,9 +61,9 @@ namespace Nethermind.Core
 
             public void CapGasLimit(ulong? gasCap)
             {
-                if (gasCap is not null and not 0)
+                if (gasCap.IsGasCapped())
                 {
-                    tx.GasLimit = ulong.Min(tx.GasLimit, gasCap.Value);
+                    tx.GasLimit = ulong.Min(tx.GasLimit, gasCap!.Value);
                 }
             }
         }

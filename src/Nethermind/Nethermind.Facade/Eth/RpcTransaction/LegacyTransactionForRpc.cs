@@ -112,7 +112,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         // null Gas → caller didn't specify, default to gasCap (uncapped if gasCap is unset).
         // explicit Gas (including 0) → use as-is, capped at gasCap. This matches Geth: gas: 0x0
         // is a literal request that fails the intrinsic gas check, not a "missing" signal.
-        ulong effectiveCap = gasCap is null or 0 ? ulong.MaxValue : gasCap.Value;
+        ulong effectiveCap = gasCap.EffectiveGasCap();
         tx.GasLimit = Gas is null
             ? effectiveCap
             : Math.Min(Gas.Value, effectiveCap);

@@ -95,10 +95,8 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
-            Assert.That(proof.CodeHash, Is.EqualTo(ValueKeccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(ValueKeccak.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
@@ -121,8 +119,8 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Proof, Has.Length.EqualTo(1));
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
-            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
@@ -143,8 +141,8 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Proof, Has.Length.EqualTo(1));
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
-            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
@@ -407,8 +405,28 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Balance, Is.EqualTo((UInt256)0));
             Assert.That(proof.Nonce, Is.EqualTo(UInt256.Zero));
-            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
+        }
+
+        [Test]
+        public void Existing_empty_account_keeps_canonical_empty_hashes()
+        {
+            StateTree tree = new();
+            tree.Set(TestItem.AddressA, Account.TotallyEmpty);
+            tree.Commit();
+
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA);
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
+                Assert.That(proof.Nonce, Is.EqualTo(UInt256.Zero));
+                Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+                Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            });
         }
 
         [Test]

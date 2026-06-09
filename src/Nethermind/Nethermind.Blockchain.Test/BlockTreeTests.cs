@@ -26,7 +26,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -1607,7 +1606,7 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Inserts_blooms()
+    public void Persists_chain_level_info()
     {
         ulong pivotNumber = 5ul;
 
@@ -1616,12 +1615,10 @@ public class BlockTreeTests
             PivotNumber = pivotNumber,
         };
 
-        IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
         IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
 
         BlockTree tree = Build.A.BlockTree()
             .WithChainLevelInfoRepository(chainLevelInfoRepository)
-            .WithBloomStorage(bloomStorage)
             .WithSyncConfig(syncConfig)
             .TestObject;
 
@@ -1633,7 +1630,6 @@ public class BlockTreeTests
             tree.Insert(block.Header);
             Received.InOrder(() =>
             {
-                bloomStorage.Store(block.Header.Number, block.Bloom!);
                 chainLevelInfoRepository.PersistLevel(block.Header.Number, Arg.Any<ChainLevelInfo>(), Arg.Any<BatchWrite>());
             });
         }
@@ -1672,32 +1668,6 @@ public class BlockTreeTests
             .TestObject;
         loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
     }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_block_is_moved_to_main_blooms_are_stored()
-    {
-        Transaction t1 = Build.A.Transaction.TestObject;
-        Transaction t2 = Build.A.Transaction.TestObject;
-
-        IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
-        BlockTree blockTree = Build.A.BlockTree()
-            .WithoutSettingHead
-            .WithBloomStorage(bloomStorage)
-            .TestObject;
-        // new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);
-        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-        Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
-        Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
-
-        AddToMain(blockTree, block0);
-
-        blockTree.SuggestBlock(block1B);
-        blockTree.SuggestBlock(block1A);
-        blockTree.UpdateMainChain(block1A);
-
-        bloomStorage.Received().Store(block1A.Number, block1A.Bloom!);
-    }
-
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_find_genesis_level()

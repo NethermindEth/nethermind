@@ -69,4 +69,36 @@ internal static class DatabasePurger
             throw new InvalidOperationException($"Database {action.ToLowerInvariant()} failed. Some files may be locked or read-only.", ex);
         }
     }
+
+    /// <summary>
+    /// Deletes a single orphaned database subdirectory if it exists.
+    /// </summary>
+    /// <remarks>
+    /// Used to remove on-disk state for databases that have been retired in code (e.g. the
+    /// <c>bloom</c> directory left behind after <c>BloomStorage</c> was replaced by the Log Index).
+    /// Failures are logged but never throw — orphan cleanup must not block startup.
+    /// </remarks>
+    public static void DeleteOrphan(string basePath, string dbName, ILogger logger)
+    {
+        if (string.IsNullOrEmpty(basePath) || string.IsNullOrEmpty(dbName))
+            return;
+
+        string fullPath = Path.GetFullPath(Path.Combine(basePath, dbName));
+
+        if (Path.GetPathRoot(fullPath) == fullPath)
+            return;
+
+        if (!Directory.Exists(fullPath))
+            return;
+
+        try
+        {
+            if (logger.IsInfo) logger.Info($"Removing orphaned database directory: {fullPath}");
+            Directory.Delete(fullPath, recursive: true);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            if (logger.IsWarn) logger.Warn($"Failed to remove orphaned database directory {fullPath}: {ex.Message}");
+        }
+    }
 }

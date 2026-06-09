@@ -176,6 +176,8 @@ public class PersistenceManager(
             if (snapshotToSave is null) return;
             using Snapshot _ = snapshotToSave; // dispose
 
+            snapshotRepository.RemoveSiblingAndDescendents(snapshotToSave.To);
+
             // Add the canon snapshot
             PersistSnapshot(snapshotToSave);
             _currentPersistedStateId = snapshotToSave.To;
@@ -231,6 +233,9 @@ public class PersistenceManager(
             }
 
             using Snapshot _ = snapshotToPersist;
+
+            snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
+
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;

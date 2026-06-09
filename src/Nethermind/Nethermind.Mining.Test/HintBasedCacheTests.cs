@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Ethash;
+using Nethermind.Core.Events;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -42,7 +43,7 @@ public class HintBasedCacheTests
     {
         HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 0, 200000);
-        await WaitFor(() => hintBasedCache.CachedEpochsCount == 7);
+        await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 7, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
 
         for (uint i = 0; i < 7; i++)
         {
@@ -94,7 +95,7 @@ public class HintBasedCacheTests
         HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 0, 200000);
         hintBasedCache.Hint(_guidB, 0, 200000);
-        await WaitFor(() => hintBasedCache.CachedEpochsCount == 7);
+        await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 7, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
         for (uint i = 0; i < 7; i++)
         {
             Assert.That(hintBasedCache.Get(i), Is.Not.Null);
@@ -107,7 +108,7 @@ public class HintBasedCacheTests
         HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 0, 29999);
         hintBasedCache.Hint(_guidB, 30000, 59999);
-        await WaitFor(() => hintBasedCache.CachedEpochsCount == 2);
+        await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 2, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
         for (uint i = 0; i < 2; i++)
         {
             Assert.That(hintBasedCache.Get(i), Is.Not.Null);
@@ -120,7 +121,7 @@ public class HintBasedCacheTests
         HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 0, 29999);
         hintBasedCache.Hint(_guidB, 120000, 149999);
-        await WaitFor(() => hintBasedCache.CachedEpochsCount == 2);
+        await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 2, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
         Assert.That(hintBasedCache.Get(0), Is.Not.Null);
         Assert.That(hintBasedCache.Get(1), Is.Null);
         Assert.That(hintBasedCache.Get(2), Is.Null);
@@ -134,7 +135,7 @@ public class HintBasedCacheTests
         HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 0, 209999);
         hintBasedCache.Hint(_guidA, 30000, 239999);
-        await WaitFor(() => hintBasedCache.CachedEpochsCount == 7);
+        await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 7, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
 
         Assert.That(hintBasedCache.Get(0), Is.Null);
         for (uint i = 1; i < 8; i++)
@@ -148,7 +149,7 @@ public class HintBasedCacheTests
     {
         HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 1000000000, 1000000000);
-        await WaitFor(() => hintBasedCache.CachedEpochsCount == 1);
+        await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 1, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
 
         Assert.That(hintBasedCache.Get(1000000000 / 30000), Is.Not.Null);
     }
@@ -160,18 +161,4 @@ public class HintBasedCacheTests
         Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, 0, 1000000000));
     }
 
-    private async Task WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
-    {
-        const int waitInterval = 10;
-        for (int i = 0; i < 10; i++)
-        {
-            if (isConditionMet())
-            {
-                return;
-            }
-
-            TestContext.Out.WriteLine($"({i}) Waiting {waitInterval} for {description}");
-            await Task.Delay(waitInterval);
-        }
-    }
 }

@@ -9,7 +9,6 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
 
@@ -24,13 +23,12 @@ public class IndexedLogFinder(
     IBlockFinder blockFinder,
     IReceiptFinder receiptFinder,
     IReceiptStorage receiptStorage,
-    IBloomStorage bloomStorage,
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
     ILogIndexStorage logIndexStorage,
     int maxBlockDepth = 1000,
     int minBlocksToUseIndex = 32)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, bloomStorage, logManager, receiptsRecovery, maxBlockDepth)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, maxBlockDepth)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
 
@@ -53,9 +51,11 @@ public class IndexedLogFinder(
 
         // EnumerateBlockNumbersFor returns IEnumerable<long> (log-index contract kept as long for performance).
         // Block numbers from the index are non-negative so the cast is safe.
-        IEnumerable<ulong> indexNumbers = _logIndexStorage.EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
+        IEnumerable<ulong> indexBlockNumbers = _logIndexStorage
+            .EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
             .Select(static n => (ulong)n);
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexNumbers, cancellationToken))
+
+        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken: cancellationToken))
         {
             yield return log;
         }
