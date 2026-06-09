@@ -409,8 +409,7 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void Compact_PartitionedColumns_MergeBuiltBloom_HasNoFalseNegatives()
     {
-        const int n = 8;
-        const int addrsPerSnapshot = 8; // 64 distinct addresses ⇒ 0x0A
+        const int n = 8; // shared 32 + unique 8×4 = 64 distinct addresses ⇒ 0x0A
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(testDir);
         try
@@ -433,26 +432,34 @@ public class PersistedSnapshotCompactorTests
                 LimboLogs.Instance, bloomManager,
                 minCompactSize: config.CompactSize * 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
+            // Addresses 1..32 are SHARED across every snapshot ⇒ matchCount == n ⇒ merged via
+            // MergeValues (its bloom.Add path). Addresses >32 are unique to one snapshot ⇒
+            // matchCount == 1 ⇒ merged via the fast-copy OnFastCopy path. Both must end up in the
+            // merge-built bloom — the symptom account (repeatedly updated, high nonce) is a
+            // MergeValues entry, which the previous disjoint-address version never exercised.
+            const int shared = 32;
+            const int uniquePerSnap = 4;
             HashSet<int> allAddrs = [];
-            List<(int a, ulong slotId)> allSlots = [];
+            HashSet<(int a, ulong slotId)> allSlots = [];
             StateId prev = new(0, Keccak.EmptyTreeHash);
             for (int s = 1; s <= n; s++)
             {
                 StateId next = new(s, Keccak.Compute($"s{s}"));
                 SnapshotContent c = new();
-                for (int k = 0; k < addrsPerSnapshot; k++)
+                void Put(int a)
                 {
-                    int a = (s - 1) * addrsPerSnapshot + k + 1;
                     allAddrs.Add(a);
                     Address addr = DistinctAddress(a);
-                    c.Accounts[addr] = Build.An.Account.WithBalance((UInt256)a).TestObject;
+                    c.Accounts[addr] = Build.An.Account.WithNonce(243).WithBalance((UInt256)(s * 1000 + a)).TestObject;
                     for (int i = 0; i < 3; i++)
                     {
                         ulong id = (ulong)(a * 100 + i);
-                        c.Storages[(addr, DistinctPrefixSlot((int)id))] = new SlotValue([(byte)a, (byte)i]);
+                        c.Storages[(addr, DistinctPrefixSlot((int)id))] = new SlotValue([(byte)a, (byte)i, (byte)s]);
                         allSlots.Add((a, id));
                     }
                 }
+                for (int a = 1; a <= shared; a++) Put(a);                                  // shared ⇒ MergeValues
+                for (int k = 0; k < uniquePerSnap; k++) Put(shared + (s - 1) * uniquePerSnap + k + 1); // unique ⇒ OnFastCopy
                 repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
                 prev = next;
             }
