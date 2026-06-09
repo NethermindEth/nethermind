@@ -738,7 +738,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // reprocessed - moving them onto the main chain (down to the real reorg boundary) is handled by
             // BlockTree.TryUpdateMainChain, which walks headers there cheaply. Hence MaxBranchSize now bounds
             // only the blocks-without-state we collect here, not the whole reorg depth.
-            bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header!);
+            bool hasState = toBeProcessed.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
             branchingCondition = !hasState && notInForceProcessing;
 
