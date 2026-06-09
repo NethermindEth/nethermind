@@ -33,7 +33,7 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
         // as typed singletons.
         builder.AddSingleton<WitnessCapturingWorldStateProxy>(ctx =>
             (WitnessCapturingWorldStateProxy)ctx.Resolve<IWorldState>());
-        builder.AddDecorator<ICodeInfoRepository, WitnessCapturingCodeInfoRepository>();
+        builder.AddDecorator<ICodeInfoRepository, CodeInfoRepository>();
         builder.AddDecorator<IBlockProcessor, WitnessCapturingBlockProcessor>();
     }
 }

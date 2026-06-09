@@ -18,7 +18,6 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -86,7 +85,6 @@ public partial class BlockAccessListManager
         private readonly IWorldState _stateProvider;
         private readonly ILogManager _logManager;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
-        private readonly WitnessCapturingWorldStateProxy? _witnessProxy;
         private int _processorCount;
         private readonly bool _witnessMode;
 
@@ -98,15 +96,13 @@ public partial class BlockAccessListManager
             PrewarmerEnvFactory? prewarmerEnvFactory,
             PreBlockCaches? preBlockCaches,
             IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory,
-            bool witnessMode,
-            WitnessCapturingWorldStateProxy? witnessProxy = null)
+            bool witnessMode)
         {
             _blockHashProvider = blockHashProvider;
             _specProvider = specProvider;
             _stateProvider = stateProvider;
             _logManager = logManager;
             _witnessMode = witnessMode;
-            _witnessProxy = witnessProxy;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -230,7 +226,7 @@ public partial class BlockAccessListManager
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _witnessMode, _witnessProxy);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _witnessMode);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -337,10 +333,9 @@ public partial class BlockAccessListManager
             ISpecProvider specProvider,
             IWorldState stateProvider,
             ILogManager logManager,
-            bool witnessMode,
-             WitnessCapturingWorldStateProxy? witnessProxy = null)
+            bool witnessMode)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, witnessMode, witnessProxy);
+            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, witnessMode);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -382,8 +377,7 @@ public partial class BlockAccessListManager
             ISpecProvider specProvider,
             IWorldState stateProvider,
             ILogManager logManager,
-            bool witnessMode,
-            WitnessCapturingWorldStateProxy? witnessProxy = null)
+            bool witnessMode)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -401,10 +395,6 @@ public partial class BlockAccessListManager
             ICodeInfoRepository codeInfoRepository = witnessMode
                 ? new CodeInfoRepository(WorldState, new EthereumPrecompileProvider())
                 : new EthereumCodeInfoRepository(WorldState);
-            // EthereumCodeInfoRepository baseCodeInfoRepository = new(WorldState);
-            // ICodeInfoRepository codeInfoRepository = witnessProxy is not null
-            //    ? new WitnessCapturingCodeInfoRepository(baseCodeInfoRepository, witnessProxy)
-            //    : baseCodeInfoRepository;
             TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
             TxProcessorAdapter = new(TxProcessor);
         }

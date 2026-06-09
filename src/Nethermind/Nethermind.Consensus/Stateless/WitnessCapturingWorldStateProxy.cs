@@ -121,21 +121,6 @@ public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldS
     public void AddAccountRead(Address address) => Current.AddAccountRead(address);
     public IDisposable? BeginSystemAccountReadSuppression() => Current.BeginSystemAccountReadSuppression();
 
-    internal void RecordSystemContractAccess(Address address, UInt256 slotIndex, byte[]? code)
-        => _active?.RecordSystemContractAccess(address, slotIndex, code);
-
-    internal void RecordSystemContractAccountAccess(Address address, byte[]? code)
-        => _active?.RecordSystemContractAccountAccess(address, code);
-
-    internal void RecordCodeBytes(ReadOnlyMemory<byte> code)
-        => _active?.RecordCodeBytes(code);
-
-    internal void RecordBlockAccessList(ReadOnlyBlockAccessList bal)
-        => _active?.RecordBlockAccessList(bal);
-
-    public void RecordAccountAccess(Address address)
-        => Current.RecordAccountAccess(address);
-
     public void RecordBytecodeAccess(Address address)
         => Current.RecordBytecodeAccess(address);
 }

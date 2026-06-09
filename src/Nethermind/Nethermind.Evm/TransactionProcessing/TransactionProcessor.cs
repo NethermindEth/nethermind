@@ -759,10 +759,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
             {
-                // Record the authority's code in the witness even though this authorization is invalid.
-                // The witness must include the code of any authority address whose code was read
-                // during authorization validation (EIP-7928 stateless witness requirements).
-                _codeInfoRepository.GetCachedCodeInfo(authorizationTuple.Authority, false, spec, out _);
                 error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
                 return AuthorizationTupleResult.InvalidAsCodeDeployed;
             }

@@ -68,15 +68,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
 
-    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
-    {
-        if (balanceChange.IsZero) { oldBalance = UInt256.Zero; return; }
-        oldBalance = GetBalance(address);
-    }
+    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        if (balanceChange.IsZero) { oldBalance = UInt256.Zero; return false; }
         oldBalance = GetBalance(address);
         return !AccountExists(address);
     }
@@ -176,11 +171,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override byte[]? GetCode(in ValueHash256 codeHash)
         => TryGetDeclaredCode(in codeHash, out byte[]? code) ? code : null;
 
-    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
-    {
-        if (balanceChange.IsZero) { oldBalance = UInt256.Zero; return; }
-        oldBalance = GetBalance(address);
-    }
+    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
 
     public override void DeleteAccount(Address address) { }
 
@@ -425,10 +416,4 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
         => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
-
-    public void RecordAccountAccess(Address address)
-        => _innerWorldState.RecordAccountAccess(address);
-
-    public void RecordBytecodeAccess(Address address)
-        => _innerWorldState.RecordBytecodeAccess(address);
 }

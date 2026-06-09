@@ -99,7 +99,7 @@ public partial class DebugRpcModuleTests
         StateReader stateReader = new(capturingTrieStore, readOnlyDbProvider.CodeDb, blockchain.LogManager);
         WorldState worldState = new(new TrieStoreScopeProvider(capturingTrieStore, readOnlyDbProvider.CodeDb, blockchain.LogManager), blockchain.LogManager);
         WitnessGeneratingHeaderFinder headerFinder = new(blockchain.Container.Resolve<IHeaderFinder>());
-        WitnessGeneratingWorldState witnessState = new(worldState, stateReader, headerFinder, capturingTrieStore);
+        WitnessGeneratingWorldState witnessState = new(worldState, stateReader, capturingTrieStore, headerFinder);
 
         using (witnessState.BeginScope(parent))
         {

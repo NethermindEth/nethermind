@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
@@ -85,9 +84,9 @@ public sealed class WitnessCapturingBlockProcessor(
         if (!shouldCapture)
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
-        // Snapshot the parent state root *before* ProcessOne mutates the inner world state.
-        Hash256 parentStateRoot = proxy.InnerState.StateRoot;
         long parentBlockNumber = suggestedBlock.Number - 1;
+        BlockHeader parent = headerFinder.Get(parentHash, parentBlockNumber)
+            ?? throw new ArgumentException($"Unable to find parent for block {parentBlockNumber} with hash {parentHash}");
 
         WitnessGeneratingHeaderFinder perBlockHeaderFinder = new(headerFinder);
 
@@ -96,7 +95,7 @@ public sealed class WitnessCapturingBlockProcessor(
         // that RecalculateStateRoot() triggers (e.g. sibling reads during branch collapse on
         // account deletion or storage clearing) — reads that never surface at the IWorldState level.
         trieStore.Reset();
-        WitnessGeneratingWorldState recorder = new(proxy.InnerState, stateReader, perBlockHeaderFinder, trieStore);
+        WitnessGeneratingWorldState recorder = new(proxy.InnerState, stateReader, trieStore, perBlockHeaderFinder);
 
         if (!proxy.TryActivate(recorder))
         {
@@ -110,31 +109,13 @@ public sealed class WitnessCapturingBlockProcessor(
         {
             (Block Block, TxReceipt[] Receipts) result = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
-            ReadOnlyBlockAccessList? blockAccessList = result.Block.BlockAccessList;
-            if (blockAccessList is not null)
-            {
-                proxy.RecordBlockAccessList(blockAccessList);
-            }
-
-            if (blockAccessList is not null && spec.IsEip7002Enabled)
-            {
-                RecordSystemContractCode(proxy, proxy.InnerState,
-                    Eip7002Constants.WithdrawalRequestPredeployAddress);
-            }
-
             if (!rendezvous.TryClaim(blockHash!, out TaskCompletionSource<Witness?>? tcs))
                 return result; // request was cancelled while we were processing — nothing to publish.
 
             Witness? witness = null;
             try
             {
-                // Minimal stub header: WitnessProofCollector only needs StateRoot + Number; the parent
-                // hash is supplied separately so the headers section resolves correctly.
-                BlockHeader parentView = new(Keccak.Zero, Keccak.Zero, Address.Zero, 0, parentBlockNumber, 0, 0, [])
-                {
-                    StateRoot = parentStateRoot,
-                };
-                witness = recorder.GetWitness(parentView, parentHash);
+                witness = recorder.GetWitness(parent);
             }
             catch (Exception ex)
             {
@@ -151,19 +132,6 @@ public sealed class WitnessCapturingBlockProcessor(
         finally
         {
             proxy.Deactivate(recorder);
-        }
-    }
-
-    private static void RecordSystemContractCode(
-        WitnessCapturingWorldStateProxy proxy,
-        IWorldState worldState,
-        Address address)
-    {
-        byte[]? code = worldState.GetCode(address);
-        if (code is { Length: > 0 })
-        {
-            proxy.RecordCodeBytes(code);
-            proxy.RecordAccountAccess(address);
         }
     }
 }

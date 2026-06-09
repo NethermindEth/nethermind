@@ -253,7 +253,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override bool IsContract(Address address)
     {
         AddAccountRead(address);
-        _innerWorldState.RecordBytecodeAccess(address);
         return GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
     }
 
