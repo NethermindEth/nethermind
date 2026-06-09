@@ -32,11 +32,8 @@ public class ZkGasScheduleTests
     }
 
     [Test]
-    public void Block_zk_gas_limits_are_pinned()
-    {
+    public void Block_zk_gas_limit_is_pinned() =>
         Assert.That(ZkGasSchedule.BlockZkGasLimit, Is.EqualTo(100_000_000UL));
-        Assert.That(ZkGasSchedule.MasayaBlockZkGasLimit, Is.EqualTo(1_000_000_000UL));
-    }
 
     [Test]
     public void Meter_default_ctor_uses_canonical_block_limit()
@@ -46,10 +43,11 @@ public class ZkGasScheduleTests
     }
 
     [Test]
-    public void Meter_honors_explicit_masaya_limit()
+    public void Meter_honors_explicit_block_limit()
     {
-        ZkGasMeter meter = new(ZkGasSchedule.MasayaBlockZkGasLimit);
-        Assert.That(meter.BlockZkGasLimit, Is.EqualTo(ZkGasSchedule.MasayaBlockZkGasLimit));
+        const ulong customLimit = 1_000_000_000UL;
+        ZkGasMeter meter = new(customLimit);
+        Assert.That(meter.BlockZkGasLimit, Is.EqualTo(customLimit));
     }
 
     // ── opcode table resolution ──────────────────────────────────────────────

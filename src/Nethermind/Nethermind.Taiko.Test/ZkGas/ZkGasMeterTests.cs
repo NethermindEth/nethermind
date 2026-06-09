@@ -60,8 +60,9 @@ public class ZkGasMeterTests
     public void Meter_charges_using_supplied_override_table()
     {
         // A meter built with an explicit opcode table charges against that table, not the
-        // recalibrated alethia default. This is what lets a network such as Masaya pin its own
-        // frozen schedule purely from chainspec, with no chain-id branching in code.
+        // recalibrated alethia default. This is what lets a network that finalized Unzen under an
+        // earlier schedule pin its own frozen table purely from chainspec, with no chain-id
+        // branching in code.
         ushort[] frozenOpcodes = new ushort[256];
         frozenOpcodes.AsSpan().Fill(ZkGasSchedule.FailsafeMultiplier);
         frozenOpcodes[0x20] = 85; // pre-recalibration keccak256 (alethia default is 31)
@@ -142,9 +143,8 @@ public class ZkGasMeterTests
     [Test]
     public void Clz_charges_failsafe_when_entry_missing()
     {
-        // A frozen schedule (e.g. Masaya) that pre-dates the 0x1e entry must keep charging
-        // the fail-safe so its finalized blocks stay consensus-valid against their committed
-        // ZK-gas totals.
+        // A frozen schedule that pre-dates the 0x1e entry must keep charging the fail-safe so its
+        // finalized blocks stay consensus-valid against their committed ZK-gas totals.
         ushort[] frozenOpcodes = new ushort[256];
         frozenOpcodes.AsSpan().Fill(ZkGasSchedule.FailsafeMultiplier);
         frozenOpcodes[0x20] = 31; // sanity entry so the meter isn't entirely failsafe
@@ -170,9 +170,8 @@ public class ZkGasMeterTests
     [Test]
     public void P256Verify_charges_failsafe_when_entry_missing()
     {
-        // A frozen schedule (e.g. Masaya) that pre-dates the 0x100 entry must keep charging
-        // the fail-safe so its finalized blocks stay consensus-valid against their committed
-        // ZK-gas totals.
+        // A frozen schedule that pre-dates the 0x100 entry must keep charging the fail-safe so its
+        // finalized blocks stay consensus-valid against their committed ZK-gas totals.
         Address p256Verify = Address.FromNumber(0x100);
 
         FrozenDictionary<AddressAsKey, ushort> frozenPrecompiles =
@@ -357,10 +356,6 @@ public class ZkGasMeterTests
         Assert.That(ZkGasSchedule.TxIntrinsicZkGas, Is.EqualTo(243_000UL));
 
     [Test]
-    public void MasayaTxIntrinsicZkGas_Schedule_Constant_Is_Zero() =>
-        Assert.That(ZkGasSchedule.MasayaTxIntrinsicZkGas, Is.EqualTo(0UL));
-
-    [Test]
     public void ChargeTxIntrinsic_Adds_Intrinsic_To_InFlight_Tx()
     {
         ZkGasMeter meter = MeterWithAlethiaTables(txIntrinsicZkGas: ZkGasSchedule.TxIntrinsicZkGas);
@@ -377,7 +372,7 @@ public class ZkGasMeterTests
     [Test]
     public void ChargeTxIntrinsic_IsNoop_WhenIntrinsicIsZero()
     {
-        ZkGasMeter meter = MeterWithAlethiaTables(txIntrinsicZkGas: 0); // Masaya schedule
+        ZkGasMeter meter = MeterWithAlethiaTables(txIntrinsicZkGas: 0); // schedule with zero intrinsic
 
         bool result = meter.ChargeTxIntrinsic();
 
