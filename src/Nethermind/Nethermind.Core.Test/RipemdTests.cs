@@ -18,7 +18,6 @@ namespace Nethermind.Core.Test
             Assert.That(result, Is.EqualTo(RipemdOfEmptyString));
         }
 
-        // RIPEMD-160 reference vectors (left-padded to 32 bytes as the EVM precompile returns them).
         [TestCase("", "0000000000000000000000009c1185a5c5e9fc54612808977ee8f548b2258d31")]
         [TestCase("abc", "0000000000000000000000008eb208f7e05d987a9b044a8e98c6b087f15a0bfc")]
         [TestCase("message digest", "0000000000000000000000005d0689ef49d2fae572b881b123a85ffa21595f36")]
