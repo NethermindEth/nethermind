@@ -480,6 +480,68 @@ public class HsstPartitionedBTreeTests
         Assert.That(floor, Is.EqualTo(val), "floor value mismatch");
     }
 
+    // Force a bucket overflow: pick 12 strictly-ascending keys that ALL hash to bucket 0 (for
+    // the bucketCount the builder derives from 12 keys), so bucket 0 holds 12 keys but only 8
+    // ways. The 4 that overflow are dropped from the hashtable and can only be found via the
+    // inner-B-tree fallback. Every key must still read back with the right value — for both the
+    // key-first (0x09) and key-after-value (0x0B) entry layouts (the latter exercises the
+    // DecodeEntry/TrySeekFromRoot keyFirst:false fallback that a non-overflowing table never hits).
+    [TestCase(true)]
+    [TestCase(false)]
+    public void BucketOverflow_OverflowedKeys_FoundViaBTreeFallback(bool keyFirst)
+    {
+        const int count = 12;
+        int bucketCount = HsstPartitionHashtable.BucketCountFor(count); // ceil(12/6) = 2
+        Assert.That(bucketCount, Is.GreaterThan(0));
+
+        // Collect ascending ids whose key maps to bucket 0 → all collide in one bucket.
+        List<int> ids = [];
+        for (int i = 0; ids.Count < count && i < 1_000_000; i++)
+        {
+            ulong h = HsstPartitionHashtable.Hash(Key(i));
+            if (HsstPartitionHashtable.BucketIndex(h, bucketCount) == 0)
+                ids.Add(i);
+        }
+        Assert.That(ids.Count, Is.EqualTo(count), "could not gather enough colliding keys");
+
+        using PooledByteBufferWriter pooled = new(1 << 20);
+        using HsstPartitionedBTreeBuilderBuffersContainer buffers = new();
+        HsstPartitionedBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b =
+            new(ref pooled.GetWriter(), ref buffers.Buffers, KeyLength, new HsstBTreeOptions { HashtableMinBytes = 0 }, keyFirst: keyFirst);
+        try
+        {
+            foreach (int i in ids)
+            {
+                if (keyFirst)
+                {
+                    b.Add(Key(i), Val(i));
+                }
+                else
+                {
+                    byte[] v = Val(i);
+                    ref PooledByteBufferWriter.Writer w = ref b.BeginValueWrite();
+                    v.CopyTo(w.GetSpan(v.Length));
+                    w.Advance(v.Length);
+                    b.FinishValueWrite(Key(i), v.Length);
+                }
+            }
+            b.Build();
+        }
+        finally { b.Dispose(); }
+        byte[] data = pooled.WrittenSpan.ToArray();
+
+        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
+            ? IndexType.SinglePartitionHashtableBTreeKeyFirst
+            : IndexType.SinglePartitionHashtableBTree)), "single partition + hashtable expected");
+
+        // All 12 keys must resolve — the 4 that overflowed bucket 0 only via the B-tree fallback.
+        foreach (int i in ids)
+        {
+            Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"key {i} not found (overflow fallback, keyFirst={keyFirst})");
+            Assert.That(value, Is.EqualTo(Val(i)), $"wrong value for key {i} (keyFirst={keyFirst})");
+        }
+    }
+
     // Bucket selection is Lemire's multiply-shift (no integer division/modulo) and works for
     // any non-power-of-two bucket count, always landing in [0, numBuckets).
     [Test]
