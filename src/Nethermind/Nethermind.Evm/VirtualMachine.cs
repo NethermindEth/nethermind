@@ -1371,17 +1371,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         case Instruction.DUP3:
                             exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref programCounter);
                             break;
+                        case Instruction.DUP4:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op4, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.DUP5:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op5, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.DUP6:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op6, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.DUP7:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op7, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
                         case Instruction.SWAP1:
                             exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
                             break;
                         case Instruction.SWAP2:
                             exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref programCounter);
                             break;
+                        case Instruction.SWAP3:
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.PUSH3:
+                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref programCounter);
                             break;
                         case Instruction.SUB:
                             exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpSub, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.MUL:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpMul, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.SIGNEXTEND:
+                            exceptionType = EvmInstructions.InstructionSignExtend(this, ref stack, ref gas, ref programCounter);
                             break;
                         case Instruction.LT:
                             exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpLt, TTracingInst>(this, ref stack, ref gas, ref programCounter);
