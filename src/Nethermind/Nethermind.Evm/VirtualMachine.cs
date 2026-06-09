@@ -1342,10 +1342,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // and each case must call the exact instantiation the table would have used.
                     // Gated on no tracing because the zkevm flavor builds its traced table with
                     // OffFlag handlers, which a TTracingInst direct call would not match.
+                    //
+                    // Several cases peephole-fuse the measured highest-frequency opcode pair:
+                    // when the byte at the post-handler program counter is the fused successor,
+                    // the successor's handler is invoked in the same loop iteration, skipping one
+                    // loop edge (fetch, cancellation gate, dispatch, per-iteration branch checks).
+                    // The successor only runs when the first opcode returned None, none of the
+                    // fused first opcodes can set ReturnData, and a gas debt incurred by the pair
+                    // still ends in OutOfGas at the loop check, so semantics match the unfused
+                    // path exactly. Fused successors bypass OpcodeHistogram recording.
                     switch (instruction)
                     {
                         case Instruction.POP:
                             exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                            // Fused pair: POP -> POP.
+                            if (exceptionType == EvmExceptionType.None && (uint)programCounter < codeLength &&
+                                Instruction.POP == Unsafe.Add(ref code, programCounter))
+                            {
+                                programCounter++;
+                                opCodeCount++;
+                                exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                            }
                             break;
                         case Instruction.JUMPDEST:
                             exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref programCounter);
@@ -1358,9 +1375,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             break;
                         case Instruction.PUSH1:
                             exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            // Fused pairs: PUSH1 -> PUSH1 and PUSH1 -> ADD.
+                            if (exceptionType == EvmExceptionType.None && (uint)programCounter < codeLength)
+                            {
+                                Instruction next = Unsafe.Add(ref code, programCounter);
+                                if (Instruction.PUSH1 == next)
+                                {
+                                    programCounter++;
+                                    opCodeCount++;
+                                    exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                                }
+                                else if (Instruction.ADD == next)
+                                {
+                                    programCounter++;
+                                    opCodeCount++;
+                                    exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                                }
+                            }
                             break;
                         case Instruction.PUSH2:
                             exceptionType = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            // Fused pair: PUSH2 -> PUSH1 (also applies after PUSH2's internal
+                            // jump fusion, where the program counter already sits at the next
+                            // opcode to execute — fusing it is equivalent either way).
+                            if (exceptionType == EvmExceptionType.None && (uint)programCounter < codeLength &&
+                                Instruction.PUSH1 == Unsafe.Add(ref code, programCounter))
+                            {
+                                programCounter++;
+                                opCodeCount++;
+                                exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            }
                             break;
                         case Instruction.DUP1:
                             exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
@@ -1385,6 +1429,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             break;
                         case Instruction.SWAP1:
                             exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            // Fused pair: SWAP1 -> POP.
+                            if (exceptionType == EvmExceptionType.None && (uint)programCounter < codeLength &&
+                                Instruction.POP == Unsafe.Add(ref code, programCounter))
+                            {
+                                programCounter++;
+                                opCodeCount++;
+                                exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                            }
                             break;
                         case Instruction.SWAP2:
                             exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref programCounter);
@@ -1415,12 +1467,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             break;
                         case Instruction.ISZERO:
                             exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, ref programCounter);
+                            // Fused pair: ISZERO -> PUSH2. Delegating to InstructionPush2 keeps
+                            // its internal PUSH2 -> JUMP/JUMPI fusion for the full require chain.
+                            if (exceptionType == EvmExceptionType.None && (uint)programCounter < codeLength &&
+                                Instruction.PUSH2 == Unsafe.Add(ref code, programCounter))
+                            {
+                                programCounter++;
+                                opCodeCount++;
+                                exceptionType = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            }
                             break;
                         case Instruction.EQ:
                             exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseEq>(this, ref stack, ref gas, ref programCounter);
                             break;
                         case Instruction.AND:
                             exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseAnd>(this, ref stack, ref gas, ref programCounter);
+                            // Fused pair: AND -> ISZERO.
+                            if (exceptionType == EvmExceptionType.None && (uint)programCounter < codeLength &&
+                                Instruction.ISZERO == Unsafe.Add(ref code, programCounter))
+                            {
+                                programCounter++;
+                                opCodeCount++;
+                                exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, ref programCounter);
+                            }
                             break;
                         case Instruction.MLOAD:
                             exceptionType = EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
