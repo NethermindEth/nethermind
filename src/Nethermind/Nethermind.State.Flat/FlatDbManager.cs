@@ -276,7 +276,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (Stopwatch.GetElapsedTime(sw) > GatherGiveUpDeadline)
                 {
-                    throw new InvalidOperationException($"Unable to gather {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} in {Stopwatch.GetElapsedTime(sw)}");
+                    throw new InvalidOperationException($"Timed out gathering {nameof(ReadOnlySnapshotBundle)} for block {baseBlock} after {attempt} retries over {Stopwatch.GetElapsedTime(sw)}");
                 }
 
                 int delayMs = Math.Min(1 << Math.Min(attempt, 30), 100);  // 1, 2, 4, 8, 16, 32, 64, 100ms max
@@ -298,11 +298,18 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 throw;
             }
 
-            // If assembly found nothing but there should be snapshots, retry (concurrent removal race)
+            // Empty result + reader not at baseBlock means the path was removed concurrently;
+            // retry unless baseBlock itself was pruned (orphaned), which no retry can recover.
             if (assembled.SnapshotCount == 0 && persistenceReader.CurrentState != baseBlock)
             {
                 assembled.Dispose();
                 persistenceReader.Dispose();
+
+                if (!_snapshotRepository.HasState(baseBlock))
+                {
+                    throw new InvalidOperationException($"State {baseBlock} no longer exists; concurrently removed.");
+                }
+
                 attempt++;
                 continue;
             }

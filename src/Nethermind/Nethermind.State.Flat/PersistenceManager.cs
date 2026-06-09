@@ -414,6 +414,7 @@ public class PersistenceManager(
             if (toPersist is not null)
             {
                 using Snapshot _ = toPersist;
+                _snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                 PersistSnapshot(toPersist);
                 _currentPersistedStateId = toPersist.To;
                 PrunePersistedTierBefore(toPersist.To);
@@ -577,6 +578,8 @@ public class PersistenceManager(
             if (snapshotToPersist is null) break;
 
             using Snapshot inMemScope = snapshotToPersist;
+
+            _snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;

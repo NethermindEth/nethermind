@@ -63,7 +63,7 @@ public partial class DebugRpcModuleTests
         Address freshA = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshA}", to = $"{TestItem.AddressC}", value = 50.Ether.ToString("X") },
-            "tracing failed: insufficient funds for transfer: address ",
+            "tracing failed: insufficient funds for gas * price + value: address ",
             ErrorCodes.InvalidInput)
         { TestName = "InsufficientFundsForTransfer" };
 

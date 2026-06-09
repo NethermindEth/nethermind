@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
@@ -19,6 +20,7 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchainUtil(
     IBlockProducer blockProducer,
+    Lazy<IMainProcessingContext> mainProcessingContext,
     InvalidBlockDetector invalidBlockDetector,
     ManualTimestamper timestamper,
     IBlockTree blockTree,
@@ -99,7 +101,18 @@ public class TestBlockchainUtil(
             }
             iteration++;
         }
+        Hash256? headBeforeSuggest = blockTree.Head?.Hash;
         Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
+
+        // SuggestBlock only processes a block that becomes the new best (extends the head). A block built on a
+        // non-head parent (a fork) isn't the best, so its state is never committed. Process it explicitly the way
+        // the Engine API newPayload does — directly on its parent (IgnoreParentNotOnMainChain) without moving the
+        // head (DoNotUpdateHead), and force it past the is-better-than-head gate — so state backends that key state
+        // by block (e.g. flat) retain the fork's state and can build further blocks on top of it.
+        if (parentToBuildOn.Hash != headBeforeSuggest)
+        {
+            mainProcessingContext.Value.BlockchainProcessor.Process(block!, ProcessingOptions.EthereumMerge | ProcessingOptions.ForceProcessing, NullBlockTracer.Instance, cancellationToken);
+        }
 
         tcs.TrySetResult();
 
