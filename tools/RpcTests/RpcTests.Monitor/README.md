@@ -13,7 +13,7 @@ Test files follow a format similar to [Erigon rpc-tests](https://github.com/erig
 | `--reference` | `-r` | — | Reference node for comparison. Required when tests have no static `response` |
 | `--tests` | `-g` | `mainnet/**/*` | Glob pattern(s) for test files under `tests/`, repeatable                    |
 | `--parallelism` | `-p` | `4` | Number of concurrent test workers per block                                  |
-| `--stats-interval` | `-s` | — | Interval for posting execution statistics to Slack (e.g. `00:30:00`)        |
+| `--stats-interval` | `-s` | — | Interval for reporting execution statistics (e.g. `00:30:00`)                |
 
 ## Examples
 
@@ -88,10 +88,11 @@ Each test can have the following fields:
 
 Some of them support custom C# expressions using [DynamicExpresso](https://github.com/dynamicexpresso/DynamicExpresso/):
 - `run` is always assumed to be a boolean expression, evaluated once per new head;
-- `request` and `response` are interpreted as JSON with support for parameterized properties (or array elements) – these are denoted as `{{ expression }}`.
+- `request` and `response` are interpreted as JSON with support for parameterized properties (or array elements) –
+   these are strings denoted as `{{ expression }}`.
 
 [TestContext](./TestContext.cs) provides helper methods and properties for common patterns
-available to be called directly (like boolean `EveryBlocks`, `RecentBlock`, `Hex(n)`, etc.)
+available to be called directly (like `EveryBlocks`, `RecentBlock`, `Hex(n)`, etc.)
 
 ## Execution
 The monitor subscribes to the new block events from the target node via WebSocket (`eth_subscribe("newHeads")`).
