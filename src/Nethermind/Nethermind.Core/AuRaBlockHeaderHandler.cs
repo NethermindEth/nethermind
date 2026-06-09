@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -65,12 +66,14 @@ public interface IAuRaBlockHeaderHandler
 /// </summary>
 public static class AuRaBlockHeaderHandler
 {
+    private static IAuRaBlockHeaderHandler? s_instance;
+
     /// <summary>
     /// The registered AuRa handler, or <c>null</c> if the AuRa plugin assembly has not
     /// been loaded. Code on the AuRa hot path can require this to be non-null; code on
     /// generic paths should null-check and fall back.
     /// </summary>
-    public static IAuRaBlockHeaderHandler? Instance { get; private set; }
+    public static IAuRaBlockHeaderHandler? Instance => s_instance;
 
     /// <summary>
     /// Registers the AuRa handler exactly once. Subsequent calls with the same instance
@@ -80,17 +83,11 @@ public static class AuRaBlockHeaderHandler
     /// <exception cref="InvalidOperationException">A different handler has already been registered.</exception>
     public static void Register(IAuRaBlockHeaderHandler handler)
     {
-        IAuRaBlockHeaderHandler? existing = Instance;
-        if (existing is null)
-        {
-            Instance = handler;
-            return;
-        }
-
-        if (!ReferenceEquals(existing, handler))
+        IAuRaBlockHeaderHandler? prior = Interlocked.CompareExchange(ref s_instance, handler, null);
+        if (prior is not null && !ReferenceEquals(prior, handler))
         {
             throw new InvalidOperationException(
-                $"An AuRa header handler ({existing.GetType().FullName}) is already registered; cannot replace with {handler.GetType().FullName}.");
+                $"An AuRa header handler ({prior.GetType().FullName}) is already registered; cannot replace with {handler.GetType().FullName}.");
         }
     }
 }

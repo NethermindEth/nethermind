@@ -296,37 +296,14 @@ public partial class BlockProcessor(
         IAuRaBlockHeaderHandler? auraHandler = AuRaBlockHeaderHandler.Instance;
         long auRaStep = 0;
         byte[]? auRaSignature = null;
-        bool hasAuRaSeal = auraHandler is not null && auraHandler.TryGetSeal(bh, out auRaStep, out auRaSignature);
+        bool hasAuRaSeal = auraHandler is not null
+            && auraHandler.TryGetSeal(bh, out auRaStep, out auRaSignature);
         BlockHeader headerForProcessing = hasAuRaSeal
             ? auraHandler!.CreateBlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, in bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData)
-            : new BlockHeader(
-                bh.ParentHash,
-                bh.UnclesHash,
-                bh.Beneficiary,
-                bh.Difficulty,
-                bh.Number,
-                bh.GasLimit,
-                bh.Timestamp,
-                bh.ExtraData);
-        headerForProcessing.Bloom = Bloom.Empty;
-        headerForProcessing.Author = bh.Author;
-        headerForProcessing.Hash = bh.Hash;
-        headerForProcessing.MixHash = bh.MixHash;
-        headerForProcessing.Nonce = bh.Nonce;
-        headerForProcessing.TxRoot = bh.TxRoot;
-        headerForProcessing.TotalDifficulty = bh.TotalDifficulty;
-        headerForProcessing.ReceiptsRoot = bh.ReceiptsRoot;
-        headerForProcessing.BaseFeePerGas = bh.BaseFeePerGas;
-        headerForProcessing.WithdrawalsRoot = bh.WithdrawalsRoot;
-        headerForProcessing.RequestsHash = bh.RequestsHash;
-        headerForProcessing.IsPostMerge = bh.IsPostMerge;
-        headerForProcessing.ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot;
-        headerForProcessing.SlotNumber = bh.SlotNumber;
-        // Carried for the verify-only fast path which doesn't recompute it.
-        headerForProcessing.BlockAccessListHash = bh.BlockAccessListHash;
-        headerForProcessing.BlobGasUsed = bh.BlobGasUsed;
-        headerForProcessing.ExcessBlobGas = bh.ExcessBlobGas;
-        if (hasAuRaSeal) auraHandler!.SetSeal(headerForProcessing, auRaStep, auRaSignature!);
+            : new BlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData);
+
+        CopyHeaderShape(bh, headerForProcessing);
+        if (hasAuRaSeal) auraHandler!.SetSeal(headerForProcessing, auRaStep, auRaSignature);
 
         if (!ShouldComputeStateRoot(bh))
         {
@@ -337,6 +314,28 @@ public partial class BlockProcessor(
         block.BlockAccessList = suggestedBlock.BlockAccessList;
 
         return block;
+    }
+
+    private static void CopyHeaderShape(BlockHeader src, BlockHeader dst)
+    {
+        dst.Bloom = Bloom.Empty;
+        dst.Author = src.Author;
+        dst.Hash = src.Hash;
+        dst.MixHash = src.MixHash;
+        dst.Nonce = src.Nonce;
+        dst.TxRoot = src.TxRoot;
+        dst.TotalDifficulty = src.TotalDifficulty;
+        dst.ReceiptsRoot = src.ReceiptsRoot;
+        dst.BaseFeePerGas = src.BaseFeePerGas;
+        dst.WithdrawalsRoot = src.WithdrawalsRoot;
+        dst.RequestsHash = src.RequestsHash;
+        dst.IsPostMerge = src.IsPostMerge;
+        dst.ParentBeaconBlockRoot = src.ParentBeaconBlockRoot;
+        dst.SlotNumber = src.SlotNumber;
+        // Carried for the verify-only fast path which doesn't recompute it.
+        dst.BlockAccessListHash = src.BlockAccessListHash;
+        dst.BlobGasUsed = src.BlobGasUsed;
+        dst.ExcessBlobGas = src.ExcessBlobGas;
     }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)

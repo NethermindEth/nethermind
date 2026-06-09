@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
                     ?? throw new RlpException("Encountered AuRa-shaped header but no AuRa handler is registered.");
 
                 long step = (long)decoderContext.DecodeUInt256();
-                byte[] auRaSignature = decoderContext.DecodeByteArray();
+                byte[]? auRaSignature = decoderContext.DecodeByteArray();
 
                 blockHeader = handler.CreateBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData!);
                 handler.SetSeal(blockHeader, step, auRaSignature);

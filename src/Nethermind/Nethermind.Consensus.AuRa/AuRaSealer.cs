@@ -55,7 +55,9 @@ namespace Nethermind.Consensus.AuRa
                 if (_logger.IsWarn) _logger.Warn($"AuRa signer {_signer.Address} could not sign block {block.Number} — skipping seal.");
                 return null;
             }
-            block.Header.AsAuRa().AuRaSignature = signature.BytesWithRecovery;
+            if (block.Header is not AuRaBlockHeader auraHeader)
+                throw new InvalidOperationException($"AuRa sealer reached a non-AuRa header (block {block.Number}, hash {block.Header.Hash}); producer must upgrade the header before sealing.");
+            auraHeader.AuRaSignature = signature.BytesWithRecovery;
 
             return block;
         }

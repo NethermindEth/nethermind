@@ -51,11 +51,18 @@ namespace Nethermind.Consensus.AuRa
         protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockToProduce block = base.PrepareBlock(parent, payloadAttributes, flags);
-            // Upgrade the base BlockHeader to an AuRa-typed one so the AuRa step can be set;
-            // signature is filled in later by AuRaSealer.
-            AuRaBlockHeader auraHeader = (AuRaBlockHeader)AuRaBlockHeaderHandler.Instance!.UpgradeToAuRa(block.Header);
-            auraHeader.AuRaStep = _auRaStepCalculator.CurrentStep;
-            return (BlockToProduce)block.WithReplacedHeader(auraHeader);
+            // Upgrade to an AuRa-typed header in place when needed so the step can be stamped;
+            // signature is filled in later by AuRaSealer. Skip the WithReplacedHeader churn when
+            // the header is already AuRa-typed (the common case once chainspec/decoder produce them).
+            if (block.Header is AuRaBlockHeader aura)
+            {
+                aura.AuRaStep = _auRaStepCalculator.CurrentStep;
+                return block;
+            }
+
+            AuRaBlockHeader upgraded = (AuRaBlockHeader)AuRaBlockHeaderHandler.Instance!.UpgradeToAuRa(block.Header);
+            upgraded.AuRaStep = _auRaStepCalculator.CurrentStep;
+            return (BlockToProduce)block.WithReplacedHeader(upgraded);
         }
 
         protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
