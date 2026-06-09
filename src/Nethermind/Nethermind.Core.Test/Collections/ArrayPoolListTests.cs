@@ -134,10 +134,8 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
-#pragma warning disable NUnit2045
         Assert.That(list.Remove(item), Is.EqualTo(removed));
         Assert.That(list, Is.EqualTo(expected));
-#pragma warning restore NUnit2045
     }
 
     [TestCase(0, new[] { 1, 2, 3, 4, 5, 6, 7 })]
@@ -229,7 +227,6 @@ public class ArrayPoolListTests
         IList list = (IList)listT;
 
         list.Add(1);
-#pragma warning disable NUnit2045
         Assert.That(list[0], Is.EqualTo(1));
         Assert.That(list[0], Is.EqualTo(listT[0]));
 
@@ -255,7 +252,6 @@ public class ArrayPoolListTests
         list.Clear();
         Assert.That(list.Count, Is.EqualTo(0));
         Assert.That(list.Count, Is.EqualTo(listT.Count));
-#pragma warning restore NUnit2045
     }
 
     [Test]
@@ -368,10 +364,8 @@ public class ArrayPoolListTests
 
         Action act = () => list.RemoveAt(2);
 
-#pragma warning disable NUnit2045
         Assert.That(act, Throws.Nothing);
         Assert.That(list, Is.EqualTo(new[] { 0, 1, 3, 4, 5, 6, 7 }));
-#pragma warning restore NUnit2045
     }
 
     private sealed class ExactSizeArrayPool<T> : ArrayPool<T>

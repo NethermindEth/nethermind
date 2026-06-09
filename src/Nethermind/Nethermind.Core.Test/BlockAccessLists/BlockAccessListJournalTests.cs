@@ -109,9 +109,7 @@ public class BlockAccessListJournalTests
         slice.Restore(empty);
 
         AccountChangesAtIndex? accountChanges = slice.GetAccountChanges(TestItem.AddressA);
-#pragma warning disable NUnit2045
         Assert.That(accountChanges, Is.Not.Null, "the AccountChangesAtIndex entry persists; only the change fields revert");
-#pragma warning restore NUnit2045
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountChanges!.BalanceChange, Is.Null);

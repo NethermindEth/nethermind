@@ -42,7 +42,6 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
 
         Container? deserialized = JsonSerializer.Deserialize<Container>($"{{ \"Number\" : {asString} }}", deserializeOptions);
 
-#pragma warning disable NUnit2045
         Assert.That(deserialized, Is.Not.Null);
         Assert.That(Equals(item, deserialized.Number));
 
@@ -50,7 +49,6 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
 
         Assert.That(deserializedUint256, Is.Not.Null);
         Assert.That(Equals(item, deserializedUint256.Value));
-#pragma warning restore NUnit2045
     }
 
     public static IEnumerable<UInt256> ValuesCaseSource()

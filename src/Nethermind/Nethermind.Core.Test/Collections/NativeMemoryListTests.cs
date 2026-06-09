@@ -25,11 +25,9 @@ public class NativeMemoryListTests
             Assert.That(empty, Is.Empty);
         }
         empty.Add(1);
-#pragma warning disable NUnit2045
         Assert.That(empty.Count, Is.EqualTo(1));
         Assert.That(empty.Remove(1), Is.True);
         Assert.That(empty.Count, Is.EqualTo(0));
-#pragma warning restore NUnit2045
         empty.Add(2);
         Assert.That(empty[0], Is.EqualTo(2));
     }
@@ -91,11 +89,9 @@ public class NativeMemoryListTests
             Assert.That(list.Contains(30), Is.True);
             Assert.That(list.Contains(99), Is.False);
         }
-#pragma warning disable NUnit2045
         Assert.That(list.Remove(20), Is.True);
         Assert.That(list, Is.EquivalentTo(new[] { 10, 30 }));
         Assert.That(list.Remove(99), Is.False);
-#pragma warning restore NUnit2045
     }
 
     [Test]
@@ -164,7 +160,6 @@ public class NativeMemoryListTests
     {
         using NativeMemoryList<int> list = new(4);
         IList ilist = list;
-#pragma warning disable NUnit2045
         Assert.That(ilist.Add(1), Is.EqualTo(0));
         Assert.That(ilist.Add(2), Is.EqualTo(1));
         Assert.That(ilist.Contains(1), Is.True);
@@ -175,7 +170,6 @@ public class NativeMemoryListTests
         Assert.That(ilist[0], Is.EqualTo(7));
         ilist.Remove(7);
         Assert.That(ilist.Count, Is.EqualTo(2));
-#pragma warning restore NUnit2045
     }
 
     [Test]
@@ -185,7 +179,6 @@ public class NativeMemoryListTests
         try
         {
             r.AddRange(stackalloc int[] { 1, 2, 3 });
-#pragma warning disable NUnit2045
             Assert.That(r.Count, Is.EqualTo(3));
             Assert.That(r[1], Is.EqualTo(2));
             Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 2, 3 }));
@@ -197,7 +190,6 @@ public class NativeMemoryListTests
             Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 2, 3, 4 }));
             r.Clear();
             Assert.That(r.Count, Is.EqualTo(0));
-#pragma warning restore NUnit2045
         }
         finally
         {

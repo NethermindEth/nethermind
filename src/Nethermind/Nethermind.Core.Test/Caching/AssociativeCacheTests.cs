@@ -35,13 +35,11 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
     public void Can_set_and_then_set_null()
     {
         AddressAsKey key = _keys[0];
-#pragma warning disable NUnit2045
         Assert.That(_cache.Set(in key, _accounts[0]), Is.True);
         Assert.That(_cache.Set(in key, _accounts[0]), Is.False);
         // Set with null triggers Delete
         Assert.That(_cache.Set(in key, null!), Is.True);
         Assert.That(_cache.Get(in key), Is.Null);
-#pragma warning restore NUnit2045
     }
 
     [Test]

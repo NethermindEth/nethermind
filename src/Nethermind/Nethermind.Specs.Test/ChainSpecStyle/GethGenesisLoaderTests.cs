@@ -132,11 +132,9 @@ public class GethGenesisLoaderTests
 
         // Null/empty preconditions must fail fast — subsequent asserts deref these and would NRE
         // if they were inside the same EnterMultipleScope (which records failure but keeps going).
-#pragma warning disable NUnit2045
         Assert.That(chainSpec.Genesis, Is.Not.Null);
         Assert.That(chainSpec.Allocations, Is.Not.Empty);
         Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
-#pragma warning restore NUnit2045
 
         using (Assert.EnterMultipleScope())
         {

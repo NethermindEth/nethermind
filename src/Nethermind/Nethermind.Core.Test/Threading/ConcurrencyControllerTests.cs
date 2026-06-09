@@ -13,7 +13,6 @@ public class ConcurrencyControllerTests
     {
         ConcurrencyController limiter = new(3);
 
-#pragma warning disable NUnit2045 // TryTakeSlot / Dispose are state mutations between asserts
         Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(true));
         Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(true));
         Assert.That(limiter.TryTakeSlot(out ConcurrencyController.Slot returner), Is.EqualTo(false));
@@ -22,7 +21,6 @@ public class ConcurrencyControllerTests
 
         Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(true));
         Assert.That(limiter.TryTakeSlot(out _), Is.EqualTo(false));
-#pragma warning restore NUnit2045
     }
 
     [Test]

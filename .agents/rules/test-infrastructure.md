@@ -116,20 +116,3 @@ A custom `IEqualityComparer<T>` (or `Is.EqualTo(expected).Using(comparer)`) is t
 - Each iteration of a loop depends on the previous one's state holding the invariant
 
 When an entire test method qualifies, prefer wrapping the **assertion block** at the end (after setup), not the whole body — that keeps arrange/act outside the scope where exceptions are diagnostic, not "additional failures".
-
-**Precondition null/empty checks before a Multiple scope.** When several bare `Is.Not.Null`/`Is.Not.Empty` asserts guard a wrapped block that derefs those values, do NOT wrap the preconditions in their own `EnterMultipleScope` — a failure there records and continues, then the deref scope NREs and crashes the test. Keep the preconditions bare and fail-fast:
-
-```csharp
-#pragma warning disable NUnit2045  // bare asserts are deliberate; the deref scope below depends on them
-Assert.That(result.Genesis, Is.Not.Null);
-Assert.That(result.Allocations, Is.Not.Empty);
-#pragma warning restore NUnit2045
-
-using (Assert.EnterMultipleScope())
-{
-    Assert.That(result.Genesis.Header.GasLimit, Is.EqualTo(...));
-    Assert.That(result.Allocations[key].Balance, Is.EqualTo(...));
-}
-```
-
-The `#pragma` is required because NUnit2045 (enforced as error in this repo) flags the bare asserts as "should be merged into Multiple" — but in this case merging is the wrong shape.

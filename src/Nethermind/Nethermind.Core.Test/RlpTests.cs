@@ -672,10 +672,8 @@ namespace Nethermind.Core.Test
             byte[] data = Rlp.Encode(Rlp.Encode(new byte[contentLength])).Bytes;
 
             Rlp.ValueDecoderContext ctx = new(data.AsSpan());
-#pragma warning disable NUnit2045
             Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
             Assert.That(ctx.Position, Is.EqualTo(prefixLength));
-#pragma warning restore NUnit2045
         }
 
         [TestCase(2, 56)]
@@ -687,10 +685,8 @@ namespace Nethermind.Core.Test
             byte[] data = Rlp.Encode(new byte[contentLength]).Bytes;
 
             Rlp.ValueDecoderContext ctx = new(data.AsSpan());
-#pragma warning disable NUnit2045
             Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
             Assert.That(ctx.Position, Is.EqualTo(prefixLength));
-#pragma warning restore NUnit2045
         }
 
         private static void AssertItemCount(byte[] rlp, int expected)
