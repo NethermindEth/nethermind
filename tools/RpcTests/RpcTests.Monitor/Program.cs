@@ -60,6 +60,8 @@ rootCommand.SetAction(async (parseResult, ct) =>
     using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(1) };
     using INotifier notifier = GetNotifier(parseResult.GetRequiredValue(devOption));
     MonitorRunner runner = new(args, notifier, client);
+
+    await notifier.NotifyInfoAsync("Starting monitoring...");
     await runner.RunAsync(ct);
 
     Console.WriteLine("Monitoring finished");
