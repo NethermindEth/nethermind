@@ -394,11 +394,11 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         SimulateCallResult callResult = result.Data.First().Calls.First();
-        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
-        Assert.That(callResult.ReturnData, Is.Not.Null);
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success), "GasCap=0 should keep eth_simulateV1 on the uncapped path so the call succeeds");
+        Assert.That(callResult.ReturnData, Is.Not.Null, "uncapped call should return the remaining-gas result");
 
         UInt256 gasAvailable = new(callResult.ReturnData!, isBigEndian: true);
-        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero), "uncapped budget should leave a non-zero gas amount available to the call");
     }
 
     [Test]
