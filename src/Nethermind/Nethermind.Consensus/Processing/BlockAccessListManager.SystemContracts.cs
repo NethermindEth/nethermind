@@ -7,9 +7,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -56,24 +54,5 @@ public partial class BlockAccessListManager
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
-    }
-
-    public void MaterializeAccounts(IReleaseSpec spec, params Address[] addresses)
-    {
-        if (!Enabled || addresses.Length == 0)
-        {
-            return;
-        }
-
-        // Write directly to the raw worldstate (matching master's pre-PR behaviour). Routing
-        // through the BAL-traced pre-execution worldstate breaks in parallel mode because
-        // BlockAccessListBasedWorldState.CreateAccount is a no-op — the materialised accounts
-        // would never reach the underlying state and the state root would diverge.
-        foreach (Address address in addresses)
-        {
-            stateProvider.CreateAccount(address, UInt256.Zero, UInt256.Zero);
-        }
-
-        stateProvider.Commit(spec, commitRoots: false);
     }
 }

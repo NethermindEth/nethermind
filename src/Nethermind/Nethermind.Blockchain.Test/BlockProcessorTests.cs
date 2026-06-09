@@ -1327,10 +1327,6 @@ public class BlockProcessorTests
         public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
         {
         }
-
-        public void MaterializeAccounts(IReleaseSpec spec, params Address[] addresses)
-        {
-        }
     }
 
     private sealed class BalIndexRecordingTransactionProcessorAdapter(
