@@ -115,6 +115,9 @@ public partial class BlockProcessor(
     protected virtual BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec) =>
         new(header, spec);
 
+    /// <summary>Hook for seal-engine-specific BAL account materialisation after <see cref="IBlockAccessListManager.Setup"/>.</summary>
+    protected virtual void MaterializeBalAccounts(Block block, IReleaseSpec spec) { }
+
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
@@ -131,6 +134,8 @@ public partial class BlockProcessor(
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
         _balManager.Setup(block);
+
+        MaterializeBalAccounts(block, spec);
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);

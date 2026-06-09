@@ -48,6 +48,12 @@ public interface IBlockAccessListManager
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
+
+    /// <summary>
+    /// Materialises the given accounts on the BAL-traced pre-execution world state so they
+    /// appear in <see cref="GeneratedBlockAccessList"/>.
+    /// </summary>
+    void MaterializeAccounts(IReleaseSpec spec, params Address[] addresses);
 }
 
 /// <summary>

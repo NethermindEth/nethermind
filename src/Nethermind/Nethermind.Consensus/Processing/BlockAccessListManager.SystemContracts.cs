@@ -7,7 +7,9 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -54,5 +56,24 @@ public partial class BlockAccessListManager
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+    }
+
+    public void MaterializeAccounts(IReleaseSpec spec, params Address[] addresses)
+    {
+        if (!Enabled || addresses.Length == 0)
+        {
+            return;
+        }
+
+        CheckInitialized();
+
+        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        IWorldState worldState = preExecution.WorldState;
+        foreach (Address address in addresses)
+        {
+            worldState.CreateAccount(address, UInt256.Zero, UInt256.Zero);
+        }
+
+        worldState.Commit(spec, commitRoots: false);
     }
 }
