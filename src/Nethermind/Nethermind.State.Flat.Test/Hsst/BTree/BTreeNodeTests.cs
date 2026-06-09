@@ -413,7 +413,7 @@ public class BTreeNodeTests
                 System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(key, i);
                 builder.Add(key, System.BitConverter.GetBytes(i));
             }
-        }, maxLeafEntries: 8);
+        });
 
         SpanByteReader reader = new(data);
         // Count entries via the new enumerator and verify each key is reachable via TrySeek.

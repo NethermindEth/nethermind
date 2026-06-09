@@ -382,7 +382,7 @@ public class HsstTests
         {
             foreach ((string key, string value) in hexEntries)
                 builder.Add(Convert.FromHexString(key), Convert.FromHexString(value));
-        }, maxLeafEntries: 4);
+        });
 
         Assert.That(CountEntries(data), Is.EqualTo(hexEntries.Length));
 
@@ -402,12 +402,12 @@ public class HsstTests
         }
     }
 
-    [TestCase(100, 4, 32, 32, 42)]
-    [TestCase(300, 4, 32, 32, 77)]
-    [TestCase(200, 4, 64, 128, 55)]
-    [TestCase(500, 8, 64, 128, 101)]
-    [TestCase(1000, 64, 64, 128, 202)]
-    public void Binary_Keys_MultiLevel_And_VariableSize_RoundTrip(int count, int maxLeafEntries, int keyLen, int maxValLen, int seed)
+    [TestCase(100, 32, 32, 42)]
+    [TestCase(300, 32, 32, 77)]
+    [TestCase(200, 64, 128, 55)]
+    [TestCase(500, 64, 128, 101)]
+    [TestCase(1000, 64, 128, 202)]
+    public void Binary_Keys_MultiLevel_And_VariableSize_RoundTrip(int count, int keyLen, int maxValLen, int seed)
     {
         // Keys are now uniform-length per HSST; this test still exercises multi-level
         // B-tree builds with variable-length values.
@@ -435,7 +435,7 @@ public class HsstTests
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
-        }, maxLeafEntries: maxLeafEntries);
+        });
 
         Assert.That(CountEntries(data), Is.EqualTo(deduped.Count));
 
@@ -516,9 +516,9 @@ public class HsstTests
         }
     }
 
-    [TestCase(100, 4, 32, 32, 42)]
-    [TestCase(300, 4, 32, 32, 77)]
-    public void Binary_Keys_MultiLevel_RoundTrip(int count, int maxLeaf, int keyLen, int maxValLen, int seed)
+    [TestCase(100, 32, 32, 42)]
+    [TestCase(300, 32, 32, 77)]
+    public void Binary_Keys_MultiLevel_RoundTrip(int count, int keyLen, int maxValLen, int seed)
     {
         Random rng = new(seed);
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
@@ -543,7 +543,7 @@ public class HsstTests
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
-        }, maxLeafEntries: maxLeaf);
+        });
 
         Assert.That(CountEntries(data), Is.EqualTo(deduped.Count));
 

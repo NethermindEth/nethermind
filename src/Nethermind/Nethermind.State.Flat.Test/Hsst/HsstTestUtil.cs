@@ -20,14 +20,11 @@ internal static class HsstTestUtil
     /// this helper rely on the builder picking up the length from the first <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.Add"/>
     /// call and validating that every subsequent key matches.
     /// </summary>
-    public static byte[] BuildToArray(BuildAction buildAction, int keyLength = -1, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, bool keyFirst = false)
+    public static byte[] BuildToArray(BuildAction buildAction, int keyLength = -1, bool keyFirst = false)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
         using HsstBTreeBuilderBuffersContainer buffers = new();
-        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(ref pooled.GetWriter(), ref buffers.Buffers, keyLength, new HsstBTreeOptions
-        {
-            MaxLeafEntries = maxLeafEntries,
-        }, keyFirst: keyFirst);
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(ref pooled.GetWriter(), ref buffers.Buffers, keyLength, HsstBTreeOptions.Default, keyFirst: keyFirst);
         try
         {
             buildAction(ref builder);

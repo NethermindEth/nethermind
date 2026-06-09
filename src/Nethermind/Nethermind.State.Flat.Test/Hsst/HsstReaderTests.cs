@@ -43,7 +43,7 @@ public class HsstReaderTests
                 builder.Add([0xA9, 0xFF, (byte)i], [(byte)(0xA0 + i)]);
             for (int i = 0; i < 32; i++)
                 builder.Add([0xAB, 0xCD, (byte)i], [(byte)(0xB0 + i)]);
-        }, maxLeafEntries: 32);
+        });
 
         Assert.That(HsstTestUtil.TryGetFloor(data, [0xAB, 0x00, 0x00], out byte[] floorValue), Is.True,
             "Floor of [0xAB, 0x00, 0x00] should resolve to the last entry of leaf 0");

@@ -12,9 +12,6 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// </summary>
 public sealed record HsstBTreeOptions
 {
-    /// <summary>Default cap on entries per leaf b-tree node.</summary>
-    public const int DefaultMaxLeafEntries = 512;
-
     /// <summary>Hard upper bound on children per intermediate node — sanity cap
     /// only; the byte threshold (<see cref="MaxIntermediateBytes"/>) is the
     /// normal binding constraint.</summary>
@@ -38,9 +35,6 @@ public sealed record HsstBTreeOptions
     /// the byte-length gate (only <see cref="DefaultMinIntermediateChildren"/>
     /// gates).</summary>
     public const int DefaultMinIntermediateBytes = 0;
-
-    /// <summary>Maximum entries per leaf node before the builder splits.</summary>
-    public int MaxLeafEntries { get; init; } = DefaultMaxLeafEntries;
 
     /// <summary>Maximum children per intermediate node (fan-out). Hard upper bound
     /// that prevents pathological cases; <see cref="MaxIntermediateBytes"/> is the

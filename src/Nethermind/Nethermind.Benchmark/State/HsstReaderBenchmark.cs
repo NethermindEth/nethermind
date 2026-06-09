@@ -124,7 +124,6 @@ public class HsstReaderBenchmark
         using HsstBTreeBuilderBuffersContainer buffers = new(keys.Length);
         HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b = new(ref writer, ref buffers.Buffers, KeyLen, new HsstBTreeOptions
         {
-            MaxLeafEntries = 256,
             MaxIntermediateEntries = 256,
         });
         try
