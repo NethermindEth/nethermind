@@ -317,6 +317,11 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// EIP-8246: SELFDESTRUCT no longer burns ETH
+        /// </summary>
+        bool IsEip8246Enabled { get; }
+
+        /// <summary>
         /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
         /// </summary>
         bool IsEip8024Enabled { get; }
