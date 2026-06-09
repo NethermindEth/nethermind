@@ -325,6 +325,91 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
+    /// The compacted snapshot's bloom (built by the merge value-merger, NOT a rescan) must
+    /// contain every address + slot key. In production the read bundle uses this bloom as a
+    /// pre-filter, so a false negative makes the bundle SKIP the snapshot → stale read → a
+    /// "random invalid block". Compacts a partitioned-column snapshot and asserts the
+    /// merge-built bloom answers MightContain=true for every account and slot key.
+    /// </summary>
+    [Test]
+    public void Compact_PartitionedColumns_MergeBuiltBloom_HasNoFalseNegatives()
+    {
+        const int n = 8;
+        const int addrsPerSnapshot = 8; // 64 distinct addresses ⇒ 0x0A
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 8 * 1024 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 8 * 1024 * 1024, PersistedSnapshotTier.Persisted);
+            // Shared bloom manager so the compacted snapshot gets a real (non-empty) bloom.
+            PersistedSnapshotBloomFilterManager bloomManager = new();
+            FlatDbConfig config = new()
+            {
+                CompactSize = 4,
+                MinCompactSize = 2,
+                PersistedSnapshotSlotPartitionThresholdBytes = 200,
+                PersistedSnapshotSlotHashtableMinBytes = 0,
+            };
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), config, bloomManager, LimboLogs.Instance);
+            repo.LoadFromCatalog();
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
+                LimboLogs.Instance, bloomManager,
+                minCompactSize: config.CompactSize * 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+
+            HashSet<int> allAddrs = [];
+            List<(int a, ulong slotId)> allSlots = [];
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            for (int s = 1; s <= n; s++)
+            {
+                StateId next = new(s, Keccak.Compute($"s{s}"));
+                SnapshotContent c = new();
+                for (int k = 0; k < addrsPerSnapshot; k++)
+                {
+                    int a = (s - 1) * addrsPerSnapshot + k + 1;
+                    allAddrs.Add(a);
+                    Address addr = DistinctAddress(a);
+                    c.Accounts[addr] = Build.An.Account.WithBalance((UInt256)a).TestObject;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        ulong id = (ulong)(a * 100 + i);
+                        c.Storages[(addr, DistinctPrefixSlot((int)id))] = new SlotValue([(byte)a, (byte)i]);
+                        allSlots.Add((a, id));
+                    }
+                }
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                prev = next;
+            }
+
+            compactor.DoCompactSnapshot(prev);
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            try
+            {
+                using PersistedSnapshotBloom bloomLease = bloomManager.LeaseOrSentinel(prev);
+                Assert.That(bloomLease, Is.Not.SameAs(PersistedSnapshotBloom.AlwaysTrue), "test needs a real merge-built bloom (shared bloomManager)");
+                BloomFilter bloom = bloomLease.Bloom;
+                foreach (int a in allAddrs)
+                {
+                    ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(DistinctAddress(a));
+                    Assert.That(bloom.MightContain(addrKey), Is.True, $"merge bloom MISSING address {a} → bundle would skip it");
+                }
+                foreach ((int a, ulong id) in allSlots)
+                {
+                    ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(DistinctAddress(a));
+                    ulong slotKey = PersistedSnapshotBloomBuilder.SlotKey(addrKey, DistinctPrefixSlot((int)id));
+                    Assert.That(bloom.MightContain(slotKey), Is.True, $"merge bloom MISSING slot ({a},{id})");
+                }
+            }
+            finally { compacted!.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir)) Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// High-entropy stress over partitioned ADDRESS (0x0A) + partitioned SLOT (0x08) columns,
     /// targeting "random invalid block" style corruption: 40 addresses, each present in all 8
     /// base snapshots (so per-address <c>MergeValues</c> runs with matchCount == 8), with a
