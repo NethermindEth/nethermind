@@ -143,12 +143,7 @@ public class BlockTreeTests
         AddBlockResult result = blockTree.SuggestBlock(block);
         blockTree.UpdateMainChain(block);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(hasNotified, Is.True, "notification");
-            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-            Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
-        }
+        AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -164,12 +159,7 @@ public class BlockTreeTests
         Block block = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
         AddBlockResult result = blockTree.SuggestBlock(block);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(hasNotified, Is.True, "notification");
-            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-            Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
-        }
+        AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -198,12 +188,7 @@ public class BlockTreeTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
         blockTree.UpdateMainChain(block1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(hasNotified, Is.True, "notification");
-            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-            Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
-        }
+        AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -299,12 +284,7 @@ public class BlockTreeTests
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(hasNotified, Is.True, "notification");
-            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-            Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
-        }
+        AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2930,4 +2910,13 @@ public class BlockTreeTests
         }
     }
 
+    private static void AssertSuggestNotifications(AddBlockResult result, bool hasNotified, bool hasNotifiedNewSuggested)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasNotified, Is.True, "notification");
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
+            Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        }
+    }
 }

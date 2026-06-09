@@ -409,11 +409,8 @@ public partial class EngineModuleTests
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            Assert.That(lvl, Is.Not.Null);
-            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(1));
-            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
+            AssertSyncingLevel(payloadStatus, chain.BlockTree.FindLevel(r.BlockNumber),
+                BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
         }
 
         AssertBeaconPivotValues(chain.BeaconPivot!, block.Header);
@@ -449,21 +446,15 @@ public partial class EngineModuleTests
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            Assert.That(lvl, Is.Not.Null);
-            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(1));
-            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
+            AssertSyncingLevel(payloadStatus, chain.BlockTree.FindLevel(r.BlockNumber),
+                BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
         }
 
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            Assert.That(lvl, Is.Not.Null);
-            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(1));
-            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
+            AssertSyncingLevel(payloadStatus, chain.BlockTree.FindLevel(r.BlockNumber),
+                BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
         }
     }
 
@@ -606,23 +597,17 @@ public partial class EngineModuleTests
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            Assert.That(lvl, Is.Not.Null);
-            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(1));
-            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
+            AssertSyncingLevel(payloadStatus, chain.BlockTree.FindLevel(r.BlockNumber),
+                BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
         }
 
         ExecutionPayload[] secondNewPayloads = CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, 4);
         foreach (ExecutionPayload r in secondNewPayloads)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            Assert.That(lvl, Is.Not.Null);
-            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(2));
-            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
-            Assert.That(lvl!.BlockInfos[1].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader));
+            AssertSyncingLevel(payloadStatus, chain.BlockTree.FindLevel(r.BlockNumber),
+                BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain,
+                BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
         }
     }
 
@@ -1112,6 +1097,27 @@ public partial class EngineModuleTests
             Assert.That(blockTree.BestSuggestedBeaconHeader?.Number ?? 0, Is.EqualTo(pointers.BestKnownBeaconBlock));
             Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(pointers.LowestInsertedBeaconHeader?.Hash));
             Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(pointers.LowestInsertedBeaconHeader?.Number));
+        }
+    }
+
+    private static void AssertSyncingLevel(ResultWrapper<PayloadStatusV1> payloadStatus, ChainLevelInfo? lvl, params BlockMetadata[] expectedMetadata)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
+            Assert.That(lvl, Is.Not.Null);
+        }
+
+        // The remaining asserts dereference lvl; guard so the helper does not NRE if the level is missing.
+        if (lvl is null) return;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lvl.BlockInfos.Length, Is.EqualTo(expectedMetadata.Length));
+            for (int i = 0; i < expectedMetadata.Length && i < lvl.BlockInfos.Length; i++)
+            {
+                Assert.That(lvl.BlockInfos[i].Metadata, Is.EqualTo(expectedMetadata[i]), $"BlockInfos[{i}].Metadata");
+            }
         }
     }
 

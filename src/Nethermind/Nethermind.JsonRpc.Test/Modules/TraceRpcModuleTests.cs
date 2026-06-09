@@ -700,10 +700,7 @@ public class TraceRpcModuleTests
             TransactionForRpc.FromTransaction(transaction), traceTypes, new(lastBlockHash)
         );
 
-        ParityAccountStateChange? stateChanges = traces.Data.StateChanges?.GetValueOrDefault(address);
-        Assert.That(stateChanges?.Balance, Is.Not.Null);
-        Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(balance));
-        Assert.That(stateChanges.Balance.After, Is.EqualTo(balance - send));
+        AssertBalanceChange(traces.Data.StateChanges?.GetValueOrDefault(address), balance, balance - send);
     }
 
     [Test]
@@ -734,10 +731,7 @@ public class TraceRpcModuleTests
             new(lastBlockHash)
         );
 
-        ParityAccountStateChange? stateChanges = traces.Data.Single().StateChanges?.GetValueOrDefault(address);
-        Assert.That(stateChanges?.Balance, Is.Not.Null);
-        Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(balance));
-        Assert.That(stateChanges.Balance.After, Is.EqualTo(balance - send));
+        AssertBalanceChange(traces.Data.Single().StateChanges?.GetValueOrDefault(address), balance, balance - send);
     }
 
     [Test]
@@ -766,10 +760,7 @@ public class TraceRpcModuleTests
             TxDecoder.Instance.Encode(transaction).Bytes, traceTypes
         );
 
-        ParityAccountStateChange? stateChanges = traces.Data.StateChanges?.GetValueOrDefault(address);
-        Assert.That(stateChanges?.Balance, Is.Not.Null);
-        Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(balance));
-        Assert.That(stateChanges.Balance.After, Is.EqualTo(balance - send));
+        AssertBalanceChange(traces.Data.StateChanges?.GetValueOrDefault(address), balance, balance - send);
     }
 
     [Test]
@@ -1554,5 +1545,15 @@ public class TraceRpcModuleTests
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
             "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");
+    }
+
+    private static void AssertBalanceChange(ParityAccountStateChange? stateChanges, UInt256 before, UInt256 after)
+    {
+        Assert.That(stateChanges?.Balance, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(before));
+            Assert.That(stateChanges.Balance.After, Is.EqualTo(after));
+        }
     }
 }
