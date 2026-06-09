@@ -15,6 +15,7 @@ public static class Spec
     public const ulong GenesisTimestamp = 1_000;
     public const ulong CanyonTimestamp = 1_300;
     public const ulong EcotoneTimestamp = 1_600;
+    public const ulong GraniteTimestamp = 1_900;
     public const ulong HoloceneTimeStamp = 2_000;
     public const ulong IsthmusTimeStamp = 2_100;
     public const ulong JovianTimeStamp = 2_200;
@@ -25,6 +26,7 @@ public static class Spec
         {
             CanyonTimestamp = CanyonTimestamp,
             EcotoneTimestamp = EcotoneTimestamp,
+            GraniteTimestamp = GraniteTimestamp,
             HoloceneTimestamp = HoloceneTimeStamp,
             IsthmusTimestamp = IsthmusTimeStamp,
             JovianTimestamp = JovianTimeStamp,
@@ -40,8 +42,8 @@ public static class Spec
             OptimismReleaseSpec spec = Substitute.For<OptimismReleaseSpec>();
 
             spec.IsEip4844Enabled = true;
-            spec.IsOpHoloceneEnabled = Instance.IsHolocene(header);
             spec.IsOpGraniteEnabled = Instance.IsGranite(header);
+            spec.IsOpHoloceneEnabled = Instance.IsHolocene(header);
             spec.IsOpIsthmusEnabled = Instance.IsIsthmus(header);
             spec.IsOpJovianEnabled = Instance.IsJovian(header);
             spec.IsOpKarstEnabled = Instance.IsKarst(header);
@@ -61,6 +63,7 @@ public static class Spec
             OptimismReleaseSpec spec = Substitute.For<OptimismReleaseSpec>();
 
             spec.IsEip4844Enabled = true;
+            spec.IsOpGraniteEnabled = timestamp >= GraniteTimestamp;
             spec.IsOpHoloceneEnabled = timestamp >= HoloceneTimeStamp;
             spec.IsOpIsthmusEnabled = timestamp >= IsthmusTimeStamp;
             spec.IsOpJovianEnabled = timestamp >= JovianTimeStamp;
