@@ -18,9 +18,12 @@ public class ArrayPoolListTests
     public void Empty_list()
     {
         using ArrayPoolList<int> list = new(1024);
-        Assert.That(list, Is.EqualTo(Array.Empty<int>()));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Capacity, Is.EqualTo(1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(1024));
+        }
     }
 
     [Test]
@@ -49,9 +52,12 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
-        Assert.That(list, Is.EqualTo(Enumerable.Range(0, 50)));
-        Assert.That(list.Count, Is.EqualTo(50));
-        Assert.That(list.Capacity, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Enumerable.Range(0, 50)));
+            Assert.That(list.Count, Is.EqualTo(50));
+            Assert.That(list.Capacity, Is.EqualTo(64));
+        }
     }
 
     [Test]
@@ -60,9 +66,12 @@ public class ArrayPoolListTests
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         list.Clear();
-        Assert.That(list, Is.EqualTo(Array.Empty<int>()));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Capacity, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(64));
+        }
     }
 
     [TestCase(0, ExpectedResult = true)]
@@ -285,11 +294,14 @@ public class ArrayPoolListTests
         IList list = (IList)arrayPoolList;
         list.Add(1);
 
-        Assert.That(list.Contains(value), Is.False);
-        Assert.That(list.IndexOf(value), Is.EqualTo(-1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Contains(value), Is.False);
+            Assert.That(list.IndexOf(value), Is.EqualTo(-1));
 
-        Action action = () => list.Remove(value);
-        Assert.That(action, Throws.Nothing);
+            Action action = () => list.Remove(value);
+            Assert.That(action, Throws.Nothing);
+        }
     }
 
     [Test]
@@ -297,11 +309,14 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(1024);
 
-        Assert.That(((ICollection<int>)list).IsReadOnly, Is.False);
-        Assert.That(((IList)list).IsReadOnly, Is.False);
-        Assert.That(((IList)list).IsFixedSize, Is.False);
-        Assert.That(((IList)list).IsSynchronized, Is.False);
-        Assert.That(((IList)list).SyncRoot, Is.EqualTo(list));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((ICollection<int>)list).IsReadOnly, Is.False);
+            Assert.That(((IList)list).IsReadOnly, Is.False);
+            Assert.That(((IList)list).IsFixedSize, Is.False);
+            Assert.That(((IList)list).IsSynchronized, Is.False);
+            Assert.That(((IList)list).SyncRoot, Is.EqualTo(list));
+        }
     }
 
     [Test]

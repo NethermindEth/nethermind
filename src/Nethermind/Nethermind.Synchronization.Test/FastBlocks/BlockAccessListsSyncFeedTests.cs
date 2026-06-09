@@ -158,10 +158,13 @@ public class BlockAccessListsSyncFeedTests
         _feed.InitializeFeed();
         _feed.Activate();
 
-        Assert.That(_feed.IsFinished, Is.True);
-        Assert.That(await _feed.PrepareRequest(), Is.Null);
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
-        Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.True);
+            Assert.That(await _feed.PrepareRequest(), Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Null);
+        }
     }
 
     [Test]
@@ -226,11 +229,14 @@ public class BlockAccessListsSyncFeedTests
 
         using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
 
-        Assert.That(batch, Is.Not.Null);
-        Assert.That(batch.Prioritized, Is.True);
-        Assert.That(batch.Infos[0], Is.EqualTo(block3Info));
-        Assert.That(batch.Infos[1], Is.EqualTo(block2Info));
-        Assert.That(batch.Infos[2], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch, Is.Not.Null);
+            Assert.That(batch.Prioritized, Is.True);
+            Assert.That(batch.Infos[0], Is.EqualTo(block3Info));
+            Assert.That(batch.Infos[1], Is.EqualTo(block2Info));
+            Assert.That(batch.Infos[2], Is.Null);
+        }
     }
 
     [Test]
