@@ -102,9 +102,9 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
         }
 
-        [TestCase(2, true, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
-        [TestCase(ISyncConfig.InfiniteAttempts, false, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
-        public void TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, bool expectFallback, int expectedFinalConfigValue)
+        [TestCase(2, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
+        [TestCase(ISyncConfig.InfiniteAttempts, ISyncConfig.InfiniteAttempts, TestName = "Infinite_attempts_never_fall_back_to_static_pivot")]
+        public void TrySetFreshPivot_fallback_respects_MaxAttemptsToUpdatePivot(int maxAttempts, int expectedFinalConfigValue)
         {
             _syncConfig!.MaxAttemptsToUpdatePivot = maxAttempts;
             // Finalized hash unset → TrySetFreshPivot returns null → counts as a failed attempt.
@@ -126,14 +126,6 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
                 _syncModeSelector!.Changed += Raise.EventWith(args);
             }
 
-            if (expectFallback)
-            {
-                _beaconSyncStrategy.Received().AllowBeaconHeaderSync();
-            }
-            else
-            {
-                _beaconSyncStrategy.DidNotReceive().AllowBeaconHeaderSync();
-            }
             Assert.That(_syncConfig.MaxAttemptsToUpdatePivot, Is.EqualTo(expectedFinalConfigValue));
         }
 

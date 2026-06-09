@@ -15,26 +15,30 @@ namespace Nethermind.Network.Test.P2P
         {
             using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
             using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
-
-            serializer.Serialize(buffer, message);
-            using T deserialized = serializer.Deserialize(buffer);
-
-            Assert.That(deserialized, Is.Not.Null);
-
-            Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
-
-            serializer.Serialize(buffer2, deserialized);
-
-            buffer.SetReaderIndex(0);
-            string allHex = buffer.ReadAllHex();
-            Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
-
-            if (expectedData is not null)
+            try
             {
-                Assert.That(allHex, Is.EqualTo(expectedData));
-            }
+                serializer.Serialize(buffer, message);
+                using T deserialized = serializer.Deserialize(buffer);
 
-            message.TryDispose();
+                Assert.That(deserialized, Is.Not.Null);
+
+                Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
+
+                serializer.Serialize(buffer2, deserialized);
+
+                buffer.SetReaderIndex(0);
+                string allHex = buffer.ReadAllHex();
+                Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+
+                if (expectedData is not null)
+                {
+                    Assert.That(allHex, Is.EqualTo(expectedData));
+                }
+            }
+            finally
+            {
+                message.TryDispose();
+            }
         }
     }
 }

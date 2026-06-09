@@ -169,19 +169,22 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Concurrent_clear_does_not_corrupt_count()
     {
-        // Catches count/Clear race: concurrent Set + Clear should not produce
-        // negative counts or counts wildly exceeding capacity.
-        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+        // 50 rounds so a probabilistic Set/Clear race is caught reliably.
+        for (int round = 0; round < 50; round++)
         {
-            for (int i = 0; i < Capacity; i++)
-                Set(in _keys[i], i);
-            if (iter % 3 == 0)
-                Clear();
-        });
+            CreateCache(Capacity);
+            Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+            {
+                for (int i = 0; i < Capacity; i++)
+                    Set(in _keys[i], i);
+                if (iter % 3 == 0)
+                    Clear();
+            });
 
-        int count = GetCount();
-        Assert.That(count, Is.GreaterThanOrEqualTo(0));
-        Assert.That(count, Is.LessThanOrEqualTo(Capacity));
+            int count = GetCount();
+            Assert.That(count, Is.GreaterThanOrEqualTo(0), $"round {round}");
+            Assert.That(count, Is.LessThanOrEqualTo(Capacity), $"round {round}");
+        }
     }
 
     [Test]

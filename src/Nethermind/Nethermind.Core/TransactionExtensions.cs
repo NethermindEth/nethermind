@@ -61,9 +61,9 @@ namespace Nethermind.Core
 
             public void CapGasLimit(long? gasCap)
             {
-                if (gasCap is not null and not 0)
+                if (gasCap.IsGasCapped())
                 {
-                    tx.GasLimit = long.Min(tx.GasLimit, gasCap.Value);
+                    tx.GasLimit = long.Min(tx.GasLimit, gasCap!.Value);
                 }
             }
         }

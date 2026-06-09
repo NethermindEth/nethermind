@@ -37,9 +37,8 @@ public class ZkGasBlockTracerTests
         Build.A.Transaction.TestObject;
 
     /// <summary>
-    /// Constructs a tracer with the alethia recalibrated opcode/precompile tables in place. The
-    /// production meter no longer carries in-code defaults, so tests that exercise specific
-    /// opcode multipliers (e.g. CREATE=1, ADD=19) must supply the tables explicitly here.
+    /// Constructs a tracer with <see cref="ZkGasTestSchedules"/> wired in so opcode-specific
+    /// assertions (e.g. CREATE=1, ADD=19) resolve against known multipliers.
     /// </summary>
     private static ZkGasBlockTracer MakeTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null,
         ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
@@ -244,10 +243,10 @@ public class ZkGasBlockTracerTests
     }
 
     /// <summary>
-    /// When txIntrinsicZkGas is 0 (Masaya), StartNewTxTrace leaves TxZkGasUsed at zero.
+    /// When txIntrinsicZkGas is 0, StartNewTxTrace leaves TxZkGasUsed at zero.
     /// </summary>
     [Test]
-    public void StartNewTxTrace_IntrinsicIsZero_OnMasaya()
+    public void StartNewTxTrace_IntrinsicIsZero_LeavesTxGasAtZero()
     {
         IBlockTracer inner = Substitute.For<IBlockTracer>();
         inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
@@ -257,7 +256,7 @@ public class ZkGasBlockTracerTests
         blockTracer.StartNewTxTrace(MakeTx());
 
         Assert.That(blockTracer.Meter.TxZkGasUsed, Is.EqualTo(0UL),
-            "Zero intrinsic (Masaya) must leave TxZkGasUsed at zero");
+            "Zero intrinsic must leave TxZkGasUsed at zero");
     }
 
     /// <summary>

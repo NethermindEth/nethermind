@@ -141,9 +141,6 @@ public class ChainParameters
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
-    public ulong? OpGraniteTransitionTimestamp { get; set; }
-    public ulong? OpHoloceneTransitionTimestamp { get; set; }
-    public ulong? OpIsthmusTransitionTimestamp { get; set; }
 
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
