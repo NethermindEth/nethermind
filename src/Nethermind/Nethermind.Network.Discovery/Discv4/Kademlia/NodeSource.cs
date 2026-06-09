@@ -87,35 +87,41 @@ public sealed class NodeSource(
             }
         }
 
-        Task discoverTask = Task.WhenAll(Enumerable.Range(0, discoveryConfig.ConcurrentDiscoveryJob).Select((_) => Task.Run(async () =>
+        Task[] discoverTasks = new Task[discoveryConfig.ConcurrentDiscoveryJob];
+        for (int i = 0; i < discoverTasks.Length; i++)
         {
-            Random random = new();
-            byte[] randomBytes = new byte[64];
-            while (!discoveryToken.IsCancellationRequested)
+            discoverTasks[i] = Task.Run(async () =>
             {
-                Stopwatch iterationTime = Stopwatch.StartNew();
-
-                try
+                Random random = new();
+                byte[] randomBytes = new byte[PublicKey.LengthInBytes];
+                while (!discoveryToken.IsCancellationRequested)
                 {
-                    random.NextBytes(randomBytes);
-                    await DiscoverAsync(new PublicKey(randomBytes));
+                    Stopwatch iterationTime = Stopwatch.StartNew();
 
-                    // Prevent high CPU when all node is not reachable due to network connectivity issue.
-                    if (iterationTime.Elapsed < TimeSpan.FromSeconds(1))
+                    try
                     {
-                        await Task.Delay(TimeSpan.FromSeconds(1), discoveryToken);
+                        random.NextBytes(randomBytes);
+                        await DiscoverAsync(new PublicKey(randomBytes));
+
+                        // Prevent high CPU when all node is not reachable due to network connectivity issue.
+                        if (iterationTime.Elapsed < TimeSpan.FromSeconds(1))
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(1), discoveryToken);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
                     }
                 }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
-                }
-            }
-        })));
+            });
+        }
+
+        Task discoverTask = Task.WhenAll(discoverTasks);
 
         try
         {

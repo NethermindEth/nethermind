@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using NonBlocking;
+using System.Threading;
 
 namespace Nethermind.Kademlia;
 
@@ -9,11 +9,20 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
     where TKey : notnull
     where TValue : notnull
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
 
     private readonly LinkedList<(TKey Key, TValue Value)> _queue = new();
-    private readonly ConcurrentDictionary<TKey, LinkedListNode<(TKey Key, TValue Value)>> _index = new();
-    public int Count => _queue.Count;
+    private readonly Dictionary<TKey, LinkedListNode<(TKey Key, TValue Value)>> _index = new(capacity);
+    public int Count
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _queue.Count;
+            }
+        }
+    }
 
     public BucketAddResult AddOrRefresh(in TKey key, TValue value)
     {
@@ -33,7 +42,7 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
             }
 
             listNode = _queue.AddFirst((key, value));
-            _index.TryAdd(key, listNode);
+            _index.Add(key, listNode);
             return BucketAddResult.Added;
         }
     }
@@ -43,7 +52,7 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
         lock (_lock)
         {
             LinkedListNode<(TKey Key, TValue Value)>? front = _queue.First;
-            if (front == null)
+            if (front is null)
             {
                 key = default!;
                 value = default;
@@ -53,7 +62,7 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
             _queue.Remove(front);
             key = front.Value.Key;
             value = front.Value.Value;
-            _index.TryRemove(front.Value.Key, out front);
+            _index.Remove(front.Value.Key);
 
             return true;
         }
@@ -64,7 +73,7 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
         lock (_lock)
         {
             LinkedListNode<(TKey Key, TValue Value)>? lastNode = _queue.Last;
-            if (lastNode == null)
+            if (lastNode is null)
             {
                 last = default;
                 return false;
@@ -79,7 +88,7 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
     {
         lock (_lock)
         {
-            if (_index.TryRemove(key, out LinkedListNode<(TKey Key, TValue Value)>? listNode))
+            if (_index.Remove(key, out LinkedListNode<(TKey Key, TValue Value)>? listNode))
             {
                 _queue.Remove(listNode);
                 return true;
@@ -95,7 +104,11 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
         {
             TValue[] result = new TValue[_queue.Count];
             int i = 0;
-            foreach ((TKey Key, TValue Value) entry in _queue) result[i++] = entry.Value;
+            foreach ((TKey Key, TValue Value) entry in _queue)
+            {
+                result[i++] = entry.Value;
+            }
+
             return result;
         }
     }
@@ -106,20 +119,44 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
         {
             (TKey Key, TValue Value)[] result = new (TKey Key, TValue Value)[_queue.Count];
             int i = 0;
-            foreach ((TKey Key, TValue Value) entry in _queue) result[i++] = entry;
+            foreach ((TKey Key, TValue Value) entry in _queue)
+            {
+                result[i++] = entry;
+            }
+
             return result;
         }
     }
 
-    public bool Contains(in TKey key) => _index.ContainsKey(key);
+    internal int CopyAllWithKey((TKey Key, TValue Value)[] destination)
+    {
+        lock (_lock)
+        {
+            int i = 0;
+            foreach ((TKey Key, TValue Value) entry in _queue)
+            {
+                destination[i++] = entry;
+            }
+
+            return i;
+        }
+    }
+
+    public bool Contains(in TKey key)
+    {
+        lock (_lock)
+        {
+            return _index.ContainsKey(key);
+        }
+    }
 
     public TValue? GetByKey(TKey key)
     {
-        if (_index.TryGetValue(key, out LinkedListNode<(TKey Key, TValue Value)>? listNode))
+        lock (_lock)
         {
-            return listNode.Value.Value;
+            return _index.TryGetValue(key, out LinkedListNode<(TKey Key, TValue Value)>? listNode)
+                ? listNode.Value.Value
+                : default;
         }
-
-        return default;
     }
 }

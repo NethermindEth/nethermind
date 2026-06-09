@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Timers;
@@ -164,5 +166,91 @@ public class NetworkStorageTests
         storage.Commit();
 
         Assert.That(storage.GetPersistedNodes(), Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Failed_commit_reloads_persisted_nodes_before_new_updates()
+    {
+        FailingBatchDb db = new();
+        NetworkStorage storage = new(db, LimboLogs.Instance);
+        NetworkNode persistedNode = new(TestItem.PublicKeyA, "192.1.1.1", 3441, 1L);
+        NetworkNode discardedNode = new(TestItem.PublicKeyB, "192.1.1.2", 3442, 2L);
+        NetworkNode pendingNode = new(TestItem.PublicKeyC, "192.1.1.3", 3443, 3L);
+        storage.UpdateNode(persistedNode);
+
+        db.ThrowOnNextBatchDispose = true;
+        storage.StartBatch();
+        storage.UpdateNode(discardedNode);
+        Assert.Throws<InvalidOperationException>(storage.Commit);
+
+        storage.StartBatch();
+        storage.UpdateNode(pendingNode);
+
+        NetworkNode[] nodes = storage.GetPersistedNodes();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes, Has.Some.Matches<NetworkNode>(node => node.NodeId.Equals(persistedNode.NodeId)));
+            Assert.That(nodes, Has.Some.Matches<NetworkNode>(node => node.NodeId.Equals(pendingNode.NodeId)));
+            Assert.That(nodes, Has.None.Matches<NetworkNode>(node => node.NodeId.Equals(discardedNode.NodeId)));
+        }
+    }
+
+    private sealed class FailingBatchDb : IFullDb
+    {
+        private readonly SnapshotableMemDb _inner = new();
+
+        public bool ThrowOnNextBatchDispose { get; set; }
+
+        public string Name => _inner.Name;
+
+        public byte[]? this[ReadOnlySpan<byte> key]
+        {
+            get => _inner[key];
+            set => _inner[key] = value;
+        }
+
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _inner[keys];
+
+        public ICollection<byte[]> Keys => _inner.Keys;
+
+        public ICollection<byte[]?> Values => _inner.Values;
+
+        public int Count => _inner.Count;
+
+        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _inner.GetAll(ordered);
+
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _inner.GetAllKeys(ordered);
+
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _inner.GetAllValues(ordered);
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _inner.Get(key, flags);
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _inner.Set(key, value, flags);
+
+        public IWriteBatch StartWriteBatch()
+        {
+            if (!ThrowOnNextBatchDispose)
+            {
+                return _inner.StartWriteBatch();
+            }
+
+            ThrowOnNextBatchDispose = false;
+            return new FailingWriteBatch();
+        }
+
+        public void Flush(bool onlyWal = false) => _inner.Flush(onlyWal);
+
+        public void Dispose() => _inner.Dispose();
+    }
+
+    private sealed class FailingWriteBatch : IWriteBatch
+    {
+        public void Clear() { }
+
+        public void Dispose() => throw new InvalidOperationException("Failed batch dispose.");
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) { }
     }
 }

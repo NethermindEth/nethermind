@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using System.Collections.Concurrent;
+using System.Threading;
 using Nethermind.Logging;
-using NonBlocking;
 
 namespace Nethermind.Kademlia;
 
@@ -51,7 +52,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         IComparer<TKadKey> comparerReverse = Comparer<TKadKey>.Create((h1, h2) =>
             distance.Compare(h2, h1, targetHash));
 
-        object queueLock = new();
+        Lock queueLock = new();
 
         // Ordered by lowest distance. Will get popped for next round.
         PriorityQueue<(TKadKey, TNode), TKadKey> bestSeen = new(comparer);
@@ -77,53 +78,57 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         int queryingTask = 0;
         bool finished = false;
 
-        Task[] worker = [.. Enumerable.Range(0, config.Alpha).Select((i) => Task.Run(async () =>
+        Task[] worker = new Task[config.Alpha];
+        for (int i = 0; i < worker.Length; i++)
         {
-            while (!Volatile.Read(ref finished))
+            worker[i] = Task.Run(async () =>
             {
-                token.ThrowIfCancellationRequested();
-                if (!TryGetNodeToQuery(out (TKadKey hash, TNode node)? toQuery))
+                while (!Volatile.Read(ref finished))
                 {
-                    if (queryingTask > 0)
+                    token.ThrowIfCancellationRequested();
+                    if (!TryGetNodeToQuery(out (TKadKey hash, TNode node)? toQuery))
                     {
-                        // Need to wait for all querying tasks first here.
-                        await Task.WhenAny(Volatile.Read(ref roundComplete).Task, Task.Delay(100, token));
-                        continue;
-                    }
+                        if (queryingTask > 0)
+                        {
+                            // Need to wait for all querying tasks first here.
+                            await Task.WhenAny(Volatile.Read(ref roundComplete).Task, Task.Delay(100, token));
+                            continue;
+                        }
 
-                    // No node to query and running query.
-                    if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
-                    break;
-                }
-
-                try
-                {
-                    if (ShouldStopDueToNoBetterResult(out int round))
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
+                        // No node to query and running query.
+                        if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
                         break;
                     }
 
-                    queried.TryAdd(toQuery.Value.hash, toQuery.Value.node);
-                    (TNode, TNode[]? neighbours)? result = await WrappedFindNeighbourOp(toQuery.Value.node);
-                    if (result == null) continue;
-
-                    ProcessResult(toQuery.Value.hash, toQuery.Value.node, result, round);
-                }
-                finally
-                {
-                    Interlocked.Decrement(ref queryingTask);
-                    TaskCompletionSource current = Volatile.Read(ref roundComplete);
-                    if (current.TrySetResult())
+                    try
                     {
-                        Interlocked.CompareExchange(
-                            ref roundComplete,
-                            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
-                            current);
+                        if (ShouldStopDueToNoBetterResult(out int round))
+                        {
+                            if (_logger.IsTrace) _logger.Trace("Stopping lookup. No better result.");
+                            break;
+                        }
+
+                        queried.TryAdd(toQuery.Value.hash, toQuery.Value.node);
+                        (TNode, TNode[]? neighbours)? result = await WrappedFindNeighbourOp(toQuery.Value.node);
+                        if (result is null) continue;
+
+                        ProcessResult(toQuery.Value.hash, toQuery.Value.node, result, round);
+                    }
+                    finally
+                    {
+                        Interlocked.Decrement(ref queryingTask);
+                        TaskCompletionSource current = Volatile.Read(ref roundComplete);
+                        if (current.TrySetResult())
+                        {
+                            Interlocked.CompareExchange(
+                                ref roundComplete,
+                                new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+                                current);
+                        }
                     }
                 }
-            }
-        }, token))];
+            }, token);
+        }
 
         // When any of the worker is finished, we consider the whole query as done.
         // This prevent this operation from hanging on a timed out request
@@ -201,7 +206,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 }
 
                 TNode[]? neighbours = valueTuple?.neighbours;
-                if (neighbours == null) return;
+                if (neighbours is null) return;
 
                 foreach (TNode neighbour in neighbours)
                 {
@@ -242,7 +247,14 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             lock (queueLock)
             {
                 if (finalResult.Count > k) finalResult.Dequeue();
-                return [.. finalResult.UnorderedItems.Select((kv) => kv.Element.Item2)];
+                TNode[] result = new TNode[finalResult.Count];
+                int i = 0;
+                foreach (((TKadKey, TNode) Element, TKadKey Priority) entry in finalResult.UnorderedItems)
+                {
+                    result[i++] = entry.Element.Item2;
+                }
+
+                return result;
             }
         }
 

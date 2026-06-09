@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Logging;
 
 namespace Nethermind.Kademlia;
@@ -28,7 +30,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
     private readonly IReadOnlyList<TNode> _bootNodes;
     private readonly TimeProvider _timeProvider;
     private readonly Dictionary<TKadKey, long> _lastBucketRefreshTicks = [];
-    private readonly object _lastBucketRefreshLock = new();
+    private readonly Lock _lastBucketRefreshLock = new();
 
     /// <summary>
     /// Creates a Kademlia table over the supplied routing, lookup, health, and transport abstractions.
@@ -154,7 +156,13 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
         // Refresh stale non-empty buckets one by one. Protocols whose wire lookup target cannot be synthesized from a
         // bucket prefix may return a best-effort random lookup key here; discv4 public keys are one example.
-        HashSet<TKadKey> activeBucketPrefixes = [];
+        int activeBucketPrefixCapacity;
+        lock (_lastBucketRefreshLock)
+        {
+            activeBucketPrefixCapacity = _lastBucketRefreshTicks.Count;
+        }
+
+        PooledHashSet<TKadKey> activeBucketPrefixes = new(activeBucketPrefixCapacity);
         foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
         {
             activeBucketPrefixes.Add(Prefix);
@@ -195,24 +203,31 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
     {
         lock (_lastBucketRefreshLock)
         {
-            List<TKadKey>? stalePrefixes = null;
-            foreach (TKadKey prefix in _lastBucketRefreshTicks.Keys)
+            TKadKey[] stalePrefixes = ArrayPool<TKadKey>.Shared.Rent(_lastBucketRefreshTicks.Count);
+            int stalePrefixCount = 0;
+            try
             {
-                if (!activeBucketPrefixes.Contains(prefix))
+                foreach (TKadKey prefix in _lastBucketRefreshTicks.Keys)
                 {
-                    stalePrefixes ??= [];
-                    stalePrefixes.Add(prefix);
+                    if (!activeBucketPrefixes.Contains(prefix))
+                    {
+                        stalePrefixes[stalePrefixCount++] = prefix;
+                    }
+                }
+
+                if (stalePrefixCount == 0)
+                {
+                    return;
+                }
+
+                for (int i = 0; i < stalePrefixCount; i++)
+                {
+                    _lastBucketRefreshTicks.Remove(stalePrefixes[i]);
                 }
             }
-
-            if (stalePrefixes is null)
+            finally
             {
-                return;
-            }
-
-            for (int i = 0; i < stalePrefixes.Count; i++)
-            {
-                _lastBucketRefreshTicks.Remove(stalePrefixes[i]);
+                ArrayPool<TKadKey>.Shared.Return(stalePrefixes, RuntimeHelpers.IsReferenceOrContainsReferences<TKadKey>());
             }
         }
     }

@@ -49,6 +49,8 @@ public class KBucket<TNode, TKadKey>(int k)
 
     public (TKadKey, TNode)[] GetAllWithHash() => _items.GetAllWithKey();
 
+    internal int CopyAllWithHash((TKadKey Hash, TNode Node)[] destination) => _items.CopyAllWithKey(destination);
+
     public bool RemoveAndReplace(in TKadKey hash)
     {
         if (!_items.Remove(hash)) return false;
@@ -74,14 +76,8 @@ public class KBucket<TNode, TKadKey>(int k)
     public TNode? GetByHash(TKadKey hash) => _items.GetByKey(hash);
 
     private static bool ShouldUpdateCachedArray(TNode? previous, TNode item)
-    {
-        if (previous is null)
-        {
-            return false;
-        }
-
-        return typeof(TNode).IsValueType
+        => previous is not null &&
+            (typeof(TNode).IsValueType
             ? !EqualityComparer<TNode>.Default.Equals(previous, item)
-            : !ReferenceEquals(previous, item);
-    }
+            : !ReferenceEquals(previous, item));
 }

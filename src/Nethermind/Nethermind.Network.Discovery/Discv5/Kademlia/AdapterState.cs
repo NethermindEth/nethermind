@@ -23,16 +23,11 @@ internal readonly record struct SentChallengeExpiry(ChallengeKey Key, long Creat
 internal readonly record struct NonceKey(ulong Prefix, uint Suffix)
 {
     public static NonceKey From(ReadOnlySpan<byte> nonce)
-    {
-        if (nonce.Length != PacketCodec.NonceSize)
-        {
-            throw new ArgumentException($"Nonce must be {PacketCodec.NonceSize} bytes.", nameof(nonce));
-        }
-
-        return new NonceKey(
-            BinaryPrimitives.ReadUInt64BigEndian(nonce[..sizeof(ulong)]),
-            BinaryPrimitives.ReadUInt32BigEndian(nonce.Slice(sizeof(ulong), sizeof(uint))));
-    }
+        => nonce.Length == PacketCodec.NonceSize
+            ? new(
+                BinaryPrimitives.ReadUInt64BigEndian(nonce[..sizeof(ulong)]),
+                BinaryPrimitives.ReadUInt32BigEndian(nonce.Slice(sizeof(ulong), sizeof(uint))))
+            : throw new ArgumentException($"Nonce must be {PacketCodec.NonceSize} bytes.", nameof(nonce));
 }
 
 internal sealed record PendingRequest(Node Receiver, Discv5Message Message);

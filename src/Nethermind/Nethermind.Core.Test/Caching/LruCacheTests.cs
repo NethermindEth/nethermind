@@ -251,7 +251,8 @@ namespace Nethermind.Core.Test.Caching
         public void Eviction_callback_is_called_when_capacity_replaces_oldest()
         {
             int evicted = 0;
-            LruCache<int, int> cache = new(2, "test", value => evicted = value);
+            LruCache<int, int> cache = new(2, "test");
+            cache.OnEvict += value => evicted = value;
 
             cache.Set(1, 10);
             cache.Set(2, 20);
@@ -264,7 +265,8 @@ namespace Nethermind.Core.Test.Caching
         public void Eviction_callback_is_called_when_existing_value_is_replaced()
         {
             int evicted = 0;
-            LruCache<int, int> cache = new(2, "test", value => evicted = value);
+            LruCache<int, int> cache = new(2, "test");
+            cache.OnEvict += value => evicted = value;
 
             cache.Set(1, 10);
             cache.Set(1, 11);
@@ -277,7 +279,8 @@ namespace Nethermind.Core.Test.Caching
         public void TryRemove_returns_value_without_calling_eviction_callback()
         {
             int evicted = 0;
-            LruCache<int, int> cache = new(2, "test", value => evicted = value);
+            LruCache<int, int> cache = new(2, "test");
+            cache.OnEvict += value => evicted = value;
             cache.Set(1, 10);
 
             Assert.That(cache.TryRemove(1, out int removed), Is.True);
@@ -317,7 +320,8 @@ namespace Nethermind.Core.Test.Caching
         {
             LruCache<int, int> cache = null!;
             TaskCompletionSource<bool> callbackResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            cache = new LruCache<int, int>(2, "test", _ => callbackResult.SetResult(cache.Contains(1)));
+            cache = new LruCache<int, int>(2, "test");
+            cache.OnEvict += _ => callbackResult.SetResult(cache.Contains(1));
             cache.Set(1, 10);
 
             Task clearTask = Task.Run(cache.Clear);
@@ -326,6 +330,29 @@ namespace Nethermind.Core.Test.Caching
             Assert.That(completedTask, Is.SameAs(clearTask));
             await clearTask;
             Assert.That(await callbackResult.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.False);
+        }
+
+        [TestCase(EvictionOperation.Delete, false)]
+        [TestCase(EvictionOperation.ReplaceExisting, true)]
+        [TestCase(EvictionOperation.ReplaceOldest, false)]
+        public async Task Eviction_callback_is_invoked_outside_lock(EvictionOperation operation, bool expectedContainsResult)
+        {
+            LruCache<int, int> cache = null!;
+            TaskCompletionSource<bool> callbackResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            cache = new LruCache<int, int>(2, "test");
+            cache.OnEvict += _ => callbackResult.SetResult(cache.Contains(1));
+            cache.Set(1, 10);
+            if (operation == EvictionOperation.ReplaceOldest)
+            {
+                cache.Set(2, 20);
+            }
+
+            Task operationTask = Task.Run(() => RunEvictionOperation(cache, operation));
+            Task completedTask = await Task.WhenAny(operationTask, Task.Delay(TimeSpan.FromSeconds(5)));
+
+            Assert.That(completedTask, Is.SameAs(operationTask));
+            await operationTask;
+            Assert.That(await callbackResult.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(expectedContainsResult));
         }
 
         [Test]
@@ -367,6 +394,31 @@ namespace Nethermind.Core.Test.Caching
                     _ = new LruCache<int, int>(maxCapacity, "test");
                 });
 
+        }
+
+        private static void RunEvictionOperation(LruCache<int, int> cache, EvictionOperation operation)
+        {
+            switch (operation)
+            {
+                case EvictionOperation.Delete:
+                    cache.Delete(1);
+                    return;
+                case EvictionOperation.ReplaceExisting:
+                    cache.Set(1, 11);
+                    return;
+                case EvictionOperation.ReplaceOldest:
+                    cache.Set(3, 30);
+                    return;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
+            }
+        }
+
+        public enum EvictionOperation
+        {
+            Delete,
+            ReplaceExisting,
+            ReplaceOldest
         }
     }
 }

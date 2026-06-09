@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Security.Cryptography;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
@@ -12,7 +13,7 @@ internal sealed record Session(PublicKey RemotePublicKey, byte[] ReadKey, byte[]
 {
     public const int KeySize = 16;
 
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private long _nonceCounter;
     private bool _disposed;
 

@@ -15,6 +15,7 @@ using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using NonBlocking;
 using NUnit.Framework;
+using TestKademlia = Nethermind.Kademlia.Kademlia<Nethermind.Core.Crypto.ValueHash256, Nethermind.Network.Discovery.Test.Kademlia.KademliaSimulation.TestNode, Nethermind.Core.Crypto.Hash256>;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
@@ -49,9 +50,9 @@ public class KademliaSimulation
         ValueHash256 node2Hash = RandomKeccak(rand);
         ValueHash256 node3Hash = RandomKeccak(rand);
 
-        Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256> node1 = fabric.CreateNode(node1Hash);
-        Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256> node2 = fabric.CreateNode(node2Hash);
-        Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256> node3 = fabric.CreateNode(node3Hash);
+        TestKademlia node1 = fabric.CreateNode(node1Hash);
+        TestKademlia node2 = fabric.CreateNode(node2Hash);
+        TestKademlia node3 = fabric.CreateNode(node3Hash);
 
         Assert.That(node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray(), Is.EquivalentTo(new[] { node1Hash }));
 
@@ -85,7 +86,7 @@ public class KademliaSimulation
         ValueHash256 node2Hash = RandomKeccak(rand);
         ValueHash256 node3Hash = RandomKeccak(rand);
 
-        Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256> node1 = fabric.CreateNode(node1Hash);
+        TestKademlia node1 = fabric.CreateNode(node1Hash);
 
         Assert.That(
             (await node1.LookupNodesClosest(node1Hash, cts.Token))
@@ -93,7 +94,7 @@ public class KademliaSimulation
             .ToArray(),
             Is.EquivalentTo(new[] { node1Hash }));
 
-        Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256> node2 = fabric.CreateNode(node2Hash);
+        TestKademlia node2 = fabric.CreateNode(node2Hash);
         fabric.CreateNode(node3Hash);
 
         node1.AddOrRefresh(new TestNode(node2Hash));
@@ -118,13 +119,13 @@ public class KademliaSimulation
         TestFabric fabric = CreateFabric();
         Random rand = new(0);
         ValueHash256 mainNodeHash = RandomKeccak(rand);
-        Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256> mainNode = fabric.CreateNode(mainNodeHash);
+        TestKademlia mainNode = fabric.CreateNode(mainNodeHash);
 
         List<ValueHash256> nodeIds = [];
         for (int i = 0; i < nodeCount; i++)
         {
             ValueHash256 nodeHash = RandomKeccak(rand);
-            Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256> kad = fabric.CreateNode(nodeHash);
+            TestKademlia kad = fabric.CreateNode(nodeHash);
             kad.AddOrRefresh(new TestNode(mainNodeHash));
             nodeIds.Add(nodeHash);
         }
@@ -212,7 +213,7 @@ public class KademliaSimulation
             return false;
         }
 
-        public Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256> CreateNode(ValueHash256 nodeID)
+        public TestKademlia CreateNode(ValueHash256 nodeID)
         {
             TestNode nodeIDTestNode = new(nodeID);
 
@@ -233,13 +234,13 @@ public class KademliaSimulation
                 })
                 .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<ReceiverForNode>()
-                .AddSingleton<Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256>>();
+                .AddSingleton<TestKademlia>();
 
             IContainer container = builder.Build();
 
             _nodes[nodeID] = container;
 
-            return container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, TestNode, Hash256>>();
+            return container.Resolve<TestKademlia>();
         }
 
         private class SenderForNode(TestNode sender, TestFabric fabric) : IKademliaMessageSender<ValueHash256, TestNode>

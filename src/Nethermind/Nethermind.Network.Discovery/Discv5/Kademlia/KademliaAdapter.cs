@@ -3,7 +3,9 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Threading;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
@@ -51,12 +53,12 @@ public sealed class KademliaAdapter(
     private readonly LruCache<SessionKey, Session> _sessions = new(MaxSessions, "discv5 sessions", static session => session.Dispose());
     private readonly LruCache<ChallengeKey, SentChallenge> _sentChallenges = new(MaxSentChallenges, "discv5 sent challenges", static sentChallenge => sentChallenge.Dispose());
     private readonly Queue<SentChallengeExpiry> _sentChallengeExpiries = new();
-    private readonly object _sentChallengeExpiriesLock = new();
+    private readonly Lock _sentChallengeExpiriesLock = new();
     private long _lastSentChallengeTrimMilliseconds;
     private readonly LruCache<PendingNonceKey, PendingRequest> _pendingByNonce = new(MaxPendingRequests, "discv5 pending requests");
     private readonly LruCache<ResponseKey, IResponseHandler> _responseHandlers = new(MaxResponseHandlers, "discv5 response handlers");
     private readonly LruCache<Hash256, NodeRecord> _knownRecords = new(MaxKnownRecords, "discv5 known records");
-    private readonly object _knownRecordsLock = new();
+    private readonly Lock _knownRecordsLock = new();
     private readonly LruCache<SessionKey, long> _endpointChecks = new(MaxEndpointChecks, "discv5 endpoint checks");
     private readonly AddressBurstLimiter _challengeRateLimiter = new(ChallengeRateLimitBurstPerIp, ChallengeRateLimitFilterSize, ChallengeRateLimitWindow);
 
@@ -65,8 +67,8 @@ public sealed class KademliaAdapter(
     {
         ArgumentNullException.ThrowIfNull(distances);
 
-        HashSet<Hash256> seen = [];
-        List<Node> result = [];
+        HashSet<Hash256> seen = new(MaxFindNodeRecords);
+        using ArrayPoolListRef<Node> result = new(MaxFindNodeRecords);
         Hash256? excludedHash = excluding?.IdHash;
 
         foreach (int distance in distances)
@@ -97,7 +99,7 @@ public sealed class KademliaAdapter(
             }
         }
 
-        return [.. result];
+        return result.ToArray();
     }
 
     /// <inheritdoc/>
@@ -136,21 +138,13 @@ public sealed class KademliaAdapter(
         }
 
         Node[] nodes = responseHandler.GetNodes();
-        int validCount = 0;
         for (int i = 0; i < nodes.Length; i++)
         {
-            Node? node = nodes[i];
-            if (node is null)
-            {
-                continue;
-            }
-
-            kademlia.Value.AddOrRefresh(node);
-            nodes[validCount++] = node;
+            kademlia.Value.AddOrRefresh(nodes[i]);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"Discv5 FINDNODE {findNode.RequestId} to {receiver:s} returned {validCount} nodes.");
-        return validCount == nodes.Length ? nodes : nodes[..validCount];
+        if (_logger.IsTrace) _logger.Trace($"Discv5 FINDNODE {findNode.RequestId} to {receiver:s} returned {nodes.Length} nodes.");
+        return nodes;
     }
 
     public async Task RunAsync(CancellationToken token)
@@ -230,6 +224,20 @@ public sealed class KademliaAdapter(
 
     private async Task<PendingNonceKey?> SendMessage(Node receiver, Discv5Message message)
     {
+        if (TryEncodeWithExistingSession(receiver, message, out PendingNonceKey pendingNonceKey, out byte[]? packet))
+        {
+            return await SendPendingPacket(receiver, message, pendingNonceKey, packet, hasSession: true);
+        }
+
+        return await SendMessageWithoutSession(receiver, message);
+    }
+
+    private bool TryEncodeWithExistingSession(
+        Node receiver,
+        Discv5Message message,
+        out PendingNonceKey pendingNonceKey,
+        [NotNullWhen(true)] out byte[]? packet)
+    {
         SessionKey sessionKey = new(receiver.Id.Hash, receiver.Address);
         if (TryGetSession(sessionKey, out Session? session))
         {
@@ -238,36 +246,40 @@ public sealed class KademliaAdapter(
             {
                 Span<byte> sessionNonce = stackalloc byte[PacketCodec.NonceSize];
                 session.WriteNextNonce(cryptoRandom, sessionNonce);
-                PendingNonceKey sessionPendingNonceKey = new(receiver.Address, NonceKey.From(sessionNonce));
-                _pendingByNonce.Set(sessionPendingNonceKey, new PendingRequest(receiver, message));
-                byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, writeKey, message, sessionNonce);
-                try
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} with existing session, bytes: {packet.Length}.");
-                    await discoveryHandler.SendAsync(packet, receiver.Address);
-                    return sessionPendingNonceKey;
-                }
-                catch
-                {
-                    _pendingByNonce.TryRemove(sessionPendingNonceKey, out _);
-                    throw;
-                }
+                pendingNonceKey = new PendingNonceKey(receiver.Address, NonceKey.From(sessionNonce));
+                packet = packetCodec.EncodeOrdinary(receiver.Id, writeKey, message, sessionNonce);
+                return true;
             }
         }
 
+        pendingNonceKey = default;
+        packet = null;
+        return false;
+    }
+
+    private async Task<PendingNonceKey> SendMessageWithoutSession(Node receiver, Discv5Message message)
+    {
         Span<byte> nonce = stackalloc byte[PacketCodec.NonceSize];
         cryptoRandom.GenerateRandomBytes(nonce);
         Span<byte> encryptionKey = stackalloc byte[Session.KeySize];
         cryptoRandom.GenerateRandomBytes(encryptionKey);
-        PendingRequest pendingRequest = new(receiver, message);
         PendingNonceKey pendingNonceKey = new(receiver.Address, NonceKey.From(nonce));
-        _pendingByNonce.Set(pendingNonceKey, pendingRequest);
-
         byte[] initialPacket = packetCodec.EncodeOrdinary(receiver.Id, encryptionKey, message, nonce);
+        return await SendPendingPacket(receiver, message, pendingNonceKey, initialPacket, hasSession: false);
+    }
+
+    private async Task<PendingNonceKey> SendPendingPacket(
+        Node receiver,
+        Discv5Message message,
+        PendingNonceKey pendingNonceKey,
+        byte[] packet,
+        bool hasSession)
+    {
+        _pendingByNonce.Set(pendingNonceKey, new PendingRequest(receiver, message));
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} without session, bytes: {initialPacket.Length}.");
-            await discoveryHandler.SendAsync(initialPacket, receiver.Address);
+            if (_logger.IsTrace) _logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} {(hasSession ? "with existing session" : "without session")}, bytes: {packet.Length}.");
+            await discoveryHandler.SendAsync(packet, receiver.Address);
             return pendingNonceKey;
         }
         catch
@@ -511,14 +523,7 @@ public sealed class KademliaAdapter(
     }
 
     private string? GetKnownEnr(Hash256 nodeId, NodeRecord? nodeRecord)
-    {
-        if (nodeRecord is not null)
-        {
-            return nodeRecord.EnrString;
-        }
-
-        return _knownRecords.TryGet(nodeId, out NodeRecord? knownRecord) ? knownRecord.EnrString : null;
-    }
+        => nodeRecord?.EnrString ?? (_knownRecords.TryGet(nodeId, out NodeRecord? knownRecord) ? knownRecord.EnrString : null);
 
     private bool HandleResponse(Hash256 nodeId, Discv5Message message)
     {
@@ -549,32 +554,39 @@ public sealed class KademliaAdapter(
     private NodeRecord[] GetFindNodeRecords(Distances distances, Node requester)
     {
         HashSet<Hash256> seen = new(MaxFindNodeRecords);
-        List<NodeRecord> result = new(MaxFindNodeRecords);
-        bool allowNonRoutableRelays = IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(requester.Address.Address);
-        bool includedSelf = false;
-        for (int i = 0; i < distances.Count && result.Count < MaxFindNodeRecords; i++)
+        ArrayPoolListRef<NodeRecord> result = new(MaxFindNodeRecords);
+        try
         {
-            int distance = distances[i];
-            if (distance < 0 || distance > _distance.MaxDistance)
+            bool allowNonRoutableRelays = IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(requester.Address.Address);
+            bool includedSelf = false;
+            for (int i = 0; i < distances.Count && result.Count < MaxFindNodeRecords; i++)
             {
-                continue;
-            }
-
-            if (distance == 0)
-            {
-                if (!includedSelf)
+                int distance = distances[i];
+                if (distance < 0 || distance > _distance.MaxDistance)
                 {
-                    result.Add(nodeRecordProvider.Current);
-                    includedSelf = true;
+                    continue;
                 }
 
-                continue;
+                if (distance == 0)
+                {
+                    if (!includedSelf)
+                    {
+                        result.Add(nodeRecordProvider.Current);
+                        includedSelf = true;
+                    }
+
+                    continue;
+                }
+
+                AddFindNodeRecordsAtDistance(distance, requester, allowNonRoutableRelays, seen, ref result);
             }
 
-            AddFindNodeRecordsAtDistance(distance, requester, allowNonRoutableRelays, seen, result);
+            return result.ToArray();
         }
-
-        return [.. result];
+        finally
+        {
+            result.Dispose();
+        }
     }
 
     private void AddFindNodeRecordsAtDistance(
@@ -582,7 +594,7 @@ public sealed class KademliaAdapter(
         Node requester,
         bool allowNonRoutableRelays,
         HashSet<Hash256> seen,
-        List<NodeRecord> result)
+        ref ArrayPoolListRef<NodeRecord> result)
     {
         Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
         Hash256 requesterHash = requester.IdHash;

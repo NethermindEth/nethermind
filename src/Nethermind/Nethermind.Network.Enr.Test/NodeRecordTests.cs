@@ -38,15 +38,15 @@ public class NodeRecordTests
     }
 
     [Test]
-    public void Discovery_endpoint_uses_udp6_when_ipv4_udp_is_missing()
+    public void Discovery_endpoint_rejects_ipv4_with_udp6_only()
     {
         IPAddress ip = IPAddress.Parse("192.0.2.1");
         NodeRecord nodeRecord = new();
         nodeRecord.SetEntry(new IpEntry(ip));
         nodeRecord.SetEntry(new Udp6Entry(30304));
 
-        Assert.That(nodeRecord.DiscoveryIp, Is.EqualTo(ip));
-        Assert.That(nodeRecord.DiscoveryPort, Is.EqualTo(30304));
+        Assert.That(nodeRecord.DiscoveryIp, Is.Null);
+        Assert.That(nodeRecord.DiscoveryPort, Is.Null);
     }
 
     [Test]

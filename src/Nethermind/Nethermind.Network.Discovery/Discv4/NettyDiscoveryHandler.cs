@@ -391,7 +391,7 @@ public class NettyDiscoveryHandler(
 
     private sealed class FixedWindowLimiter(int maxCount, TimeSpan window)
     {
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
         private long _windowStartTicks = Stopwatch.GetTimestamp();
         private int _count;
 

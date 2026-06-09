@@ -38,15 +38,15 @@ public class DiscoveryApp : KademliaDiscoveryApp
         : base("discv4", networkConfig, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
     {
         List<Node> bootNodes = [];
-        NetworkNode[] bootnodes = networkConfig.Bootnodes;
-        if (bootnodes.Length == 0)
+        NetworkNode[] configuredBootnodes = networkConfig.Bootnodes;
+        if (configuredBootnodes.Length == 0)
         {
             if (Logger.IsWarn) Logger.Warn("No bootnodes specified in configuration");
         }
 
-        for (int i = 0; i < bootnodes.Length; i++)
+        for (int i = 0; i < configuredBootnodes.Length; i++)
         {
-            NetworkNode bootnode = bootnodes[i];
+            NetworkNode bootnode = configuredBootnodes[i];
             if (!bootnode.IsEnode)
             {
                 if (Logger.IsTrace) Logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");

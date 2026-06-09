@@ -24,6 +24,7 @@ namespace Nethermind.Network
         private long _updateCounter;
         private long _removeCounter;
         private NetworkNode[]? _nodes;
+        private bool _loadedFromDb;
 
         public int PersistedNodesCount => GetPersistedNodes().Length;
 
@@ -44,10 +45,7 @@ namespace Nethermind.Network
                     return nodes;
                 }
 
-                if (_nodesDict.Count == 0)
-                {
-                    LoadFromDb();
-                }
+                EnsureLoadedFromDbNoLock();
 
                 return _nodesDict.Count == 0 ? [] : CopyDictToArray();
             }
@@ -60,7 +58,16 @@ namespace Nethermind.Network
             return (_nodes = nodes);
         }
 
-        private void LoadFromDb()
+        private void EnsureLoadedFromDbNoLock()
+        {
+            if (!_loadedFromDb)
+            {
+                LoadFromDbNoLock();
+                _loadedFromDb = true;
+            }
+        }
+
+        private void LoadFromDbNoLock()
         {
             foreach (byte[]? nodeRlp in _fullDb.Values)
             {
@@ -72,7 +79,7 @@ namespace Nethermind.Network
                 try
                 {
                     NetworkNode node = GetNode(nodeRlp);
-                    _nodesDict[node.NodeId] = node;
+                    _nodesDict.TryAdd(node.NodeId, node);
                 }
                 catch (Exception e)
                 {
@@ -92,6 +99,8 @@ namespace Nethermind.Network
 
         private void UpdateNodeImpl(NetworkNode node, byte[] rlp)
         {
+            EnsureLoadedFromDbNoLock();
+
             (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = rlp;
             _updateCounter++;
 
@@ -129,6 +138,8 @@ namespace Nethermind.Network
         {
             lock (_lock)
             {
+                EnsureLoadedFromDbNoLock();
+
                 (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[nodeId.Bytes] = null;
                 _removeCounter++;
 
@@ -198,7 +209,7 @@ namespace Nethermind.Network
             {
                 currentBatch.Clear();
                 currentBatch.Dispose();
-                ClearLocalCache();
+                ClearLocalCacheNoLock();
             }
         }
 
@@ -206,9 +217,15 @@ namespace Nethermind.Network
         {
             lock (_lock)
             {
-                _nodesDict.Clear();
-                _nodes = null;
+                ClearLocalCacheNoLock();
             }
+        }
+
+        private void ClearLocalCacheNoLock()
+        {
+            _nodesDict.Clear();
+            _nodes = null;
+            _loadedFromDb = false;
         }
 
         public bool AnyPendingChange() => _updateCounter > 0 || _removeCounter > 0;

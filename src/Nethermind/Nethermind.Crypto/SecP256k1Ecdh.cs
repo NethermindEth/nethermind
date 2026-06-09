@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto;
@@ -17,6 +18,7 @@ internal static unsafe class SecP256k1Ecdh
     private static readonly EcdhHashFunction CompressedPointHashFunction = WriteCompressedPoint;
     private static readonly SecP256k1ContextHandle Context = new();
 
+    [SkipLocalsInit]
     internal static byte[] GetCompressedSharedPoint(ReadOnlySpan<byte> publicKey, ReadOnlySpan<byte> privateKey)
     {
         if (Context.IsInvalid)

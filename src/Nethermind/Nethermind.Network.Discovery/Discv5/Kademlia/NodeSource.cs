@@ -95,6 +95,11 @@ public sealed class NodeSource(
         try
         {
             NodeRecord record = NodeRecord.FromEnrString(discoveryNode.Enr);
+            if (DiscoveryV5App.IsConsensusOnlyNodeRecord(record))
+            {
+                return false;
+            }
+
             return Node.TryFromEnr(record, out peerCandidate);
         }
         catch (Exception e)

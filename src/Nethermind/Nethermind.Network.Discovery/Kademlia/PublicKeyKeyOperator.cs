@@ -23,7 +23,7 @@ public sealed class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node, Hash256
     /// </remarks>
     public PublicKey CreateRandomKeyAtDistance(Hash256 nodePrefix, int depth)
     {
-        Span<byte> randomBytes = new byte[64];
+        Span<byte> randomBytes = stackalloc byte[PublicKey.LengthInBytes];
         Random.Shared.NextBytes(randomBytes);
         return new PublicKey(randomBytes);
     }

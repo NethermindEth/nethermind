@@ -16,11 +16,12 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
     private const int MaxNodesResponseRecords = 64;
 
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly List<Node> _nodes = [];
+    private readonly Node[] _nodes = new Node[MaxNodesResponseRecords];
     private readonly HashSet<Hash256> _seenNodeIds = [];
     private readonly bool _allowNonRoutableRelays = IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(receiver.Address.Address);
     private int? _total;
     private int _received;
+    private int _nodeCount;
 
     public override Task Task => _completion.Task;
 
@@ -46,7 +47,7 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
         _total ??= nodes.Total;
         _received++;
 
-        for (int i = 0; i < nodes.Records.Count && _nodes.Count < MaxNodesResponseRecords; i++)
+        for (int i = 0; i < nodes.Records.Count && _nodeCount < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
             if (DiscoveryV5App.IsConsensusOnlyNodeRecord(record) ||
@@ -58,10 +59,10 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
                 continue;
             }
 
-            _nodes.Add(node);
+            _nodes[_nodeCount++] = node;
         }
 
-        if (_received >= _total || _nodes.Count >= MaxNodesResponseRecords)
+        if (_received >= _total || _nodeCount >= MaxNodesResponseRecords)
         {
             _completion.TrySetResult();
         }
@@ -69,7 +70,17 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
         return true;
     }
 
-    public Node[] GetNodes() => [.. _nodes];
+    public Node[] GetNodes()
+    {
+        if (_nodeCount == 0)
+        {
+            return [];
+        }
+
+        Node[] nodes = new Node[_nodeCount];
+        Array.Copy(_nodes, nodes, _nodeCount);
+        return nodes;
+    }
 
     private bool MatchesRequestedDistance(Node node, Distances requestedDistances)
     {

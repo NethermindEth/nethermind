@@ -8,31 +8,39 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
 public sealed class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
 {
-    private Node[] _current = [];
+    private readonly Lock _lock = new();
+    private readonly Node[] _nodes = new Node[k];
+    private int _count;
     public TaskCompletionSource<DiscoveryResponse<Node[]>> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // The peer should send the two packet pretty much immediately. In any case, if the second packet is loss, its not a huge deal.
     private static readonly TimeSpan _secondRequestTimeout = TimeSpan.FromMilliseconds(100);
-    private bool _timeoutInitiated = false;
+    private int _timeoutInitiated;
 
     public bool Handle(DiscoveryMsg msg)
     {
         if (TaskCompletionSource.Task.IsCompleted) return false;
 
         NeighborsMsg neighborsMsg = (NeighborsMsg)msg;
+        bool isComplete;
 
-        while (true)
+        lock (_lock)
         {
             if (TaskCompletionSource.Task.IsCompleted) return false;
 
-            Node[] current = _current;
-            if (current.Length >= k || current.Length + neighborsMsg.Nodes.Count > k) return false;
-            if (Interlocked.CompareExchange(ref _current, [.. current, .. neighborsMsg.Nodes], current) == current) break;
+            if (_count >= k || _count + neighborsMsg.Nodes.Count > k) return false;
+
+            for (int i = 0; i < neighborsMsg.Nodes.Count; i++)
+            {
+                _nodes[_count++] = neighborsMsg.Nodes[i];
+            }
+
+            isComplete = _count == k;
         }
 
-        if (_current.Length == k)
+        if (isComplete)
         {
-            return TaskCompletionSource.TrySetResult(DiscoveryResponse<Node[]>.From(_current));
+            return TaskCompletionSource.TrySetResult(DiscoveryResponse<Node[]>.From(GetCurrentNodes()));
         }
         else
         {
@@ -41,12 +49,27 @@ public sealed class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
 
             async Task CompleteAfterDelay()
             {
-                if (Interlocked.CompareExchange(ref _timeoutInitiated, true, false)) return;
+                if (Interlocked.Exchange(ref _timeoutInitiated, 1) != 0) return;
                 await Task.Delay(_secondRequestTimeout);
-                TaskCompletionSource.TrySetResult(DiscoveryResponse<Node[]>.From(_current));
+                TaskCompletionSource.TrySetResult(DiscoveryResponse<Node[]>.From(GetCurrentNodes()));
             }
         }
 
         return !TaskCompletionSource.Task.IsCompleted;
+    }
+
+    private Node[] GetCurrentNodes()
+    {
+        lock (_lock)
+        {
+            if (_count == 0)
+            {
+                return [];
+            }
+
+            Node[] nodes = new Node[_count];
+            Array.Copy(_nodes, nodes, _count);
+            return nodes;
+        }
     }
 }

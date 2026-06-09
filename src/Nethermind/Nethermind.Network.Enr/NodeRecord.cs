@@ -162,7 +162,7 @@ public class NodeRecord
             return port is null ? (null, null) : (ip6, port);
         }
 
-        return ip is not null && udp6 is not null ? (ip, udp6) : (null, null);
+        return (null, null);
     }
 
     private (IPAddress? Ip, int? Port) GetTcpEndpoint()

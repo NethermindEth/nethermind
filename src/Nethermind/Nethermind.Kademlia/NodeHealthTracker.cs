@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
+using System.Threading;
 using Nethermind.Logging;
-using NonBlocking;
 
 namespace Nethermind.Kademlia;
 
@@ -100,7 +101,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         _isRefreshing.TryRemove(nodeHashProvider.GetHash(node), out _);
 
         BucketAddResult addResult = routingTable.TryAddOrRefresh(nodeHashProvider.GetHash(node), node, out TNode? toRefresh);
-        if (addResult == BucketAddResult.Full && toRefresh != null)
+        if (addResult == BucketAddResult.Full && toRefresh is not null)
         {
             if (SameAsSelf(toRefresh))
             {
@@ -242,8 +243,8 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
 
     private sealed class PeerFailureCache(int capacity)
     {
-        private readonly object _lock = new();
-        private readonly Dictionary<TKadKey, (int FailureCount, LinkedListNode<TKadKey> OrderNode)> _values = [];
+        private readonly Lock _lock = new();
+        private readonly Dictionary<TKadKey, (int FailureCount, LinkedListNode<TKadKey> OrderNode)> _values = new(capacity);
         private readonly LinkedList<TKadKey> _order = [];
 
         public bool TryGet(TKadKey hash, out int failureCount)

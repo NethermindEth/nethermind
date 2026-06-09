@@ -2,23 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using MsEventId = global::Microsoft.Extensions.Logging.EventId;
-using MsILogger = global::Microsoft.Extensions.Logging.ILogger;
-using MsILoggerFactory = global::Microsoft.Extensions.Logging.ILoggerFactory;
-using MsILoggerProvider = global::Microsoft.Extensions.Logging.ILoggerProvider;
-using MsLogLevel = global::Microsoft.Extensions.Logging.LogLevel;
+using Microsoft.Extensions.Logging;
+using MicrosoftLogger = Microsoft.Extensions.Logging.ILogger;
+using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Logging.Microsoft;
 
-public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false, MsLogLevel? maxLogLevel = null) : MsILoggerFactory
+public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false, MsLogLevel? maxLogLevel = null) : ILoggerFactory
 {
-    public MsILogger CreateLogger(string categoryName) => new NethermindLogger(logManager.GetLogger(categoryName), lowerLogLevel, maxLogLevel);
+    public MicrosoftLogger CreateLogger(string categoryName) => new NethermindLoggerAdapter(logManager.GetLogger(categoryName), lowerLogLevel, maxLogLevel);
 
     public void Dispose() { }
 
-    public void AddProvider(MsILoggerProvider provider) { }
+    public void AddProvider(ILoggerProvider provider) { }
 
-    private sealed class NethermindLogger(ILogger logger, bool lowerLogLevel = false, MsLogLevel? maxLogLevel = null) : MsILogger
+    private sealed class NethermindLoggerAdapter(ILogger logger, bool lowerLogLevel = false, MsLogLevel? maxLogLevel = null) : MicrosoftLogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -40,7 +38,7 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
             };
         }
 
-        public void Log<TState>(MsLogLevel logLevel, MsEventId eventId,
+        public void Log<TState>(MsLogLevel logLevel, EventId eventId,
             TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             if (lowerLogLevel)
@@ -97,7 +95,7 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
                 _ => logLevel,
             };
 
-            return loweredLogLevel > maxLogLevel ? maxLogLevel.Value : loweredLogLevel;
+            return maxLogLevel is not null && loweredLogLevel > maxLogLevel.Value ? maxLogLevel.Value : loweredLogLevel;
         }
     }
 }

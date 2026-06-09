@@ -87,7 +87,13 @@ public sealed class KademliaAdapter(
         MsgType msgType, ValueHash256 nodeId, IMessageHandler handler) => _incomingMessageHandlers.AddOrUpdate(
             (nodeId, msgType),
             (_) => [handler],
-            (_, currentHandler) => [.. currentHandler, handler]
+            (_, currentHandler) =>
+            {
+                IMessageHandler[] newValue = new IMessageHandler[currentHandler.Length + 1];
+                Array.Copy(currentHandler, newValue, currentHandler.Length);
+                newValue[^1] = handler;
+                return newValue;
+            }
         );
 
     private void RemoveMessageHandler(

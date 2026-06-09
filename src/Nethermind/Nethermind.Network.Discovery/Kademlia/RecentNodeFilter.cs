@@ -7,8 +7,8 @@ internal sealed class RecentNodeFilter<TKey>(int maxCount)
     where TKey : notnull
 {
     private readonly LinkedList<TKey> _recentNodes = [];
-    private readonly Dictionary<TKey, LinkedListNode<TKey>> _nodes = [];
-    private readonly object _lock = new();
+    private readonly Dictionary<TKey, LinkedListNode<TKey>> _nodes = new(maxCount);
+    private readonly Lock _lock = new();
 
     public bool TryReserve(TKey nodeId)
     {
