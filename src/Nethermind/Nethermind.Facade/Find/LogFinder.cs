@@ -75,14 +75,11 @@ namespace Nethermind.Facade.Find
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<BlockHeader?> blocks, CancellationToken cancellationToken, bool tryParallel = true) =>
-            RunParallel(blocks, cancellationToken, tryParallel, block => FindLogsInBlock(filter, block, cancellationToken));
+        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
+            RunParallel(blockNumbers,
+                number => FindLogsInBlock(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
 
-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, CancellationToken cancellationToken, bool tryParallel = true) =>
-            RunParallel(blockNumbers, cancellationToken, tryParallel,
-                number => FindLogsInBlock(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken));
-
-        private IEnumerable<FilterLog> RunParallel<T>(IEnumerable<T> source, CancellationToken cancellationToken, bool tryParallel, Func<T, IEnumerable<FilterLog>> worker)
+        private IEnumerable<FilterLog> RunParallel<T>(IEnumerable<T> source, Func<T, IEnumerable<FilterLog>> worker, bool tryParallel, CancellationToken cancellationToken)
         {
             if (!tryParallel)
             {
@@ -141,7 +138,7 @@ namespace Nethermind.Facade.Find
 
             long rangeSize = Math.Min(maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
             bool tryParallel = rangeSize >= _rpcConfigGetLogsThreads;
-            return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), cancellationToken, tryParallel);
+            return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
         }
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>

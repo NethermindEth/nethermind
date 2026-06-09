@@ -49,7 +49,7 @@ public class IndexedLogFinder(
         IEnumerable<long> indexBlockNumbers = _logIndexStorage
             .EnumerateBlockNumbersFor(filter, indexRange.from, indexRange.to);
 
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken))
+        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken: cancellationToken))
         {
             yield return log;
         }
