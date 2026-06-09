@@ -130,10 +130,13 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadHoodiChainSpec();
 
-        // Null/empty preconditions outside the scope — subsequent asserts deref these
+        // Null/empty preconditions must fail fast — subsequent asserts deref these and would NRE
+        // if they were inside the same EnterMultipleScope (which records failure but keeps going).
+#pragma warning disable NUnit2045
         Assert.That(chainSpec.Genesis, Is.Not.Null);
         Assert.That(chainSpec.Allocations, Is.Not.Empty);
         Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+#pragma warning restore NUnit2045
 
         using (Assert.EnterMultipleScope())
         {
@@ -183,13 +186,19 @@ public class GethGenesisLoaderTests
 
         EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
         Assert.That(ethashParameters, Is.Not.Null);
-        Assert.That(ethashParameters!.DifficultyBoundDivisor, Is.EqualTo(0x800));
-        Assert.That(ethashParameters!.BlockReward!.ContainsKey(0), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ethashParameters!.DifficultyBoundDivisor, Is.EqualTo(0x800));
+            Assert.That(ethashParameters!.BlockReward!.ContainsKey(0), Is.True);
+        }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         IReleaseSpec genesisSpec = provider.GetSpec(new ForkActivation(0));
-        Assert.That(genesisSpec.DifficultyBoundDivisor, Is.EqualTo(0x800));
-        Assert.That(genesisSpec.BlockReward, Is.EqualTo(new UInt256(5_000_000_000_000_000_000ul)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genesisSpec.DifficultyBoundDivisor, Is.EqualTo(0x800));
+            Assert.That(genesisSpec.BlockReward, Is.EqualTo(new UInt256(5_000_000_000_000_000_000ul)));
+        }
     }
 
     [Test]
@@ -237,8 +246,11 @@ public class GethGenesisLoaderTests
         ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15", timestamp: 15);
         ChainSpecBasedSpecProvider genesisProvider = new(genesisAtAmsterdam);
 
-        Assert.That(genesisAtAmsterdam.Genesis.BlockAccessListHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
-        Assert.That(genesisAtAmsterdam.Genesis.SlotNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genesisAtAmsterdam.Genesis.BlockAccessListHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+            Assert.That(genesisAtAmsterdam.Genesis.SlotNumber, Is.EqualTo(0));
+        }
         AssertAmsterdamEipsEnabled(genesisProvider.GenesisSpec, true);
         Assert.That(genesisProvider.GenesisSpec.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
     }
@@ -384,8 +396,11 @@ public class GethGenesisLoaderTests
 
         ChainSpec chainSpec = LoadAutoDetecting(parityChainspec);
 
-        Assert.That(chainSpec.Name, Is.EqualTo("TestNet"));
-        Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Name, Is.EqualTo("TestNet"));
+            Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -395,8 +410,11 @@ public class GethGenesisLoaderTests
             "\"pragueTime\": 1800000000, " +
             "\"depositContractAddress\": \"0x00000000219ab540356cBB839Cbe05303d7705Fa\"");
 
-        Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
-        Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
+            Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        }
     }
 
     [Test]
@@ -404,8 +422,11 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: "\"pragueTime\": 1800000000");
 
-        Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(Address.Zero));
-        Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(Address.Zero));
+            Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        }
     }
 
     /// <summary>

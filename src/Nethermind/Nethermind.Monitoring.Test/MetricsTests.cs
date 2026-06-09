@@ -185,8 +185,11 @@ public class MetricsTests
 
         Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
         string metricName = "TestMetrics.DetailedMetric";
-        Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
-        Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
+            Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
+        }
     }
 
     [Test]
