@@ -87,6 +87,7 @@ jobs:
               --name ${{ matrix.container }} \
               --restart unless-stopped \
               --network host \
+              --log-opt max-size=50m \
               -e RPC_MONITOR_BOT_TOKEN="$SLACK_BOT_TOKEN" \
               -e RPC_MONITOR_CHANNEL_ID="$SLACK_CHANNEL_ID" \
               nethermindeth/rpc-monitor:latest \
