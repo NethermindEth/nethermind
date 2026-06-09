@@ -107,6 +107,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         ParityLikeTxTrace trace = result.Data.First().Traces.First();
+        Assert.That(trace.Output, Is.Not.Null, "uncapped call should return the remaining-gas result");
         UInt256 gasAvailable = new(trace.Output!, isBigEndian: true);
         Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero), "GasCap=0 should keep trace_simulateV1 on the uncapped path so a non-zero gas budget is available");
     }

@@ -295,7 +295,7 @@ public partial class DebugRpcModuleTests
             Transactions = [tx],
             StateOverrides = new Dictionary<Address, AccountOverride>
             {
-                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
+                [contractAddress] = new() { Code = Bytes.FromHexString("0x5a60005260206000f3") }
             }
         };
 
