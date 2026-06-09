@@ -252,12 +252,12 @@ public class Eth71ProtocolHandlerTests
                 2222L,
                 new[] { Keccak.Zero, TestItem.KeccakA },
                 new byte[]?[] { null, null })
-            .SetName("Should_return_empty_BAL_for_unavailable_blocks"),
+            .SetName("Should_return_absent_BAL_for_unavailable_blocks"),
         new TestCaseData(
                 3333L,
                 new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB },
                 new byte[]?[] { [0xc3, 0x01, 0x02, 0x03], null, null })
-            .SetName("Should_return_mixed_available_and_empty_BALs")
+            .SetName("Should_return_mixed_available_and_absent_BALs")
     ];
 
     private static TestCaseData[] BlockAccessListsRequestCases =>

@@ -13,6 +13,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 
 public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccessListsMessage>
 {
+    private const int UnavailableBlockAccessListLength = 1;
+
     private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockAccessListsMessage>(
         GethSyncLimits.MaxBodyFetch, nameof(BlockAccessListsMessage.BlockAccessLists));
 
@@ -22,7 +24,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     public override BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
     {
         using NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
-        Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, sliceMemory: true);
+        Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory);
         int startPosition = ctx.Position;
         ArrayPoolList<byte[]?>? blockAccessLists = null;
 
@@ -52,7 +54,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         new(requestId, DecodeBlockAccessLists(ref ctx));
 
     internal static int GetBlockAccessListEntryLength(byte[]? blockAccessListRlp) =>
-        blockAccessListRlp is null ? Rlp.LengthOf(ReadOnlySpan<byte>.Empty) : blockAccessListRlp.Length;
+        blockAccessListRlp is null ? UnavailableBlockAccessListLength : blockAccessListRlp.Length;
 
     private static void WriteBlockAccessLists(IByteBuffer byteBuffer, IOwnedReadOnlyList<byte[]?> blockAccessLists)
     {
@@ -118,7 +120,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     {
         int length = ctx.PeekNextRlpLength();
         ReadOnlySpan<byte> blockAccessListRlp = ctx.Read(length);
-        return length == 1 && blockAccessListRlp[0] == 0x80
+        return length == UnavailableBlockAccessListLength && blockAccessListRlp[0] == Rlp.EmptyByteArrayByte
             ? null
             : blockAccessListRlp.ToArray();
     }
