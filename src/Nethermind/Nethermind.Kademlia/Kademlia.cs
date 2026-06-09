@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Collections.Pooled;
 using Nethermind.Logging;
 
 namespace Nethermind.Kademlia;
@@ -162,7 +163,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             activeBucketPrefixCapacity = _lastBucketRefreshTicks.Count;
         }
 
-        HashSet<TKadKey> activeBucketPrefixes = new(activeBucketPrefixCapacity);
+        using PooledSet<TKadKey> activeBucketPrefixes = new(activeBucketPrefixCapacity);
         foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
         {
             activeBucketPrefixes.Add(Prefix);
@@ -199,7 +200,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         }
     }
 
-    private void PruneLastBucketRefreshTicks(HashSet<TKadKey> activeBucketPrefixes)
+    private void PruneLastBucketRefreshTicks(PooledSet<TKadKey> activeBucketPrefixes)
     {
         lock (_lastBucketRefreshLock)
         {

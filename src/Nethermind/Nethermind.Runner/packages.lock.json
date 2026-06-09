@@ -902,8 +902,8 @@
       "nethermind.kademlia": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Logging": "[1.39.0-unstable, )",
-          "NonBlocking": "[2.1.2, )"
+          "Collections.Pooled": "[1.0.82, )",
+          "Nethermind.Logging": "[1.39.0-unstable, )"
         }
       },
       "nethermind.keystore": {
