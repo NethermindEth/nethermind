@@ -24,7 +24,7 @@ Option<int> parallelismOption = new("--parallelism", "-p")
     DefaultValueFactory = static _ => 1
 };
 
-Option<string[]> methodsOption = new("--methods", "-m")
+Option<string[]> methodsOption = new("--methods", "--method", "-m")
 {
     Description = "Include only requests with these method names",
     AllowMultipleArgumentsPerToken = true
