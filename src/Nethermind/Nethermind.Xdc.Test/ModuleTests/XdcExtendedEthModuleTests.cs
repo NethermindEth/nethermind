@@ -23,7 +23,7 @@ namespace Nethermind.Xdc.Test.ModuleTests;
 public class XdcExtendedEthModuleTests
 {
     [Test]
-    public async Task eth_getOwnerByCoinbase_is_exposed_on_json_rpc_wire()
+    public async Task eth_getOwnerByCoinbase_returns_owner()
     {
         IXdcExtendedEthRpcModule module = CreateOwnerModule(TestItem.AddressC);
         string json = await RpcTest.TestSerializedRequest(module, "eth_getOwnerByCoinbase", TestItem.AddressA, BlockParameter.Latest);
