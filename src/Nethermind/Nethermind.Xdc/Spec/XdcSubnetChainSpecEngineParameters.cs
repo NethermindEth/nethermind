@@ -5,6 +5,5 @@ namespace Nethermind.Xdc.Spec;
 
 public class XdcSubnetChainSpecEngineParameters : XdcChainSpecEngineParameters
 {
-    public override string EngineName => SealEngineType;
     public override string SealEngineType => XdcConstants.XDPoSSubnet;
 }

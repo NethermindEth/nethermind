@@ -6,7 +6,9 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
@@ -16,6 +18,8 @@ public class XdcSubnetModule : XdcModule
     {
         base.Load(builder);
         builder
+            .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
+                chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcSubnetChainSpecEngineParameters>())
             .Add<StartXdcSubnetBlockProducer>()
             .AddSingleton(new BlockDecoder(new XdcSubnetHeaderDecoder()))
             .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
