@@ -151,7 +151,6 @@ jobs:
     with:
       network: ${{ inputs.network }}
       checkpoint_sync_url: ${{ inputs.geth_checkpoint_sync_url }}
-      timeout_minutes: ${{ fromJSON(inputs.timeout) * 60 }}
       custom_run_id: ${{ github.run_id }}
 
   resolve_urls:
