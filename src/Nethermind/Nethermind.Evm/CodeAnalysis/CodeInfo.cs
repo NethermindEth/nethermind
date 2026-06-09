@@ -51,6 +51,12 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public IPrecompile? Precompile { get; }
 
+    // IL-EVM tiering state, managed exclusively by CodeAnalysis.IlEvm.IlEvm: an Interlocked
+    // execution counter and the published immutable artifact (IlCompiledCode or a sentinel).
+    // Living here ties the artifact's lifetime to this CodeInfo's own caching/eviction.
+    internal int IlEvmExecutionCount;
+    internal object? IlEvmArtifact;
+
     private readonly JumpDestinationAnalyzer? _analyzer;
 
     /// <summary>

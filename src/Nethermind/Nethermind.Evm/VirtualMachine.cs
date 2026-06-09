@@ -15,6 +15,8 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.CodeAnalysis.IlEvm;
 
 using static Nethermind.Evm.VirtualMachineStatics;
 
@@ -1300,8 +1302,47 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Call depth does not change during dispatch; hoist outside the loop so a no-op
             // OnBeforeInstructionTrace doesn't force a per-instruction VmState.Env chase.
             int callDepth = VmState.Env.CallDepth;
+
+            // IL-EVM (experimental, NETHERMIND_ILEVM=1): resolve compiled segments for this
+            // frame. The guards are JIT constants for tracing and non-Ethereum gas policy
+            // instantiations, so this block and the per-iteration check below fold away there;
+            // otherwise the common case is a single static read plus a null result.
+            IlCompiledCode? ilCompiled = null;
+            if (!TTracingInst.IsActive && typeof(TGasPolicy) == typeof(EthereumGasPolicy) && IlEvm.Enabled
+                && VmState.Env.CodeInfo is CodeInfo ilCodeInfo && !ilCodeInfo.IsEmpty)
+            {
+                if (programCounter == 0)
+                    IlEvm.NoticeExecution(ilCodeInfo, Spec);
+                ilCompiled = IlEvm.GetForExecution(ilCodeInfo, Spec);
+            }
+
             while ((uint)programCounter < codeLength)
             {
+                // IL-EVM: when a compiled segment starts at this program counter AND its
+                // preconditions hold (entry stack depth, stack headroom, gas for the whole
+                // prefix), run it instead of dispatching its opcodes one by one. When any
+                // precondition fails, fall through to the interpreter so every halt state
+                // (underflow/overflow/out-of-gas) is produced with exact per-opcode accounting
+                // — segments only ever execute to completion.
+                if (typeof(TGasPolicy) == typeof(EthereumGasPolicy) && ilCompiled is not null
+                    && ilCompiled.TryGetSegmentStartingAt(programCounter, out IlCompiledSegment ilSegment)
+                    && stack.Head >= ilSegment.StackRequired
+                    && stack.Head <= EvmStack.MaxStackSize - EvmStack.RegisterLength - ilSegment.StackMaxGrowth
+                    && TGasPolicy.GetRemainingGas(in gas) >= ilSegment.StaticGas)
+                {
+                    // Poll cancellation per segment: chained segments bypass the interpreter's
+                    // batched gate via `continue`, and a fully-compiled stretch must still be
+                    // abortable. One interface call per ≥3 fused opcodes is cheaper than the
+                    // old per-opcode poll ever was.
+                    if (TCancelable.IsActive && _txTracer.IsCancelled)
+                        ThrowOperationCanceledException();
+
+                    exceptionType = ilSegment.Invoke(ref stack, ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas), ref programCounter);
+                    opCodeCount += ilSegment.OpCount;
+                    IlEvm.SegmentExecutions++;
+                    continue;
+                }
+
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
                 debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
