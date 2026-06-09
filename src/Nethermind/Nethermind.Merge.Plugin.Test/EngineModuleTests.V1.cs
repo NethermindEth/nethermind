@@ -1621,14 +1621,15 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.IsMainChain(a3.BlockHash), Is.False, "precondition: a3's marker was flipped to b3");
 
         // Count FindHeader calls made by the repeated FCU only. Safe=Keccak.Zero skips its
-        // ValidateBlockHash lookup, so the baseline calls are: 1 to resolve head, 1 for finalized
-        // validation, plus the IsInconsistent walk (1 under the optimization, 2 without).
+        // ValidateBlockHash lookup. Baseline: 1 to resolve head, 1 for finalized validation,
+        // 1 for IsOnMainChainBehindFinalized (FindFinalizedHeader), plus the IsInconsistent walk
+        // (1 under the optimization, 2 without).
         spy.ResetCounters();
         ForkchoiceStateV1 repeated = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
         Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        Assert.That(spy.FindHeaderCalls, Is.EqualTo(3), "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
+        Assert.That(spy.FindHeaderCalls, Is.EqualTo(4), "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
     }
 
     [Test]
