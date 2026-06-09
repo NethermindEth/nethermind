@@ -24,21 +24,32 @@ namespace Nethermind.Evm.Test;
 /// A resulting zero-balance account is still removed as empty per EIP-161.
 /// </summary>
 /// <remarks>
-/// The <c>true</c> fixture runs with EIP-8246 enabled; the <c>false</c> fixture keeps the
-/// pre-8246 (EIP-6780-only) behaviour as a baseline so every test pins both sides of the change.
+/// The first fixture argument toggles EIP-8246 (the <c>false</c> fixtures keep the pre-8246,
+/// EIP-6780-only baseline). The second toggles EIP-8037 + EIP-7708, which routes destruction
+/// through the deferred <c>FinalizeDestroyedAccount</c> path (as in Amsterdam) instead of the
+/// inline path; every scenario therefore runs against both finalization paths.
 /// </remarks>
-[TestFixture(true)]
-[TestFixture(false)]
-public class Eip8246Tests(bool eip8246Enabled) : VirtualMachineTestsBase
+[TestFixture(true, false)]
+[TestFixture(false, false)]
+[TestFixture(true, true)]
+[TestFixture(false, true)]
+public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : VirtualMachineTestsBase
 {
     private readonly ISpecProvider _specProvider =
-        new TestSpecProvider(new OverridableReleaseSpec(Cancun.Instance) { IsEip8246Enabled = eip8246Enabled });
+        new TestSpecProvider(new OverridableReleaseSpec(Cancun.Instance)
+        {
+            IsEip8246Enabled = eip8246Enabled,
+            // EIP-8037 + EIP-7708 together select the deferred finalization path.
+            IsEip8037Enabled = deferredFinalization,
+            IsEip7708Enabled = deferredFinalization,
+        });
 
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
     protected override ISpecProvider SpecProvider => _specProvider;
 
-    private const long GasLimit = 1_000_000;
+    // Generous limit so the EIP-8037 state-byte charges in the deferred-path fixtures don't run out of gas.
+    private const long GasLimit = 5_000_000;
     private static readonly byte[] Salt = new UInt256(123).ToBigEndian();
 
     private EthereumEcdsa _ecdsa;
@@ -74,7 +85,7 @@ public class Eip8246Tests(bool eip8246Enabled) : VirtualMachineTestsBase
 
         byte[] code = Prepare.EvmCode
             .Create2(_selfDestructToSelfInit, Salt, balance)
-            .Call(child, 100000)
+            .Call(child, 500_000)
             .STOP()
             .Done;
 
@@ -118,8 +129,8 @@ public class Eip8246Tests(bool eip8246Enabled) : VirtualMachineTestsBase
 
         byte[] contractBCode = Prepare.EvmCode
             .Create(initCodeA, initialBalance)
-            .Call(contractA, 100000)                                  // triggers selfdestruct-to-inheritor
-            .CallWithValue(contractA, 100000, ethReceivedAfter)       // sends ETH after selfdestruct
+            .Call(contractA, 500_000)                                  // triggers selfdestruct-to-inheritor
+            .CallWithValue(contractA, 500_000, ethReceivedAfter)      // sends ETH after selfdestruct
             .STOP()
             .Done;
 
@@ -153,7 +164,7 @@ public class Eip8246Tests(bool eip8246Enabled) : VirtualMachineTestsBase
 
         byte[] code = Prepare.EvmCode
             .Create2(init, Salt, 5.Ether)
-            .Call(child, 100000)
+            .Call(child, 500_000)
             .STOP()
             .Done;
 
@@ -173,7 +184,7 @@ public class Eip8246Tests(bool eip8246Enabled) : VirtualMachineTestsBase
 
         Transaction deployTx = Build.A.Transaction.WithCode(init).WithValue(7.Ether)
             .WithGasLimit(GasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
-        byte[] call = Prepare.EvmCode.Call(contract, 100000).STOP().Done;
+        byte[] call = Prepare.EvmCode.Call(contract, 500_000).STOP().Done;
         Transaction callTx = Build.A.Transaction.WithCode(call).WithGasLimit(GasLimit)
             .WithNonce(1).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
 
@@ -186,6 +197,52 @@ public class Eip8246Tests(bool eip8246Enabled) : VirtualMachineTestsBase
 
         Assert.That(TestState.GetBalance(contract), Is.EqualTo((UInt256)7.Ether));
         Assert.That(TestState.IsContract(contract), Is.True);
+    }
+
+    [Test]
+    public void Create2_redeploy_to_same_address_unblocked_after_self_destruct()
+    {
+        // A factory CREATE2s a child whose init code self-destructs to itself, so the child is
+        // created and destroyed within the same transaction. The factory is called twice and
+        // hits the same CREATE2 address both times. Under EIP-8246 the child survives as a
+        // nonce-0, code-less, balance-only account; because the nonce is reset, the second
+        // CREATE2 is not blocked and its endowment accumulates onto the preserved balance.
+        UInt256 endowment = 1.Ether;
+
+        Address factory = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
+        Address child = ContractAddress.From(factory, Salt, _selfDestructToSelf);
+
+        byte[] factoryRuntime = Prepare.EvmCode
+            .Create2(_selfDestructToSelf, Salt, endowment)
+            .STOP()
+            .Done;
+        byte[] factoryInit = Prepare.EvmCode.ForInitOf(factoryRuntime).Done;
+
+        Transaction deploy = Build.A.Transaction.WithCode(factoryInit).WithValue(5.Ether)
+            .WithNonce(0).WithGasLimit(GasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        Transaction call1 = Build.A.Transaction.WithTo(factory)
+            .WithNonce(1).WithGasLimit(GasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        Transaction call2 = Build.A.Transaction.WithTo(factory)
+            .WithNonce(2).WithGasLimit(GasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        Block block = Build.A.Block.WithNumber(BlockNumber).WithTimestamp(Timestamp)
+            .WithTransactions(deploy, call1, call2).WithGasLimit(4 * GasLimit).TestObject;
+        BlockExecutionContext blCtx = new(block.Header, SpecProvider.GetSpec(block.Header));
+
+        _processor.Execute(deploy, blCtx, NullTxTracer.Instance);
+        _processor.Execute(call1, blCtx, NullTxTracer.Instance);
+        _processor.Execute(call2, blCtx, NullTxTracer.Instance);
+
+        if (eip8246Enabled)
+        {
+            // Both redeployments funded the same preserved address: 2 x endowment.
+            AssertBalanceOnly(child, 2.Ether);
+        }
+        else
+        {
+            // Pre-8246 the self-burn empties the child on each pass, so it ends deleted.
+            Assert.That(TestState.AccountExists(child), Is.False);
+        }
     }
 
     private void ExecuteTopLevel(byte[] code, UInt256 value)
