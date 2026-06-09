@@ -197,4 +197,130 @@ internal static class HsstBTreeMerger
             builder.Dispose();
         }
     }
+
+    /// <summary>
+    /// Partitioned key-first variant of <see cref="NWayMergeKeyFirst{TBuilderWriter,TBuilderReader,TBuilderPin,TReader,TPin,TSource,TFactory,TValueMerger}"/>:
+    /// emits a partitioned key-first (<see cref="IndexType.BTreeKeyFirst"/>) outer build via
+    /// <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/> instead of a plain
+    /// key-first B-tree, so compacted slot-prefix HSSTs keep the partition hashtables. Same
+    /// merge loop and value-merger contract; the partitioned builder offers only
+    /// <c>Add(key, value)</c> (no streaming / aligned-try API), so the single-source fast path
+    /// adds the pinned source value directly (best-effort page alignment happens inside the
+    /// per-partition inner builder) and the conflict path stages through a
+    /// <see cref="PooledByteBufferWriter"/> exactly as the non-partitioned variant does.
+    /// </summary>
+    internal static void NWayMergeKeyFirstPartitioned<TBuilderWriter, TBuilderReader, TBuilderPin, TReader, TPin, TSource, TFactory, TValueMerger>(
+        ref TBuilderWriter writer,
+        int keyLength,
+        scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
+        TValueMerger valueMerger,
+        scoped ref HsstPartitionedBTreeBuilderBuffers externalBuffers,
+        HsstBTreeOptions? options = null)
+        where TBuilderWriter : IByteBufferWriterWithReader<TBuilderReader, TBuilderPin>
+        where TBuilderPin : struct, IBufferPin, allows ref struct
+        where TBuilderReader : IHsstByteReader<TBuilderPin>, allows ref struct
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TSource : struct, IHsstMergeSource<TReader, TPin>
+        where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
+        where TValueMerger : struct, IHsstBTreeValueMerger<PooledByteBufferWriter.Writer, TReader, TPin, TSource, TFactory>
+    {
+        using PooledByteBufferWriter staging = new(4096);
+        HsstPartitionedBTreeBuilder<TBuilderWriter, TBuilderReader, TBuilderPin> builder =
+            new(ref writer, ref externalBuffers, keyLength, options);
+        try
+        {
+            while (cursor.MoveNext())
+            {
+                Bound vb = cursor.MinValue;
+                if (cursor.MatchCount == 1 && vb.Length <= PageLayout.PageSize)
+                {
+                    // Single source, page-sized value: copy verbatim from the pinned source.
+                    TReader r = cursor.CreateMinReader();
+                    using TPin p = r.PinBuffer(vb.Offset, vb.Length);
+                    builder.Add(cursor.MinKey, p.Buffer);
+                    valueMerger.OnFastCopy(cursor.MinKey, ref cursor);
+                }
+                else
+                {
+                    staging.Reset();
+                    ref PooledByteBufferWriter.Writer stagingWriter = ref staging.GetWriter();
+                    valueMerger.MergeValues(ref stagingWriter, cursor.MinKey, ref cursor);
+                    builder.Add(cursor.MinKey, staging.WrittenSpan);
+                }
+                cursor.AdvanceMatching();
+            }
+            builder.Build();
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Partitioned variant of the streaming key-after-value
+    /// <see cref="NWayMerge{TWriter,TWriterReader,TWriterPin,TReader,TPin,TSource,TFactory,TValueMerger}(ref TWriter,int,ref NWayMergeCursor{TReader,TPin,TSource,TFactory},TValueMerger,ref HsstBTreeBuilderBuffers,HsstBTreeOptions?,int,bool)"/>:
+    /// emits a partitioned key-after-value (<see cref="IndexType.BTree"/>) outer build via
+    /// <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/> so the compacted
+    /// per-address column keeps its per-partition hashtables. Same value-merger contract and
+    /// streaming model as the non-partitioned overload — the merger writes the value straight
+    /// into the partitioned builder's <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/>
+    /// region. The partitioned builder has no aligned-add API, so the single-source fast path
+    /// copies the pinned source value verbatim (the inner HSST is position-independent) rather
+    /// than going through <c>TryAddAligned</c>; the conflict path streams through
+    /// <see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource,TFactory}.MergeValues"/>
+    /// exactly as the non-partitioned variant does.
+    /// </summary>
+    internal static void NWayMergePartitioned<TWriter, TWriterReader, TWriterPin, TReader, TPin, TSource, TFactory, TValueMerger>(
+        ref TWriter writer,
+        int keyLength,
+        scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
+        TValueMerger valueMerger,
+        scoped ref HsstPartitionedBTreeBuilderBuffers externalBuffers,
+        HsstBTreeOptions? options = null)
+        where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin>
+        where TWriterPin : struct, IBufferPin, allows ref struct
+        where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TSource : struct, IHsstMergeSource<TReader, TPin>
+        where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
+        where TValueMerger : struct, IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource, TFactory>
+    {
+        HsstPartitionedBTreeBuilder<TWriter, TWriterReader, TWriterPin> builder =
+            new(ref writer, ref externalBuffers, keyLength, options, keyFirst: false);
+        try
+        {
+            while (cursor.MoveNext())
+            {
+                ref TWriter inner = ref builder.BeginValueWrite();
+                long valueStart = inner.Written;
+                if (cursor.MatchCount == 1)
+                {
+                    // Single source: copy the per-address value verbatim (the inner HSST uses
+                    // self-relative offsets, so it is position-independent), then run the
+                    // merger's fast-copy bloom bookkeeping.
+                    Bound vb = cursor.MinValue;
+                    TReader r = cursor.CreateMinReader();
+                    using TPin p = r.PinBuffer(vb.Offset, vb.Length);
+                    p.Buffer.CopyTo(inner.GetSpan(checked((int)vb.Length)));
+                    inner.Advance((int)vb.Length);
+                    builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
+                    valueMerger.OnFastCopy(cursor.MinKey, ref cursor);
+                }
+                else
+                {
+                    valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
+                    builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
+                }
+                cursor.AdvanceMatching();
+            }
+            builder.Build();
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
 }

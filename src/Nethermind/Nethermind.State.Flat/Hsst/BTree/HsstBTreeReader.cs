@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Hsst;
@@ -44,60 +45,46 @@ internal static class HsstBTreeReader
     {
         resultBound = default;
 
-        // Trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
-        // Read the fixed 5-byte tail first to learn RootPrefixLen / RootSize / KeyLength;
-        // the prefix bytes (if any) sit immediately before that.
-        // Smallest valid HSST: trailer (5 bytes) + root header (12 bytes).
-        if (bound.Length < 5 + 12) return false;
-        Span<byte> tailBuf = stackalloc byte[5];
-        if (!reader.TryRead(bound.Offset + bound.Length - 5, tailBuf)) return false;
-        int rootPrefixLen = tailBuf[0];
-        int rootSize = tailBuf[1] | (tailBuf[2] << 8);
-        int trailerKeyLength = tailBuf[3];
-        // tailBuf[4] is IndexType — already consumed by the HsstReader dispatcher.
+        // Trailer: [RootSize u16 LE][KeyLength u8][IndexType u8] (fixed 4 bytes). The root stores
+        // full keys (CommonPrefixLen == 0), so no prefix bytes ride the trailer.
+        // Smallest valid HSST: trailer (4 bytes) + root header (12 bytes).
+        if (bound.Length < 4 + 12) return false;
+        Span<byte> tailBuf = stackalloc byte[4];
+        if (!reader.TryRead(bound.Offset + bound.Length - 4, tailBuf)) return false;
+        int rootSize = tailBuf[0] | (tailBuf[1] << 8);
+        int trailerKeyLength = tailBuf[2];
+        // tailBuf[3] is IndexType — already consumed by the HsstReader dispatcher.
 
-        // Root prefix bytes seed the root's parentSeparator (non-root nodes get their
-        // prefix bytes from the parent's separator during descent; the root has no
-        // parent, so the bytes ride the trailer). Size to the actual prefix length
-        // (capped at 255 by the trailer's u8 field) rather than a fixed 128 bytes —
-        // saves stack frame in the common short-prefix case, and is correct even when
-        // the prefix runs to the full 255-byte cap.
-        scoped ReadOnlySpan<byte> rootPrefix = default;
-        if (rootPrefixLen > 0)
-        {
-            Span<byte> rootPrefixBuf = stackalloc byte[rootPrefixLen];
-            if (!reader.TryRead(bound.Offset + bound.Length - 5 - rootPrefixLen, rootPrefixBuf)) return false;
-            rootPrefix = rootPrefixBuf;
-        }
+        long rootStart = bound.Offset + bound.Length - 4 - rootSize;
+        long bufferEnd = bound.Offset + bound.Length - 4;
 
-        long trailerLen = 5L + rootPrefixLen;
-        long rootStart = bound.Offset + bound.Length - trailerLen - rootSize;
-        long scopeEnd = bound.Offset + bound.Length - trailerLen;
-
-        return TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStart, scopeEnd,
-            rootPrefix, trailerKeyLength, key, exactMatch, keyFirst, out resultBound);
+        return TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStart, bufferEnd,
+            trailerKeyLength, key, exactMatch, keyFirst, out resultBound);
     }
 
     /// <summary>
     /// Walk-only variant of <see cref="TrySeek"/> for callers that have already resolved the
-    /// BTree's root descriptor (start offset, scope end, root prefix bytes, trailer key length)
-    /// — typically because they cache it for the life of their backing container. Skips the
-    /// two trailer-region reads that <see cref="TrySeek"/> issues to recover the same values
-    /// and jumps straight into the node-walk loop.
+    /// BTree's root descriptor (start offset, buffer end, trailer key length) — typically because
+    /// they cache it for the life of their backing container. Skips the trailer-region read that
+    /// <see cref="TrySeek"/> issues to recover the same values and jumps straight into the
+    /// node-walk loop. The root stores full keys (<c>CommonPrefixLen == 0</c>), so the walk seeds
+    /// an empty parent separator.
     /// </summary>
     /// <remarks>
     /// <paramref name="rootStart"/> is the absolute byte offset of the root node's flag byte
     /// (the same value <see cref="TrySeek"/> computes as
-    /// <c>bound.Offset + bound.Length - trailerLen - rootSize</c>). <paramref name="scopeEnd"/>
-    /// is the absolute upper edge available to nodes — the trailer's lower edge. The bound is
-    /// still required because <see cref="DecodeEntry"/> uses it to derive entry-region offsets
-    /// and validate value lengths against the HSST's total span.
+    /// <c>bound.Offset + bound.Length - trailerLen - rootSize</c>). <paramref name="bufferEnd"/>
+    /// is the absolute ceiling for speculative node pins (see <see cref="TryLoadNode"/>): it only
+    /// bounds how far ahead a node read may pin so it cannot run past the readable region — it is
+    /// not a semantic node extent. Nodes self-size from their headers, so a pin window spilling
+    /// across following data (hashtable, sibling partitions) is harmless; any value at or before
+    /// the reader's length works. The bound is still required because <see cref="DecodeEntry"/>
+    /// uses it to derive entry-region offsets and validate value lengths against the HSST's span.
     /// </remarks>
     [SkipLocalsInit]
     public static bool TrySeekFromRoot<TReader, TPin>(
         scoped in TReader reader, Bound bound,
-        long rootStart, long scopeEnd,
-        scoped ReadOnlySpan<byte> rootPrefix,
+        long rootStart, long bufferEnd,
         int trailerKeyLength,
         scoped ReadOnlySpan<byte> key,
         bool exactMatch, bool keyFirst, out Bound resultBound)
@@ -111,15 +98,17 @@ internal static class HsstBTreeReader
         // lengths so callers can seek with a key prefix or sentinel.
         if (exactMatch && key.Length != trailerKeyLength) return false;
 
-        // parentSeparator for the current node — seeded with the trailer's root prefix
-        // for the root, then overwritten with each descended-through separator's full
+        // parentSeparator for the current node — empty for the root (it stores full keys,
+        // CommonPrefixLen == 0), then overwritten with each descended-through separator's full
         // bytes (CommonKeyPrefix || storedSlot in lex order). Entries don't have headers,
         // so the value is irrelevant once the cursor reaches one.
         Span<byte> separatorScratch = stackalloc byte[Math.Max(trailerKeyLength, 1)];
-        scoped ReadOnlySpan<byte> parentSeparator = rootPrefix;
+        scoped ReadOnlySpan<byte> parentSeparator = default;
         long currentAbsStart = rootStart;
 
         Span<byte> flagBuf = stackalloc byte[1];
+        Span<byte> htRec = stackalloc byte[HsstPartitionHashtable.NodeRecordFixedSize];
+        Span<byte> htBucket = stackalloc byte[HsstPartitionHashtable.BucketBytes];
         while (true)
         {
             if (!reader.TryRead(currentAbsStart, flagBuf)) return false;
@@ -131,13 +120,56 @@ internal static class HsstBTreeReader
                     exactMatch, keyFirst, trailerKeyLength, out resultBound);
             }
 
+            if (kind == BTreeNodeKind.Hashtable)
+            {
+                // Hashtable node: [Flag][27-byte record]. On an exact lookup probe one bucket and
+                // decode on a hit; on a miss (or a floor) descend into the partition's inner B-tree
+                // root the record carries.
+                if (!reader.TryRead(currentAbsStart + 1, htRec)) return false;
+                long innerRootOffset = ReadU48(htRec);
+                long innerBufferEnd = ReadU48(htRec[6..]);
+                long hashtableOffset = ReadU48(htRec[12..]);
+                long dataRegionStart = ReadU48(htRec[18..]);
+                int bucketCount = ReadU24(htRec[24..]);
+
+                if (exactMatch && bucketCount > 0)
+                {
+                    ulong hash = HsstPartitionHashtable.Hash(key);
+                    int bucket = HsstPartitionHashtable.BucketIndex(hash, bucketCount);
+                    ushort tag = HsstPartitionHashtable.Tag(hash);
+                    long bucketAbs = bound.Offset + hashtableOffset + (long)bucket * HsstPartitionHashtable.BucketBytes;
+                    if (reader.TryRead(bucketAbs, htBucket))
+                    {
+                        uint matchMask = HsstPartitionHashtable.MatchMask(htBucket, tag);
+                        while (matchMask != 0)
+                        {
+                            int way = BitOperations.TrailingZeroCount(matchMask);
+                            long entryAbs = bound.Offset + dataRegionStart + HsstPartitionHashtable.OffsetAt(htBucket, way);
+                            // exactMatch:true — DecodeEntry verifies the full key, so a tag collision
+                            // with a different key returns false and we try the next matching way.
+                            if (DecodeEntry<TReader, TPin>(in reader, bound, entryAbs, key, exactMatch: true, keyFirst, trailerKeyLength, out resultBound))
+                                return true;
+                            matchMask &= matchMask - 1;
+                        }
+                    }
+                }
+
+                // Miss or floor: fall through to this partition's inner B-tree from the recorded
+                // root. The inner root stores full keys (CommonPrefixLen == 0), so seed an empty
+                // parent separator.
+                parentSeparator = default;
+                currentAbsStart = bound.Offset + innerRootOffset;
+                bufferEnd = bound.Offset + innerBufferEnd;
+                continue;
+            }
+
             // The flag-byte read above faulted this node's page and warmed its TLB entry, so a prefetch
             // of the node body now lands (instead of being dropped on a TLB miss). Pull the keys the
             // floor-search is about to scan; overlaps with the separator copy below.
             reader.Prefetch(currentAbsStart);
 
             // Leaf or Intermediate — parse as a BTreeNode node.
-            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
+            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, bufferEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;
             using (pin)
             {
@@ -167,7 +199,7 @@ internal static class HsstBTreeReader
     /// derives the value position back-referentially from <c>flagByteStart − valueLength</c>.
     /// </summary>
     [SkipLocalsInit]
-    private static bool DecodeEntry<TReader, TPin>(
+    internal static bool DecodeEntry<TReader, TPin>(
         scoped in TReader reader, Bound bound, long absFlagByteStart,
         scoped ReadOnlySpan<byte> key, bool exactMatch, bool keyFirst,
         int trailerKeyLength, out Bound resultBound)
@@ -245,10 +277,17 @@ internal static class HsstBTreeReader
     /// the node fits inside the speculative window we keep that pin instead of re-pinning
     /// precisely. The forward layout means the prefetcher pulls keys/values during the header
     /// read. Cold path (oversized leaves) disposes the speculative pin and re-pins exactly.
+    ///
+    /// <paramref name="bufferEnd"/> is purely a buffer-availability ceiling: the speculative
+    /// window is clamped to <c>bufferEnd - absStart</c> so the pin can never run past the
+    /// readable region (<see cref="IHsstByteReader{TPin}.PinBuffer"/> throws on overflow rather
+    /// than clamping). It does not delimit the node — the node's size comes from its own header,
+    /// so a window that reads into following bytes (a trailing hashtable, the next partition) is
+    /// harmless. It need only be ≤ the reader's length and ≥ the node's true end.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryLoadNode<TReader, TPin>(
-        scoped in TReader reader, long absStart, long scopeEnd,
+        scoped in TReader reader, long absStart, long bufferEnd,
         ReadOnlySpan<byte> parentSeparator,
         out BTreeNodeReader node, out TPin pin)
         where TPin : struct, IBufferPin, allows ref struct
@@ -257,7 +296,7 @@ internal static class HsstBTreeReader
         node = default;
         pin = default;
 
-        long available = scopeEnd - absStart;
+        long available = bufferEnd - absStart;
         // 12 = fixed header bytes.
         if (available < 12) return false;
 
@@ -304,4 +343,15 @@ internal static class HsstBTreeReader
         node = BTreeNodeReader.ReadFromStart(pin.Buffer, 0, parentSeparator);
         return true;
     }
+
+    private static long ReadU48(scoped ReadOnlySpan<byte> src) =>
+        src[0]
+        | ((long)src[1] << 8)
+        | ((long)src[2] << 16)
+        | ((long)src[3] << 24)
+        | ((long)src[4] << 32)
+        | ((long)src[5] << 40);
+
+    private static int ReadU24(scoped ReadOnlySpan<byte> src) =>
+        src[0] | (src[1] << 8) | (src[2] << 16);
 }

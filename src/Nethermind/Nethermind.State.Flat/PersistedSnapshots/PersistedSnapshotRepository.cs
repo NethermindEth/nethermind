@@ -49,6 +49,13 @@ public sealed class PersistedSnapshotRepository(
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
+    // Operator-tunable partition thresholds for the per-address slot-prefix HSST builder.
+    // PartitionMaxSpanBytes stays at its default (a correctness bound, not a knob).
+    private readonly Hsst.BTree.HsstBTreeOptions _slotOptions = new()
+    {
+        PartitionThresholdBytes = config.PersistedSnapshotSlotPartitionThresholdBytes,
+        HashtableMinBytes = (int)config.PersistedSnapshotSlotHashtableMinBytes,
+    };
     private readonly StringLabel _tierLabel = new(arenaManager.Tier.Name);
     private readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotRepository>();
@@ -288,7 +295,7 @@ public sealed class PersistedSnapshotRepository(
         using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize))
         {
             PersistedSnapshotBuilder.Build<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
-                snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
+                snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom, _slotOptions);
             Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written, _tierLabel);
             (location, reservation) = arenaWriter.Complete();
         }

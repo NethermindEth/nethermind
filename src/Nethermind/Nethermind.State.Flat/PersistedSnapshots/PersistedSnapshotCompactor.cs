@@ -42,6 +42,13 @@ public class PersistedSnapshotCompactor(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
+    // Operator-tunable partition thresholds for the merged slot-prefix HSST. Same mapping as
+    // PersistedSnapshotRepository so base and compacted snapshots partition identically.
+    private readonly Hsst.BTree.HsstBTreeOptions _slotOptions = new()
+    {
+        PartitionThresholdBytes = config.PersistedSnapshotSlotPartitionThresholdBytes,
+        HashtableMinBytes = (int)config.PersistedSnapshotSlotHashtableMinBytes,
+    };
 
     /// <inheritdoc/>
     /// <remarks>
@@ -153,7 +160,7 @@ public class PersistedSnapshotCompactor(
             {
                 long sw = Stopwatch.GetTimestamp();
                 PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
-                    views, ref arenaWriter.GetWriter(), mergedBloom);
+                    views, ref arenaWriter.GetWriter(), mergedBloom, _slotOptions);
 
                 long len = arenaWriter.GetWriter().Written;
                 StringLabel sizeLabel = GetSizeLabel(compactSize);

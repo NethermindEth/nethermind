@@ -56,12 +56,6 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     private long _currentValueLength;
     private long _currentMetaStart;
 
-    // Root prefix bytes parsed from the HSST trailer at construction. Seeded as
-    // parentSeparator when DescendToLeaf loads the root; non-root descents pass
-    // `default` and rely on the value-only fast path in the reader (the enumerator
-    // never touches prefix-dependent BTreeNode APIs — only GetUInt64Value /
-    // EntryCount / BaseOffset).
-    private readonly byte[] _rootPrefix;
     private readonly long _trailerLen;
 
     public HsstBTreeEnumerator(scoped in TReader reader, Bound scope, bool keyFirst)
@@ -69,28 +63,19 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
         _scopeStart = scope.Offset;
         _scopeEnd = scope.Offset + scope.Length;
         _keyFirst = keyFirst;
-        _rootPrefix = [];
-        // BTree trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
-        // Root starts at scopeEnd - 5 - rootPrefixLen - rootSize.
-        // Smallest valid HSST: trailer (5 bytes) + root header (12 bytes).
-        if (scope.Length >= 5 + 12)
+        _trailerLen = 4L;
+        // BTree trailer: [RootSize u16 LE][KeyLength u8][IndexType u8] (fixed 4 bytes). The root
+        // stores full keys (CommonPrefixLen == 0), so no prefix bytes ride the trailer.
+        // Root starts at scopeEnd - 4 - rootSize.
+        // Smallest valid HSST: trailer (4 bytes) + root header (12 bytes).
+        if (scope.Length >= 4 + 12)
         {
-            Span<byte> tailBuf = stackalloc byte[5];
-            if (reader.TryRead(_scopeEnd - 5, tailBuf))
+            Span<byte> tailBuf = stackalloc byte[4];
+            if (reader.TryRead(_scopeEnd - 4, tailBuf))
             {
-                int rootPrefixLen = tailBuf[0];
-                int rootSize = tailBuf[1] | (tailBuf[2] << 8);
-                _keyLength = tailBuf[3];
-                _trailerLen = 5L + rootPrefixLen;
+                int rootSize = tailBuf[0] | (tailBuf[1] << 8);
+                _keyLength = tailBuf[2];
                 _rootAbsStart = _scopeEnd - _trailerLen - rootSize;
-                if (rootPrefixLen > 0)
-                {
-                    _rootPrefix = new byte[rootPrefixLen];
-                    if (!reader.TryRead(_scopeEnd - 5 - rootPrefixLen, _rootPrefix))
-                    {
-                        _rootAbsStart = -1;
-                    }
-                }
             }
             else
             {
@@ -143,17 +128,18 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// Descend leftmost from the node starting at <paramref name="absStart"/> down to a leaf,
     /// pushing (AbsStart, LastIdx=0) ancestor frames as we cross intermediate levels. On
     /// success, _depth and the leaf metaStart buffer are populated with _leafIdx=0;
-    /// returns false if a node fails to load or the tree exceeds MaxDepth. The root
-    /// node gets its prefix bytes from <see cref="_rootPrefix"/>; deeper nodes are
-    /// loaded with an empty parentSeparator since the enumerator only consumes value
-    /// slots (the reader tolerates an absent prefix for value-only callers).
+    /// returns false if a node fails to load or the tree exceeds MaxDepth. Every node is
+    /// loaded with an empty parentSeparator: the root stores full keys (CommonPrefixLen == 0)
+    /// and deeper nodes only have their value slots consumed by the enumerator (the reader
+    /// tolerates an absent prefix for value-only callers).
     /// </summary>
     private bool DescendToLeaf(scoped in TReader reader, long absStart, int depthHint)
     {
         long currentStart = absStart;
         int depth = depthHint;
-        long scopeEndMinusTrailer = _scopeEnd - _trailerLen;
+        long bufferEnd = _scopeEnd - _trailerLen;
         Span<byte> flagBuf = stackalloc byte[1];
+        Span<byte> htInnerRoot = stackalloc byte[6];
         while (depth < MaxDepth)
         {
             // Peek the flag byte to detect Entry-kind children (an entry record sitting
@@ -172,8 +158,22 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 return true;
             }
 
-            ReadOnlySpan<byte> parentSeparator = depth == 0 ? _rootPrefix : default;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, scopeEndMinusTrailer, parentSeparator, out BTreeNodeReader node, out TPin pin))
+            if ((BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Hashtable)
+            {
+                // Hashtable node (blob root or a directory leaf child): transparent to iteration —
+                // skip the buckets and descend into the partition's inner B-tree root (the first
+                // u48 of the node's record), at this same depth. Any ancestor directory frame stays
+                // intact, so ascent later advances to the next partition.
+                if (!reader.TryRead(currentStart + 1, htInnerRoot)) return false;
+                long innerRootOffset = htInnerRoot[0]
+                    | ((long)htInnerRoot[1] << 8) | ((long)htInnerRoot[2] << 16) | ((long)htInnerRoot[3] << 24)
+                    | ((long)htInnerRoot[4] << 32) | ((long)htInnerRoot[5] << 40);
+                currentStart = _scopeStart + innerRootOffset;
+                continue;
+            }
+
+            ReadOnlySpan<byte> parentSeparator = default;
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, bufferEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;
 
             using (pin)
@@ -264,15 +264,15 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// </summary>
     private bool AscendAndDescend(scoped in TReader reader)
     {
-        long scopeEndMinusTrailer = _scopeEnd - _trailerLen;
+        long bufferEnd = _scopeEnd - _trailerLen;
         while (_depth > 0)
         {
             _depth--;
             ref Ancestor anc = ref _ancestors[_depth];
             anc.LastIdx++;
 
-            ReadOnlySpan<byte> parentSeparator = _depth == 0 ? _rootPrefix : default;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, scopeEndMinusTrailer, parentSeparator, out BTreeNodeReader parent, out TPin parentPin))
+            ReadOnlySpan<byte> parentSeparator = default;
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, bufferEnd, parentSeparator, out BTreeNodeReader parent, out TPin parentPin))
             {
                 _depth = -2;
                 return false;

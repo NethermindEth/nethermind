@@ -78,6 +78,42 @@ public sealed record HsstBTreeOptions
     /// byte-length gate.</summary>
     public int MinIntermediateBytes { get; init; } = DefaultMinIntermediateBytes;
 
+    /// <summary>Default per-partition key-bytes budget for the partitioned builder
+    /// (<see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/>) — once the running sum
+    /// of entry key bytes reaches this, the partition is closed at the next group
+    /// boundary and a fresh one starts. 4 MiB.</summary>
+    public const long DefaultPartitionThresholdBytes = 4L * 1024 * 1024;
+
+    /// <summary>Hard cap on a single partition's data section for the partitioned
+    /// builder. The per-partition hashtable stores each entry as a <c>u48</c> forward
+    /// distance from the data-section start, so the data section (entries + inline
+    /// leaves) must stay under 256 TiB; the builder closes a partition once its data
+    /// span reaches this. In practice the key-bytes threshold
+    /// (<see cref="DefaultPartitionThresholdBytes"/>) always fires first — this is just a
+    /// correctness bound from the offset width, not a tuning knob.</summary>
+    public const long DefaultPartitionMaxSpanBytes = 1L << 48;
+
+    /// <summary>Minimum key-bytes for a <b>whole single-partition blob</b> to bother with a
+    /// hashtable. Below this the blob is emitted as a plain B-tree (0x07/0x01) with no
+    /// Hashtable node — a one- or two-level B-tree already reaches the entry — to save the space.
+    /// This gates partitioning itself: once a blob partitions (a directory of per-partition
+    /// Hashtable nodes, or a single root Hashtable node), <b>every</b> partition carries a
+    /// hashtable, so a directory never holds a hashtable-less partition. 4 KiB.</summary>
+    public const int DefaultHashtableMinBytes = 4 * 1024;
+
+    /// <summary>Per-partition key-bytes budget for the partitioned builder; a partition
+    /// is closed once the running sum of its entry key bytes reaches this.</summary>
+    public long PartitionThresholdBytes { get; init; } = DefaultPartitionThresholdBytes;
+
+    /// <summary>Hard cap on a single partition's on-disk span (see
+    /// <see cref="DefaultPartitionMaxSpanBytes"/>); the builder closes a partition before
+    /// it can exceed this regardless of <see cref="PartitionThresholdBytes"/>.</summary>
+    public long PartitionMaxSpanBytes { get; init; } = DefaultPartitionMaxSpanBytes;
+
+    /// <summary>Minimum key-bytes for a single-partition blob to use a hashtable; below it the
+    /// blob is a plain 0x07 B-tree (no partitioning). See <see cref="DefaultHashtableMinBytes"/>.</summary>
+    public int HashtableMinBytes { get; init; } = DefaultHashtableMinBytes;
+
     /// <summary>Shared default instance — used when callers pass <c>null</c>.</summary>
     public static HsstBTreeOptions Default { get; } = new();
 }
