@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading;
+using Collections.Pooled;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -67,7 +68,7 @@ public sealed class KademliaAdapter(
     {
         ArgumentNullException.ThrowIfNull(distances);
 
-        HashSet<Hash256> seen = new(MaxFindNodeRecords);
+        using PooledSet<Hash256> seen = new(MaxFindNodeRecords);
         using ArrayPoolListRef<Node> result = new(MaxFindNodeRecords);
         Hash256? excludedHash = excluding?.IdHash;
 
@@ -128,7 +129,7 @@ public sealed class KademliaAdapter(
         RegisterKnownRecord(receiver);
         Distances distances = GetLookupDistances(receiver, target);
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
-        NodesResponseHandler responseHandler = new(receiver, distances, _distance);
+        using NodesResponseHandler responseHandler = new(receiver, distances, _distance);
 
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 FINDNODE {findNode.RequestId} to {receiver:s}, distances: {FormatDistances(distances)}.");
         if (!await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token))
@@ -553,7 +554,7 @@ public sealed class KademliaAdapter(
 
     private NodeRecord[] GetFindNodeRecords(Distances distances, Node requester)
     {
-        HashSet<Hash256> seen = new(MaxFindNodeRecords);
+        using PooledSet<Hash256> seen = new(MaxFindNodeRecords);
         ArrayPoolListRef<NodeRecord> result = new(MaxFindNodeRecords);
         try
         {
@@ -593,7 +594,7 @@ public sealed class KademliaAdapter(
         int distance,
         Node requester,
         bool allowNonRoutableRelays,
-        HashSet<Hash256> seen,
+        PooledSet<Hash256> seen,
         ref ArrayPoolListRef<NodeRecord> result)
     {
         Node[] nodes = kademlia.Value.GetAllAtDistance(distance);

@@ -985,6 +985,7 @@
       "nethermind.network.discovery": {
         "type": "Project",
         "dependencies": {
+          "Collections.Pooled": "[1.0.82, )",
           "Nethermind.Api": "[1.39.0-unstable, )",
           "Nethermind.Crypto": "[1.39.0-unstable, )",
           "Nethermind.Facade": "[1.39.0-unstable, )",

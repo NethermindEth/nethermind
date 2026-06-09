@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Collections.Pooled;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -85,7 +86,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     internal List<Node> CreateBootNodes(INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig)
     {
         List<Node> bootNodes = [];
-        HashSet<Hash256> seen = [];
+        using PooledSet<Hash256> seen = new(networkConfig.Bootnodes.Length);
         BootNodeStats configuredStats = new();
         BootNodeStats defaultStats = new();
 
@@ -146,7 +147,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
     }
 
-    private BootNodeAddResult AddBootNode(List<Node> bootNodes, HashSet<Hash256> seen, NetworkNode networkNode)
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, PooledSet<Hash256> seen, NetworkNode networkNode)
     {
         if (networkNode.IsEnr)
         {
@@ -157,7 +158,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         return AddBootNode(bootNodes, seen, node);
     }
 
-    private BootNodeAddResult AddBootNode(List<Node> bootNodes, HashSet<Hash256> seen, NodeRecord nodeRecord)
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, PooledSet<Hash256> seen, NodeRecord nodeRecord)
     {
         if (TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node))
         {
@@ -167,7 +168,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         return BootNodeAddResult.Skipped;
     }
 
-    private BootNodeAddResult AddBootNode(List<Node> bootNodes, HashSet<Hash256> seen, Node node)
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, PooledSet<Hash256> seen, Node node)
     {
         if (!seen.Add(node.IdHash))
         {
