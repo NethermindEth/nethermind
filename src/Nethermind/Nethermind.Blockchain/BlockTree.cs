@@ -15,7 +15,6 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -27,7 +26,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 
 namespace Nethermind.Blockchain
 {
@@ -52,7 +50,6 @@ namespace Nethermind.Blockchain
 
         protected readonly ILogger Logger;
         protected readonly ISpecProvider SpecProvider;
-        private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
 
@@ -118,7 +115,6 @@ namespace Nethermind.Blockchain
             IBlockAccessListStore? balStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
-            IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
             ILogManager? logManager,
             long genesisBlockNumber = 0)
@@ -131,7 +127,6 @@ namespace Nethermind.Blockchain
             _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
             _balStore = balStore ?? throw new ArgumentNullException(nameof(balStore));
             SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
@@ -223,7 +218,6 @@ namespace Nethermind.Blockchain
                 SetTotalDifficulty(header);
             }
 
-            _bloomStorage.Store(header.Number, header.Bloom);
             _headerStore.Insert(header);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
@@ -296,38 +290,6 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Cannot accept new blocks at the moment.");
             }
 
-            using ArrayPoolList<(long, Bloom)> bloomToStore = new(headers.Count);
-            foreach (BlockHeader? header in headers)
-            {
-                if (header.Hash is null)
-                {
-                    throw new InvalidOperationException("An attempt to insert a block header without a known hash.");
-                }
-
-                if (header.Bloom is null)
-                {
-                    throw new InvalidOperationException("An attempt to insert a block header without a known bloom.");
-                }
-
-                if (header.Number == _genesisBlockNumber)
-                {
-                    throw new InvalidOperationException("Genesis block should not be inserted.");
-                }
-
-                bool totalDifficultyNeeded = (headerOptions & BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded) == 0;
-
-                if (header.TotalDifficulty is null && totalDifficultyNeeded)
-                {
-                    SetTotalDifficulty(header);
-                }
-
-                bloomToStore.Add((header.Number, header.Bloom));
-            }
-
-            Task bloomStoreTask = Task.Run(() =>
-            {
-                _bloomStorage.Store(bloomToStore);
-            });
 
             _headerStore.BulkInsert(headers);
 
@@ -395,8 +357,6 @@ namespace Nethermind.Blockchain
             }
 
             UpdateOrCreateLevel(blockInfos, isOnMainChain);
-
-            bloomStoreTask.Wait();
         }
 
         public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
@@ -1299,7 +1259,6 @@ namespace Nethermind.Blockchain
         /// </remarks>
         /// <returns>The hash of the block that was on main at this level before the move, or null if none.</returns>
         /// <exception cref="InvalidOperationException">Invalid block</exception>
-        [Todo(Improve.MissingFunctionality, "Recalculate bloom storage on reorg.")]
         private Hash256? MoveHeaderToMain(BlockHeader header, BatchWrite batch, bool wasProcessed)
         {
             if (Logger.IsTrace) Logger.Trace($"Moving {header.ToString(BlockHeader.Format.Short)} to main");
@@ -1324,7 +1283,6 @@ namespace Nethermind.Blockchain
                 level.SwapToMain(index.Value);
             }
 
-            _bloomStorage.Store(header.Number, header.Bloom);
             level.HasBlockOnMainChain = true;
             _chainLevelInfoRepository.PersistLevel(header.Number, level, batch);
 

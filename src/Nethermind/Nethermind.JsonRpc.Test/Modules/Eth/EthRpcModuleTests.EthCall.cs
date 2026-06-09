@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -194,7 +195,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create();
+        // Simulates pruned/missing patricia state (clears StateDb, persists the pruning trie store); flat has no equivalent.
+        using Context ctx = await Context.Create(useFlatDb: false);
         LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
@@ -891,7 +893,8 @@ public partial class EthRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
         object? blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson);
 
-        using Context ctx = await Context.Create();
+        // Pin to flat to validate the block-override fix under flat's (number, root)-keyed state addressing.
+        using Context ctx = await Context.Create(useFlatDb: true);
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 
@@ -1022,4 +1025,88 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
+    [TestCaseSource(nameof(ZeroBalanceWantCases))]
+    public async Task Eth_call_zero_balance_reports_full_required_balance(
+        string transactionJson, string? blockOverrideJson, string expectedDetailSubstring)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0x1111111111111111111111111111111111111111":{"balance":"0x0"}}""")!;
+        object transaction = JsonSerializer.Deserialize<object>(transactionJson)!;
+
+        object? blockOverride = blockOverrideJson is null ? null : JsonSerializer.Deserialize<object>(blockOverrideJson);
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        JToken parsed = JToken.Parse(serialized);
+        string message = parsed["error"]!["message"]!.Value<string>()!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
+            Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
+            Assert.That(message, Does.Contain(expectedDetailSubstring));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ZeroBalanceWantCases()
+    {
+        const string sender = "0x1111111111111111111111111111111111111111";
+        const string recipient = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+
+        // gasLimit=0x100000 (1,048,576) × maxFeePerGas=10 gwei → want = 10,485,760,000,000,000.
+        yield return new TestCaseData(
+            $$"""
+            {
+                "from": "{{sender}}",
+                "to":   "{{recipient}}",
+                "gas":  "0x100000",
+                "value": "0x0",
+                "maxFeePerGas": "0x2540BE400",
+                "maxPriorityFeePerGas": "0x3B9ACA00",
+                "type": "0x2"
+            }
+            """,
+            null,
+            "have 0 want 10485760000000000")
+        { TestName = "Eip1559: want includes gasLimit*maxFeePerGas" };
+
+        // gasLimit × maxFeePerGas + blobGas(131072) × maxFeePerBlobGas → 11,796,480,000,000,000.
+        yield return new TestCaseData(
+            $$"""
+            {
+                "from": "{{sender}}",
+                "to":   "{{recipient}}",
+                "gas":  "0x100000",
+                "value": "0x0",
+                "maxFeePerGas": "0x2540BE400",
+                "maxPriorityFeePerGas": "0x3B9ACA00",
+                "maxFeePerBlobGas": "0x2540BE400",
+                "blobVersionedHashes": ["0x0100000000000000000000000000000000000000000000000000000000000000"],
+                "type": "0x3"
+            }
+            """,
+            """{"blobBaseFee":"0x1"}""",
+            "have 0 want 11796480000000000")
+        { TestName = "Blob: want includes blobGas*maxFeePerBlobGas" };
+
+        // blobBaseFee block override = UInt256.MaxValue → blobGas × MaxValue overflows during fee calc.
+        yield return new TestCaseData(
+            $$"""
+            {
+                "from": "{{sender}}",
+                "to":   "{{recipient}}",
+                "gas":  "0x100000",
+                "value": "0x0",
+                "maxFeePerGas": "0x2540BE400",
+                "maxPriorityFeePerGas": "0x3B9ACA00",
+                "maxFeePerBlobGas": "0x2540BE400",
+                "blobVersionedHashes": ["0x0100000000000000000000000000000000000000000000000000000000000000"],
+                "type": "0x3"
+            }
+            """,
+            """{"blobBaseFee":"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}""",
+            "required balance exceeds 256 bits")
+        { TestName = "Blob: blob base fee overflow reports 256-bit limit" };
+    }
 }

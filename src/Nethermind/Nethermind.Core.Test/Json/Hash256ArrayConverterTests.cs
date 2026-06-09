@@ -60,4 +60,8 @@ public class Hash256ArrayConverterTests
     [TestCase("[\"0x" + "00" + "0123456789abcdeffedcba9876543210" + "0123456789abcdeffedcba98765432" + "ff\"]", TestName = "TooLong")]
     public void Read_WrongLengthElement_Throws(string json) =>
         Assert.That(() => JsonSerializer.Deserialize<Hash256?[]>(json, s_options), Throws.TypeOf<JsonException>());
+
+    [TestCase("[\"0x123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210\"]", TestName = "OddLengthElement")]
+    public void Read_OddLengthElement_Throws(string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<Hash256?[]>(json, s_options), Throws.InstanceOf<System.FormatException>());
 }
