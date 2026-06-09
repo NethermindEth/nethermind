@@ -325,6 +325,81 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
+    /// Reproduces the "stale balance, same nonce" symptom shape: each address is updated in a
+    /// DIFFERENT prefix of the 8 snapshots (balance changes, nonce fixed at 243), so the newest
+    /// version lives in a different snapshot per address and matchCount ranges 1..8 across the
+    /// merge. After compaction every account must carry its NEWEST balance — a newest-version-lost
+    /// bug in the partitioned merge surfaces here as a stale balance.
+    /// </summary>
+    [Test]
+    public void Compact_PerAddressNewestWins_AcrossVaryingMatchCount()
+    {
+        const int A = 64; // 0x0A address column
+        const int S = 8;
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 8 * 1024 * 1024);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 8 * 1024 * 1024, PersistedSnapshotTier.Persisted);
+            FlatDbConfig config = new()
+            {
+                CompactSize = 4,
+                MinCompactSize = 2,
+                PersistedSnapshotSlotPartitionThresholdBytes = 200,
+                PersistedSnapshotSlotHashtableMinBytes = 0,
+            };
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), config, new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            repo.LoadFromCatalog();
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
+                LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                minCompactSize: config.CompactSize * 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+
+            // newestSnap[a] = the last snapshot that updated address a (1..S).
+            int[] newestSnap = new int[A];
+            for (int a = 0; a < A; a++) newestSnap[a] = (a % S) + 1;
+
+            static UInt256 Bal(int s, int a) => (UInt256)(((ulong)s << 40) | ((ulong)a << 8) | 0x6D);
+
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            for (int s = 1; s <= S; s++)
+            {
+                StateId next = new(s, Keccak.Compute($"s{s}"));
+                SnapshotContent c = new();
+                for (int a = 0; a < A; a++)
+                {
+                    if (s > newestSnap[a]) continue; // address a is only updated in snapshots 1..newestSnap[a]
+                    // Same nonce in every update; only the balance changes (the symptom shape).
+                    c.Accounts[DistinctAddress(a + 1)] = Build.An.Account.WithNonce(243).WithBalance(Bal(s, a)).TestObject;
+                }
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                prev = next;
+            }
+
+            compactor.DoCompactSnapshot(prev);
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            try
+            {
+                for (int a = 0; a < A; a++)
+                {
+                    Address addr = DistinctAddress(a + 1);
+                    UInt256 expected = Bal(newestSnap[a], a);
+                    Assert.That(compacted!.TryGetAccount(addr, out Account? acc), Is.True, $"account {a} missing");
+                    Assert.That(acc!.Nonce, Is.EqualTo((UInt256)243), $"account {a} nonce");
+                    Assert.That(acc.Balance, Is.EqualTo(expected),
+                        $"account {a} STALE balance: newest update was snapshot {newestSnap[a]} (matchCount={newestSnap[a]})");
+                }
+            }
+            finally { compacted!.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir)) Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// The compacted snapshot's bloom (built by the merge value-merger, NOT a rescan) must
     /// contain every address + slot key. In production the read bundle uses this bloom as a
     /// pre-filter, so a false negative makes the bundle SKIP the snapshot → stale read → a

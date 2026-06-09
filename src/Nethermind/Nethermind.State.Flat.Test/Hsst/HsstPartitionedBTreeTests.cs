@@ -516,6 +516,17 @@ public class HsstPartitionedBTreeTests
         Assert.That(HsstTestUtil.TryGetFloor(data, Key(count + 5000), out byte[] floorVal), Is.True);
         Assert.That(floorVal, Is.EqualTo(Val(count - 1)));
         Assert.That(HsstTestUtil.TryGet(data, Key(count + 5000), out _), Is.False, "above-range key absent");
+
+        // ENUMERATION must yield every key in sorted order with the right value — this is what the
+        // compaction N-way merge relies on. A multi-level directory walked out of order / with gaps
+        // would corrupt the merge (stale/lost entries).
+        List<(byte[] key, byte[] val)> got = Enumerate(data);
+        Assert.That(got.Count, Is.EqualTo(count), "enumeration must yield every key exactly once");
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(got[i].key, Is.EqualTo(Key(i)), $"enumeration order wrong at {i} (keyFirst={keyFirst})");
+            Assert.That(got[i].val, Is.EqualTo(Val(i)), $"enumeration value wrong at {i} (keyFirst={keyFirst})");
+        }
     }
 
     // Force a bucket overflow: pick 12 strictly-ascending keys that ALL hash to bucket 0 (for
