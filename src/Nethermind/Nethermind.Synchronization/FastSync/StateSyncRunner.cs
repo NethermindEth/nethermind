@@ -54,6 +54,9 @@ public class StateSyncRunner(
                 }
 
                 await RunStateSyncRounds(token);
+
+                if (syncConfig.StaticSnapPivot && _logger.IsInfo)
+                    _logger.Info($"StaticSnapPivot: state sync complete at block {syncConfig.PivotNumber} - node is idle (no further sync without a consensus client). Set Sync.ExitOnSynced=true to exit on completion.");
             }
             finally
             {
