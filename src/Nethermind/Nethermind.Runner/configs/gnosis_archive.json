@@ -26,9 +26,6 @@
   "Metrics": {
     "NodeName": "Gnosis Archive"
   },
-  "Bloom": {
-    "IndexLevelBucketSizes": [ 16, 16, 16 ]
-  },
   "Pruning": {
     "Mode": "None"
   },

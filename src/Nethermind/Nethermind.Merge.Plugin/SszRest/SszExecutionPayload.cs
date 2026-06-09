@@ -262,7 +262,7 @@ public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload)
 
     public override ExecutionPayloadV4 AsExecutionPayload() => Inner;
 
-    [SszList(0x4000_0000)]
+    [SszList(0x0100_0000)]
     public byte[] BlockAccessList
     {
         get => Inner.BlockAccessList ?? [];

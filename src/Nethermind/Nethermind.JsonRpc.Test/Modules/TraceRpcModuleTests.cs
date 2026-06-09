@@ -1087,7 +1087,46 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = TraceCallMany(context, gas: 100_000);
+
+        Assert.That(traces.Data.Single().Action!.Gas, Is.LessThan(gasCap));
+    }
+
+    [Test]
+    public async Task Trace_callMany_without_gas_defaults_to_gas_cap_not_block_gas_limit()
+    {
+        Context context = new();
+        await context.Build();
+        long blockGasLimit = context.Blockchain.BlockTree.Head!.Header.GasLimit;
+        long gasCap = blockGasLimit * 10;
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> omittedGasTraces = TraceCallMany(context);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> explicitGasCapTraces = TraceCallMany(context, gas: gasCap);
+
+        Assert.That(omittedGasTraces.Result.Error, Is.Null);
+        Assert.That(explicitGasCapTraces.Result.Error, Is.Null);
+        Assert.That(omittedGasTraces.Data.Single().Action!.Gas, Is.EqualTo(explicitGasCapTraces.Data.Single().Action!.Gas));
+    }
+
+    [Test]
+    public async Task Trace_callMany_with_zero_gas_keeps_literal_zero_gas_semantics()
+    {
+        Context context = new();
+        await context.Build();
+        IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = 50_000;
+
+        // Force enumeration with .Single(): the intrinsic-gas check is hit inside
+        // TraceBlock, surfaced through the lazy IEnumerable returned in Data.
+        Assert.That(() => TraceCallMany(context, gas: 0).Data.Single(),
+            Throws.InstanceOf<InvalidTransactionException>()
+                .With.Message.Contains("intrinsic gas too low"));
+    }
+
+    private static ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> TraceCallMany(Context context, long? gas = null) =>
+        context.TraceRpcModule.trace_callMany(
             new(new(1)
             {
                 new()
@@ -1096,14 +1135,11 @@ public class TraceRpcModuleTests
                     {
                         From = TestItem.AddressA,
                         To = TestItem.AddressC,
-                        Gas = 100_000
+                        Gas = gas
                     },
                     TraceTypes = ["trace"]
                 }
             }));
-
-        Assert.That(traces.Data.Single().Action!.Gas, Is.LessThan(gasCap));
-    }
 
     [TestCase(0, 0, false)]
     [TestCase(2, 2, false)]

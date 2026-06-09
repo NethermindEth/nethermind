@@ -165,10 +165,23 @@ public class AddressTests
 
     [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
     [TestCase(1, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
+    // RLP nonce-encoding boundaries: single-byte (< 0x80), the 0x80 length-prefix boundary, and
+    // a multi-byte nonce. The derived address is consensus-critical, so these guard the encoding.
+    [TestCase(0x7f, "0xb0099f030fbd2b512080790d100a3a3819ce577f")]
+    [TestCase(0x80, "0x3b71de3573667d0860bff1e4d40d9e07264623aa")]
+    [TestCase(0xff, "0x198411bfc0fbbeef7194152584c712412e2f3ea5")]
+    [TestCase(0x100, "0x66136d11dbd7227e6f5ac5588797899704be8348")]
     public void Of_contract(long nonce, string expectedAddress)
     {
         Address address = ContractAddress.From(TestItem.AddressA, (UInt256)nonce);
         Assert.That(new Address(expectedAddress), Is.EqualTo(address));
+    }
+
+    [Test]
+    public void Of_contract_max_ulong_nonce()
+    {
+        Address address = ContractAddress.From(TestItem.AddressA, (UInt256)ulong.MaxValue);
+        Assert.That(new Address("0x7d707106c1e88d29f7585d237f9848e1c33cacfd"), Is.EqualTo(address));
     }
 
     [TestCaseSource(nameof(PointEvaluationPrecompileTestCases))]
