@@ -1309,6 +1309,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
 
+                // Diagnostic opcode frequency histogram; IsEnabled is a static readonly bool so the
+                // JIT removes this block entirely when the histogram is off (the default).
+                if (OpcodeHistogram.IsEnabled)
+                    OpcodeHistogram.Record(instruction);
+
                 // If cancellation is enabled and requested, throw. IsCancelled is an interface call
                 // on the tracer, so for cancelable execution (e.g. eth_call) we poll it every
                 // CancellationCheckInterval opcodes rather than on every opcode — removing a
@@ -1327,8 +1332,87 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 programCounter++;
                 opCodeCount++;
 
+                if (!TTracingInst.IsActive)
+                {
+                    // The highest-frequency fork-invariant opcodes are dispatched via direct calls:
+                    // the indirect call through the function-pointer table has an unpredictable
+                    // branch target (a pipeline flush on almost every opcode) and can never be
+                    // inlined by the JIT, while a direct call is predictable and inlinable.
+                    // Only opcodes whose table entry is identical in every fork may appear here,
+                    // and each case must call the exact instantiation the table would have used.
+                    // Gated on no tracing because the zkevm flavor builds its traced table with
+                    // OffFlag handlers, which a TTracingInst direct call would not match.
+                    switch (instruction)
+                    {
+                        case Instruction.POP:
+                            exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.JUMPDEST:
+                            exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.JUMP:
+                            exceptionType = EvmInstructions.InstructionJump(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.JUMPI:
+                            exceptionType = EvmInstructions.InstructionJumpIf(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.PUSH1:
+                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.PUSH2:
+                            exceptionType = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.DUP1:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.DUP2:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.DUP3:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.SWAP1:
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.SWAP2:
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.ADD:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.SUB:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpSub, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.LT:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpLt, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.GT:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpGt, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.ISZERO:
+                            exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.EQ:
+                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseEq>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.AND:
+                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseAnd>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.MLOAD:
+                            exceptionType = EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        case Instruction.MSTORE:
+                            exceptionType = EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            break;
+                        default:
+                            // Retrieve the opcode function pointer corresponding to the current instruction.
+                            // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
+                            exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
+                            break;
+                    }
+                }
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
-                if (Instruction.POP == instruction)
+                else if (Instruction.POP == instruction)
                 {
                     exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
                 }
