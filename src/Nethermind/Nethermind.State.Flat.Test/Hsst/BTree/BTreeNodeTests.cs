@@ -20,16 +20,13 @@ namespace Nethermind.State.Flat.Test.Hsst.BTree;
 public class BTreeNodeTests
 {
     // Read the root node from a full-HSST byte array.
-    // Trailer is [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
+    // Trailer is [RootSize u16 LE][KeyLength u8][IndexType u8] (fixed 4 bytes); the root stores
+    // full keys (CommonPrefixLen == 0), so it needs no inherited prefix.
     private static BTreeNodeReader ReadHsstRoot(byte[] data)
     {
-        int rootPrefixLen = data[data.Length - 5];
         int rootSize = data[data.Length - 4] | (data[data.Length - 3] << 8);
-        int rootStart = data.Length - 5 - rootPrefixLen - rootSize;
-        ReadOnlySpan<byte> rootPrefix = rootPrefixLen > 0
-            ? data.AsSpan(data.Length - 5 - rootPrefixLen, rootPrefixLen)
-            : default;
-        return BTreeNodeReader.ReadFromStart(data, rootStart, rootPrefix);
+        int rootStart = data.Length - 4 - rootSize;
+        return BTreeNodeReader.ReadFromStart(data, rootStart, default);
     }
 
     // ===== METADATA READING TESTS =====

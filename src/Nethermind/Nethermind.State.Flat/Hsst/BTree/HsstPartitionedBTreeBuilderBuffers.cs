@@ -30,10 +30,6 @@ public struct HsstPartitionedBTreeBuilderBuffers : IDisposable
     internal NativeMemoryList<byte> DirValues = new(256);
     internal NativeMemoryList<int> DirValueLengths = new(16);
 
-    // Holds the most-recently-closed partition's inner-root common-prefix bytes, so the
-    // single-partition fast path in Build() can append a plain 0x07 trailer.
-    internal byte[] RootPrefixScratch = new byte[256];
-
     public HsstPartitionedBTreeBuilderBuffers() { }
 
     internal void ResetForBuild()

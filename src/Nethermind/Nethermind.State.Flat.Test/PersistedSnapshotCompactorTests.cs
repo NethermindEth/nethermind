@@ -219,11 +219,11 @@ public class PersistedSnapshotCompactorTests
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        Span<byte> t = stackalloc byte[5];
-        if (!reader.TryRead(bound.Offset + bound.Length - 5, t)) return 0;
-        int rootPrefixLen = t[0];
-        int rootSize = t[1] | (t[2] << 8);
-        long bufferEnd = bound.Offset + bound.Length - (5 + rootPrefixLen);
+        // Trailer: [RootSize u16 LE][KeyLength u8][IndexType u8] (fixed 4 bytes); root stores full keys.
+        Span<byte> t = stackalloc byte[4];
+        if (!reader.TryRead(bound.Offset + bound.Length - 4, t)) return 0;
+        int rootSize = t[0] | (t[1] << 8);
+        long bufferEnd = bound.Offset + bound.Length - 4;
         return CountHashtableNodesFrom<TReader, TPin>(in reader, bound.Offset, bufferEnd - rootSize, bufferEnd);
     }
 

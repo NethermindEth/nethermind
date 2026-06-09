@@ -46,10 +46,12 @@ internal static class HsstPartitionHashtable
 
     /// <summary>
     /// Fixed size of a <see cref="BTreeNodeKind.Hashtable"/> node's metadata record (the bytes
-    /// after the node's flag byte, before the inner-root prefix bytes):
-    /// <c>[InnerRootOffset: 6][InnerBufferEnd: 6][HashtableOffset: 6][DataRegionStart: 6][HashtableBucketCount: u24][InnerRootPrefixLen: u8]</c>.
+    /// after the node's flag byte):
+    /// <c>[InnerRootOffset: 6][InnerBufferEnd: 6][HashtableOffset: 6][DataRegionStart: 6][HashtableBucketCount: u24]</c>.
+    /// The partition inner root stores full keys (<c>CommonPrefixLen == 0</c>), so the record
+    /// carries no inner-root prefix.
     /// </summary>
-    internal const int NodeRecordFixedSize = 28;
+    internal const int NodeRecordFixedSize = 27;
 
     /// <summary>Hard cap on the bucket count (≈ 16 M buckets, ≈ 1 GiB region) — a runaway guard
     /// that fits the u24 record field; real partitions are bounded by the key-bytes threshold

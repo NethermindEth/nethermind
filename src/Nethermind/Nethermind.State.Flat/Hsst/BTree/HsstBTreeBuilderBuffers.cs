@@ -62,13 +62,6 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     internal byte[]? IndexSepBufScratch = null;
     internal int[]? IndexSepLengthsScratch = null;
 
-    // Root node's first-entry full key, populated by HsstBTreeBuilder.BuildIndex at
-    // its final return so HsstBTreeBuilder.CopyRootPrefixBytes can supply the
-    // trailer's RootPrefix bytes from memory rather than re-reading from the data
-    // section.
-    // ArrayPool-backed for cross-build reuse; null until the first non-empty build.
-    internal byte[]? RootFirstKey = null;
-
     // Previous entry's full key, used by HsstBTreeBuilder.OnEntryAdded /
     // MaybeFlushBeforeEntry to compute online LCP across flushes (the pending-range
     // descriptor slice in <see cref="CurrentLevel"/> can shrink to zero on a flush,
@@ -124,7 +117,6 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         NextLevelFirstKeys.Dispose();
         if (CommonPrefixArr is not null) { ArrayPool<byte>.Shared.Return(CommonPrefixArr); CommonPrefixArr = null; }
         if (ValueScratch is not null) { ArrayPool<byte>.Shared.Return(ValueScratch); ValueScratch = null; }
-        if (RootFirstKey is not null) { ArrayPool<byte>.Shared.Return(RootFirstKey); RootFirstKey = null; }
         if (PrevKeyBuf is not null) { ArrayPool<byte>.Shared.Return(PrevKeyBuf); PrevKeyBuf = null; }
         if (IndexFirstSepScratch is not null) { ArrayPool<byte>.Shared.Return(IndexFirstSepScratch); IndexFirstSepScratch = null; }
         if (IndexSepBufScratch is not null) { ArrayPool<byte>.Shared.Return(IndexSepBufScratch); IndexSepBufScratch = null; }

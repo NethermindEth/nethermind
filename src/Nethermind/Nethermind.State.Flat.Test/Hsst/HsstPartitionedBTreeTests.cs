@@ -146,9 +146,9 @@ public class HsstPartitionedBTreeTests
 
     private static (long rootStart, long bufferEnd) Trailer(byte[] data)
     {
-        int rootPrefixLen = data[^5];
+        // Trailer: [RootSize u16 LE][KeyLength u8][IndexType u8] (fixed 4 bytes); root stores full keys.
         int rootSize = data[^4] | (data[^3] << 8);
-        long bufferEnd = data.Length - (5 + rootPrefixLen);
+        long bufferEnd = data.Length - 4;
         return (bufferEnd - rootSize, bufferEnd);
     }
 
@@ -189,7 +189,7 @@ public class HsstPartitionedBTreeTests
         }
     }
 
-    // u24 HashtableBucketCount at record bytes 24..26 (node = [Flag][28-byte record][prefix]).
+    // u24 HashtableBucketCount at record bytes 24..26 (node = [Flag][27-byte record]).
     private static int HashtableBucketCount(byte[] data, long nodeOffset)
     {
         int o = (int)nodeOffset + 1 + 24;

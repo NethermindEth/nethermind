@@ -29,7 +29,7 @@ public enum BTreeNodeKind : byte
     /// </summary>
     Intermediate = 1,
     /// <summary>
-    /// A hashtable-acceleration node: <c>[Flag][28-byte record][InnerRootPrefix]</c> where the
+    /// A hashtable-acceleration node: <c>[Flag][27-byte record]</c> where the
     /// record (see <see cref="HsstPartitionHashtable"/>) points at a per-partition bucket region
     /// plus the partition's inner B-tree root. On an exact-match walk the reader probes one bucket
     /// and, on a hit, decodes the entry directly; on a miss (or a floor / iteration) it descends

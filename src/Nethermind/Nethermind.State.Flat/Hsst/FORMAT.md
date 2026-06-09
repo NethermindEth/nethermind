@@ -38,12 +38,12 @@ A compact, immutable binary format for sorted key/value tables.
 
 | Variant | Bytes |
 |---|---|
-| **BTree** | `[Data Region (entries + inline page-local leaves)][Index Region (intermediates only)][RootPrefix: RootPrefixLen bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]` |
+| **BTree** | `[Data Region (entries + inline page-local leaves)][Index Region (intermediates only)][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]` (the root stores full keys, `CommonPrefixLen == 0`, so no prefix rides the trailer) |
 | **PackedArray** | `[Data][Summary L0]…[Summary L(D-1)][Metadata: 10 bytes][MetadataLength: u8 = 10][IndexType: u8 = 0x02]` |
 | **DenseByteIndex** | `[Value_{N-1}]…[Value_0][Ends: N·OffsetSize LE][Count: u8 = N − 1][OffsetSize: u8][IndexType: u8 = 0x04]` (values laid down high-tag-first; `OffsetSize ∈ {1, 2, 4, 6}`) |
 | **TwoByteSlotValue** | `[IndexType: u8 = 0x05][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Value_0]…[Value_{N-1}]` |
 | **TwoByteSlotValueLarge** | `[IndexType: u8 = 0x06][KeyCount: u16 LE = N − 1][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Value_0]…[Value_{N-1}]` |
-| **BTreeKeyFirst** | `[Data Region (key-first entries + inline page-local leaves)][Index Region (intermediates only)][RootPrefix: RootPrefixLen bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x07]` |
+| **BTreeKeyFirst** | `[Data Region (key-first entries + inline page-local leaves)][Index Region (intermediates only)][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x07]` (root stores full keys, `CommonPrefixLen == 0`) |
 | **Partitioned (hashtable-accelerated) BTree / BTreeKeyFirst** | A `BTree` (`0x01`) / `BTreeKeyFirst` (`0x07`) blob — **no separate index type** — whose directory leaf children are `Hashtable` nodes (see `BTreeNodeKind`): `[Partition_0]…[Partition_{K-1}][Hashtable node_0]…[Hashtable node_{K-1}][Directory Index Region][trailer … IndexType = 0x07 or 0x01]` (each partition = `[Data Region][Inner Index Region][(pad to 64)][Hashtable buckets]`; the Hashtable nodes are buffered and emitted bunched just before the directory). A single hashtabled partition is the root `Hashtable` node directly (no directory); a sub-threshold single partition degrades to a plain `0x01`/`0x07` blob. See the *Hashtable node* section. |
 
 The **index type byte** selects the variant by enumerated value (not a
@@ -54,7 +54,7 @@ byte instead (see their sections below):
 
 | Value | Name | Meaning |
 |---|---|---|
-| `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers aimed at the per-entry LEB128 length byte (key-after-value entry layout). Fixed key length recorded once in the trailer rather than per entry. The root's common-key-prefix bytes ride in the trailer (`RootPrefix`) — per-node headers store only `CommonPrefixLen`; non-root nodes inherit the prefix bytes from the parent's separator during descent, but the root has no parent, so its bytes sit in the trailer. |
+| `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers aimed at the per-entry LEB128 length byte (key-after-value entry layout). Fixed key length recorded once in the trailer rather than per entry. Per-node headers store only `CommonPrefixLen`; non-root nodes inherit the prefix bytes from the parent's separator during descent. The root has no parent, so it always stores full keys (`CommonPrefixLen == 0`) and needs no prefix in the trailer. |
 | `0x02` | `PackedArray` | Fixed-size key/value array with a recursive "summary" index. (Earlier revisions of the format carried an optional open-addressed hash table; that section has been removed.) |
 | `0x03` | _reserved_ | Previously `ByteTagMap`; do not reuse without bumping the wire format. |
 | `0x04` | `DenseByteIndex` | Single-byte-keyed map indexed directly by the tag byte; gap-filled with zero-length values. |
@@ -65,9 +65,8 @@ byte instead (see their sections below):
 
 Other values are reserved for future index strategies. The root B-tree node
 lives just before the BTree trailer
-(`[RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8]`,
-totalling `5 + RootPrefixLen` bytes) and is located by computing
-`root_start = HSST_end - 5 - RootPrefixLen - RootSize`.
+(`[RootSize u16 LE][KeyLength u8][IndexType u8]`, a fixed 4 bytes) and is located by computing
+`root_start = HSST_end - 4 - RootSize`.
 
 ### BTree variant
 
@@ -131,16 +130,13 @@ which the reader probes and then descends through (see the *Hashtable node*
 section).
 
 **Trailer.** The HSST tail is
-`[RootPrefix bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8]`,
-totalling `5 + RootPrefixLen` bytes. `RootSize` locates the root B-tree
-node via `root_start = HSST_end − 5 − RootPrefixLen − RootSize`.
-`RootPrefixLen` and the preceding `RootPrefix` bytes carry the root's
-`CommonKeyPrefix` — the per-node header stores only `CommonPrefixLen`, not
-the prefix bytes, because non-root nodes receive their prefix bytes from
-the parent's separator during descent; the root has no parent, so the
-bytes ride the trailer instead. `KeyLength` is the fixed key length every
-entry in this HSST uses (0..255), recorded once; `KeyLength = 0` when the
-HSST was built empty.
+`[RootSize: u16 LE][KeyLength: u8][IndexType: u8]`, a fixed 4 bytes. `RootSize` locates the
+root B-tree node via `root_start = HSST_end − 4 − RootSize`. The root always stores full keys
+(`CommonPrefixLen == 0`): the per-node header stores only `CommonPrefixLen`, and non-root nodes
+receive their prefix bytes from the parent's separator during descent, but the root has no
+parent — so it elides nothing and the trailer carries no prefix. `KeyLength` is the fixed key
+length every entry in this HSST uses (0..255), recorded once; `KeyLength = 0` when the HSST was
+built empty.
 
 **Why `MetadataStart` aims at `ValueLength` and not at the value.** Values
 are unbounded (KiB–MiB, including nested HSSTs) so `ValueLength` is LEB128.
@@ -170,13 +166,11 @@ index.
 
 `BTreeKeyFirst` (IndexType `0x07`) uses the same top-level layout as
 `BTree` — data region followed by an index region followed by the
-`[RootPrefix bytes][RootPrefixLen: u8][RootSize: u16 LE][KeyLength: u8][IndexType: u8]`
-trailer (`5 + RootPrefixLen` bytes, located via
-`root_start = HSST_end − 5 − RootPrefixLen − RootSize`) — and the same
-index node format (the index region itself is bit-for-bit identical).
-`RootPrefix` carries the root node's common-key-prefix bytes for the same
-reason as in `BTree` (see that section). Only the per-entry data-region
-bytes are reshaped:
+`[RootSize: u16 LE][KeyLength: u8][IndexType: u8]`
+trailer (a fixed 4 bytes, located via `root_start = HSST_end − 4 − RootSize`) — and the same
+index node format (the index region itself is bit-for-bit identical). The root stores full
+keys (`CommonPrefixLen == 0`) for the same reason as in `BTree` (see that section). Only the
+per-entry data-region bytes are reshaped:
 
 ```
 [FlagByte][FullKey: KeyLength bytes][ValueLength: LEB128][Value: V bytes]
@@ -228,11 +222,11 @@ measured from byte 0 of the HSST** (the first byte of Partition 0).
 
 ```
 [Partition_0]…[Partition_{K-1}][Hashtable node_0]…[Hashtable node_{K-1}][Directory Index Region]
-[DirRootPrefix: DirRootPrefixLen bytes][DirRootPrefixLen: u8][DirRootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x07 or 0x01]
+[DirRootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x07 or 0x01]
 ```
 
-The trailer is the ordinary `0x07`/`0x01` trailer and the directory root is located by
-the same arithmetic: `dir_root_start = HSST_end − 5 − DirRootPrefixLen − DirRootSize`.
+The trailer is the ordinary `0x07`/`0x01` 4-byte trailer and the directory root is located by
+the same arithmetic: `dir_root_start = HSST_end − 4 − DirRootSize`.
 The `Hashtable` nodes are **buffered** as partitions close and emitted **bunched** just
 before the directory, so they sit cache-local to the directory walk rather than
 scattered one-per-partition.
@@ -253,11 +247,11 @@ partition's start), so a partition's inner index can be walked with the whole-bl
 
 **Hashtable node.** A `Hashtable` node is a value-slot target the reader lands on the
 same way as any node — as a directory leaf child (multi-partition) or as the blob root
-(single partition). Its bytes are a flag byte then a 28-byte record then the inner root's
-prefix:
+(single partition). Its bytes are a flag byte then a fixed 27-byte record (the partition's
+inner root stores full keys, `CommonPrefixLen == 0`, so the node carries no inner-root prefix):
 
 ```
-[FlagByte (low 2 bits = Hashtable)][InnerRootOffset: 6 LE][InnerBufferEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCount: u24][InnerRootPrefixLen: u8][InnerRootPrefix: InnerRootPrefixLen bytes]
+[FlagByte (low 2 bits = Hashtable)][InnerRootOffset: 6 LE][InnerBufferEnd: 6 LE][HashtableOffset: 6 LE][DataRegionStart: 6 LE][HashtableBucketCount: u24]
 ```
 
 - **`InnerRootOffset`** — byte-0-relative start of the partition's inner B-tree
@@ -280,9 +274,9 @@ prefix:
   but **the writer never emits a `Hashtable` node with `0`**: a hashtable-less table
   is a plain `0x07`/`0x01` blob (no `Hashtable` node), so once a blob is partitioned
   every partition's node has a hashtable (`> 0`).
-- **`InnerRootPrefixLen` / `InnerRootPrefix`** — the inner root node's
-  common-key-prefix bytes (the root has no parent to inherit them from, exactly
-  as a `0x07` trailer's `RootPrefix`); fed to the inner-tree walk on fallback.
+
+The partition's inner root stores full keys (`CommonPrefixLen == 0`), so the inner-tree walk
+on a miss/floor is seeded with an empty prefix — the record carries no inner-root prefix.
 
 **Hashtable bucket region** — buckets only, no header (all sizing is in the node
 record, so the only access after reaching the node is the bucket cache line):
@@ -332,7 +326,8 @@ scan all 8 tags with one 128-bit equality compare:
    and verify the full key; on the first verified match the lookup is done.
 3. On any hashtable miss (no tag match, or key mismatch) — and always for a floor seek
    or iteration — the walk continues from the node's `InnerRootOffset` (bounded above by
-   `InnerBufferEnd`, seeded with `InnerRootPrefix`) into the partition's inner B-tree.
+   `InnerBufferEnd`, seeded with an empty prefix — the inner root stores full keys) into the
+   partition's inner B-tree.
 
 Floor lookups and iteration skip the hashtable entirely: the directory + each
 partition's inner index are globally key-sorted, so a forward walk over them is
@@ -341,9 +336,9 @@ to the node's `InnerRootOffset` and drains the inner B-tree, so an ancestor dire
 frame advances to the next partition when the inner tree is exhausted.
 
 **Single partition.** A blob with exactly one hashtabled partition skips the directory:
-the lone `Hashtable` node is the blob root (`RootSize → node`, `RootPrefixLen = 0`). A
-sub-threshold single partition (below the hashtable threshold) degrades to a plain
-`0x07`/`0x01` B-tree with no `Hashtable` node at all — byte-identical to a standalone build.
+the lone `Hashtable` node is the blob root (`RootSize → node`). A sub-threshold single
+partition (below the hashtable threshold) degrades to a plain `0x07`/`0x01` B-tree with no
+`Hashtable` node at all — byte-identical to a standalone build.
 
 **Restrictions and trade-offs.**
 
@@ -624,7 +619,7 @@ derived `Offset_N`).
 Each node (root, intermediate, or leaf) is forward-readable from its start
 offset (the leaf-pointer / child-pointer in the parent names that offset
 directly; the root is located via
-`root_start = HSST_end − 5 − RootPrefixLen − RootSize`).
+`root_start = HSST_end − 4 − RootSize`).
 The fixed-width metadata header sits at the front of the node so a single
 read pulls in the header plus the keys/values prefix in cache; readers
 parse forward into the keys section, then the values section.
@@ -687,8 +682,8 @@ node header** — they arrive from outside:
   parent's leaf/intermediate descender hands the matched separator (a
   full lex-order key constructed from the parent's `CommonKeyPrefix` plus
   the parent's stored suffix slot) to the child's parse routine.
-- For the root, from the HSST trailer's `RootPrefix` bytes (the root has
-  no parent to inherit from).
+- The root has no parent to inherit from, so it always stores full keys
+  (`CommonPrefixLen == 0`) and is parsed with an empty inherited prefix.
 
 **`CommonPrefixLen` is picked per node by the layout planner**
 (`BTreeNodeLayoutPlanner.Plan`) from the per-entry LCP array and the
@@ -701,9 +696,10 @@ intermediate consults it. Each node's planner then derives its own
 `min` of the sepLengths (so every entry has at least one suffix byte
 left) and at the u8 header field's 128-byte cap. Parents widen each
 separator to at least the child's `CommonPrefixLen` so a descender can
-hand the full prefix bytes to the child at parse time. The trailer's
-`RootPrefix` carries the **root node's** `CommonPrefixLen` bytes — the
-root has no parent to inherit them from.
+hand the full prefix bytes to the child at parse time. The **root node**
+is the exception: the builder forces its `CommonPrefixLen` to 0 (it stores
+full keys) since it has no parent to inherit a prefix from, so the trailer
+carries no prefix bytes.
 
 `KeySize` / slot semantics apply to the *suffixes* (the bytes left after
 the per-node `CommonPrefixLen` strip).
@@ -801,8 +797,8 @@ Keys section byte size** (= `4·N + tailBytes`), not a per-entry width.
 - `MetadataLength` applies only to the `PackedArray` variant (`0x02`),
   whose metadata is a fixed 10-byte struct preceded by a single
   `MetadataLength: u8 = 10` byte. The `BTree` / `BTreeKeyFirst` variants
-  have no `MetadataLength` field — their trailer is
-  `[RootPrefix][RootPrefixLen][RootSize][KeyLength][IndexType]`.
+  have no `MetadataLength` field — their trailer is the fixed 4-byte
+  `[RootSize][KeyLength][IndexType]`.
 - Per-entry value slots in B-tree index nodes are one of `{2, 3, 4, 6}`
   byte LE unsigned integers (width per the 2-bit `ValueSizeCode` in
   `Flags`). Combined with the mandatory 6-byte `BaseOffset`, a single
@@ -830,7 +826,7 @@ Writers / encoders:
 - `Hsst/BTree/HsstPartitionedBTreeBuilder.cs` — partitioned, hashtable-accelerated
   `0x07` / `0x01` writer, selected by a `keyFirst` ctor flag; drives a per-partition
   `HsstBTreeBuilder`, emits the 64-byte-aligned per-partition hashtable buckets, buffers
-  each partition's `Hashtable` node (`[Flag][28-byte record][prefix]`), then emits the
+  each partition's `Hashtable` node (`[Flag][27-byte record]`), then emits the
   nodes bunched and builds the trailing directory B-tree over them (via
   `HsstBTreeBuilder.RecordNodeChild`). Key-after-value mode adds a streaming
   `BeginValueWrite`/`FinishValueWrite` API (for the per-address column). Relies on
@@ -938,7 +934,7 @@ Tests that pin the wire format (rename / re-anchor when bytes move):
   `IndexType_Byte_Is_BTreeKeyFirst_At_Tail` and round-trip tests for the
   key-first variant (`0x07`).
 - `Nethermind.State.Flat.Test/Hsst/HsstPartitionedBTreeTests.cs` —
-  `MultiPartition_Tail_Is_KeyFirst_With_Directory_Of_Hashtable_Nodes`, the 28-byte
+  `MultiPartition_Tail_Is_KeyFirst_With_Directory_Of_Hashtable_Nodes`, the 27-byte
   `Hashtable`-node record / 64-byte bucket layout, single- and multi-partition splits
   (asserted structurally by walking the directory for `Hashtable` nodes — the tail is the
   ordinary `0x07`/`0x01`), hashtable hit, collision/overflow→fallback, every-KV read-back
