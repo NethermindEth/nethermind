@@ -21,8 +21,14 @@ public static class StatelessExecutor
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
         StatelessPayload payload = InputDecoder.Decode(data);
-        ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig.ChainId);
-        IReleaseSpec spec = specProvider.GetSpec(payload.ChainConfig.ActiveFork.Activation.ToForkActivation());
+        ISpecProvider rawSpecProvider = GetSpecProvider(payload.ChainConfig.ChainId);
+        // Pin spec to ActiveFork.Activation so synthetic-timestamp test fixtures
+        // (EEST blocks with header.timestamp ~= 0) keep using the intended spec
+        // throughout block processing, not the pre-Frontier spec picked from the header.
+        ForkActivation pinnedFork = payload.ChainConfig.ActiveFork.Activation.ToForkActivation();
+        ISpecProvider specProvider = new SingleReleaseSpecProvider(
+            rawSpecProvider.GetSpec(pinnedFork), rawSpecProvider.NetworkId, rawSpecProvider.ChainId);
+        IReleaseSpec spec = specProvider.GetSpec(pinnedFork);
         EthereumEcdsa ecdsa = new(payload.ChainConfig.ChainId);
 
         // Recover sender addresses for transactions,

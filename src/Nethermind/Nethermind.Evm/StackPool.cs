@@ -19,7 +19,11 @@ internal sealed class StackPool
         public readonly byte[] DataStack = dataStack;
     }
 
+#if ZK_EVM
+    private readonly ZkPool<StackItem> _stackPool = new();
+#else
     private readonly ConcurrentQueue<StackItem> _stackPool = new();
+#endif
 
     public void ReturnStacks(byte[] dataStack)
     {

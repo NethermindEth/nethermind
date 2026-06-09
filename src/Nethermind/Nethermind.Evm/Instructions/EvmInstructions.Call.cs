@@ -147,7 +147,7 @@ public static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCostsFast.CallCost) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
@@ -271,9 +271,22 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl
+#if ZK_EVM
+            , ref stack
+#endif
+            );
 
+        // Mainline keeps this out-of-line (icache locality for the common path). The ZisK
+        // guest counts executed instructions and has no icache, so the NoInlining call +
+        // 13-arg marshalling is pure overhead on every CALL - and the hot inline-precompile
+        // path lives in here; force-inline it back into InstructionCall (restores the
+        // pre-merge structure where the precompile CALL was inline).
+#if ZK_EVM
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#else
         [MethodImpl(MethodImplOptions.NoInlining)]
+#endif
         static EvmExceptionType CreateFullCallFrame(
             VirtualMachine<TGasPolicy> vm,
             ref TGasPolicy gas,
@@ -287,7 +300,11 @@ public static partial class EvmInstructions
             Address codeSource,
             ExecutionEnvironment env,
             in UInt256 callValue,
-            long gasLimitUl)
+            long gasLimitUl
+#if ZK_EVM
+            , ref EvmStack stack
+#endif
+            )
         {
             IWorldState state = vm.WorldState;
             // Take a snapshot of the state for potential rollback.
@@ -314,6 +331,24 @@ public static partial class EvmInstructions
                 // Output offset is inconsequential when output length is 0.
                 outputOffset = default;
             }
+
+#if ZK_EVM
+            // Precompiles run no bytecode: handle them inline, skipping the child frame's
+            // round trip through the ExecuteTransaction dispatch loop. Snapshot, balance
+            // subtraction and callEnv are already set up above, matching the framed path.
+            if (codeInfo.IsPrecompile)
+            {
+                return vm.InlinePrecompileCall<TTracingInst>(
+                    callEnv,
+                    TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
+                    outputOffset.ToLong(),
+                    outputLength.ToLong(),
+                    TOpCall.ExecutionType,
+                    TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
+                    in snapshot,
+                    ref stack);
+            }
+#endif
 
             // Rent a new call frame for executing the call.
             vm.ReturnData = VmState<TGasPolicy>.RentFrame(
