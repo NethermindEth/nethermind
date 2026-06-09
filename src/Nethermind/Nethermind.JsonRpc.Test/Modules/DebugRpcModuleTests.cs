@@ -150,7 +150,7 @@ public partial class DebugRpcModuleTests
     // Returns gas available at start of execution as a 32-byte uint256.
     private const string GasReturnContractAddress = "0xc200000000000000000000000000000000000000";
     private static object GasReturnContractStateOverride() => JsonSerializer.Deserialize<object>(
-        $$"""{"{{GasReturnContractAddress}}":{"code":"0x5a60005260206000f3"}}""")!;
+        $$$"""{"{{{GasReturnContractAddress}}}":{"code":"0x5a60005260206000f3"}}""")!;
 
     [Test]
     public async Task Debug_traceCall_caps_gas_to_gas_cap()
