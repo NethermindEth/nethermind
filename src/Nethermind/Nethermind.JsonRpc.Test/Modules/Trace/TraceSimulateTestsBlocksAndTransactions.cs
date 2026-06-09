@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
