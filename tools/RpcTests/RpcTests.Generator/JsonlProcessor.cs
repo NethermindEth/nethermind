@@ -2,18 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Nodes;
+using System.Threading.Tasks.Dataflow;
 
 namespace Nethermind.RpcTests.Generator;
 
-internal abstract class JsonlProcessor(FilePos[] sources)
+internal abstract class JsonlProcessor<T>(FilePos[] sources, ITargetBlock<T> target)
 {
     private const int LogPerLines = 1000;
     protected int RequestN;
     private int _lineN;
 
-    protected abstract Task ProcessEntryAsync(JsonNode json, FilePos pos, CancellationToken ct);
+    protected readonly ITargetBlock<T> Target = target;
 
-    protected async Task IterateLinesAsync(CancellationToken ct)
+    protected abstract Task ProcessEntryAsync(FilePos pos, JsonNode json, CancellationToken ct);
+
+    public async Task ProcessAllAsync(CancellationToken ct)
     {
         foreach (FilePos startLocation in sources)
         {
@@ -35,14 +38,16 @@ internal abstract class JsonlProcessor(FilePos[] sources)
                     foreach (JsonNode? arrayEntry in array)
                     {
                         if (arrayEntry is not null)
-                            await ProcessEntryAsync(arrayEntry, pos, ct);
+                            await ProcessEntryAsync(pos, arrayEntry, ct);
                     }
                 }
                 else
                 {
-                    await ProcessEntryAsync(entry, pos, ct);
+                    await ProcessEntryAsync(pos, entry, ct);
                 }
             }
         }
+
+        Target.Complete();
     }
 }

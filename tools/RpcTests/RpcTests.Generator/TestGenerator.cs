@@ -15,7 +15,6 @@ public static class TestGenerator
     private static async Task<int> GenerateFromReportAsync(ExecutionArgs args, CancellationToken ct)
     {
         Filter filter = new(args);
-        ReportReader reader = new(args.Sources, filter);
         await using TestWriter writer = new(filter, args.OutputPath);
 
         BufferBlock<TestCase> requestsBuffer = new(new DataflowBlockOptions
@@ -30,7 +29,8 @@ public static class TestGenerator
 
         requestsBuffer.LinkTo(writerBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
-        await reader.ReadIntoAsync(requestsBuffer, ct);
+        ReportProcessor processor = new(args.Sources, requestsBuffer, filter);
+        await processor.ProcessAllAsync(ct);
         await writerBlock.Completion;
 
         return writer.OutputCount;
@@ -42,7 +42,6 @@ public static class TestGenerator
         httpClient.Timeout = TimeSpan.FromMinutes(5);
 
         Filter filter = new(args);
-        RequestReader reader = new(args.Sources, filter);
         RequestSender sender = new(client, httpClient);
         await using TestWriter writer = new(filter, args.OutputPath);
 
@@ -64,7 +63,8 @@ public static class TestGenerator
         requestsBuffer.LinkTo(senderBlock, new DataflowLinkOptions { PropagateCompletion = true });
         senderBlock.LinkTo(writerBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
-        await reader.ReadIntoAsync(requestsBuffer, ct);
+        RequestProcessor processor = new(args.Sources, requestsBuffer, filter);
+        await processor.ProcessAllAsync(ct);
         await writerBlock.Completion;
         return writer.OutputCount;
     }

@@ -6,26 +6,19 @@ using System.Threading.Tasks.Dataflow;
 
 namespace Nethermind.RpcTests.Generator;
 
-internal class ReportReader(FilePos[] sources, Filter filter) : JsonlProcessor(sources)
+internal class ReportProcessor(FilePos[] sources, ITargetBlock<TestCase> target, Filter filter)
+    : JsonlProcessor<TestCase>(sources, target)
 {
     private readonly Dictionary<string, TestInfo> _pendingRequests = [];
-    private ITargetBlock<TestCase> _target = null!;
 
-    public async Task ReadIntoAsync(ITargetBlock<TestCase> target, CancellationToken ct)
-    {
-        _target = target;
-        await IterateLinesAsync(ct);
-        target.Complete();
-    }
-
-    protected override async Task ProcessEntryAsync(JsonNode json, FilePos pos, CancellationToken ct)
+    protected override async Task ProcessEntryAsync(FilePos pos, JsonNode json, CancellationToken ct)
     {
         if (json["response"] is { } response && response.GetId() is { } responseId)
         {
             if (!_pendingRequests.Remove(responseId, out TestInfo? request))
                 Console.Error.WriteLine($"Request not found for response id: {responseId}");
             else
-                await _target.SendAsync(new TestCase(request, response), ct);
+                await Target.SendAsync(new TestCase(request, response), ct);
             return;
         }
 
