@@ -101,9 +101,6 @@ internal static unsafe class BN254
                 if (!DeserializeG2(data + i + 64, out mclBnG2 g2, out bool g2Infinity))
                     return false;
 
-                // Skip if g1 or g2 are the point at infinity. DeserializeG1/G2 already detect this
-                // from the (cheaper) all-zero input-byte check, so reuse that instead of re-scanning
-                // the deserialized ~96B G1 / ~192B G2 structs with a second SIMD pass per pair.
                 if (g1Infinity || g2Infinity)
                     continue;
 
