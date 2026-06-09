@@ -50,6 +50,27 @@ internal class XdcBlockProcessorTests
         Assert.That(ctx.PrevRandao, Is.EqualTo(new ValueHash256(expectedPrevRandaoHex)));
     }
 
+    [Test]
+    public void PrepareBlockForProcessing_PreservesSubnetHeaderFields()
+    {
+        XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
+        builder.WithNextValidators([Address.FromNumber(1)]);
+        builder.WithValidators([Address.FromNumber(2)]);
+        builder.WithPenalties([Address.FromNumber(3)]);
+        XdcSubnetBlockHeader header = builder.TestObject;
+
+        Block preparedBlock = _processor.PrepareBlockForProcessing(Build.A.Block.WithHeader(header).TestObject);
+
+        Assert.That(preparedBlock.Header, Is.TypeOf<XdcSubnetBlockHeader>());
+        XdcSubnetBlockHeader preparedHeader = (XdcSubnetBlockHeader)preparedBlock.Header;
+        Assert.Multiple(() =>
+        {
+            Assert.That(preparedHeader.NextValidators, Is.EqualTo(header.NextValidators));
+            Assert.That(preparedHeader.Validators, Is.EqualTo(header.Validators));
+            Assert.That(preparedHeader.Penalties, Is.EqualTo(header.Penalties));
+        });
+    }
+
     private class TestableXdcBlockProcessor : XdcBlockProcessor
     {
         public TestableXdcBlockProcessor() : base(
@@ -69,5 +90,8 @@ internal class XdcBlockProcessorTests
 
         public new BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)
             => base.CreateBlockExecutionContext(header, spec);
+
+        public new Block PrepareBlockForProcessing(Block block)
+            => base.PrepareBlockForProcessing(block);
     }
 }
