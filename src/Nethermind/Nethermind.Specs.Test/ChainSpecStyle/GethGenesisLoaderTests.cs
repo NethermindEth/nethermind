@@ -130,6 +130,11 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadHoodiChainSpec();
 
+        // Null/empty preconditions outside the scope — subsequent asserts deref these
+        Assert.That(chainSpec.Genesis, Is.Not.Null);
+        Assert.That(chainSpec.Allocations, Is.Not.Empty);
+        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.ChainId, Is.EqualTo(560048));
@@ -148,13 +153,10 @@ public class GethGenesisLoaderTests
             Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(1742999832));
             Assert.That(chainSpec.OsakaTimestamp, Is.EqualTo(1761677592));
 
-            Assert.That(chainSpec.Genesis, Is.Not.Null);
             Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x2255100));
 
-            Assert.That(chainSpec.Allocations, Is.Not.Empty);
             Assert.That(chainSpec.Allocations[Address.Zero].Balance, Is.EqualTo(UInt256.One));
 
-            Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
             Assert.That(chainSpec.Parameters.BlobSchedule!.Count, Is.EqualTo(3));
 
             Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));

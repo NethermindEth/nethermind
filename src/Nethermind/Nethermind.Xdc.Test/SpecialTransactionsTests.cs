@@ -883,11 +883,10 @@ internal class SpecialTransactionsTests
 
         // Get receipts of the block after (i.e., the block that included the SignTx)
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block.Hash!);
+        Assert.That(receipts, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipts, Is.Not.Null);
             Assert.That(receipts, Is.Not.Empty);
-
             Assert.That(receipts.Any(r => r.Recipient == spec.BlockSignerContract), Is.True);
         }
     }

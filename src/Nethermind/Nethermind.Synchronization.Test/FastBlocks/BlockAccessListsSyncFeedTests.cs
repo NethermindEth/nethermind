@@ -228,10 +228,10 @@ public class BlockAccessListsSyncFeedTests
         Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Active));
 
         using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+        Assert.That(batch, Is.Not.Null);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(batch, Is.Not.Null);
             Assert.That(batch.Prioritized, Is.True);
             Assert.That(batch.Infos[0], Is.EqualTo(block3Info));
             Assert.That(batch.Infos[1], Is.EqualTo(block2Info));

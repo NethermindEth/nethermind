@@ -615,22 +615,22 @@ public partial class EngineModuleTests
         Hash256 newHeadHash = executionPayload.BlockHash;
         ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+
+        Hash256? actualFinalizedHash = chain.BlockTree.FinalizedHash;
+        BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Finalized).Data;
+        Assert.That(blockForRpc, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(forkchoiceUpdatedResult.Data.PayloadId, Is.EqualTo(null));
 
-            Hash256? actualFinalizedHash = chain.BlockTree.FinalizedHash;
             Assert.That(actualFinalizedHash, Is.Not.Null);
             Assert.That(actualFinalizedHash, Is.EqualTo(startingHead));
 
-            BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Finalized).Data;
-            Assert.That(blockForRpc, Is.Not.Null);
-            actualFinalizedHash = blockForRpc.Hash;
-            Assert.That(actualFinalizedHash, Is.Not.Null);
-            Assert.That(actualFinalizedHash, Is.EqualTo(startingHead));
+            Assert.That(blockForRpc.Hash, Is.Not.Null);
+            Assert.That(blockForRpc.Hash, Is.EqualTo(startingHead));
 
-            Assert.That(chain.BlockFinalizationManager.LastFinalizedHash, Is.EqualTo(actualFinalizedHash));
+            Assert.That(chain.BlockFinalizationManager.LastFinalizedHash, Is.EqualTo(blockForRpc.Hash));
         }
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, startingHead, startingHead);
     }
@@ -647,20 +647,20 @@ public partial class EngineModuleTests
         Hash256 newHeadHash = executionPayload.BlockHash;
         ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+
+        Hash256? actualSafeHash = chain.BlockTree.SafeHash;
+        BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Safe).Data;
+        Assert.That(blockForRpc, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(forkchoiceUpdatedResult.Data.PayloadId, Is.EqualTo(null));
 
-            Hash256? actualSafeHash = chain.BlockTree.SafeHash;
             Assert.That(actualSafeHash, Is.Not.Null);
             Assert.That(actualSafeHash, Is.EqualTo(startingHead));
 
-            BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Safe).Data;
-            Assert.That(blockForRpc, Is.Not.Null);
-            actualSafeHash = blockForRpc.Hash;
-            Assert.That(actualSafeHash, Is.Not.Null);
-            Assert.That(actualSafeHash, Is.EqualTo(startingHead));
+            Assert.That(blockForRpc.Hash, Is.Not.Null);
+            Assert.That(blockForRpc.Hash, Is.EqualTo(startingHead));
         }
 
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, startingHead, startingHead);

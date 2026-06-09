@@ -58,14 +58,13 @@ public class ForensicsTests
         QuorumCertificate[] highestCommittedQcs = forensicsProcessor.GetHighestCommittedQcsSnapshot();
         XdcBlockHeader? targetParentHeader = (XdcBlockHeader?)blockchain.BlockTree.FindHeader(targetHeader.ParentHash!);
         Assert.That(targetParentHeader, Is.Not.Null);
+        Assert.That(targetParentHeader.ExtraConsensusData, Is.Not.Null);
+        Assert.That(targetHeader.ExtraConsensusData, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(highestCommittedQcs.Length, Is.EqualTo(3));
-            Assert.That(targetParentHeader.ExtraConsensusData, Is.Not.Null);
-            Assert.That(targetHeader.ExtraConsensusData, Is.Not.Null);
-
-            Assert.That(highestCommittedQcs[0], Is.EqualTo(targetParentHeader.ExtraConsensusData!.QuorumCert));
-            Assert.That(highestCommittedQcs[1], Is.EqualTo(targetHeader.ExtraConsensusData!.QuorumCert));
+            Assert.That(highestCommittedQcs[0], Is.EqualTo(targetParentHeader.ExtraConsensusData.QuorumCert));
+            Assert.That(highestCommittedQcs[1], Is.EqualTo(targetHeader.ExtraConsensusData.QuorumCert));
             Assert.That(highestCommittedQcs[2], Is.EqualTo(context.HighestQC));
         }
     }
