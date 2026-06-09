@@ -109,8 +109,7 @@ public class EraImporter(
 
         using IEraStore _ = eraStore;
 
-        ProgressLogger progressLogger = new("Era import", logManager);
-        progressLogger.Reset(0, to - from + 1);
+        using ProgressReporter progress = new("Era import", logManager, to - from + 1);
         long blocksProcessed = 0;
 
         using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
@@ -167,7 +166,6 @@ public class EraImporter(
         {
             await ImportBlock(blockNumber);
         }
-        progressLogger.LogProgress();
 
         if (_logger.IsInfo) _logger.Info($"Finished history import from {from} to {to}");
 
@@ -208,12 +206,7 @@ public class EraImporter(
             else
                 InsertBlockAndReceipts(block, receipt, to);
 
-            long processed = Interlocked.Increment(ref blocksProcessed);
-            if (processed % 10000 == 0)
-            {
-                progressLogger.Update(processed);
-                progressLogger.LogProgress();
-            }
+            progress.Update(Interlocked.Increment(ref blocksProcessed));
         }
     }
 

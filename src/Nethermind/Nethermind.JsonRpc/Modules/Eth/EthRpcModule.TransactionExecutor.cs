@@ -67,8 +67,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 clonedHeader.GasUsed = 0;
-                _blockOverride?.ApplyOverrides(clonedHeader);
 
+                // The block override is applied later, inside the bridge, after the read-only state scope is opened
+                // on this (base) header — so the overridden block number does not leak into state selection.
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
 
@@ -132,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, token);
+                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverride, token);
 
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
@@ -178,7 +179,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverride, token);
 
                 string? errorMessage = result.Error;
                 if (!result.ExecutionReverted && !result.InputError && errorMessage is not null)

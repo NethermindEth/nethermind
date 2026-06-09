@@ -65,7 +65,7 @@ public class SyncInfoDecoderTests
         Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcProperties());
+        Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());
     }
 
     [Test]
@@ -92,7 +92,7 @@ public class SyncInfoDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcProperties());
+        Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());
     }
 
     [Test]

@@ -43,6 +43,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
+    internal bool IsDisposed => Volatile.Read(ref _isDisposed);
+
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
