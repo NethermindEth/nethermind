@@ -732,6 +732,12 @@ public class SyncPeerPoolTests
         return peers;
     }
 
-    private async Task WaitForPeersInitialization(Context ctx) =>
-        await Wait.ForCondition(() => ctx.Pool.AllPeers.All(p => p.IsInitialized), TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(50));
+    private async Task WaitForPeersInitialization(Context ctx)
+    {
+        bool initialized = await Wait.ForCondition(
+            () => ctx.Pool.AllPeers.All(p => p.IsInitialized),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromMilliseconds(50));
+        Assert.That(initialized, Is.True, "peers did not initialize in time");
+    }
 }
