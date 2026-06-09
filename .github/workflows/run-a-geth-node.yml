@@ -1,43 +1,87 @@
-name: "Spawn a pruned Geth node"
-
-# Spawns a pruned Geth node (snap sync, --gcmode full) through the smoke-tests
-# framework in post-merge-smoke-tests: dispatch run-smoketests.yml with a Geth
-# node-set config, wait for the machines to be created, and return the node's RPC
-# URL. Teardown is handled by the framework (timeout in metadata.json + the hourly
-# destroy-smoketests.yml cron), the same as every other smoke-tests node.
+name: "Run a Geth node with selected configuration"
 
 on:
   workflow_call:
     inputs:
-      network:
-        description: "Network to sync (mainnet, sepolia, hoodi, ...)."
-        type: string
-        default: "mainnet"
-        required: false
-      allowed_ips:
-        description: "Comma-separated firewall IPs allowed to reach the node (e.g. the runner egress)."
-        type: string
+      custom_run_id:
+        description: "Run ID used for artifacts save"
         default: ""
         required: false
-      timeout:
-        description: "Hours before the smoke-tests framework reaps the node."
         type: string
-        default: "24"
+      network:
+        description: "Select a network on which You want to run a node"
+        default: "mainnet"
+        required: false
+        type: string
+      cl_client:
+        description: "Select Consensus Layer Client to run node against"
+        default: "lighthouse"
+        required: false
+        type: string
+      additional_options:
+        type: string
+        description: "A Json property which allows to customize node even more"
+        default: '{"timeout":"24", "ssh_keys":"", "allowed_ips":"", "custom_machine_type": ""}'
         required: false
     outputs:
+      base_tag:
+        description: ""
+        value: ${{ jobs.create_docker_image.outputs.base_tag }}
+      run_id:
+        description: ""
+        value: ${{ jobs.trigger_node_and_vm_creation.outputs.run_id }}
       rpc_url:
-        description: "HTTP JSON-RPC URL of the spawned Geth node."
-        value: ${{ jobs.create_geth_node.outputs.geth_rpc_url }}
+        description: ""
+        value: ${{ jobs.trigger_node_and_vm_creation.outputs.rpc_url }}
 
 jobs:
-  create_geth_node:
-    name: Spawn pruned Geth node
+  create_docker_image:
     runs-on: ubuntu-latest
     outputs:
-      geth_rpc_url: ${{ steps.scrape.outputs.geth_rpc_url }}
+      base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Prepare docker tag
+        id: prepare_ref
+        run: |
+          REF_NAME=${{ github.ref }}
+          CLEAN_REF=geth-$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
+
+      - name: Set BASE_TAG
+        id: set-base-tag
+        run: |
+          # Short, letter-prefixed, low-collision tag mixing the run ID with entropy
+          # (kept brief because smoke-tests node/Terraform names derive from it).
+          BASE_TAG="g$(echo "${GITHUB_RUN_ID}-$(shuf -i 100000-999999 -n 1)" | sha256sum | head -c 8)"
+          echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
+          echo "base_tag=$BASE_TAG" >> $GITHUB_OUTPUT
+
+      # Geth uses the prebuilt ethereum/client-go image, so (unlike the Nethermind
+      # workflow) no publish-docker build is triggered here.
+
+  trigger_node_and_vm_creation:
+    needs: create_docker_image
+    runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.wait.outputs.run_id }}
+      rpc_url: ${{ steps.specs.outputs.rpc_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
 
       - name: Authenticate App
         id: gh-app
@@ -47,37 +91,56 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           repositories: "nethermind,post-merge-smoke-tests"
 
-      - name: Build Geth smoke-tests config and dispatch
-        id: dispatch
+      - name: Prepare ref
+        id: prepare_ref
+        run: |
+          REF_NAME=${{ github.ref }}
+          # Geth-prefixed so its rpc-url artifact never collides with the Nethermind one.
+          CLEAN_REF=geth-$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
+
+      - name: Extract Variables
+        id: extract_variables
+        run: |
+          echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
+          echo "timeout=$(echo '${{ inputs.additional_options }}' | jq -r .timeout)" >> $GITHUB_OUTPUT
+          echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
+          echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
+
+      - name: Trigger Node creation Repo Action
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
           NETWORK: ${{ inputs.network }}
-          ALLOWED_IPS: ${{ inputs.allowed_ips }}
-          TIMEOUT: ${{ inputs.timeout }}
+          CL_CLIENT: ${{ inputs.cl_client }}
+          ALLOWED_IPS: ${{ steps.extract_variables.outputs.allowed_ips }}
+          MACHINE_TYPE: ${{ steps.extract_variables.outputs.custom_machine_type }}
+          TIMEOUT: ${{ steps.extract_variables.outputs.timeout }}
         run: |
           set -euo pipefail
-          # Short, letter-prefixed, low-collision tag mixing the run ID with entropy
-          # (kept brief because smoke-tests node/Terraform names derive from it).
-          base_tag="g$(echo "${GITHUB_RUN_ID}-$(shuf -i 100000-999999 -n 1)" | sha256sum | head -c 8)"
-          echo "base_tag=$base_tag" >> "$GITHUB_OUTPUT"
+          [ "$ALLOWED_IPS" == "null" ] && ALLOWED_IPS=""
+          [ "$MACHINE_TYPE" == "null" ] && MACHINE_TYPE=""
 
-          config_json=$(jq -cn --arg net "$NETWORK" '{
+          # Fast/minimal-history pruned Geth (snap sync, --gcmode full), declared in the
+          # smoke-tests node-set config schema. gh workflow run (vs benc-uk) is used so
+          # config_json can be passed as a value without JSON-string escaping.
+          config_json=$(jq -cn --arg net "$NETWORK" --arg cl "$CL_CLIENT" --arg mt "$MACHINE_TYPE" '{
             node_name_prefix: "RpcCmp-geth",
             el: [{client: "geth", image: "ethereum/client-go:stable", alias: "", convert_to_paprika: "false"}],
-            el_extra_flags: {geth: ["--syncmode=snap", "--gcmode=full"]},
+            el_extra_flags: {geth: ["--syncmode=snap", "--gcmode=full", "--history.transactions=128", "--history.state=128"]},
             metrics_collection: false,
-            cl: [{client: "lighthouse", image: ""}],
-            cl_extra_flags: {lighthouse: []},
+            cl: [{client: $cl, image: ""}],
+            cl_extra_flags: {($cl): []},
             networks: [$net],
             branch: ["core"],
             fee_recipient: ["0x0000000000000000000000000000000000000000"],
+            node_custom_types: {("geth_" + $net): $mt},
             tests_config: {categories: "", branch: ""}
           }')
 
           gh workflow run run-smoketests.yml \
             --repo NethermindEth/post-merge-smoke-tests --ref main \
             -f github_username="${{ github.actor }}" \
-            -f base_tag="$base_tag" \
+            -f base_tag="${{ env.BASE_TAG }}" \
             -f tags="rpc-comparison" \
             -f firewall_ips="$ALLOWED_IPS" \
             -f config_json="$config_json" \
@@ -85,7 +148,8 @@ jobs:
             -f monitor_enabled="false" \
             -f timeout="$TIMEOUT"
 
-      - name: Wait for smoke-tests run to create the node
+      - name: Wait for creation of node
+        id: wait
         env:
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
           WORKFLOW_ID: "run-smoketests.yml"
@@ -94,27 +158,27 @@ jobs:
           TIMEOUT: "30"
           ORG_NAME: "NethermindEth"
           REPO_NAME: "post-merge-smoke-tests"
-          NAME_FILTER: ${{ steps.dispatch.outputs.base_tag }}
+          NAME_FILTER: ${{ env.BASE_TAG }}
           REF: "main"
         run: |
           chmod +x scripts/wait-for-workflow.sh
-          ./scripts/wait-for-workflow.sh | tee wait-output.txt
-          run_id=$(grep -oP 'Run ID: \K\d+' wait-output.txt)
-          echo "RUN_ID=$run_id" >> "$GITHUB_ENV"
+          ./scripts/wait-for-workflow.sh | tee script-output.txt
+          run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
+          echo "Run ID extracted is: $run_id"
+          echo "RUN_ID=$run_id" >> $GITHUB_ENV
+          echo "run_id=$run_id" >> $GITHUB_OUTPUT
+        working-directory: ${{ github.workspace }}
 
-      - name: Scrape Geth RPC URL from machine details
-        id: scrape
+      - name: Download machine specs artifact
         env:
           GH_APP_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
           set -euo pipefail
-
-          # wait-for-workflow.sh returns the run ID once the run starts; the
-          # machine-details artifact only appears after create-machines finishes
-          # provisioning. Poll (bounded) until it's available.
+          # The machine-details artifact only appears after create-machines finishes
+          # provisioning, so poll (bounded) until it's available.
           ARTIFACT_ID=""
           for attempt in $(seq 1 60); do
-            ARTIFACT_ID=$(curl -s -H "Authorization: token $GH_APP_TOKEN" \
+            ARTIFACT_ID=$(curl -s -H "Accept: application/vnd.github.v3+json" -H "Authorization: token $GH_APP_TOKEN" \
               "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts" \
               | jq -r '.artifacts[0].id // empty')
             [ -n "$ARTIFACT_ID" ] && break
@@ -125,12 +189,34 @@ jobs:
             echo "Timed out (~30m) waiting for the smoke-tests machine-details artifact."
             exit 1
           fi
+          curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token $GH_APP_TOKEN" \
+            -o artifact.zip "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip"
+          unzip artifact.zip -d ./downloaded-artifacts/
 
-          curl -sL -H "Authorization: token $GH_APP_TOKEN" \
-            -o artifact.zip \
-            "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/${ARTIFACT_ID}/zip"
-          unzip -o artifact.zip -d downloaded-artifacts
+      - name: Display machine specs content
+        id: specs
+        run: |
           FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
-          rpc_url=$(grep -oP '\s*RPC URL: \K.+' "downloaded-artifacts/machine-details/$FILE")
-          echo "Geth RPC URL: $rpc_url"
-          echo "geth_rpc_url=$rpc_url" >> "$GITHUB_OUTPUT"
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>Details of spawned Geth node</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat "downloaded-artifacts/machine-details/$FILE" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+          cat "downloaded-artifacts/machine-details/$FILE" | tee spec-output.txt
+          rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+' spec-output.txt)
+          echo "RPC URL extracted is: $rpc_url"
+          echo "RPC_URL=$rpc_url" >> $GITHUB_ENV
+          echo "rpc_url=$rpc_url" >> $GITHUB_OUTPUT
+
+      - name: Save RPC URL to file
+        if: inputs.custom_run_id != ''
+        run: |
+          echo "${{ env.RPC_URL }}" > rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt
+
+      - name: Upload RPC URL
+        uses: actions/upload-artifact@v7
+        if: inputs.custom_run_id != ''
+        with:
+          name: rpc-url___${{ env.CLEAN_REF }}___${{ inputs.custom_run_id }}
+          path: rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt
