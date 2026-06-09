@@ -28,19 +28,13 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     public ArrayPoolList(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
 
     public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
-        : this(arrayPool, capacity, startingCount, clearFirst: true) { }
-
-    private ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount, bool clearFirst)
     {
         _arrayPool = arrayPool;
 
         if (capacity != 0)
         {
             _array = arrayPool.Rent(capacity);
-            if (clearFirst)
-            {
-                _array.AsSpan(0, startingCount).Clear();
-            }
+            _array.AsSpan(0, startingCount).Clear();
         }
         else
         {
@@ -50,20 +44,6 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
         _count = startingCount;
     }
-
-    /// <summary>
-    /// Rents a buffer of the given <paramref name="count"/> and exposes it at that logical count
-    /// <em>without</em> zero-initializing it.
-    /// </summary>
-    /// <remarks>
-    /// The pooled array may contain arbitrary data from a previous use. The caller takes full
-    /// responsibility for writing every slot it subsequently reads (via <see cref="AsSpan"/> /
-    /// <see cref="AsMemory"/> / the indexer). Use this only for scratch buffers that are completely
-    /// overwritten before being read; for any buffer with read-before-write slots, use the regular
-    /// <c>(capacity, count)</c> constructor which clears.
-    /// </remarks>
-    public static ArrayPoolList<T> RentUninitialized(int count) =>
-        new(SafeArrayPool<T>.Shared, count, count, clearFirst: false);
 
     public int Count => _count;
 

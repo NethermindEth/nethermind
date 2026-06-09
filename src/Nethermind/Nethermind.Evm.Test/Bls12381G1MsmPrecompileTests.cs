@@ -122,7 +122,7 @@ public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecomp
     [TestCase("0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e10000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", true)]
     public void TestMultiScalar(string input, string output, bool status) => RunTest(input, output, status);
 
-    // Regression for the MSM scratch-buffer handling (RentUninitialized + the contiguous-by-dest
+    // Regression for the MSM scratch-buffer handling (uninitialized ArrayPoolSpan + the contiguous-by-dest
     // packing): a multi-point MSM that interleaves a point at infinity (all-zero item -> dest == -1,
     // a dead slot that is never written) with a valid point must yield exactly the valid point's
     // result. Infinity is the additive identity, so MultiMult must read only the live npoints and

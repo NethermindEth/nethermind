@@ -54,10 +54,11 @@ public partial class Bls12381G1MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        // Scratch buffers: every slot read by MultiMult (the first npoints, packed contiguously) is
-        // fully written by Zero()+Decode() during point decoding, so the pool's zero-clear is wasted.
-        using ArrayPoolList<long> rawPoints = ArrayPoolList<long>.RentUninitialized(nItems * G1.Sz);
-        using ArrayPoolList<byte> rawScalars = ArrayPoolList<byte>.RentUninitialized(nItems * 32);
+        // Scratch buffers rented without zero-init (ArrayPoolSpan does not clear on rent): MultiMult
+        // only reads the first npoints*G1.Sz longs and npoints*32 scalar bytes, and every one of those
+        // slots is fully written by TryDecodeG1ToBuffer before MultiMult runs, so a clear is wasted.
+        using ArrayPoolSpan<long> rawPoints = new(nItems * G1.Sz);
+        using ArrayPoolSpan<byte> rawScalars = new(nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
         // calculate where in rawPoints buffer decoded points should go
@@ -110,7 +111,7 @@ public partial class Bls12381G1MsmPrecompile
             return result.Error!;
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
-        G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
+        G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints, rawScalars, npoints);
         return res.EncodeRaw();
     }
 }
