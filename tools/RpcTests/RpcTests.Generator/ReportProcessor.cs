@@ -9,6 +9,8 @@ namespace Nethermind.RpcTests.Generator;
 internal class ReportProcessor(FilePos[] sources, ITargetBlock<TestCase> target, Filter filter)
     : JsonlProcessor<TestCase>(sources, target)
 {
+    private class AmbiguousReportException(string message) : Exception(message);
+
     private readonly Dictionary<string, TestInfo> _pendingRequests = [];
 
     protected override async Task ProcessEntryAsync(FilePos pos, JsonNode json, CancellationToken ct)
@@ -25,9 +27,7 @@ internal class ReportProcessor(FilePos[] sources, ITargetBlock<TestCase> target,
         if (!filter.IncludeRequest(json)) return;
         if (json.GetId() is not { } requestId) return;
 
-        if (_pendingRequests.ContainsKey(requestId))
-            Console.Error.WriteLine($"Multiple requests with the same id: {requestId}");
-
-        _pendingRequests[requestId] = new TestInfo(pos, ++RequestN, json);
+        if (!_pendingRequests.TryAdd(requestId, new TestInfo(pos, ++RequestN, json)))
+            throw new AmbiguousReportException($"Multiple requests with the same id: {requestId}");
     }
 }
