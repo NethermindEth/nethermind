@@ -8,8 +8,6 @@ namespace Nethermind.RpcTests.Generator;
 
 internal class ReportReader(FilePos[] sources, Filter filter) : JsonlProcessor(sources)
 {
-    private class AmbiguousReportException(string message) : Exception(message);
-
     private readonly Dictionary<string, TestInfo> _pendingRequests = [];
     private ITargetBlock<TestCase> _target = null!;
 
@@ -25,7 +23,7 @@ internal class ReportReader(FilePos[] sources, Filter filter) : JsonlProcessor(s
         if (json["response"] is { } response && response.GetId() is { } responseId)
         {
             if (!_pendingRequests.Remove(responseId, out TestInfo? request))
-                await Console.Error.WriteLineAsync($"Request not found for response id: {responseId}");
+                Console.Error.WriteLine($"Request not found for response id: {responseId}");
             else
                 await _target.SendAsync(new TestCase(request, response), ct);
             return;
@@ -34,7 +32,9 @@ internal class ReportReader(FilePos[] sources, Filter filter) : JsonlProcessor(s
         if (!filter.IncludeRequest(json)) return;
         if (json.GetId() is not { } requestId) return;
 
-        if (!_pendingRequests.TryAdd(requestId, new TestInfo(pos, ++RequestN, json)))
-            throw new AmbiguousReportException($"Multiple requests with the same id: {requestId}");
+        if (_pendingRequests.ContainsKey(requestId))
+            Console.Error.WriteLine($"Multiple requests with the same id: {requestId}");
+
+        _pendingRequests[requestId] = new TestInfo(pos, ++RequestN, json);
     }
 }
