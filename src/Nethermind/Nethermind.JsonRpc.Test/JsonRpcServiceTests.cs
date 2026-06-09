@@ -43,10 +43,18 @@ public class JsonRpcServiceTests
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
         _context = new JsonRpcContext(RpcEndpoint.Http);
+        _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+        EthereumJsonSerializer.StrictHexFormat = _configurationProvider.GetConfig<IJsonRpcConfig>().StrictHexFormat;
     }
 
     [TearDown]
-    public void TearDown() => _context?.Dispose();
+    public void TearDown()
+    {
+        EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
+        _context?.Dispose();
+    }
+
+    private bool _previousStrictHexFormat;
 
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;
@@ -91,6 +99,42 @@ public class JsonRpcServiceTests
             "Invalid params",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Extra argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            """["cf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x1036640"]""",
+            "hex string without 0x prefix",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("Address without 0x prefix");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x00"]""",
+            "hex number with leading zero digits",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("Block number boundary leading zero");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x01"]""",
+            "hex number with leading zero digits",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("Block number single digit leading zero one");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x0f"]""",
+            "hex number with leading zero digits",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("Block number single digit leading zero f");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x00001036640"]""",
+            "hex number with leading zero digits",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("Block number with leading zeros");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBalance),
+            """["0x0000000000000000000000000000000000000000","0x"]""",
+            "hex string \"0x\"",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
+            .SetName("Empty hex block quantity");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6",{"blockNumber":"0x1036640","blockHash":"0x96cfa0fb5e50b0a3f6cc76f3299cfbf48f17e8b41798d1394474e67ec8a97e9f"}]""",

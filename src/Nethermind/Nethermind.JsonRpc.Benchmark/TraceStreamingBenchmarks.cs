@@ -34,7 +34,7 @@ public class TraceStreamingBenchmarks
     {
         _tx = Build.A.Transaction.WithTo(TestItem.AddressA).TestObject;
         _block = Build.A.Block.WithTransactions(_tx).TestObject;
-        _env = ExecutionEnvironment.Rent(CodeInfo.Empty, Address.Zero, Address.Zero, null, 1, default, default, default);
+        _env = ExecutionEnvironment.Rent(CodeInfo.Empty, Address.Zero, Address.Zero, null, 1, default, default);
         _value32 = new byte[32];
     }
 

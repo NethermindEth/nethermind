@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         [TestCase("0", true)]
         [TestCase("100", true)]
-        [TestCase("\"0x\"", false)]
+        [TestCase("\"0x\"", true)]
         [TestCase("\"0x0\"", false)]
         [TestCase("\"0xA\"", false)]
         [TestCase("\"0xa\"", false)]
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Data
                 Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
 
                 if (throws)
-                    Assert.That(action, Throws.TypeOf<FormatException>());
+                    Assert.That(action, Throws.InstanceOf<FormatException>());
                 else
                     Assert.That(action, Throws.Nothing);
             }
