@@ -47,9 +47,11 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             ICache<Address, Account> cache = Create();
+#pragma warning disable NUnit2045
             Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
             Assert.That(cache.Set(_addresses[0], _accounts[1]), Is.False);
             Assert.That(cache.Get(_addresses[0]), Is.EqualTo(_accounts[1]));
+#pragma warning restore NUnit2045
         }
 
         [Test]
@@ -63,11 +65,13 @@ namespace Nethermind.Core.Test.Caching
         public void Can_clear()
         {
             ICache<Address, Account> cache = Create();
+#pragma warning disable NUnit2045
             Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
             cache.Clear();
             Assert.That(cache.Get(_addresses[0]), Is.Null);
             Assert.That(cache.Set(_addresses[0], _accounts[1]), Is.True);
             Assert.That(cache.Get(_addresses[0]), Is.EqualTo(_accounts[1]));
+#pragma warning restore NUnit2045
         }
 
         [Test]
@@ -108,8 +112,10 @@ namespace Nethermind.Core.Test.Caching
                     {
                         // Fuzz the order of the addresses
                         int index = random.Next(i - 1, i - 1 + Capacity);
+#pragma warning disable NUnit2045
                         Assert.That(cache.Delete(_addresses[index]), Is.True);
                         Assert.That(cache.Set(_addresses[index], _accounts[index]), Is.True);
+#pragma warning restore NUnit2045
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {
@@ -144,8 +150,10 @@ namespace Nethermind.Core.Test.Caching
                 {
                     for (int ii = Capacity - 1; ii < Capacity * 2 - 1; ii++)
                     {
+#pragma warning disable NUnit2045
                         Assert.That(cache.Get(_addresses[ii]), Is.EqualTo(_accounts[ii]));
                         Assert.That(cache.Delete(_addresses[ii]), Is.True);
+#pragma warning restore NUnit2045
                     }
                 }
 
@@ -219,10 +227,12 @@ namespace Nethermind.Core.Test.Caching
         public void Can_set_and_then_set_null()
         {
             ICache<Address, Account> cache = Create();
+#pragma warning disable NUnit2045
             Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.True);
             Assert.That(cache.Set(_addresses[0], _accounts[0]), Is.False);
             Assert.That(cache.Set(_addresses[0], null!), Is.True);
             Assert.That(cache.Get(_addresses[0]), Is.EqualTo(null));
+#pragma warning restore NUnit2045
         }
 
         [Test]
@@ -230,9 +240,11 @@ namespace Nethermind.Core.Test.Caching
         {
             ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
+#pragma warning disable NUnit2045
             Assert.That(cache.Delete(_addresses[0]), Is.True);
             Assert.That(cache.Get(_addresses[0]), Is.EqualTo(null));
             Assert.That(cache.Delete(_addresses[0]), Is.False);
+#pragma warning restore NUnit2045
         }
 
         [Test]

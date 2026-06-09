@@ -44,9 +44,11 @@ namespace Nethermind.Core.Test.Caching
         public void Can_reset()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
+#pragma warning disable NUnit2045
             Assert.That(cache.Set(_addresses[0]), Is.True);
             Assert.That(cache.Set(_addresses[0]), Is.False);
             Assert.That(cache.Get(_addresses[0]), Is.True);
+#pragma warning restore NUnit2045
         }
 
         [Test]
@@ -60,11 +62,13 @@ namespace Nethermind.Core.Test.Caching
         public void Can_clear()
         {
             LruKeyCache<Address> cache = new(Capacity, "test");
+#pragma warning disable NUnit2045
             Assert.That(cache.Set(_addresses[0]), Is.True);
             cache.Clear();
             Assert.That(cache.Get(_addresses[0]), Is.False);
             Assert.That(cache.Set(_addresses[0]), Is.True);
             Assert.That(cache.Get(_addresses[0]), Is.True);
+#pragma warning restore NUnit2045
         }
 
         [Test]
@@ -119,8 +123,10 @@ namespace Nethermind.Core.Test.Caching
                     {
                         // Fuzz the order of the addresses
                         int index = random.Next(i - 1, i - 1 + Capacity);
+#pragma warning disable NUnit2045
                         Assert.That(cache.Delete(_addresses[index]), Is.True);
                         Assert.That(cache.Set(_addresses[index]), Is.True);
+#pragma warning restore NUnit2045
                     }
                     for (int ii = i - 1; ii < i - 1 + Capacity; ii++)
                     {

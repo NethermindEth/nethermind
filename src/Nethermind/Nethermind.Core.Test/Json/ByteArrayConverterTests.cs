@@ -86,10 +86,15 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ReadOnlySequence<byte> seq = MakeSequence(json.AsMemory(0, 2), json.AsMemory(2)); // split at index 2 between 'A'|'B'
 
         (byte[]? res, Exception? err) = InvokeOnBareString(seq);
+#pragma warning disable NUnit2045
         Assert.That(err, Is.Null);
         Assert.That(res, Is.Not.Null);
-        Assert.That(res!.Length, Is.EqualTo(1));
-        Assert.That(res[0], Is.EqualTo(0xAB));
+#pragma warning restore NUnit2045
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res!.Length, Is.EqualTo(1));
+            Assert.That(res[0], Is.EqualTo(0xAB));
+        }
     }
 
     [Test]
@@ -97,8 +102,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
         ReadOnlySequence<byte> seq = JsonForLiteral("null");
         (byte[]? res, Exception? err) = InvokeRaw(seq);
-        Assert.That(err, Is.Null);
-        Assert.That(res, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(err, Is.Null);
+            Assert.That(res, Is.Null);
+        }
     }
 
     [TestCase("true")]
@@ -133,9 +141,12 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         foreach (ReadOnlySequence<byte> seq in Segmentations(json))
         {
             (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-            Assert.That(err, Is.Null);
-            Assert.That(res, Is.Not.Null);
-            Assert.That(res, Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(res, Is.Not.Null);
+                Assert.That(res, Is.EqualTo(expected));
+            }
         }
     }
 
@@ -340,8 +351,10 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
         else
         {
+#pragma warning disable NUnit2045
             Assert.That(firstErr, Is.Not.Null);
             Assert.That(err, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(err!.GetType(), Is.EqualTo(firstErr!.GetType()));
         }
     }
@@ -352,8 +365,10 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnBareString(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
+#pragma warning disable NUnit2045
         Assert.That(reader.Read(), Is.True);
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.String));
+#pragma warning restore NUnit2045
 
         try { return (ByteArrayConverter.Convert(ref reader), null); }
         catch (Exception ex) { return (null, ex); }
@@ -362,10 +377,12 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnPropertyName(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
+#pragma warning disable NUnit2045
         Assert.That(reader.Read(), Is.True);
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.StartObject));
         Assert.That(reader.Read(), Is.True);
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.PropertyName));
+#pragma warning restore NUnit2045
 
         try { return (ByteArrayConverter.Convert(ref reader), null); }
         catch (Exception ex) { return (null, ex); }

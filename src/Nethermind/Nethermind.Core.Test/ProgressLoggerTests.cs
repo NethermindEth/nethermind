@@ -99,10 +99,13 @@ public class ProgressLoggerTests
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
         measuredProgress.Update(3L);
-        Assert.That(measuredProgress.TotalPerSecond, Is.GreaterThanOrEqualTo(6M));
-        Assert.That(measuredProgress.TotalPerSecond, Is.LessThanOrEqualTo(15M));
-        Assert.That(measuredProgress.CurrentPerSecond, Is.GreaterThanOrEqualTo(6M));
-        Assert.That(measuredProgress.CurrentPerSecond, Is.LessThanOrEqualTo(30M));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(measuredProgress.TotalPerSecond, Is.GreaterThanOrEqualTo(6M));
+            Assert.That(measuredProgress.TotalPerSecond, Is.LessThanOrEqualTo(15M));
+            Assert.That(measuredProgress.CurrentPerSecond, Is.GreaterThanOrEqualTo(6M));
+            Assert.That(measuredProgress.CurrentPerSecond, Is.LessThanOrEqualTo(30M));
+        }
     }
 
     [Test]
@@ -123,9 +126,12 @@ public class ProgressLoggerTests
         measuredProgress.SetMeasuringPoint();
         manualTimestamper.Add(TimeSpan.FromMilliseconds(100));
         measuredProgress.SetMeasuringPoint();
-        Assert.That(measuredProgress.TotalPerSecond, Is.GreaterThanOrEqualTo(6M));
-        Assert.That(measuredProgress.TotalPerSecond, Is.LessThanOrEqualTo(15M));
-        Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(0M));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(measuredProgress.TotalPerSecond, Is.GreaterThanOrEqualTo(6M));
+            Assert.That(measuredProgress.TotalPerSecond, Is.LessThanOrEqualTo(15M));
+            Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(0M));
+        }
     }
 
     [Test]

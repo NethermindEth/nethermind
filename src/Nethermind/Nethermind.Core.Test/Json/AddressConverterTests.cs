@@ -38,9 +38,14 @@ public class AddressConverterTests : ConverterTestBase<Address>
         string json = JsonSerializer.Serialize(dictionary, EthereumJsonSerializer.JsonOptions);
         Dictionary<Address, int>? result = JsonSerializer.Deserialize<Dictionary<Address, int>>(json, EthereumJsonSerializer.JsonOptions);
 
+#pragma warning disable NUnit2045 // null precondition guards subsequent dereference
         Assert.That(result, Is.Not.Null);
-        Assert.That(result![TestItem.AddressA], Is.EqualTo(1));
-        Assert.That(result[TestItem.AddressB], Is.EqualTo(2));
+#pragma warning restore NUnit2045
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result![TestItem.AddressA], Is.EqualTo(1));
+            Assert.That(result[TestItem.AddressB], Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -57,9 +62,14 @@ public class AddressConverterTests : ConverterTestBase<Address>
         string json = JsonSerializer.Serialize(dictionary, EthereumJsonSerializer.JsonOptions);
         Dictionary<AddressAsKey, int>? result = JsonSerializer.Deserialize<Dictionary<AddressAsKey, int>>(json, EthereumJsonSerializer.JsonOptions);
 
+#pragma warning disable NUnit2045 // null precondition guards subsequent dereference
         Assert.That(result, Is.Not.Null);
-        Assert.That(result![addressA], Is.EqualTo(1));
-        Assert.That(result[addressB], Is.EqualTo(2));
+#pragma warning restore NUnit2045
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result![addressA], Is.EqualTo(1));
+            Assert.That(result[addressB], Is.EqualTo(2));
+        }
     }
 
     static IEnumerable<TestCaseData> AddressTestCases =

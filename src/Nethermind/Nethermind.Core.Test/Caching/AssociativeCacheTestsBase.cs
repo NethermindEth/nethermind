@@ -59,8 +59,10 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Can_reset()
     {
+#pragma warning disable NUnit2045 // Set is a state mutation between asserts
         Assert.That(Set(in _keys[0], 0), Is.True);
         Assert.That(Set(in _keys[0], 1), Is.False);
+#pragma warning restore NUnit2045
         AssertValue(in _keys[0], 1);
     }
 
@@ -117,9 +119,11 @@ public abstract class AssociativeCacheTestsBase
     public void Can_delete()
     {
         Set(in _keys[0], 0);
+#pragma warning disable NUnit2045 // Delete is a state mutation between asserts
         Assert.That(Delete(in _keys[0]), Is.True);
         Assert.That(Get(in _keys[0]), Is.False);
         Assert.That(Delete(in _keys[0]), Is.False);
+#pragma warning restore NUnit2045
     }
 
     [TestCase(-1)]
@@ -135,8 +139,11 @@ public abstract class AssociativeCacheTestsBase
 
         if (capacity == 0)
         {
-            Assert.That(Get(in _keys[0]), Is.False);
-            Assert.That(GetCount(), Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Get(in _keys[0]), Is.False);
+                Assert.That(GetCount(), Is.EqualTo(0));
+            }
         }
         else
         {
@@ -196,10 +203,12 @@ public abstract class AssociativeCacheTestsBase
         });
 
         AssertValue(in _keys[0], 0);
+#pragma warning disable NUnit2045 // Delete is a state mutation between asserts
         Assert.That(GetCount(), Is.GreaterThan(0));
 
         Assert.That(Delete(in _keys[0]), Is.True);
         Assert.That(Get(in _keys[0]), Is.False);
+#pragma warning restore NUnit2045
     }
 
     [Test]
@@ -220,6 +229,7 @@ public abstract class AssociativeCacheTestsBase
         // Catches count underflow: Clear sets count to 0, then Delete
         // on a stale entry should not decrement below 0.
         Set(in _keys[0], 0);
+#pragma warning disable NUnit2045 // Clear / Delete are state mutations between asserts
         Assert.That(GetCount(), Is.EqualTo(1));
 
         Clear();
@@ -228,6 +238,7 @@ public abstract class AssociativeCacheTestsBase
         // Delete after Clear — entry is stale, delete should be a no-op
         Assert.That(Delete(in _keys[0]), Is.False);
         Assert.That(GetCount(), Is.EqualTo(0));
+#pragma warning restore NUnit2045
     }
 
     [Test]
@@ -252,6 +263,7 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Clear_invalidates_and_frees_capacity()
     {
+#pragma warning disable NUnit2045 // Set / Clear are state mutations between asserts
         Assert.That(Set(in _keys[0], 0), Is.True);
         Clear();
 
@@ -261,24 +273,34 @@ public abstract class AssociativeCacheTestsBase
 
         // Capacity is free — Set returns true (new), value is retrievable
         Assert.That(Set(in _keys[0], 1), Is.True);
+#pragma warning restore NUnit2045
         AssertValue(in _keys[0], 1);
     }
 
     [Test]
     public void Contains_works()
     {
-        Assert.That(Contains(in _keys[0]), Is.False);
-        Assert.That(Get(in _keys[0]), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.False);
+            Assert.That(Get(in _keys[0]), Is.False);
+        }
 
         Set(in _keys[0], 0);
 
-        Assert.That(Contains(in _keys[0]), Is.True);
-        Assert.That(Get(in _keys[0]), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.True);
+            Assert.That(Get(in _keys[0]), Is.True);
+        }
 
         Delete(in _keys[0]);
 
-        Assert.That(Contains(in _keys[0]), Is.False);
-        Assert.That(Get(in _keys[0]), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.False);
+            Assert.That(Get(in _keys[0]), Is.False);
+        }
     }
 
     [Test]

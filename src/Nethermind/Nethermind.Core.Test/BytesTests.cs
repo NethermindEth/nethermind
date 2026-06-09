@@ -135,12 +135,15 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(Bytes.ByteArrayToHexViaLookup32Safe(bytes, with0x), Is.EqualTo(expectedResult.ToLower()));
             }
-            Assert.That(bytes.ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
-            Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false), Is.EqualTo(expectedResult.ToLower()));
-            Assert.That(new ReadOnlySpan<byte>(bytes).ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes.ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
+                Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false), Is.EqualTo(expectedResult.ToLower()));
+                Assert.That(new ReadOnlySpan<byte>(bytes).ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
 
-            Assert.That(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(expectedResult));
-            Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true)));
+                Assert.That(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(expectedResult));
+                Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true)));
+            }
         }
 
         [TestCase("0x", "0x", true)]
@@ -436,9 +439,12 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString(hex);
 
-            Assert.That(bytes.ToPositiveLong(), Is.EqualTo(expected));
-            Assert.That(bytes.AsSpan().ToPositiveLong(), Is.EqualTo(expected));
-            Assert.That(new ReadOnlySpan<byte>(bytes).ToPositiveLong(), Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes.ToPositiveLong(), Is.EqualTo(expected));
+                Assert.That(bytes.AsSpan().ToPositiveLong(), Is.EqualTo(expected));
+                Assert.That(new ReadOnlySpan<byte>(bytes).ToPositiveLong(), Is.EqualTo(expected));
+            }
         }
 
         [TestCase("0x8000000000000000")] // 8 bytes, top bit set (== 2^63)

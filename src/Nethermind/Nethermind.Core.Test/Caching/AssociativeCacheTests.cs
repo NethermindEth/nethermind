@@ -24,19 +24,24 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
 
     protected override void AssertValue(in AddressAsKey key, int expectedIndex)
     {
-        Assert.That(_cache.TryGet(in key, out Account? val), Is.True, "key should be present");
-        Assert.That(val, Is.EqualTo(_accounts[expectedIndex]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(in key, out Account? val), Is.True, "key should be present");
+            Assert.That(val, Is.EqualTo(_accounts[expectedIndex]));
+        }
     }
 
     [Test]
     public void Can_set_and_then_set_null()
     {
         AddressAsKey key = _keys[0];
+#pragma warning disable NUnit2045
         Assert.That(_cache.Set(in key, _accounts[0]), Is.True);
         Assert.That(_cache.Set(in key, _accounts[0]), Is.False);
         // Set with null triggers Delete
         Assert.That(_cache.Set(in key, null!), Is.True);
         Assert.That(_cache.Get(in key), Is.Null);
+#pragma warning restore NUnit2045
     }
 
     [Test]
@@ -45,11 +50,17 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
         AddressAsKey key = _keys[0];
         _cache.Set(in key, _accounts[0]);
 
-        Assert.That(_cache.Delete(in key, out Account? value), Is.True);
-        Assert.That(value, Is.EqualTo(_accounts[0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.Delete(in key, out Account? value), Is.True);
+            Assert.That(value, Is.EqualTo(_accounts[0]));
+        }
 
-        Assert.That(_cache.Delete(in key, out Account? noValue), Is.False);
-        Assert.That(noValue, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.Delete(in key, out Account? noValue), Is.False);
+            Assert.That(noValue, Is.Null);
+        }
     }
 
     [Test]
@@ -130,11 +141,14 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
 
         _cache.Set(in presentKey, _accounts[0]);
 
-        Assert.That(_cache.TryGet(in presentKey, out Account? hit), Is.True);
-        Assert.That(hit, Is.EqualTo(_accounts[0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(in presentKey, out Account? hit), Is.True);
+            Assert.That(hit, Is.EqualTo(_accounts[0]));
 
-        Assert.That(_cache.TryGet(in missingKey, out Account? miss), Is.False);
-        Assert.That(miss, Is.Null);
+            Assert.That(_cache.TryGet(in missingKey, out Account? miss), Is.False);
+            Assert.That(miss, Is.Null);
+        }
 
         _cache.Delete(in presentKey);
         Assert.That(_cache.TryGet(in presentKey, out _), Is.False);

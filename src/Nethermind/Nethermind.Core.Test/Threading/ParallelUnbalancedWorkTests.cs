@@ -80,9 +80,11 @@ public class ParallelUnbalancedWorkTests
             },
             @finally: _ => Interlocked.Increment(ref finallyCount));
 
+#pragma warning disable NUnit2045
         Assert.That(act, Throws.TypeOf<InvalidOperationException>());
         Assert.That(finallyCount, Is.EqualTo(initCount));
         Assert.That(initCount, Is.GreaterThan(0));
+#pragma warning restore NUnit2045
     }
 
     [Test]
@@ -110,8 +112,10 @@ public class ParallelUnbalancedWorkTests
             action: (_, l) => l,
             @finally: _ => Interlocked.Increment(ref finallyCalls));
 
+#pragma warning disable NUnit2045
         Assert.That(act, Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("init failed"));
         Assert.That(finallyCalls, Is.EqualTo(0));
+#pragma warning restore NUnit2045
     }
 
     [Test]
@@ -127,8 +131,10 @@ public class ParallelUnbalancedWorkTests
             if (i == 0) throw new InvalidOperationException();
         });
 
+#pragma warning disable NUnit2045
         Assert.That(act, Throws.TypeOf<InvalidOperationException>());
         Assert.That(actionCalls, Is.LessThan(range / 2));
+#pragma warning restore NUnit2045
     }
 
     [Test]

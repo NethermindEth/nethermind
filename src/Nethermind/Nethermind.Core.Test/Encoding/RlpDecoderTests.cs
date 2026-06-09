@@ -27,25 +27,33 @@ public class RlpDecoderTests
         WithdrawalDecoder decoder = new();
         Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
-        Assert.That(decoder.GetContentLength((Withdrawal?[]?)null), Is.Zero);
-        Assert.That(decoder.GetLength((Withdrawal?[]?)null), Is.EqualTo(Rlp.OfEmptyList.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoder.GetContentLength((Withdrawal?[]?)null), Is.Zero);
+            Assert.That(decoder.GetLength((Withdrawal?[]?)null), Is.EqualTo(Rlp.OfEmptyList.Length));
+        }
 
         int contentLength = decoder.GetContentLength(withdrawals);
 
-        Assert.That(contentLength, Is.EqualTo(
-            decoder.GetLength(withdrawals[0]!, RlpBehaviors.None) +
-            Rlp.OfEmptyList.Length +
-            decoder.GetLength(withdrawals[2]!, RlpBehaviors.None)));
-        Assert.That(decoder.GetLength(withdrawals), Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contentLength, Is.EqualTo(
+                decoder.GetLength(withdrawals[0]!, RlpBehaviors.None) +
+                Rlp.OfEmptyList.Length +
+                decoder.GetLength(withdrawals[2]!, RlpBehaviors.None)));
+            Assert.That(decoder.GetLength(withdrawals), Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
+        }
 
         RlpStream stream = new(decoder.GetLength(withdrawals));
         decoder.Encode(stream, withdrawals);
         Rlp.ValueDecoderContext context = new(stream.Data.AsSpan());
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
+#pragma warning disable NUnit2045
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
+#pragma warning restore NUnit2045
         context.Check(sequenceEnd);
     }
 
@@ -54,8 +62,11 @@ public class RlpDecoderTests
     {
         RlpException? exception = Assert.Throws<RlpException>(DecodeEmptyInput);
 
-        Assert.That(exception!.Message, Does.Contain(nameof(Withdrawal)));
-        Assert.That(exception.Message, Does.Not.Contain(" T"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Message, Does.Contain(nameof(Withdrawal)));
+            Assert.That(exception.Message, Does.Not.Contain(" T"));
+        }
 
         static void DecodeEmptyInput()
         {
@@ -128,9 +139,11 @@ public class RlpDecoderTests
         Rlp.ValueDecoderContext context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
+#pragma warning disable NUnit2045
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
+#pragma warning restore NUnit2045
         context.Check(sequenceEnd);
     }
 
