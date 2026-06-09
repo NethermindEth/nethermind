@@ -58,5 +58,5 @@ internal static class XdcRlpHelpers
     }
 
     internal static int LengthOfAddressSequence(Address[]? addresses) =>
-        Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * addresses?.Length ?? 0);
+        Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * (addresses?.Length ?? 0));
 }
