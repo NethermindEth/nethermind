@@ -6,81 +6,35 @@ using System.Threading.Tasks.Dataflow;
 
 namespace Nethermind.RpcTests.Generator;
 
-// TODO: simplify readers, move common code to base class
-public class ReportReader(FilePos[] sources, Filter filter)
+internal class ReportReader(FilePos[] sources, Filter filter) : JsonlProcessor(sources)
 {
     private class AmbiguousReportException(string message) : Exception(message);
 
-    private const int LogPerLines = 1000;
-    private int _lineN;
-    private int _requestN;
-
     private readonly Dictionary<string, TestInfo> _pendingRequests = [];
+    private ITargetBlock<TestCase> _target = null!;
 
     public async Task ReadIntoAsync(ITargetBlock<TestCase> target, CancellationToken ct)
     {
-        foreach (FilePos startLocation in sources)
-        {
-            int fileLineN = 1;
-            await foreach (string line in File.ReadLinesAsync(startLocation.FilePath, ct))
-            {
-                if (++_lineN % LogPerLines == 0)
-                    await Console.Out.WriteLineAsync($"Reading line #{_lineN}");
-
-                if (fileLineN++ < startLocation.LineNumber) continue;
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                if (GetResponse(line) is { } response && response.GetId() is { } responseId)
-                {
-                    if (!_pendingRequests.Remove(responseId, out TestInfo? request))
-                    {
-                        await Console.Error.WriteLineAsync($"Request not found for response id: {responseId}");
-                        continue;
-                    }
-
-                    TestCase testCase = new(request, response);
-                    await target.SendAsync(testCase, ct);
-                    continue;
-                }
-
-                FilePos pos = startLocation with { LineNumber = fileLineN };
-
-                JsonNode? requestJson = null;
-                try
-                {
-                    requestJson = JsonNode.Parse(line);
-                }
-                catch
-                {
-                    await Console.Error.WriteLineAsync($"Failed to parse request at {pos}");
-                }
-
-                if (requestJson is null) continue;
-                if (!filter.IncludeRequest(requestJson)) continue;
-                if (requestJson.GetId() is not { } requestId) continue;
-
-                if (!_pendingRequests.TryAdd(requestId, new TestInfo(pos, ++_requestN, requestJson)))
-                    throw new AmbiguousReportException($"Multiple requests with the same id: {requestId}");
-            }
-        }
-
+        _target = target;
+        await IterateLinesAsync(ct);
         target.Complete();
     }
 
-    private static JsonNode? GetResponse(string line)
+    protected override async Task ProcessEntryAsync(JsonNode json, FilePos pos, CancellationToken ct)
     {
-        if (!line.Contains("\"response\"") || !line.Contains("\"report\"")) return null;
-
-        JsonNode? json;
-        try
+        if (json["response"] is { } response && response.GetId() is { } responseId)
         {
-            json = JsonNode.Parse(line);
-        }
-        catch
-        {
-            return null;
+            if (!_pendingRequests.Remove(responseId, out TestInfo? request))
+                await Console.Error.WriteLineAsync($"Request not found for response id: {responseId}");
+            else
+                await _target.SendAsync(new TestCase(request, response), ct);
+            return;
         }
 
-        return json?["response"];
+        if (!filter.IncludeRequest(json)) return;
+        if (json.GetId() is not { } requestId) return;
+
+        if (!_pendingRequests.TryAdd(requestId, new TestInfo(pos, ++RequestN, json)))
+            throw new AmbiguousReportException($"Multiple requests with the same id: {requestId}");
     }
 }

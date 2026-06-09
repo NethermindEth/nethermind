@@ -19,3 +19,8 @@ public record TestCase(TestInfo TestInfo, JsonNode Response)
     public string RequestId => TestInfo.Id;
     public int TestN { get; set; }
 }
+
+public record TestInfo(FilePos Pos, int Number, JsonNode Data)
+{
+    public string Id => Data.GetId() ?? $"{Number}";
+}

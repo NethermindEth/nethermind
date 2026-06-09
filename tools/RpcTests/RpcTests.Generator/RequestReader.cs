@@ -6,49 +6,20 @@ using System.Threading.Tasks.Dataflow;
 
 namespace Nethermind.RpcTests.Generator;
 
-public class RequestReader(FilePos[] sources, Filter filter)
+internal class RequestReader(FilePos[] sources, Filter filter) : JsonlProcessor(sources)
 {
-    private const int LogPerLines = 1000;
-    private int _lineN;
-    private int _requestN;
+    private ITargetBlock<TestInfo> _target = null!;
 
     public async Task ReadIntoAsync(ITargetBlock<TestInfo> target, CancellationToken ct)
     {
-        foreach (FilePos startLocation in sources)
-        {
-            int fileLineN = 1;
-            await foreach (string line in File.ReadLinesAsync(startLocation.FilePath, ct))
-            {
-                if (++_lineN % LogPerLines == 0)
-                    await Console.Out.WriteLineAsync($"Reading line #{_lineN}");
-
-                if (fileLineN++ < startLocation.LineNumber) continue;
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                FilePos pos = startLocation with { LineNumber = fileLineN };
-
-                JsonNode? data = null;
-                try
-                {
-                    data = JsonNode.Parse(line);
-                }
-                catch
-                {
-                    await Console.Error.WriteLineAsync($"Failed to parse request at {pos}");
-                }
-
-                if (data is null) continue;
-                if (!filter.IncludeRequest(data)) continue;
-
-                await target.SendAsync(new TestInfo(pos, ++_requestN, data), ct);
-            }
-        }
-
+        _target = target;
+        await IterateLinesAsync(ct);
         target.Complete();
     }
-}
 
-public record TestInfo(FilePos Pos, int Number, JsonNode Data)
-{
-    public string Id => Data.GetId() ?? $"{Number}";
+    protected override async Task ProcessEntryAsync(JsonNode json, FilePos pos, CancellationToken ct)
+    {
+        if (!filter.IncludeRequest(json)) return;
+        await _target.SendAsync(new TestInfo(pos, ++RequestN, json), ct);
+    }
 }
