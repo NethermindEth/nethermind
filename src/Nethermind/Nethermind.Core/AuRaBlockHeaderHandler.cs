@@ -66,14 +66,34 @@ public interface IAuRaBlockHeaderHandler
 /// </summary>
 public static class AuRaBlockHeaderHandler
 {
-    private static IAuRaBlockHeaderHandler? s_instance;
+    // volatile so plain reads on the Instance getter observe the publication done via
+    // Interlocked.CompareExchange in Register, independent of cache coherency assumptions.
+    private static volatile IAuRaBlockHeaderHandler? _instance;
 
     /// <summary>
     /// The registered AuRa handler, or <c>null</c> if the AuRa plugin assembly has not
     /// been loaded. Code on the AuRa hot path can require this to be non-null; code on
     /// generic paths should null-check and fall back.
     /// </summary>
-    public static IAuRaBlockHeaderHandler? Instance => s_instance;
+    public static IAuRaBlockHeaderHandler? Instance => _instance;
+
+    /// <summary>
+    /// Convenience shortcut for <see cref="IAuRaBlockHeaderHandler.TryGetSeal"/> that returns
+    /// false when the handler has not been registered yet. Cheaper to call from generic code
+    /// (HeaderDecoder, RPC formatters, comparers) than the <c>Instance is { } h &amp;&amp; h.TryGetSeal(...)</c>
+    /// pattern.
+    /// </summary>
+    public static bool TryGetSeal(BlockHeader header, out long step, out byte[]? signature)
+    {
+        IAuRaBlockHeaderHandler? handler = _instance;
+        if (handler is null)
+        {
+            step = 0;
+            signature = null;
+            return false;
+        }
+        return handler.TryGetSeal(header, out step, out signature);
+    }
 
     /// <summary>
     /// Registers the AuRa handler exactly once. Subsequent calls with the same instance
@@ -85,7 +105,7 @@ public static class AuRaBlockHeaderHandler
     public static void Register(IAuRaBlockHeaderHandler handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        IAuRaBlockHeaderHandler? prior = Interlocked.CompareExchange(ref s_instance, handler, null);
+        IAuRaBlockHeaderHandler? prior = Interlocked.CompareExchange(ref _instance, handler, null);
         if (prior is not null && !ReferenceEquals(prior, handler))
         {
             throw new InvalidOperationException(

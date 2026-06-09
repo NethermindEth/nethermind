@@ -293,17 +293,13 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
-        IAuRaBlockHeaderHandler? auraHandler = AuRaBlockHeaderHandler.Instance;
-        long auRaStep = 0;
-        byte[]? auRaSignature = null;
-        bool hasAuRaSeal = auraHandler is not null
-            && auraHandler.TryGetSeal(bh, out auRaStep, out auRaSignature);
+        bool hasAuRaSeal = AuRaBlockHeaderHandler.TryGetSeal(bh, out long auRaStep, out byte[]? auRaSignature);
         BlockHeader headerForProcessing = hasAuRaSeal
-            ? auraHandler!.CreateBlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, in bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData)
+            ? AuRaBlockHeaderHandler.Instance!.CreateBlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, in bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData)
             : new BlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData);
 
         CopyHeaderForProcessing(bh, headerForProcessing);
-        if (hasAuRaSeal) auraHandler!.SetSeal(headerForProcessing, auRaStep, auRaSignature);
+        if (hasAuRaSeal) AuRaBlockHeaderHandler.Instance!.SetSeal(headerForProcessing, auRaStep, auRaSignature);
 
         if (!ShouldComputeStateRoot(bh))
         {

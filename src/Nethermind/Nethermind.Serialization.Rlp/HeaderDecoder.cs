@@ -131,7 +131,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                if (AuRaBlockHeaderHandler.Instance is { } sealHandler && sealHandler.TryGetSeal(header, out long step, out byte[]? auRaSignature))
+                if (AuRaBlockHeaderHandler.TryGetSeal(header, out long step, out byte[]? auRaSignature))
                 {
                     rlpStream.Encode(step);
                     rlpStream.Encode(auRaSignature);
@@ -206,7 +206,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                if (AuRaBlockHeaderHandler.Instance is { } sealHandler && sealHandler.TryGetSeal(item, out long step, out byte[]? auRaSignature))
+                if (AuRaBlockHeaderHandler.TryGetSeal(item, out long step, out byte[]? auRaSignature))
                 {
                     contentLength += Rlp.LengthOf(step);
                     contentLength += Rlp.LengthOf(auRaSignature);

@@ -365,10 +365,8 @@ public static class TestEqualityComparers
 
         private static bool AuRaSealsEqual(BlockHeader actual, BlockHeader expected)
         {
-            IAuRaBlockHeaderHandler? handler = AuRaBlockHeaderHandler.Instance;
-            if (handler is null) return true;
-            bool actualHasSeal = handler.TryGetSeal(actual, out long actualStep, out byte[]? actualSig);
-            bool expectedHasSeal = handler.TryGetSeal(expected, out long expectedStep, out byte[]? expectedSig);
+            bool actualHasSeal = AuRaBlockHeaderHandler.TryGetSeal(actual, out long actualStep, out byte[]? actualSig);
+            bool expectedHasSeal = AuRaBlockHeaderHandler.TryGetSeal(expected, out long expectedStep, out byte[]? expectedSig);
             if (actualHasSeal != expectedHasSeal) return false;
             return !actualHasSeal || (actualStep == expectedStep && BytesEqual(actualSig, expectedSig));
         }
