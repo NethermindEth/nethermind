@@ -6,12 +6,10 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// <summary>
 /// N-way merge driver that emits a single <see cref="IndexType.BTree"/> HSST from N
 /// pre-positioned source enumerators. Drives a <see cref="NWayMergeCursor{TReader,TPin,TSource}"/>
-/// over the sources; on every cursor advance, fast-paths the matchCount==1 case by
-/// copying the source value verbatim via
-/// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.TryAddAligned"/>, otherwise opens
+/// over the sources; on every cursor advance opens
 /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/> and delegates to
 /// <typeparamref name="TValueMerger"/>.<see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource}.MergeValues"/>
-/// for conflict resolution.
+/// for conflict resolution (a single matching source is the degenerate case of the same merge).
 /// </summary>
 /// <remarks>
 /// Writer-side and cursor-side reader/pin types are independent — the cursor reads from
@@ -31,9 +29,8 @@ internal static class HsstBTreeMerger
     /// <see cref="NWayMergeCursor{TReader,TPin,TSource}.KeyLen"/> must match).</param>
     /// <param name="cursor">Caller-constructed merge cursor over N pre-positioned sources.
     /// The merger drives it to exhaustion.</param>
-    /// <param name="valueMerger">Per-key callback bundle. <c>OnKey</c> fires once per emitted
-    /// key (path-independent bookkeeping), <c>OnFastCopy</c> on a successful verbatim copy
-    /// of a single source's value, <c>MergeValues</c> on conflict / oversized single source.</param>
+    /// <param name="valueMerger">Per-key callback bundle. <c>MergeValues</c> emits the merged
+    /// value for each key, resolving conflicts across the matching sources.</param>
     /// <param name="options">Forwarded to the underlying builder.</param>
     /// <param name="expectedKeyCount">Forwarded to the underlying builder (sizing hint).</param>
     /// <param name="keyFirst">Forwarded to the underlying builder (entry layout selector).</param>
@@ -94,33 +91,10 @@ internal static class HsstBTreeMerger
         {
             while (cursor.MoveNext())
             {
-                bool emittedFast = false;
-                if (cursor.MatchCount == 1)
-                {
-                    Bound vb = cursor.MinValue;
-                    // Fast-fail short-circuit: NoOpPin.PinBuffer casts size to int and would
-                    // throw on a >2 GiB blob, so skip the pin attempt for obviously
-                    // disqualified sizes. TryAddAligned still does its own precise entry-
-                    // size check internally for the in-range cases.
-                    if (vb.Length <= PageLayout.PageSize)
-                    {
-                        TReader r = cursor.CreateMinReader();
-                        using TPin p = r.PinBuffer(vb.Offset, vb.Length);
-                        emittedFast = builder.TryAddAligned(cursor.MinKey, p.Buffer);
-                    }
-                }
-
-                if (emittedFast)
-                {
-                    valueMerger.OnFastCopy(cursor.MinKey, ref cursor);
-                }
-                else
-                {
-                    ref TWriter inner = ref builder.BeginValueWrite();
-                    long valueStart = inner.Written;
-                    valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
-                    builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
-                }
+                ref TWriter inner = ref builder.BeginValueWrite();
+                long valueStart = inner.Written;
+                valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
+                builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
                 cursor.AdvanceMatching();
             }
             builder.Build();
@@ -165,29 +139,10 @@ internal static class HsstBTreeMerger
         {
             while (cursor.MoveNext())
             {
-                bool emittedFast = false;
-                if (cursor.MatchCount == 1)
-                {
-                    Bound vb = cursor.MinValue;
-                    if (vb.Length <= PageLayout.PageSize)
-                    {
-                        TReader r = cursor.CreateMinReader();
-                        using TPin p = r.PinBuffer(vb.Offset, vb.Length);
-                        emittedFast = builder.TryAddAligned(cursor.MinKey, p.Buffer);
-                    }
-                }
-
-                if (emittedFast)
-                {
-                    valueMerger.OnFastCopy(cursor.MinKey, ref cursor);
-                }
-                else
-                {
-                    staging.Reset();
-                    ref PooledByteBufferWriter.Writer stagingWriter = ref staging.GetWriter();
-                    valueMerger.MergeValues(ref stagingWriter, cursor.MinKey, ref cursor);
-                    builder.Add(cursor.MinKey, staging.WrittenSpan);
-                }
+                staging.Reset();
+                ref PooledByteBufferWriter.Writer stagingWriter = ref staging.GetWriter();
+                valueMerger.MergeValues(ref stagingWriter, cursor.MinKey, ref cursor);
+                builder.Add(cursor.MinKey, staging.WrittenSpan);
                 cursor.AdvanceMatching();
             }
             builder.Build();

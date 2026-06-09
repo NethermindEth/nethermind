@@ -195,20 +195,17 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// Regression for the matchCount==1 byte-copy fast path in NWayMergePerAddressColumn.
-    /// Each successful <c>HsstReader.TrySeek</c> narrows the reader's internal bound to
-    /// the matched sub-tag's value scope, so sibling sub-tag seeks must reset the bound
-    /// between calls — otherwise only the first hit (SlotSubTag) succeeds and the three
-    /// storage-trie sub-tag bloom adds silently never run, even though the underlying
-    /// nodes ride along in the byte-copied per-address blob. We pack AddressA into one
-    /// source with slots plus storage-trie nodes at every depth tier (top / compact /
-    /// fallback) and pair it with an unrelated address in the second source so that
-    /// matchCount==1 for AddressA. The bloom manager is shared with the compactor so
-    /// <c>bloomCapacity</c> is non-zero and the merger produces a real (non-AlwaysTrue)
-    /// bloom we can probe.
+    /// Regression for bloom completeness on a single matching source (matchCount==1), which
+    /// routes through the value mergers' <c>MergeValues</c> like any other key. We pack
+    /// AddressA into one source with slots plus storage-trie nodes at every depth tier (top /
+    /// compact / fallback) and pair it with an unrelated address in the second source so that
+    /// matchCount==1 for AddressA. The merge must still bloom-add the address key, every slot
+    /// key, and all three storage-trie sub-tag node keys. The bloom manager is shared with the
+    /// compactor so <c>bloomCapacity</c> is non-zero and the merger produces a real
+    /// (non-AlwaysTrue) bloom we can probe.
     /// </summary>
     [Test]
-    public void Compact_ByteCopyFastPath_AddsAllSubTagBloomKeys()
+    public void Compact_SingleSourceAddress_AddsAllSubTagBloomKeys()
     {
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(testDir);
@@ -239,8 +236,8 @@ public class PersistedSnapshotCompactorTests
             c0.StorageNodes[(addrHash256, compactPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
             c0.StorageNodes[(addrHash256, fallbackPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x82]);
 
-            // Different address in the second source so AddressA has matchCount==1 (triggers
-            // the per-address byte-copy fast path) while still having ≥ 2 sources to compact.
+            // Different address in the second source so AddressA has matchCount==1 (single
+            // matching source) while still having ≥ 2 sources to compact.
             SnapshotContent c1 = new();
             c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
 
@@ -284,21 +281,18 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// Regression for the 4 KiB page-alignment pad inserted in the
-    /// <c>matchCount == 1</c> fast path of <c>NWayMergePerAddressColumn</c>. The pad
-    /// pushes an about-to-straddle inner-HSST blob onto a fresh page so it lives in
-    /// one OS page; the leading pad bytes must be inert — recorded as gap data via
-    /// <c>FinishValueWrite(key, vb.Length)</c> rather than absorbed into the value
-    /// range, otherwise the outer leaf's <c>ValueStart = MetadataStart − ValueLength</c>
-    /// derivation would land in the pad and decoding would fail. Drives many
-    /// distinct addresses through the fast path with non-trivial inner HSSTs (slots
-    /// + a storage-trie node each) so positions sweep across multiple page
-    /// boundaries — at least some inner HSSTs will trigger the pad code path, and
-    /// all must round-trip read intact post-compaction.
+    /// Regression for the 4 KiB page-alignment pad applied by the BTree builder
+    /// (<c>HsstBTreeBuilder.Add → TryAlign</c>) when an about-to-straddle entry is pushed
+    /// onto a fresh page. The leading pad bytes must be inert so the outer leaf's
+    /// <c>ValueStart = MetadataStart − ValueLength</c> derivation lands inside the value and
+    /// decoding succeeds. Drives many distinct single-source addresses (matchCount==1) through
+    /// compaction with non-trivial inner HSSTs (slots + a storage-trie node each) so positions
+    /// sweep across multiple page boundaries — at least some entries trigger the pad code path,
+    /// and all must round-trip read intact post-compaction.
     /// </summary>
     [TestCase(40)]
     [TestCase(120)]
-    public void Compact_ByteCopyFastPath_PageAlignPaddingPreservesValues(int accountCount)
+    public void Compact_SingleSourceAddress_PageAlignPaddingPreservesValues(int accountCount)
     {
         string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(testDir);
@@ -515,6 +509,36 @@ public class PersistedSnapshotCompactorTests
                     Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Overlapping storage node — newer RLP must win");
                 }))
                 .SetName("Merge_AdvanceOrder_StorageNodes");
+        }
+
+        // Single-source per-sub-tag merge: the same addressHash is present in both
+        // sources (matchCount==2 for the storage-trie column), but the Top (4-byte key)
+        // and Fallback (33-byte key) sub-tags are present in only the older source while
+        // Compact (8-byte key) overlaps. This drives MergeStorageSubTag with active==1 for
+        // Top and Fallback across both inner key widths and active==2 for Compact.
+        {
+            Hash256 addrHash = Keccak.Compute(TestItem.AddressA.Bytes);
+            TreePath topPath = new(Keccak.Compute("trie_top"), 4);          // StorageTopSubTag (4-byte key)
+            TreePath compactPath = new(Keccak.Compute("trie_compact"), 10); // StorageCompactSubTag (8-byte key)
+            TreePath fallbackPath = new(Keccak.Compute("trie_fb"), 20);     // StorageFallbackSubTag (33-byte key)
+            SnapshotContent c0 = new();
+            c0.StorageNodes[(addrHash, topPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c0.StorageNodes[(addrHash, compactPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
+            c0.StorageNodes[(addrHash, fallbackPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x82]);
+            SnapshotContent c1 = new();
+            c1.StorageNodes[(addrHash, compactPath)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x81]);
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, topPath, out byte[]? topRlp), Is.True);
+                    Assert.That(topRlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Top sub-tag (active==1) must survive");
+                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, compactPath, out byte[]? compactRlp), Is.True);
+                    Assert.That(compactRlp, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Compact sub-tag (active==2) — newer wins");
+                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, fallbackPath, out byte[]? fallbackRlp), Is.True);
+                    Assert.That(fallbackRlp, Is.EqualTo(new byte[] { 0xC1, 0x82 }), "Fallback sub-tag (active==1) must survive");
+                }))
+                .SetName("Merge_SingleSourceSubTag_AllTiers");
         }
 
         // Mixed: all data types across two snapshots.
