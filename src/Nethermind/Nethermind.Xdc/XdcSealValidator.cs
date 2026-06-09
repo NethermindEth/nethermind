@@ -141,10 +141,12 @@ internal class XdcSealValidator(
                  || xdcHeader.Validator[64] >= 4)
                 return false;
 
-            Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), Keccak.Compute(_headerDecoder.Encode(xdcHeader, RlpBehaviors.ForSealing).Bytes));
+            Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), Keccak.Compute(EncodeHeaderForSeal(xdcHeader).Bytes));
 
             header.Author = signer;
         }
         return xdcHeader.Beneficiary == xdcHeader.Author;
     }
+
+    protected virtual Rlp EncodeHeaderForSeal(XdcBlockHeader header) => _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
 }

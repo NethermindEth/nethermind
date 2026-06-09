@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
-using System;
 
 namespace Nethermind.Xdc;
 
@@ -17,6 +19,8 @@ internal sealed class XdcSubnetSealValidator(
     IEpochSwitchManager epochSwitchManager,
     ISpecProvider specProvider) : XdcSealValidator(masternodesCalculator, epochSwitchManager, specProvider)
 {
+    private readonly XdcSubnetHeaderDecoder _headerDecoder = new();
+
     public override bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {
         if (header is not XdcSubnetBlockHeader xdcHeader)
@@ -60,6 +64,16 @@ internal sealed class XdcSubnetSealValidator(
 
         error = null;
         return true;
+    }
+
+    protected override Rlp EncodeHeaderForSeal(XdcBlockHeader header)
+    {
+        if (header is not XdcSubnetBlockHeader subnetHeader)
+        {
+            throw new ArgumentException($"Only type of {nameof(XdcSubnetBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
+        }
+
+        return _headerDecoder.Encode(subnetHeader, RlpBehaviors.ForSealing);
     }
 
     protected override bool ValidateEpochFields(XdcBlockHeader xdcHeader, Address[] masternodes, Address[] penalties, out string? error)
