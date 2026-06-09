@@ -22,12 +22,20 @@ internal sealed class RateLimitedNotifier(INotifier inner, int maxMessages, Time
             await inner.NotifyErrorAsync(RateLimitMessage);
     }
 
-    public async Task NotifyErrorAsync(string message)
+    public async Task NotifyErrorAsync(string error)
     {
         if (CheckRateLimit(out bool justHit))
-            await inner.NotifyErrorAsync(message);
+            await inner.NotifyErrorAsync(error);
         else if (justHit)
             await inner.NotifyErrorAsync(RateLimitMessage);
+    }
+
+    public async Task NotifyInfoAsync(string message)
+    {
+        if (CheckRateLimit(out bool justHit))
+            await inner.NotifyInfoAsync(message);
+        else if (justHit)
+            await inner.NotifyInfoAsync(RateLimitMessage);
     }
 
     private string RateLimitMessage =>

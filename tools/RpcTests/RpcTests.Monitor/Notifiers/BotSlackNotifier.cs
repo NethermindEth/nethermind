@@ -51,14 +51,30 @@ internal sealed class BotSlackNotifier(BotSlackConfig config) : INotifier
         }
     }
 
-    public async Task NotifyErrorAsync(string message)
+    public async Task NotifyErrorAsync(string error)
     {
         try
         {
             await _slack.Chat.PostMessage(new Message
             {
                 Channel = config.ChannelId,
-                Text = $"*RPC monitoring error*:\n```{message}```"
+                Text = $"*RPC monitoring error*:\n```{error}```"
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Slack notification error: {ex.Message}");
+        }
+    }
+
+    public async Task NotifyInfoAsync(string message)
+    {
+        try
+        {
+            await _slack.Chat.PostMessage(new Message
+            {
+                Channel = config.ChannelId,
+                Text = message
             });
         }
         catch (Exception ex)

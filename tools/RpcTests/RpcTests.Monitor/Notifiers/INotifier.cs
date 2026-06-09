@@ -6,5 +6,6 @@ namespace Nethermind.RpcTests.Monitor.Notifiers;
 internal interface INotifier : IDisposable
 {
     Task NotifyFailureAsync(TestFailure failure, CancellationToken ct);
-    Task NotifyErrorAsync(string message);
+    Task NotifyErrorAsync(string error);
+    Task NotifyInfoAsync(string message);
 }

@@ -28,8 +28,11 @@ internal sealed class WebhookSlackNotifier(string webhookUrl) : INotifier
         return PostAsync(new { text, attachments }, ct);
     }
 
-    public Task NotifyErrorAsync(string message) =>
-        PostAsync(new { text = $"*RPC monitoring error*:\n```{message}```" }, CancellationToken.None);
+    public Task NotifyErrorAsync(string error) =>
+        PostAsync(new { text = $"*RPC monitoring error*:\n```{error}```" }, CancellationToken.None);
+
+    public Task NotifyInfoAsync(string message) =>
+        PostAsync(new { text = message }, CancellationToken.None);
 
     private static object MakeAttachment(string title, string color, string json) => new
     {

@@ -6,6 +6,7 @@ namespace Nethermind.RpcTests.Monitor.Notifiers;
 internal class NullNotifier : INotifier
 {
     public Task NotifyFailureAsync(TestFailure failure, CancellationToken ct) => Task.CompletedTask;
-    public Task NotifyErrorAsync(string message) => Task.CompletedTask;
+    public Task NotifyErrorAsync(string error) => Task.CompletedTask;
+    public Task NotifyInfoAsync(string message) => Task.CompletedTask;
     public void Dispose() { }
 }
