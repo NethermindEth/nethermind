@@ -139,12 +139,18 @@ public static partial class EvmInstructions
             ? codeSource
             : env.ExecutingAccount;
 
-        // Add extra gas cost if value is transferred.
-        if (hasValueTransfer && !TGasPolicy.ConsumeCallValueTransfer(ref gas))
-            goto OutOfGas;
-
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
+
+        // Add extra gas cost if value is transferred. EIP-2780 reprices this into a three-tier
+        // charge keyed on self-call and recipient existence, subsuming the new-account surcharge.
+        if (hasValueTransfer)
+        {
+            bool valueOutOfGas = spec.IsEip2780Enabled
+                ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas, caller == target, state.IsDeadAccount(target))
+                : !TGasPolicy.ConsumeCallValueTransfer(ref gas);
+            if (valueOutOfGas) goto OutOfGas;
+        }
 
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
@@ -153,8 +159,10 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
+        // EIP-2780 charges a cold code-less account less; delegated accounts always carry code.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
+                vm.TxTracer.IsTracingAccess, codeSource,
+                hasCode: !spec.IsEip2780Enabled || state.IsContract(codeSource))) goto OutOfGas;
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
@@ -164,11 +172,12 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.
-        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
+        // EIP-2780 already accounts for account creation inside the value-transfer tier above.
+        bool chargesNewAccount = !spec.IsEip2780Enabled && (spec.ClearEmptyAccountWhenTouched switch
         {
             false => !state.AccountExists(target),
             true => hasValueTransfer && state.IsDeadAccount(target),
-        };
+        });
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 

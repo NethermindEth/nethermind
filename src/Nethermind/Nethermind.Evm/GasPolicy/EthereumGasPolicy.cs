@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.GasPolicy;
@@ -213,7 +214,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        AccountAccessKind kind = AccountAccessKind.Default)
+        AccountAccessKind kind = AccountAccessKind.Default,
+        bool hasCode = true)
     {
         if (!spec.UseHotAndColdStorage) return true;
         if (isTracingAccess)
@@ -226,11 +228,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Precompiles are pre-warmed at tx start, so WarmUp(precompile) is already-warm and the reorder is moot.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
-            true => UpdateGas(ref gas, GasCostOf.ColdAccountAccess),
+            true => UpdateGas(ref gas, ColdAccountAccessCost(spec, hasCode)),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
             false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
         };
     }
+
+    // EIP-2780 prices a cold touch of a code-less account cheaper than one with code.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long ColdAccountAccessCost(IReleaseSpec spec, bool hasCode) =>
+        spec.IsEip2780Enabled && !hasCode ? GasCostOf.ColdAccountAccessNoCodeEip2780 : GasCostOf.ColdAccountAccess;
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
@@ -405,6 +412,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static bool ConsumeCallValueTransfer(ref EthereumGasPolicy gas)
         => UpdateGas(ref gas, GasCostOf.CallValue);
 
+    // EIP-2780 value-moving call cost: subsumes the legacy CallValue + NewAccount charges.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ConsumeCallValueTransferEip2780(ref EthereumGasPolicy gas, bool isSelfCall, bool recipientEmpty)
+    {
+        long cost = isSelfCall ? GasCostOf.CallValueSelfEip2780
+            : recipientEmpty ? GasCostOf.CallValueNewAccountEip2780
+            : GasCostOf.CallValueExistingEip2780;
+        return UpdateGas(ref gas, cost);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
     {
@@ -452,18 +469,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
         CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
 
-    public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit)
+    public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit, IReadOnlyStateProvider? worldState = null)
     {
         long tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
         long floorTokensInAccessList = IGasPolicy<EthereumGasPolicy>.CalculateFloorTokensInAccessList(tx, spec);
         (long authRegularCost, long authStateCost) = IGasPolicy<EthereumGasPolicy>.AuthorizationListCost(tx, spec);
         long accessListCost = IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec, floorTokensInAccessList);
 
-        long regularGas = GasCostOf.Transaction
+        long baseCost = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        long regularGas = baseCost
                           + DataCost(tx, spec, tokensInCallData)
                           + CreateCost(tx, spec)
                           + accessListCost
-                          + authRegularCost;
+                          + authRegularCost
+                          + Eip2780Surcharges(tx, spec, worldState);
         long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tx, spec, tokensInCallData, floorTokensInAccessList);
         long createStateCost = CreateStateCost(tx, spec);
         long totalStateCost = authStateCost + createStateCost;
@@ -516,4 +535,27 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     private static long DataCost(Transaction tx, IReleaseSpec spec, long tokensInCallData) =>
         spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
 
+    /// <summary>
+    /// EIP-2780 intrinsic surcharges: the EIP-7708 transfer-log cost and the new-account surcharge.
+    /// Mirrors the normative pseudocode; the recipient cold-touch is charged at execution, not here.
+    /// </summary>
+    private static long Eip2780Surcharges(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
+    {
+        if (!spec.IsEip2780Enabled || tx.Value.IsZero) return 0;
+
+        long cost = 0;
+        Address? to = tx.To;
+        bool isCreate = tx.IsContractCreation;
+
+        // CREATE endows a freshly computed address distinct from the sender, so the transfer log
+        // applies whenever value > 0; otherwise only when the recipient differs from the sender.
+        if (isCreate || tx.SenderAddress != to)
+            cost += GasCostOf.TransferLogEip2780;
+
+        // New-account surcharge: non-create value transfer to a nonexistent, non-precompile recipient.
+        if (!isCreate && to is not null && worldState is not null && !spec.IsPrecompile(to) && worldState.IsDeadAccount(to))
+            cost += GasCostOf.NewAccount;
+
+        return cost;
+    }
 }

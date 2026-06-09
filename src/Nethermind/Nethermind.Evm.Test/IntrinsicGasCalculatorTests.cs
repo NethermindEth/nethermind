@@ -11,8 +11,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -274,6 +277,94 @@ namespace Nethermind.Evm.Test
 
             long regularPlusState = GasCostOf.Transaction + GasCostOf.CreateRegular + GasCostOf.CreateState;
             Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
+        }
+
+        // EIP-2780 intrinsic-gas vectors. The new-account case matches the normative pseudocode (31,256);
+        // the EIP's stated 31,756 total adds a 500 recipient cold-lookup charged at execution time.
+        public enum Recipient { NewAccount, ExistingEoa, Precompile, SelfTransfer, EmptyZeroValue }
+
+        private const long TxBaseEip2780 = GasCostOf.TransactionEip2780;
+        private const long TransferLogEip2780 = GasCostOf.TransferLogEip2780;
+
+        public static IEnumerable<TestCaseData> Eip2780IntrinsicCases()
+        {
+            yield return new TestCaseData(Recipient.NewAccount, (UInt256)1, TxBaseEip2780 + TransferLogEip2780 + GasCostOf.NewAccount)
+                .SetName("Eip2780_intrinsic_value_to_new_account_31256");
+            yield return new TestCaseData(Recipient.Precompile, (UInt256)1, TxBaseEip2780 + TransferLogEip2780)
+                .SetName("Eip2780_intrinsic_value_to_precompile_6256");
+            yield return new TestCaseData(Recipient.ExistingEoa, (UInt256)1, TxBaseEip2780 + TransferLogEip2780)
+                .SetName("Eip2780_intrinsic_value_to_existing_eoa_6256");
+            yield return new TestCaseData(Recipient.SelfTransfer, (UInt256)1, TxBaseEip2780)
+                .SetName("Eip2780_intrinsic_self_transfer_4500");
+            yield return new TestCaseData(Recipient.EmptyZeroValue, (UInt256)0, TxBaseEip2780)
+                .SetName("Eip2780_intrinsic_zero_value_to_empty_4500");
+        }
+
+        [TestCaseSource(nameof(Eip2780IntrinsicCases))]
+        public void Eip2780_intrinsic_gas_is_calculated_properly(Recipient recipient, UInt256 value, long expectedStandard)
+        {
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            Address to = recipient switch
+            {
+                Recipient.Precompile => Address.FromNumber(1), // 0x01 ECRECOVER precompile
+                Recipient.SelfTransfer => TestItem.AddressA,   // == sender (PrivateKeyA)
+                _ => TestItem.AddressB,
+            };
+            Transaction tx = Build.A.Transaction.WithValue(value).WithTo(to)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            // Only an unfunded recipient is nonexistent per EIP-161 (drives the new-account surcharge).
+            state.IsDeadAccount(Arg.Any<Address>()).Returns(recipient is Recipient.NewAccount);
+
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec, 0, state);
+
+            Assert.That(gas.Standard, Is.EqualTo(expectedStandard));
+            Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(expectedStandard, TxBaseEip2780)));
+        }
+
+        [Test]
+        public void Eip2780_intrinsic_gas_for_create_charges_transfer_log_only_when_value_positive()
+        {
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+
+            Transaction createZero = Build.A.Transaction.WithValue(0).WithCode(Array.Empty<byte>())
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction createValue = Build.A.Transaction.WithValue(1).WithCode(Array.Empty<byte>())
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(IntrinsicGasCalculator.Calculate(createZero, spec, 0, state).Standard,
+                Is.EqualTo(TxBaseEip2780 + GasCostOf.TxCreate));
+            // CREATE endows a fresh, sender-distinct address, so value > 0 pays the transfer log.
+            Assert.That(IntrinsicGasCalculator.Calculate(createValue, spec, 0, state).Standard,
+                Is.EqualTo(TxBaseEip2780 + GasCostOf.TxCreate + TransferLogEip2780));
+        }
+
+        [Test]
+        public void Eip2780_reduces_the_calldata_floor_base()
+        {
+            // Without reducing the floor base, the legacy 21,000 floor would dominate and negate the EIP.
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            Transaction tx = Build.A.Transaction.WithData([1]).SignedAndResolved().TestObject;
+
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
+
+            // Same per-token floor as Prague (DataTestCaseSource maps [1] to 21,040), rebased to 4,500.
+            Assert.That(gas.FloorGas, Is.EqualTo(TxBaseEip2780 + (21040 - GasCostOf.Transaction)));
+        }
+
+        [Test]
+        public void Eip2780_disabled_keeps_legacy_intrinsic_base()
+        {
+            Transaction tx = Build.A.Transaction.WithValue(1).WithTo(TestItem.AddressB)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.IsDeadAccount(Arg.Any<Address>()).Returns(true);
+
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Prague.Instance, 0, state);
+
+            Assert.That(gas.Standard, Is.EqualTo(GasCostOf.Transaction));
         }
     }
 }

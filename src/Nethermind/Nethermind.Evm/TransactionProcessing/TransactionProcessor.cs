@@ -971,7 +971,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, long blockGasLimit)
-            => TGasPolicy.CalculateIntrinsicGas(tx, spec, blockGasLimit);
+            => TGasPolicy.CalculateIntrinsicGas(tx, spec, blockGasLimit, WorldState);
 
         protected virtual UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
         {
