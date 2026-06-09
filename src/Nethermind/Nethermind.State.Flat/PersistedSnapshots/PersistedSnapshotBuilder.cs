@@ -316,8 +316,8 @@ public static class PersistedSnapshotBuilder
             // No-slots fast path: when this address has no storage slots, the per-address
             // inner HSST has bounded length (≤ 2 small sub-tags + trailer). Stage it into
             // a pooled buffer so the outer entry's value length is known up-front; the
-            // leaf-write then applies the same 4 KiB page-alignment pad used by the
-            // compaction fast path.
+            // leaf-write then applies the 4 KiB page-alignment pad (HsstBTreeBuilder.Add →
+            // TryAlign).
             bool hasSlots = storageIdx < sortedStorages.Count &&
                 sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes);
             if (!hasSlots)

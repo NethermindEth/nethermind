@@ -6,12 +6,10 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// <summary>
 /// N-way merge driver that emits a single <see cref="IndexType.BTree"/> HSST from N
 /// pre-positioned source enumerators. Drives a <see cref="NWayMergeCursor{TReader,TPin,TSource}"/>
-/// over the sources; on every cursor advance, fast-paths the matchCount==1 case by
-/// copying the source value verbatim via
-/// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.TryAddAligned"/>, otherwise opens
+/// over the sources; on every cursor advance opens
 /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/> and delegates to
 /// <typeparamref name="TValueMerger"/>.<see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource}.MergeValues"/>
-/// for conflict resolution.
+/// for conflict resolution (a single matching source is the degenerate case of the same merge).
 /// </summary>
 /// <remarks>
 /// Writer-side and cursor-side reader/pin types are independent — the cursor reads from
@@ -31,9 +29,8 @@ internal static class HsstBTreeMerger
     /// <see cref="NWayMergeCursor{TReader,TPin,TSource}.KeyLen"/> must match).</param>
     /// <param name="cursor">Caller-constructed merge cursor over N pre-positioned sources.
     /// The merger drives it to exhaustion.</param>
-    /// <param name="valueMerger">Per-key callback bundle. <c>OnKey</c> fires once per emitted
-    /// key (path-independent bookkeeping), <c>OnFastCopy</c> on a successful verbatim copy
-    /// of a single source's value, <c>MergeValues</c> on conflict / oversized single source.</param>
+    /// <param name="valueMerger">Per-key callback bundle. <c>MergeValues</c> emits the merged
+    /// value for each key, resolving conflicts across the matching sources.</param>
     /// <param name="options">Forwarded to the underlying builder.</param>
     /// <param name="expectedKeyCount">Forwarded to the underlying builder (sizing hint).</param>
     /// <param name="keyFirst">Forwarded to the underlying builder (entry layout selector).</param>
@@ -94,33 +91,10 @@ internal static class HsstBTreeMerger
         {
             while (cursor.MoveNext())
             {
-                bool emittedFast = false;
-                if (cursor.MatchCount == 1)
-                {
-                    Bound vb = cursor.MinValue;
-                    // Fast-fail short-circuit: NoOpPin.PinBuffer casts size to int and would
-                    // throw on a >2 GiB blob, so skip the pin attempt for obviously
-                    // disqualified sizes. TryAddAligned still does its own precise entry-
-                    // size check internally for the in-range cases.
-                    if (vb.Length <= PageLayout.PageSize)
-                    {
-                        TReader r = cursor.CreateMinReader();
-                        using TPin p = r.PinBuffer(vb.Offset, vb.Length);
-                        emittedFast = builder.TryAddAligned(cursor.MinKey, p.Buffer);
-                    }
-                }
-
-                if (emittedFast)
-                {
-                    valueMerger.OnFastCopy(cursor.MinKey, ref cursor);
-                }
-                else
-                {
-                    ref TWriter inner = ref builder.BeginValueWrite();
-                    long valueStart = inner.Written;
-                    valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
-                    builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
-                }
+                ref TWriter inner = ref builder.BeginValueWrite();
+                long valueStart = inner.Written;
+                valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
+                builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
                 cursor.AdvanceMatching();
             }
             builder.Build();
@@ -165,29 +139,10 @@ internal static class HsstBTreeMerger
         {
             while (cursor.MoveNext())
             {
-                bool emittedFast = false;
-                if (cursor.MatchCount == 1)
-                {
-                    Bound vb = cursor.MinValue;
-                    if (vb.Length <= PageLayout.PageSize)
-                    {
-                        TReader r = cursor.CreateMinReader();
-                        using TPin p = r.PinBuffer(vb.Offset, vb.Length);
-                        emittedFast = builder.TryAddAligned(cursor.MinKey, p.Buffer);
-                    }
-                }
-
-                if (emittedFast)
-                {
-                    valueMerger.OnFastCopy(cursor.MinKey, ref cursor);
-                }
-                else
-                {
-                    staging.Reset();
-                    ref PooledByteBufferWriter.Writer stagingWriter = ref staging.GetWriter();
-                    valueMerger.MergeValues(ref stagingWriter, cursor.MinKey, ref cursor);
-                    builder.Add(cursor.MinKey, staging.WrittenSpan);
-                }
+                staging.Reset();
+                ref PooledByteBufferWriter.Writer stagingWriter = ref staging.GetWriter();
+                valueMerger.MergeValues(ref stagingWriter, cursor.MinKey, ref cursor);
+                builder.Add(cursor.MinKey, staging.WrittenSpan);
                 cursor.AdvanceMatching();
             }
             builder.Build();
@@ -203,11 +158,11 @@ internal static class HsstBTreeMerger
     /// emits a partitioned key-first (<see cref="IndexType.BTreeKeyFirst"/>) outer build via
     /// <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/> instead of a plain
     /// key-first B-tree, so compacted slot-prefix HSSTs keep the partition hashtables. Same
-    /// merge loop and value-merger contract; the partitioned builder offers only
-    /// <c>Add(key, value)</c> (no streaming / aligned-try API), so the single-source fast path
-    /// adds the pinned source value directly (best-effort page alignment happens inside the
-    /// per-partition inner builder) and the conflict path stages through a
-    /// <see cref="PooledByteBufferWriter"/> exactly as the non-partitioned variant does.
+    /// merge loop and value-merger contract as the non-partitioned variant: every emitted key
+    /// is staged through a <see cref="PooledByteBufferWriter"/> via
+    /// <see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource,TFactory}.MergeValues"/>
+    /// (a single matching source is the degenerate case of the same merge) and fed into
+    /// <c>builder.Add(key, span)</c>.
     /// </summary>
     internal static void NWayMergeKeyFirstPartitioned<TBuilderWriter, TBuilderReader, TBuilderPin, TReader, TPin, TSource, TFactory, TValueMerger>(
         ref TBuilderWriter writer,
@@ -232,22 +187,10 @@ internal static class HsstBTreeMerger
         {
             while (cursor.MoveNext())
             {
-                Bound vb = cursor.MinValue;
-                if (cursor.MatchCount == 1 && vb.Length <= PageLayout.PageSize)
-                {
-                    // Single source, page-sized value: copy verbatim from the pinned source.
-                    TReader r = cursor.CreateMinReader();
-                    using TPin p = r.PinBuffer(vb.Offset, vb.Length);
-                    builder.Add(cursor.MinKey, p.Buffer);
-                    valueMerger.OnFastCopy(cursor.MinKey, ref cursor);
-                }
-                else
-                {
-                    staging.Reset();
-                    ref PooledByteBufferWriter.Writer stagingWriter = ref staging.GetWriter();
-                    valueMerger.MergeValues(ref stagingWriter, cursor.MinKey, ref cursor);
-                    builder.Add(cursor.MinKey, staging.WrittenSpan);
-                }
+                staging.Reset();
+                ref PooledByteBufferWriter.Writer stagingWriter = ref staging.GetWriter();
+                valueMerger.MergeValues(ref stagingWriter, cursor.MinKey, ref cursor);
+                builder.Add(cursor.MinKey, staging.WrittenSpan);
                 cursor.AdvanceMatching();
             }
             builder.Build();
@@ -264,13 +207,11 @@ internal static class HsstBTreeMerger
     /// emits a partitioned key-after-value (<see cref="IndexType.BTree"/>) outer build via
     /// <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}"/> so the compacted
     /// per-address column keeps its per-partition hashtables. Same value-merger contract and
-    /// streaming model as the non-partitioned overload — the merger writes the value straight
-    /// into the partitioned builder's <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/>
-    /// region. The partitioned builder has no aligned-add API, so the single-source fast path
-    /// copies the pinned source value verbatim (the inner HSST is position-independent) rather
-    /// than going through <c>TryAddAligned</c>; the conflict path streams through
+    /// streaming model as the non-partitioned overload — every emitted key streams its merged
+    /// value straight into the partitioned builder's
+    /// <see cref="HsstPartitionedBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/> region via
     /// <see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource,TFactory}.MergeValues"/>
-    /// exactly as the non-partitioned variant does.
+    /// (a single matching source is the degenerate case of the same merge).
     /// </summary>
     internal static void NWayMergePartitioned<TWriter, TWriterReader, TWriterPin, TReader, TPin, TSource, TFactory, TValueMerger>(
         ref TWriter writer,
@@ -296,24 +237,8 @@ internal static class HsstBTreeMerger
             {
                 ref TWriter inner = ref builder.BeginValueWrite();
                 long valueStart = inner.Written;
-                if (cursor.MatchCount == 1)
-                {
-                    // Single source: copy the per-address value verbatim (the inner HSST uses
-                    // self-relative offsets, so it is position-independent), then run the
-                    // merger's fast-copy bloom bookkeeping.
-                    Bound vb = cursor.MinValue;
-                    TReader r = cursor.CreateMinReader();
-                    using TPin p = r.PinBuffer(vb.Offset, vb.Length);
-                    p.Buffer.CopyTo(inner.GetSpan(checked((int)vb.Length)));
-                    inner.Advance((int)vb.Length);
-                    builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
-                    valueMerger.OnFastCopy(cursor.MinKey, ref cursor);
-                }
-                else
-                {
-                    valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
-                    builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
-                }
+                valueMerger.MergeValues(ref inner, cursor.MinKey, ref cursor);
+                builder.FinishValueWrite(cursor.MinKey, inner.Written - valueStart);
                 cursor.AdvanceMatching();
             }
             builder.Build();
