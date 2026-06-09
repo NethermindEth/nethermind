@@ -544,7 +544,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 }
             }
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in deferredDeletes)
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in deferredDeletes.AsSpan())
             {
                 byte[] after = kvp.Value.After;
                 BlockChange[kvp.Key] = new(after, after);
