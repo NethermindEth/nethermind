@@ -54,7 +54,7 @@ public sealed class WitnessCapturingBlockProcessor(
     WitnessRendezvous rendezvous,
     IStateReader stateReader,
     IHeaderFinder headerFinder,
-    WitnessCapturingTrieStore trieStore,
+    IWorldStateManager worldStateManager,
     ILogManager? logManager = null) : IBlockProcessor
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
@@ -90,11 +90,7 @@ public sealed class WitnessCapturingBlockProcessor(
 
         WitnessGeneratingHeaderFinder perBlockHeaderFinder = new(headerFinder);
 
-        // Reset the shared trie store so only nodes touched during *this* block are captured.
-        // The trie store wraps the main pipeline's read-only store, intercepting every node load
-        // that RecalculateStateRoot() triggers (e.g. sibling reads during branch collapse on
-        // account deletion or storage clearing) — reads that never surface at the IWorldState level.
-        trieStore.Reset();
+        WitnessCapturingTrieStore trieStore = new(worldStateManager.CreateReadOnlyTrieStore());
         WitnessGeneratingWorldState recorder = new(proxy.InnerState, stateReader, trieStore, perBlockHeaderFinder);
 
         if (!proxy.TryActivate(recorder))
