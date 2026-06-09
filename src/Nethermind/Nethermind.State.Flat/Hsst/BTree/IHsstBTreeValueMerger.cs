@@ -32,8 +32,8 @@ internal interface IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource, TFacto
     /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/> on the caller's
     /// behalf), inlining any per-element bookkeeping (e.g. bloom adds). A single matching
     /// source is the degenerate case of the same merge. Access matching sources via
-    /// <see cref="NWayMergeCursor{TReader,TPin,TSource,TFactory}.MatchingSources"/>,
-    /// <c>cursor.ValueAt(srcIdx)</c>, and <c>cursor.CreateReaderAt(srcIdx)</c>.</summary>
+    /// <see cref="NWayMergeCursor{TReader,TPin,TSource,TFactory}.MatchingSources"/>
+    /// and <c>cursor.ValueAt(srcIdx)</c>.</summary>
     void MergeValues(ref TWriter writer, scoped ReadOnlySpan<byte> key,
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor);
 }

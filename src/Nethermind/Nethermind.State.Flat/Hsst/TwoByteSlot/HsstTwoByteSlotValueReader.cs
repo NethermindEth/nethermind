@@ -7,27 +7,31 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 /// <summary>
-/// Read-side helpers for the <see cref="IndexType.TwoByteSlotValue"/> layout.
-/// Stateless static methods so <see cref="HsstReader{TReader,TPin}"/> and
-/// <see cref="HsstEnumerator{TReader,TPin}"/> can dispatch into them without copying
-/// their ref-struct state.
+/// Read-side helpers for the keys-first TwoByteSlot value layouts —
+/// <see cref="IndexType.TwoByteSlotValue"/> (u16 offsets) and
+/// <see cref="IndexType.TwoByteSlotValueLarge"/> (u24 offsets). The on-disk offset width
+/// is the only difference between them; the caller threads it in as <c>offsetSize</c>
+/// after dispatching on the leading <see cref="IndexType"/> byte. Stateless static methods
+/// so <see cref="HsstReader{TReader,TPin}"/> and <see cref="HsstEnumerator{TReader,TPin}"/>
+/// can dispatch into them without copying their ref-struct state.
 ///
 /// Wire shape (keys-first):
-/// <c>[IndexType: u8][KeyCount: u16 LE][Keys: N·2][Offsets: (N-1)·2][Values]</c>.
+/// <c>[IndexType: u8][KeyCount: u16 LE][Keys: N·2][Offsets: (N-1)·offsetSize][Values]</c>.
 /// </summary>
 internal static class HsstTwoByteSlotValueReader
 {
     public const int KeyLength = HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.KeyLength;
-    private const int OffsetSize = 2;
 
-    /// <summary>Parsed header of a TwoByteSlotValue HSST.</summary>
+    /// <summary>Parsed header of a TwoByteSlot value HSST.</summary>
     internal struct Layout
     {
         /// <summary>Number of entries (N; Offset_0 is implicit zero).</summary>
         public int Count;
+        /// <summary>On-disk width in bytes of each explicit offset (2 or 3).</summary>
+        public int OffsetSize;
         /// <summary>Absolute offset of the keys array (<c>Count · 2</c> bytes).</summary>
         public long KeysStart;
-        /// <summary>Absolute offset of the explicit offsets array (<c>(Count − 1) · 2</c> bytes).</summary>
+        /// <summary>Absolute offset of the explicit offsets array (<c>(Count − 1) · OffsetSize</c> bytes).</summary>
         public long OffsetsStart;
         /// <summary>Absolute offset of the values section (byte after offsets).</summary>
         public long ValuesStart;
@@ -36,11 +40,12 @@ internal static class HsstTwoByteSlotValueReader
     }
 
     /// <summary>
-    /// Parse the TwoByteSlotValue header. Returns false on truncation or invalid count.
+    /// Parse the TwoByteSlot value header. Returns false on truncation or invalid count.
     /// Caller must have already dispatched on the leading <see cref="IndexType"/> byte
-    /// (byte 0 of <paramref name="bound"/>) as <see cref="IndexType.TwoByteSlotValue"/>.
+    /// (byte 0 of <paramref name="bound"/>) and supply the matching <paramref name="offsetSize"/>
+    /// (2 for <see cref="IndexType.TwoByteSlotValue"/>, 3 for <see cref="IndexType.TwoByteSlotValueLarge"/>).
     /// </summary>
-    public static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, out Layout layout)
+    public static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, int offsetSize, out Layout layout)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -53,16 +58,17 @@ internal static class HsstTwoByteSlotValueReader
         if (!reader.TryRead(bound.Offset + 1, countBuf)) return false;
         int count = BinaryPrimitives.ReadUInt16LittleEndian(countBuf) + 1;
 
-        // IndexType + header + keys + offsets = 4N + 1; reject if it exceeds the blob.
-        long overhead = 4L * count + 1L;
+        // IndexType + KeyCount + keys + offsets; reject if it exceeds the blob.
+        long overhead = 3L + (long)KeyLength * count + (long)offsetSize * (count - 1);
         if (overhead > bound.Length) return false;
 
         long keysStart = bound.Offset + 3;
         long offsetsStart = keysStart + (long)count * KeyLength;
-        long valuesStart = offsetsStart + (long)(count - 1) * OffsetSize;
+        long valuesStart = offsetsStart + (long)(count - 1) * offsetSize;
         long valuesEnd = bound.Offset + bound.Length;
 
         layout.Count = count;
+        layout.OffsetSize = offsetSize;
         layout.KeysStart = keysStart;
         layout.OffsetsStart = offsetsStart;
         layout.ValuesStart = valuesStart;
@@ -71,19 +77,19 @@ internal static class HsstTwoByteSlotValueReader
     }
 
     /// <summary>
-    /// Exact-match or floor lookup over a TwoByteSlotValue HSST. <paramref name="key"/>
+    /// Exact-match or floor lookup over a TwoByteSlot value HSST. <paramref name="key"/>
     /// must be exactly 2 bytes (any other length rejects). Floor semantics: largest
     /// stored key ≤ target. Zero-length values are legal and round-trip as empty bounds.
     /// </summary>
     public static bool TrySeek<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
-        bool exactMatch, out Bound resultBound)
+        bool exactMatch, int offsetSize, out Bound resultBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         resultBound = default;
         if (key.Length != KeyLength) return false;
-        if (!TryReadLayout<TReader, TPin>(in reader, bound, out Layout L)) return false;
+        if (!TryReadLayout<TReader, TPin>(in reader, bound, offsetSize, out Layout L)) return false;
 
         long keysBytes = (long)L.Count * KeyLength;
         using TPin keysPin = reader.PinBuffer(L.KeysStart, keysBytes);
@@ -126,29 +132,31 @@ internal static class HsstTwoByteSlotValueReader
 
     /// <summary>
     /// Resolve entry <paramref name="idx"/>'s value bound. <paramref name="idx"/> must be
-    /// in <c>[0, Count)</c>. Reads at most 4 bytes from the offsets array (the entry's
-    /// start and end). Caller pre-validates index range.
+    /// in <c>[0, Count)</c>. Reads the entry's start and end from the offsets array.
+    /// Caller pre-validates index range.
     /// </summary>
     public static bool TryResolve<TReader, TPin>(scoped in TReader reader, in Layout L, int idx, out Bound entryBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         entryBound = default;
-        long start = idx == 0 ? 0L : ReadU16LE<TReader, TPin>(in reader, L.OffsetsStart + (long)(idx - 1) * OffsetSize);
+        long start = idx == 0 ? 0L : ReadOffsetLE<TReader, TPin>(in reader, L.OffsetsStart + (long)(idx - 1) * L.OffsetSize, L.OffsetSize);
         long end = idx == L.Count - 1
             ? L.ValuesEnd - L.ValuesStart
-            : ReadU16LE<TReader, TPin>(in reader, L.OffsetsStart + (long)idx * OffsetSize);
+            : ReadOffsetLE<TReader, TPin>(in reader, L.OffsetsStart + (long)idx * L.OffsetSize, L.OffsetSize);
         if (end < start) return false;
         entryBound = new Bound(L.ValuesStart + start, end - start);
         return true;
     }
 
-    private static long ReadU16LE<TReader, TPin>(scoped in TReader reader, long offset)
+    /// <summary>Read a <paramref name="size"/>-byte (2 or 3) little-endian offset. Returns -1 on read failure.</summary>
+    internal static long ReadOffsetLE<TReader, TPin>(scoped in TReader reader, long offset, int size)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        Span<byte> buf = stackalloc byte[2];
-        if (!reader.TryRead(offset, buf)) return -1;
-        return BinaryPrimitives.ReadUInt16LittleEndian(buf);
+        Span<byte> buf = stackalloc byte[4];
+        buf.Clear();
+        if (!reader.TryRead(offset, buf[..size])) return -1;
+        return BinaryPrimitives.ReadUInt32LittleEndian(buf);
     }
 }

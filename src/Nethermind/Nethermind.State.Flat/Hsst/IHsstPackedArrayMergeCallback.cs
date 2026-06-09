@@ -13,17 +13,9 @@ namespace Nethermind.State.Flat.Hsst;
 /// <remarks>
 /// Implemented as a generic struct constraint (<c>TCallback : struct, IHsstPackedArrayMergeCallback</c>)
 /// so the JIT monomorphises the merger per callback type — the <c>OnKey</c> call resolves to a
-/// direct invocation, no virtual dispatch. <see cref="NoOpHsstPackedArrayMergeCallback"/> is
-/// available for callers that don't need a hook.
+/// direct invocation, no virtual dispatch.
 /// </remarks>
 internal interface IHsstPackedArrayMergeCallback
 {
     void OnKey(scoped ReadOnlySpan<byte> key);
-}
-
-/// <summary>No-op <see cref="IHsstPackedArrayMergeCallback"/> for callers that don't need
-/// the per-key hook.</summary>
-internal readonly struct NoOpHsstPackedArrayMergeCallback : IHsstPackedArrayMergeCallback
-{
-    public void OnKey(scoped ReadOnlySpan<byte> key) { }
 }

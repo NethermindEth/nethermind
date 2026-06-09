@@ -116,11 +116,6 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
         bloom.Dispose(); // creation lease
     }
 
-    /// <summary>True iff the manager already has a slot entry for <paramref name="to"/>.
-    /// Used by <see cref="PersistedSnapshotRepository.ReconstructBloom"/> to skip states
-    /// whose slot was already filled by a previous (wider) registration's range walk.</summary>
-    public bool ContainsSlot(StateId to) => _blooms.ContainsKey(to);
-
     /// <summary>
     /// Lease the bloom keyed by <paramref name="to"/>. Acquires an additional lease for
     /// the caller. Returns <see cref="PersistedSnapshotBloom.AlwaysTrue"/> on miss.

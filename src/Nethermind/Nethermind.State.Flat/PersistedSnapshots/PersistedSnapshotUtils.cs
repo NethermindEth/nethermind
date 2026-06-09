@@ -72,86 +72,6 @@ internal static class PersistedSnapshotUtils
         File.WriteAllText(filename, JsonSerializer.Serialize(dump));
     }
 
-    internal static SnapshotContent ReadSnapshotFromJson(string jsonPath)
-    {
-        string jsonContent = File.ReadAllText(jsonPath);
-        using JsonDocument doc = JsonDocument.Parse(jsonContent);
-        JsonElement root = doc.RootElement;
-
-        SnapshotContent content = new();
-
-        if (root.TryGetProperty("accounts", out JsonElement accountsElement))
-        {
-            foreach (JsonProperty prop in accountsElement.EnumerateObject())
-            {
-                Address addr = new(Bytes.FromHexString(prop.Name));
-                string value = prop.Value.GetString() ?? "";
-                if (value == "")
-                {
-                    content.Accounts[addr] = null;
-                }
-                else
-                {
-                    Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(value));
-                    content.Accounts[addr] = AccountDecoder.Slim.Decode(ref ctx);
-                }
-            }
-        }
-
-        if (root.TryGetProperty("storages", out JsonElement storagesElement))
-        {
-            foreach (JsonProperty prop in storagesElement.EnumerateObject())
-            {
-                string[] parts = prop.Name.Split(':');
-                Address addr = new(Bytes.FromHexString(parts[0]));
-                // Matches DumpSnapshotToJson: slot serialized as decimal.
-                UInt256 slot = UInt256.Parse(parts[1]);
-                string value = prop.Value.GetString() ?? "";
-                SlotValue? slotValue = value == "" ? null : new SlotValue(Bytes.FromHexString(value));
-                content.Storages[(addr, slot)] = slotValue;
-            }
-        }
-
-        if (root.TryGetProperty("selfDestructed", out JsonElement selfDestructElement))
-        {
-            foreach (JsonProperty prop in selfDestructElement.EnumerateObject())
-            {
-                Address addr = new(Bytes.FromHexString(prop.Name));
-                bool value = prop.Value.GetBoolean();
-                content.SelfDestructedStorageAddresses[addr] = value;
-            }
-        }
-
-        if (root.TryGetProperty("stateNodes", out JsonElement stateNodesElement))
-        {
-            foreach (JsonProperty prop in stateNodesElement.EnumerateObject())
-            {
-                string[] parts = prop.Name.Split(':');
-                Hash256 pathHash = new(Bytes.FromHexString(parts[0]));
-                int length = int.Parse(parts[1]);
-                TreePath path = new(pathHash, length);
-                byte[] nodeRlp = Bytes.FromHexString(prop.Value.GetString() ?? "");
-                content.StateNodes[path] = new TrieNode(NodeType.Unknown, nodeRlp);
-            }
-        }
-
-        if (root.TryGetProperty("storageNodes", out JsonElement storageNodesElement))
-        {
-            foreach (JsonProperty prop in storageNodesElement.EnumerateObject())
-            {
-                string[] parts = prop.Name.Split(':');
-                Hash256 hash = new(Bytes.FromHexString(parts[0]));
-                Hash256 pathHash = new(Bytes.FromHexString(parts[1]));
-                int length = int.Parse(parts[2]);
-                TreePath path = new(pathHash, length);
-                byte[] nodeRlp = Bytes.FromHexString(prop.Value.GetString() ?? "");
-                content.StorageNodes[(hash, path)] = new TrieNode(NodeType.Unknown, nodeRlp);
-            }
-        }
-
-        return content;
-    }
-
     internal static void ValidatePersistedSnapshot(Snapshot snapshot, PersistedSnapshot persisted, PersistedSnapshotBloomFilterManager bloomManager, bool dumpWhenFailed = true)
     {
         string filename = $"broken.{snapshot.From.BlockNumber}.{snapshot.To.BlockNumber}.json";
@@ -227,27 +147,5 @@ internal static class PersistedSnapshotUtils
             if (dumpWhenFailed) DumpSnapshotToJson(snapshot, filename);
             throw new InvalidOperationException($"{ex.Message}. Dumped snapshot to {filename}", ex);
         }
-    }
-    private sealed class ThrowingPersistenceReader : IPersistence.IPersistenceReader
-    {
-        public void Dispose() { }
-        public Account? GetAccount(Address address) =>
-            throw new InvalidOperationException("Value not found in source snapshots");
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
-            throw new InvalidOperationException("Value not found in source snapshots");
-        public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            throw new InvalidOperationException("Value not found in source snapshots");
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            throw new InvalidOperationException("Value not found in source snapshots");
-        public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
-            throw new InvalidOperationException("Value not found in source snapshots");
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
-            throw new InvalidOperationException("Value not found in source snapshots");
-        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
-            throw new InvalidOperationException("Value not found in source snapshots");
-        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
-            throw new InvalidOperationException("Value not found in source snapshots");
-        public bool IsPreimageMode => false;
     }
 }

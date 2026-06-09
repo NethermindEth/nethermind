@@ -431,15 +431,6 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         buffer[8 - 1] = (byte)((buffer[8 - 1] & 0xf0) | (lengthAsByte & 0x0f));
     }
 
-    public static TreePath DecodeWith3Byte(ReadOnlySpan<byte> buffer)
-    {
-        Span<byte> pathBytes = stackalloc byte[32];
-        buffer[..3].CopyTo(pathBytes);
-        int length = pathBytes[2] & 0x0f;
-        pathBytes[2] = (byte)(pathBytes[2] & 0xf0);
-        return new TreePath(new ValueHash256(pathBytes), length);
-    }
-
     public static TreePath DecodeWith4Byte(ReadOnlySpan<byte> buffer)
     {
         Span<byte> pathBytes = stackalloc byte[32];

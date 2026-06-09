@@ -100,7 +100,6 @@ internal static class PersistedSnapshotTags
     internal static readonly byte[] SelfDestructNewMarker = [0x01];
     internal static readonly byte[] AccountDeletedMarker = [0x00];
     internal const byte SelfDestructDestructedMarkerByte = 0x00;
-    internal const byte SelfDestructNewMarkerByte = 0x01;
     internal const byte AccountDeletedMarkerByte = 0x00;
 
     // Metadata column keys. The HSST builder requires uniform key length per HSST,

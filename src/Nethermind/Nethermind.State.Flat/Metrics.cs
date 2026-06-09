@@ -114,10 +114,6 @@ public static class Metrics
         set => Volatile.Write(ref _persistedSnapshotCount, value);
     }
 
-    [GaugeMetric]
-    [Description("Estimated disk usage of persisted snapshots in bytes")]
-    public static long PersistedSnapshotDiskBytes { get; set; }
-
     internal static long _persistedSnapshotMemory;
 
     [GaugeMetric]
@@ -153,11 +149,6 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of persisted snapshot compactions performed")]
     public static long PersistedSnapshotCompactions { get; set; }
-
-    [DetailedMetric]
-    [CounterMetric]
-    [Description("Number of persisted snapshot file writes")]
-    public static long PersistedSnapshotWrites { get; set; }
 
     internal static long _persistedSnapshotPrunes;
 

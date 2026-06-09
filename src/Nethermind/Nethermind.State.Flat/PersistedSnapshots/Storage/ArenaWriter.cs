@@ -32,9 +32,6 @@ public sealed class ArenaWriter : IDisposable
             (relOffset, size) => file.OpenWholeView(startOffset + relOffset, size, adviseDontNeedOnDispose: false));
     }
 
-    internal int ArenaId => _file.Id;
-    internal long StartOffset => _startOffset;
-
     public ref ArenaBufferWriter GetWriter() => ref _writer;
 
     public (SnapshotLocation Location, ArenaReservation Reservation) Complete()

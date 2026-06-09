@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
 /// <c>[Ends: N·OffsetSize LE][Count: u8 = N − 1][OffsetSize: u8][IndexType: u8 = 0x04]</c>.
 /// <c>OffsetSize</c> is chosen at <see cref="Build"/> time from the running values total
 /// (1, 2, 4, or 6 bytes — the same policy as <see cref="HsstOffset.ChooseOffsetSize"/>).
-/// <c>N</c> equals <c>(firstWrittenTag + 1)</c> and is capped at <see cref="MaxEntries"/> (256).
+/// <c>N</c> equals <c>(firstWrittenTag + 1)</c> and is capped at 256.
 /// </summary>
 /// <remarks>
 /// The descending insertion contract puts hot small-blob tags (low tag values) at the end
@@ -41,10 +41,6 @@ namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
 public ref struct HsstDenseByteIndexBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
-    /// <summary>Maximum entries (and hence one past the maximum tag). The on-disk
-    /// <c>Count</c> byte stores <c>N − 1</c>, so a single byte covers 1..256.</summary>
-    public const int MaxEntries = 256;
-
     /// <summary>Sentinel for "no tag has been written yet" (one past the max byte value).</summary>
     private const int NoTagYet = 256;
 

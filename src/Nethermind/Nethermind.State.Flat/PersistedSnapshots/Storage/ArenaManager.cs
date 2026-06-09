@@ -27,7 +27,6 @@ public sealed class ArenaManager : IArenaManager
     private readonly PersistedSnapshotTier _tier;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
-    private readonly HashSet<int> _standaloneFiles = [];
     // Shared (non-dedicated) arenas with headroom for further packing AND not currently
     // held by a writer. A writer reserves a file by removing it from this set; the writer's
     // Complete / Cancel re-adds it (if room remains). Same pattern as BlobArenaManager.
@@ -132,9 +131,6 @@ public sealed class ArenaManager : IArenaManager
                 ArenaFile arena = new(arenaId, file, mappedSize);
                 _arenas[arenaId] = arena;
                 _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
-
-                if (isDedicated)
-                    _standaloneFiles.Add(arenaId);
             }
 
             // Compute frontiers (max end-offset of any slice referencing the arena) and live
@@ -184,7 +180,7 @@ public sealed class ArenaManager : IArenaManager
             // Reserve: remove from the mutable pool so no concurrent CreateWriter picks
             // the same file. The writer's OnWriteCompleted / OnWriteCancelledShared
             // re-adds the id if there's still room. Dedicated files never enter the
-            // mutable pool (they live in _standaloneFiles).
+            // mutable pool.
             if (!dedicated) _mutableArenas.Remove(file.Id);
             FileStream stream = file.CreateWriteStream(offset);
             return new ArenaWriter(this, file, dedicated, offset, stream);
@@ -227,7 +223,6 @@ public sealed class ArenaManager : IArenaManager
     {
         lock (_lock)
         {
-            _standaloneFiles.Remove(file.Id);
             _arenas.TryRemove(file.Id, out _);
             OnArenaRemoved(file);
         }
@@ -270,7 +265,6 @@ public sealed class ArenaManager : IArenaManager
             if (_disposed) return false;
             file.DeadBytes += deadSize;
             if (file.DeadBytes < file.Frontier) return true;
-            _standaloneFiles.Remove(file.Id);
             _mutableArenas.Remove(file.Id);
             if (_arenas.TryRemove(file.Id, out _))
             {
@@ -463,7 +457,6 @@ public sealed class ArenaManager : IArenaManager
         string path = Path.Combine(_basePath, $"{prefix}{id:D4}{ArenaFileExtension}");
         ArenaFile arena = new(id, path, mappedSize);
         _arenas[id] = arena;
-        if (dedicated) _standaloneFiles.Add(id);
         // Fresh shared file isn't added to _mutableArenas — the writer that just took it
         // is its "owner". The writer's Complete / Cancel adds it (if room remains).
         OnArenaAdded(arena);

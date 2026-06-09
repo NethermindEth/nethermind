@@ -15,11 +15,6 @@ public sealed record HsstBTreeOptions
     /// <summary>Default cap on entries per leaf b-tree node.</summary>
     public const int DefaultMaxLeafEntries = 512;
 
-    /// <summary>Default minimum entries per leaf b-tree node — once reached, the
-    /// builder may split early if the next entry would worsen the per-leaf encoding
-    /// (max separator length grows, or common prefix shrinks).</summary>
-    public const int DefaultMinLeafEntries = 16;
-
     /// <summary>Hard upper bound on children per intermediate node — sanity cap
     /// only; the byte threshold (<see cref="MaxIntermediateBytes"/>) is the
     /// normal binding constraint.</summary>
@@ -46,12 +41,6 @@ public sealed record HsstBTreeOptions
 
     /// <summary>Maximum entries per leaf node before the builder splits.</summary>
     public int MaxLeafEntries { get; init; } = DefaultMaxLeafEntries;
-
-    /// <summary>Minimum entries per leaf node — accumulation always reaches this
-    /// before the dynamic-split heuristics (max-sep growth, common-prefix shrink)
-    /// are allowed to fire. Set equal to <see cref="MaxLeafEntries"/> to disable
-    /// the dynamic split.</summary>
-    public int MinLeafEntries { get; init; } = DefaultMinLeafEntries;
 
     /// <summary>Maximum children per intermediate node (fan-out). Hard upper bound
     /// that prevents pathological cases; <see cref="MaxIntermediateBytes"/> is the

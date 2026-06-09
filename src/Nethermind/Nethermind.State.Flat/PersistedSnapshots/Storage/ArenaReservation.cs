@@ -133,13 +133,6 @@ public sealed class ArenaReservation : RefCountingDisposable
     }
 
     /// <summary>
-    /// Direct span access used internally by <see cref="WholeReadSession"/> and the reader
-    /// path. External consumers go through <see cref="BeginWholeReadSession"/> so that the
-    /// span's lifetime is bounded by an explicit Begin/End scope.
-    /// </summary>
-    internal ReadOnlySpan<byte> GetSpanInternal() => _arenaFile.GetSpan(Offset, Size);
-
-    /// <summary>
     /// Begin a scoped whole-buffer read. The returned session holds a lease on this
     /// reservation; disposing it releases the lease and (by default) issues
     /// <c>madvise(MADV_DONTNEED)</c> on the mapped range. Pass

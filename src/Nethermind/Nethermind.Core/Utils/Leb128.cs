@@ -29,19 +29,6 @@ public static class Leb128
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int Write(Span<byte> data, int offset, int value)
-    {
-        uint v = (uint)value;
-        while (v >= 0x80)
-        {
-            data[offset++] = (byte)(v | 0x80);
-            v >>= 7;
-        }
-        data[offset++] = (byte)v;
-        return offset;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int Write(Span<byte> data, int offset, long value)
     {
         ulong v = (ulong)value;
@@ -52,20 +39,6 @@ public static class Leb128
         }
         data[offset++] = (byte)v;
         return offset;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int EncodedSize(int value)
-    {
-        uint v = (uint)value;
-        int size = 0;
-        do
-        {
-            size++;
-            v >>= 7;
-        }
-        while (v != 0);
-        return size;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

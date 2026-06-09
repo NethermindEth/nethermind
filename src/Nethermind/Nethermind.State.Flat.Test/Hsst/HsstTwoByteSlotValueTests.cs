@@ -10,12 +10,11 @@ using Nethermind.State.Flat.Hsst.TwoByteSlot;
 namespace Nethermind.State.Flat.Test.Hsst;
 
 /// <summary>
-/// Format-specific tests for the keys-first sub-slot builders
-/// (<see cref="HsstTwoByteSlotValueBuilder{TWriter}"/> for the u16 / 64 KiB cumulative cap
-/// variant, and <see cref="HsstTwoByteSlotValueLargeBuilder{TWriter}"/> for the u24 variant).
-/// Tests that exercise the same shape across both builders are parameterised on a
-/// <c>bool large</c> discriminator. Generic round-trip / floor / enumeration coverage lives
-/// in <see cref="HsstCrossFormatTests"/>.
+/// Format-specific tests for the keys-first sub-slot builder
+/// (<see cref="HsstTwoByteSlotValueBuilder{TWriter}"/>): the u16 / 64 KiB cumulative-cap
+/// variant (offsetSize 2) and the u24 variant (offsetSize 3). Tests that exercise the same
+/// shape across both widths are parameterised on a <c>bool large</c> discriminator. Generic
+/// round-trip / floor / enumeration coverage lives in <see cref="HsstCrossFormatTests"/>.
 /// </summary>
 [TestFixture]
 public class HsstTwoByteSlotValueTests
@@ -24,15 +23,8 @@ public class HsstTwoByteSlotValueTests
     {
         Assert.That(keys.Length, Is.EqualTo(values.Length));
         using PooledByteBufferWriter pooled = new(64 * 1024);
-        if (large)
+        using (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter(), large ? 3 : 2))
         {
-            using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-            for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
-            b.Build();
-        }
-        else
-        {
-            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
             for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
             b.Build();
         }
@@ -50,36 +42,18 @@ public class HsstTwoByteSlotValueTests
         Assert.Throws<ArgumentException>(() =>
         {
             using PooledByteBufferWriter p = new(1024);
-            if (large)
-            {
-                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
-                b.Add([0x10, 0x00], [1]);
-                b.Add([0x10, 0x00], [2]);
-            }
-            else
-            {
-                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
-                b.Add([0x10, 0x00], [1]);
-                b.Add([0x10, 0x00], [2]);
-            }
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter(), large ? 3 : 2);
+            b.Add([0x10, 0x00], [1]);
+            b.Add([0x10, 0x00], [2]);
         }, "duplicate key must throw");
 
         // Strictly-lower key.
         Assert.Throws<ArgumentException>(() =>
         {
             using PooledByteBufferWriter p = new(1024);
-            if (large)
-            {
-                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
-                b.Add([0x10, 0x00], [1]);
-                b.Add([0x09, 0xff], [2]);
-            }
-            else
-            {
-                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
-                b.Add([0x10, 0x00], [1]);
-                b.Add([0x09, 0xff], [2]);
-            }
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter(), large ? 3 : 2);
+            b.Add([0x10, 0x00], [1]);
+            b.Add([0x09, 0xff], [2]);
         }, "lower key must throw");
     }
 
@@ -95,16 +69,8 @@ public class HsstTwoByteSlotValueTests
         Assert.Throws<ArgumentException>(() =>
         {
             using PooledByteBufferWriter pooled = new(1024);
-            if (large)
-            {
-                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-                b.Add(key, [1]);
-            }
-            else
-            {
-                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-                b.Add(key, [1]);
-            }
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter(), large ? 3 : 2);
+            b.Add(key, [1]);
         }, $"{len}-byte key must throw");
     }
 
@@ -126,16 +92,8 @@ public class HsstTwoByteSlotValueTests
         Assert.Throws<InvalidOperationException>(() =>
         {
             using PooledByteBufferWriter pooled = new(1024);
-            if (large)
-            {
-                using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-                b.Build();
-            }
-            else
-            {
-                using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
-                b.Build();
-            }
+            using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter(), large ? 3 : 2);
+            b.Build();
         }, "Build on empty map must throw");
 
     [Test]
@@ -144,14 +102,6 @@ public class HsstTwoByteSlotValueTests
         Assert.That(HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(0), Is.True);
         Assert.That(HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(ushort.MaxValue), Is.True);
         Assert.That(HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(ushort.MaxValue + 1), Is.False);
-    }
-
-    [Test]
-    public void FitsInOffsetWidth_BoundaryAndOverflow_U24()
-    {
-        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(0), Is.True);
-        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth((1 << 24) - 1), Is.True);
-        Assert.That(HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(1 << 24), Is.False);
     }
 
     [Test]

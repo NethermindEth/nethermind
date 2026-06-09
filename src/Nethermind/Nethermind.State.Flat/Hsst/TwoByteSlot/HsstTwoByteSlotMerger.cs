@@ -20,8 +20,7 @@ namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
 /// them across many merges in a single outer pass (e.g. per-outer-key inside
 /// a slot-prefix value merger). Generic over <typeparamref name="TCallback"/>
 /// so callers can plug in a per-key hook (e.g. bloom-filter maintenance)
-/// without re-iterating the output — pass <see cref="NoOpHsstTwoByteSlotMergeCallback"/>
-/// when no hook is needed.
+/// without re-iterating the output.
 /// </remarks>
 internal static class HsstTwoByteSlotMerger
 {
@@ -31,8 +30,7 @@ internal static class HsstTwoByteSlotMerger
     /// <param name="scratchKeys">Caller-owned scratch for staged 2-byte keys.</param>
     /// <param name="scratchValues">Caller-owned scratch for staged value bytes.</param>
     /// <param name="scratchLens">Caller-owned scratch for per-entry value lengths.</param>
-    /// <param name="callback">Per-emitted-key hook; pass
-    /// <see cref="NoOpHsstTwoByteSlotMergeCallback"/> when no hook is needed.</param>
+    /// <param name="callback">Per-emitted-key hook.</param>
     internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TCallback>(
         ref TWriter writer,
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
@@ -69,29 +67,15 @@ internal static class HsstTwoByteSlotMerger
         ReadOnlySpan<byte> mergedValues = scratchValues.AsSpan();
         ReadOnlySpan<int> mergedLens = scratchLens.AsSpan();
 
-        if (HsstTwoByteSlotValueBuilder<TWriter>.FitsInOffsetWidth(mergedValues.Length))
+        int offsetSize = HsstTwoByteSlotValueBuilder<TWriter>.FitsInOffsetWidth(mergedValues.Length) ? 2 : 3;
+        using HsstTwoByteSlotValueBuilder<TWriter> builder = new(ref writer, offsetSize);
+        int valOff = 0;
+        for (int i = 0; i < mergedLens.Length; i++)
         {
-            using HsstTwoByteSlotValueBuilder<TWriter> builder = new(ref writer);
-            int valOff = 0;
-            for (int i = 0; i < mergedLens.Length; i++)
-            {
-                builder.Add(mergedKeys.Slice(i * KeyLength, KeyLength),
-                            mergedValues.Slice(valOff, mergedLens[i]));
-                valOff += mergedLens[i];
-            }
-            builder.Build();
+            builder.Add(mergedKeys.Slice(i * KeyLength, KeyLength),
+                        mergedValues.Slice(valOff, mergedLens[i]));
+            valOff += mergedLens[i];
         }
-        else
-        {
-            using HsstTwoByteSlotValueLargeBuilder<TWriter> builder = new(ref writer);
-            int valOff = 0;
-            for (int i = 0; i < mergedLens.Length; i++)
-            {
-                builder.Add(mergedKeys.Slice(i * KeyLength, KeyLength),
-                            mergedValues.Slice(valOff, mergedLens[i]));
-                valOff += mergedLens[i];
-            }
-            builder.Build();
-        }
+        builder.Build();
     }
 }

@@ -43,7 +43,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    private enum VariantKind : byte { Empty, PackedArray, BTree, BTreeKeyFirst, TwoByteSlotValue, TwoByteSlotValueLarge }
+    private enum VariantKind : byte { Empty, PackedArray, BTree, BTreeKeyFirst, TwoByteSlot }
 
     // Struct envelope: only thing that needs to live on the value is the
     // discriminator and the variant references. All mutable
@@ -54,7 +54,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly HsstPackedArrayEnumerator<TReader, TPin>? _packed;
     private readonly HsstBTreeEnumerator<TReader, TPin>? _btree;
     private readonly HsstTwoByteSlotValueEnumerator<TReader, TPin>? _tbsv;
-    private readonly HsstTwoByteSlotValueLargeEnumerator<TReader, TPin>? _tbsvLarge;
 
     public HsstEnumerator(scoped in TReader reader, Bound scope)
     {
@@ -110,12 +109,12 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         switch (frontTag)
         {
             case IndexType.TwoByteSlotValue:
-                _tbsv = HsstTwoByteSlotValueEnumerator<TReader, TPin>.TryCreate(in reader, scope);
-                _kind = _tbsv is not null ? VariantKind.TwoByteSlotValue : VariantKind.Empty;
+                _tbsv = HsstTwoByteSlotValueEnumerator<TReader, TPin>.TryCreate(in reader, scope, offsetSize: 2);
+                _kind = _tbsv is not null ? VariantKind.TwoByteSlot : VariantKind.Empty;
                 break;
             case IndexType.TwoByteSlotValueLarge:
-                _tbsvLarge = HsstTwoByteSlotValueLargeEnumerator<TReader, TPin>.TryCreate(in reader, scope);
-                _kind = _tbsvLarge is not null ? VariantKind.TwoByteSlotValueLarge : VariantKind.Empty;
+                _tbsv = HsstTwoByteSlotValueEnumerator<TReader, TPin>.TryCreate(in reader, scope, offsetSize: 3);
+                _kind = _tbsv is not null ? VariantKind.TwoByteSlot : VariantKind.Empty;
                 break;
             default:
                 _kind = VariantKind.Empty;
@@ -147,8 +146,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.Count,
         VariantKind.BTree => _btree!.Count,
         VariantKind.BTreeKeyFirst => _btree!.Count,
-        VariantKind.TwoByteSlotValue => _tbsv!.Count,
-        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.Count,
+        VariantKind.TwoByteSlot => _tbsv!.Count,
         _ => 0,
     };
 
@@ -157,8 +155,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.MoveNext(),
         VariantKind.BTree => _btree!.MoveNext(in reader),
         VariantKind.BTreeKeyFirst => _btree!.MoveNext(in reader),
-        VariantKind.TwoByteSlotValue => _tbsv!.MoveNext(in reader),
-        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.MoveNext(in reader),
+        VariantKind.TwoByteSlot => _tbsv!.MoveNext(in reader),
         _ => false,
     };
 
@@ -172,8 +169,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.CurrentKey,
         VariantKind.BTree => _btree!.CurrentKey,
         VariantKind.BTreeKeyFirst => _btree!.CurrentKey,
-        VariantKind.TwoByteSlotValue => _tbsv!.CurrentKey,
-        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentKey,
+        VariantKind.TwoByteSlot => _tbsv!.CurrentKey,
         _ => default,
     };
 
@@ -200,8 +196,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         // BE/lex input bytes. PackedArray opts in via IsLittleEndian; the two
         // TwoByteSlotValue formats always store LE.
         bool reverse = (_kind == VariantKind.PackedArray && _packed!.IsLittleEndian)
-            || _kind == VariantKind.TwoByteSlotValue
-            || _kind == VariantKind.TwoByteSlotValueLarge;
+            || _kind == VariantKind.TwoByteSlot;
         if (reverse)
         {
             for (int i = 0; i < len; i++) outSpan[i] = stored[len - 1 - i];
@@ -225,8 +220,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.CurrentValue,
         VariantKind.BTree => _btree!.CurrentValue,
         VariantKind.BTreeKeyFirst => _btree!.CurrentValue,
-        VariantKind.TwoByteSlotValue => _tbsv!.CurrentValue,
-        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentValue,
+        VariantKind.TwoByteSlot => _tbsv!.CurrentValue,
         _ => default,
     };
 
@@ -235,8 +229,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
         VariantKind.BTree => _btree!.CurrentMetadataStart,
         VariantKind.BTreeKeyFirst => _btree!.CurrentMetadataStart,
-        VariantKind.TwoByteSlotValue => _tbsv!.CurrentMetadataStart,
-        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentMetadataStart,
+        VariantKind.TwoByteSlot => _tbsv!.CurrentMetadataStart,
         _ => 0,
     };
 

@@ -12,8 +12,7 @@ namespace Nethermind.State.Flat.Hsst.PackedArray;
 /// </summary>
 /// <remarks>
 /// Generic over <typeparamref name="TCallback"/> so callers (snapshot merger today) can plug
-/// in a per-key hook (bloom-filter maintenance) without re-iterating the output. Use
-/// <see cref="NoOpHsstPackedArrayMergeCallback"/> when no hook is needed.
+/// in a per-key hook (bloom-filter maintenance) without re-iterating the output.
 /// </remarks>
 internal static class HsstPackedArrayMerger
 {
@@ -21,8 +20,7 @@ internal static class HsstPackedArrayMerger
     /// <param name="valueSize">Per-entry value length, in bytes. All merged values must match.</param>
     /// <param name="cursor">Caller-constructed merge cursor over N pre-positioned sources.
     /// The merger drives it to exhaustion; the key length is read from <see cref="NWayMergeCursor{TReader,TPin,TSource}.KeyLen"/>.</param>
-    /// <param name="callback">Per-emitted-key hook; pass <see cref="NoOpHsstPackedArrayMergeCallback"/>
-    /// when no hook is needed.</param>
+    /// <param name="callback">Per-emitted-key hook.</param>
     internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TCallback>(
         ref TWriter writer,
         int valueSize,

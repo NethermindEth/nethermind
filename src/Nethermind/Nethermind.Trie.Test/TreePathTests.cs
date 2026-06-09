@@ -231,21 +231,6 @@ public class TreePathTests
 
     [TestCase("")]
     [TestCase("01")]
-    [TestCase("0001020304")]
-    public void TestRoundtripWith3Byte(string nibbleHex)
-    {
-        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
-        TreePath original = TreePath.FromNibble(nibbles);
-
-        Span<byte> buffer = stackalloc byte[3];
-        original.EncodeWith3Byte(buffer);
-        TreePath decoded = TreePath.DecodeWith3Byte(buffer);
-
-        Assert.That(decoded, Is.EqualTo(original));
-    }
-
-    [TestCase("")]
-    [TestCase("01")]
     [TestCase("0001020304")]      // length 5
     [TestCase("000102030405")]    // length 6
     [TestCase("00010203040506")]  // length 7

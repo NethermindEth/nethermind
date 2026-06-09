@@ -150,7 +150,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         switch ((IndexType)idxType[0])
         {
             case IndexType.TwoByteSlotValue:
-                if (HsstTwoByteSlotValueReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound tbsvBound))
+                if (HsstTwoByteSlotValueReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, offsetSize: 2, out Bound tbsvBound))
                 {
                     _bound = tbsvBound;
                     matched = tbsvBound;
@@ -159,7 +159,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 matched = default;
                 return false;
             case IndexType.TwoByteSlotValueLarge:
-                if (HsstTwoByteSlotValueLargeReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound tbsvLargeBound))
+                if (HsstTwoByteSlotValueReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, offsetSize: 3, out Bound tbsvLargeBound))
                 {
                     _bound = tbsvLargeBound;
                     matched = tbsvLargeBound;

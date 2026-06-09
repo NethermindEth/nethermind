@@ -26,7 +26,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// NWayMergeCursor&lt;TReader, TPin, TSource, TFactory&gt; cursor = new(sources, enumerators, state, keyLen);
 /// while (cursor.MoveNext())
 /// {
-///     // emit at cursor.MinIdx using cursor.MinKey;
+///     // emit using cursor.MinKey;
 ///     // for nested merges, branch on cursor.MatchCount and consume cursor.MatchingSources.
 ///     cursor.AdvanceMatching();
 /// }
@@ -53,9 +53,6 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource, TFactory>
 
     private int _minIdx;
     private int _matchCount;
-
-    /// <summary>Cursor slot of the current winner. Valid after a true <see cref="MoveNext"/>.</summary>
-    public readonly int MinIdx => _minIdx;
 
     /// <summary>Number of sources whose cached key equals <see cref="MinKey"/>.</summary>
     public readonly int MatchCount => _matchCount;
@@ -89,11 +86,6 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource, TFactory>
     /// <see cref="MatchingSources"/>, between <see cref="MoveNext"/> and the corresponding
     /// <see cref="AdvanceMatching"/>).</summary>
     public readonly Bound ValueAt(int srcIdx) => _enumerators[srcIdx].CurrentValue;
-
-    /// <summary>Materialise a fresh reader for source <paramref name="srcIdx"/>. Routes to
-    /// <c>_sources[srcIdx].CreateReader()</c>; caller owns the returned reader's lifetime
-    /// (typically a single <c>PinBuffer</c> + <c>using</c>).</summary>
-    public readonly TReader CreateReaderAt(int srcIdx) => _sources[srcIdx].CreateReader();
 
     /// <summary>The cursor's source span (one source per cursor slot). Used by nested-merge
     /// helpers that need the per-source reader factory list to build inner sources or to walk
@@ -188,7 +180,7 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource, TFactory>
 
     /// <summary>
     /// Reads the current winner from the tree root. If the winner's source is exhausted,
-    /// all sources are; returns false. Otherwise sets <see cref="MinIdx"/>/<see cref="MinKey"/>
+    /// all sources are; returns false. Otherwise sets <see cref="MinKey"/>
     /// and rebuilds <see cref="MatchingSources"/> by an O(N) scan against the winner key.
     /// </summary>
     public bool MoveNext()

@@ -320,32 +320,4 @@ public readonly ref struct BTreeNodeReader(
     /// to materialize the bytes that the child's header omits.
     /// </summary>
     public int GetSeparatorBytes(int index, Span<byte> dest) => GetFullKey(index, dest);
-
-    /// <summary>
-    /// Enumerate all key-value pairs in order.
-    /// </summary>
-    public Enumerator GetEnumerator() => new(this);
-
-    public ref struct Enumerator
-    {
-        private readonly BTreeNodeReader _index;
-        private int _current;
-
-        public Enumerator(BTreeNodeReader index)
-        {
-            _index = index;
-            _current = -1;
-        }
-
-        public bool MoveNext() => ++_current < _index.EntryCount;
-
-        public readonly IndexEntry Current => new(_index.GetRawSlot(_current), _index.GetValue(_current));
-    }
-
-    public readonly ref struct IndexEntry(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-    {
-        public ReadOnlySpan<byte> Key { get; } = key;
-        public ReadOnlySpan<byte> Value { get; } = value;
-    }
-
 }

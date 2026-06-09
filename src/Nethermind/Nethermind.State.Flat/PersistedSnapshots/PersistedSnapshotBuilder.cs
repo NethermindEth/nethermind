@@ -394,25 +394,11 @@ public static class PersistedSnapshotBuilder
 
                     slotSuffixBuffer.Reset();
                     ref PooledByteBufferWriter.Writer suffixWriter = ref slotSuffixBuffer.GetWriter();
-                    if (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(groupValueBytes))
+                    // u16 offsets cap the data region at ushort.MaxValue; widen to u24
+                    // (offsetSize: 3) when a group's payload overflows.
+                    int suffixOffsetSize = HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(groupValueBytes) ? 2 : 3;
+                    using (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> suffixLevel = new(ref suffixWriter, suffixOffsetSize))
                     {
-                        using HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> suffixLevel = new(ref suffixWriter);
-                        for (int i = groupStart; i < groupEnd; i++)
-                        {
-                            sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
-                            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
-                            SlotValue? value = sortedStorages[i].Value;
-                            ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
-                            ReadOnlySpan<byte> payload = value.HasValue
-                                ? value.Value.AsReadOnlySpan.WithoutLeadingZeros()
-                                : [];
-                            suffixLevel.Add(suffixKey, payload);
-                        }
-                        suffixLevel.Build();
-                    }
-                    else
-                    {
-                        using HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> suffixLevel = new(ref suffixWriter);
                         for (int i = groupStart; i < groupEnd; i++)
                         {
                             sortedStorages[i].Key.Slot.ToBigEndian(slotKey);

@@ -235,7 +235,7 @@ public class HsstCrossFormatTests
                 }
             case Format.TwoByteSlotValueLarge:
                 {
-                    HsstTwoByteSlotValueLargeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter());
+                    HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter(), offsetSize: 3);
                     try
                     {
                         for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);

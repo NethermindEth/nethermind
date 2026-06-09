@@ -13,17 +13,9 @@ namespace Nethermind.State.Flat.Hsst;
 /// <remarks>
 /// Implemented as a generic struct constraint (<c>TCallback : struct, IHsstTwoByteSlotMergeCallback</c>)
 /// so the JIT monomorphises the merger per callback type — the <c>OnKey</c> call resolves
-/// to a direct invocation, no virtual dispatch. <see cref="NoOpHsstTwoByteSlotMergeCallback"/>
-/// is available for callers that don't need a hook.
+/// to a direct invocation, no virtual dispatch.
 /// </remarks>
 internal interface IHsstTwoByteSlotMergeCallback
 {
     void OnKey(scoped ReadOnlySpan<byte> key);
-}
-
-/// <summary>No-op <see cref="IHsstTwoByteSlotMergeCallback"/> for callers that don't need
-/// the per-key hook.</summary>
-internal readonly struct NoOpHsstTwoByteSlotMergeCallback : IHsstTwoByteSlotMergeCallback
-{
-    public void OnKey(scoped ReadOnlySpan<byte> key) { }
 }

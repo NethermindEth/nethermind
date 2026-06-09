@@ -4,9 +4,8 @@
 namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
 
 /// <summary>
-/// Shared key-encoding convention for the TwoByteSlot HSST variants
-/// (<see cref="HsstTwoByteSlotValueBuilder{TWriter}"/> and
-/// <see cref="HsstTwoByteSlotValueLargeBuilder{TWriter}"/>): keys are stored in little-
+/// Shared key-encoding convention for the TwoByteSlot HSST value layouts built by
+/// <see cref="HsstTwoByteSlotValueBuilder{TWriter}"/>: keys are stored in little-
 /// endian byte order so a native <c>u16</c> load on a stored key recovers the
 /// big-endian (logical) numeric value, which lets SIMD scans compare numerically
 /// (see <see cref="UniformKeySearch.LowerBound2LE"/>).
