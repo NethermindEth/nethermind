@@ -57,8 +57,8 @@ public partial class Bls12381G2MsmPrecompile
         // Scratch buffers: every slot read by MultiMult (the first npoints, packed contiguously by
         // dest) is fully written by Zero()+Decode() during point decoding, so the pool's zero-clear
         // is wasted. Dead infinity slots are never read.
-        using ArrayPoolList<long> pointBuffer = ArrayPoolList<long>.RentUninitialized(nItems * G2.Sz);
-        using ArrayPoolList<byte> scalarBuffer = ArrayPoolList<byte>.RentUninitialized(nItems * 32);
+        using ArrayPoolList<long> pointBuffer = new(SafeArrayPool<long>.Shared, nItems * G2.Sz, nItems * G2.Sz, clearFirst: false);
+        using ArrayPoolList<byte> scalarBuffer = new(SafeArrayPool<byte>.Shared, nItems * 32, nItems * 32, clearFirst: false);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
         // calculate where in rawPoints buffer decoded points should go

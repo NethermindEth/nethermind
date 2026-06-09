@@ -363,9 +363,9 @@ public class ArrayPoolListTests
     }
 
     [Test]
-    public void RentUninitialized_exposes_requested_count_and_capacity()
+    public void Uninitialized_exposes_requested_count_and_capacity()
     {
-        using ArrayPoolList<int> list = ArrayPoolList<int>.RentUninitialized(10);
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 10, 10, clearFirst: false);
 
         Assert.That(list.Count, Is.EqualTo(10));
         Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
@@ -374,9 +374,9 @@ public class ArrayPoolListTests
     }
 
     [Test]
-    public void RentUninitialized_is_fully_writable_through_span()
+    public void Uninitialized_is_fully_writable_through_span()
     {
-        using ArrayPoolList<int> list = ArrayPoolList<int>.RentUninitialized(8);
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 8, 8, clearFirst: false);
 
         Span<int> span = list.AsSpan();
         for (int i = 0; i < span.Length; i++)
@@ -388,9 +388,9 @@ public class ArrayPoolListTests
     }
 
     [Test]
-    public void RentUninitialized_with_zero_count_is_empty()
+    public void Uninitialized_with_zero_count_is_empty()
     {
-        using ArrayPoolList<int> list = ArrayPoolList<int>.RentUninitialized(0);
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 0, 0, clearFirst: false);
 
         Assert.That(list.Count, Is.EqualTo(0));
         Assert.That(list.AsSpan().Length, Is.EqualTo(0));
