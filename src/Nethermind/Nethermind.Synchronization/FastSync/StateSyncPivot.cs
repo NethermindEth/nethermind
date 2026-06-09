@@ -44,7 +44,9 @@ namespace Nethermind.Synchronization.FastSync
             // The new pivot must be at least one block after the sync pivot as the forward downloader does not
             // download the block at the sync pivot which may cause state not found error if state was downloaded
             // at exactly sync pivot.
-            targetBlockNumber = Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1);
+            targetBlockNumber = syncConfig.StaticSnapPivot
+                ? blockTree.SyncPivot.BlockNumber
+                : Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1);
 
             BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
