@@ -19,11 +19,6 @@ namespace Nethermind.Evm
             int contentLength = Rlp.LengthOf(deployingAddress) + Rlp.LengthOf(nonce);
             int totalLength = Rlp.LengthOfSequence(contentLength);
 
-            // RLP of [address, nonce] is tiny (<=31 bytes), so rent a scratch buffer instead of
-            // allocating a fresh byte[] per CREATE. The exact encoder is reused unchanged (the
-            // derived address is consensus-critical) — only the backing buffer changes. The
-            // CappedArray caps the (possibly oversized) rented array to the bytes actually written
-            // so the hash sees exactly the encoded RLP.
             byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
             try
             {
