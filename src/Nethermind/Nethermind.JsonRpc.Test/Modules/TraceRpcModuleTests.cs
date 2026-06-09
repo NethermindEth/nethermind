@@ -1069,20 +1069,7 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
-            new(new(1)
-            {
-                new()
-                {
-                    Transaction = new LegacyTransactionForRpc
-                    {
-                        From = TestItem.AddressA,
-                        To = TestItem.AddressC,
-                        Gas = 100_000
-                    },
-                    TraceTypes = ["trace"]
-                }
-            }));
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = TraceCallMany(context, gas: 100_000);
 
         Assert.That(traces.Data.Single().Action!.Gas, Is.LessThan(gasCap));
     }
@@ -1113,7 +1100,9 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = 50_000;
 
-        Assert.That(() => TraceCallMany(context, gas: 0),
+        // Force enumeration with .Single(): the intrinsic-gas check is hit inside
+        // TraceBlock, surfaced through the lazy IEnumerable returned in Data.
+        Assert.That(() => TraceCallMany(context, gas: 0).Data.Single(),
             Throws.InstanceOf<InvalidTransactionException>()
                 .With.Message.Contains("intrinsic gas too low"));
     }
