@@ -210,7 +210,7 @@ public class TreePathTests
         Span<byte> buffer = stackalloc byte[3];
         path.EncodeWith3Byte(buffer);
 
-        buffer.ToArray().ToHexString().Should().Be(expectedEncodedHex);
+        Assert.That(buffer.ToArray().ToHexString(), Is.EqualTo(expectedEncodedHex));
     }
 
     [TestCase("", "0000000000000000")]
@@ -241,7 +241,7 @@ public class TreePathTests
         original.EncodeWith3Byte(buffer);
         TreePath decoded = TreePath.DecodeWith3Byte(buffer);
 
-        decoded.Should().Be(original);
+        Assert.That(decoded, Is.EqualTo(original));
     }
 
     [TestCase("")]
@@ -258,7 +258,7 @@ public class TreePathTests
         original.EncodeWith4Byte(buffer);
         TreePath decoded = TreePath.DecodeWith4Byte(buffer);
 
-        decoded.Should().Be(original);
+        Assert.That(decoded, Is.EqualTo(original));
     }
 
     [TestCase("")]
@@ -275,7 +275,7 @@ public class TreePathTests
         original.EncodeWith8Byte(buffer);
         TreePath decoded = TreePath.DecodeWith8Byte(buffer);
 
-        decoded.Should().Be(original);
+        Assert.That(decoded, Is.EqualTo(original));
     }
 
     private static TreePath CreateFullTreePath()
