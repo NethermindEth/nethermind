@@ -7,24 +7,6 @@ on:
         description: Target environment to deploy to
         required: true
         type: environment
-      chain:
-        description: Chain to monitor
-        required: true
-        default: mainnet
-        type: choice
-        options:
-          - mainnet
-          - gnosis
-      target_url:
-        description: Target node RPC URL
-        required: false
-        default: 'http://localhost:8545'
-        type: string
-      reference_url:
-        description: Reference node RPC URL
-        required: true
-        type: string
-  # TODO: temporary - remove BEFORE merge
   push:
     branches:
       - feat/rpc-test-mon
@@ -68,32 +50,48 @@ jobs:
           platforms: linux/amd64
 
   deploy:
-    name: Deploy to monitor machine
+    name: Deploy ${{ matrix.name }} monitor
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    strategy:
+      matrix:
+        include:
+          - name: Mainnet
+            container: rpc-monitor-mainnet
+            target_secret: RPC_MONITOR_MAINNET_TARGET
+            reference_url: https://ethereum-rpc.publicnode.com
+            test_glob: mainnet/**/*
+          - name: Gnosis
+            container: rpc-monitor-gnosis
+            target_secret: RPC_MONITOR_GNOSIS_TARGET
+            reference_url: https://gnosis-rpc.publicnode.com
+            test_glob: gnosis/**/*
     steps:
-      - name: Deploy Monitor
+      - name: Deploy ${{ matrix.name }} monitor
         uses: appleboy/ssh-action@v1
         env:
           SLACK_BOT_TOKEN: ${{ secrets.RPC_MONITOR_SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.RPC_MONITOR_SLACK_CHANNEL_ID }}
+          TARGET_URL: ${{ secrets[matrix.target_secret] }}
         with:
           host: ${{ secrets.RPC_MONITOR_SSH_HOST }}
           username: ${{ secrets.RPC_MONITOR_SSH_USER }}
           key: ${{ secrets.RPC_MONITOR_SSH_KEY }}
-          envs: SLACK_BOT_TOKEN,SLACK_CHANNEL_ID
+          envs: SLACK_BOT_TOKEN,SLACK_CHANNEL_ID,TARGET_URL
           script: |
             docker pull nethermindeth/rpc-monitor:latest
-            docker stop rpc-monitor 2>/dev/null || true
-            docker rm rpc-monitor 2>/dev/null || true
+            docker stop ${{ matrix.container }} 2>/dev/null || true
+            docker rm ${{ matrix.container }} 2>/dev/null || true
             docker run -d \
-              --name rpc-monitor \
+              --name ${{ matrix.container }} \
               --restart unless-stopped \
               --network host \
               -e RPC_MONITOR_BOT_TOKEN="$SLACK_BOT_TOKEN" \
               -e RPC_MONITOR_CHANNEL_ID="$SLACK_CHANNEL_ID" \
               nethermindeth/rpc-monitor:latest \
-              --target "${{ inputs.target_url || 'http://38.154.254.162:8545' }}" \
-              --reference "${{ inputs.reference_url || 'https://ethereum-rpc.publicnode.com' }}" \
-              --tests "${{ inputs.chain || 'mainnet' }}/**/*"
+              --name "${{ matrix.name }}" \
+              --target "$TARGET_URL" \
+              --reference "${{ matrix.reference_url }}" \
+              --tests "${{ matrix.test_glob }}" \
+              --stats-interval "1.00:00:00"
