@@ -117,6 +117,48 @@ public class XdcBlockHeader(
         };
     }
 
+    internal virtual XdcBlockHeader CreateHeaderForProcessing()
+    {
+        XdcBlockHeader header = new(
+            ParentHash,
+            UnclesHash,
+            Beneficiary,
+            Difficulty,
+            Number,
+            GasLimit,
+            Timestamp,
+            ExtraData,
+            IsSelfMined);
+
+        CopyFieldsForProcessing(header);
+
+        return header;
+    }
+
+    protected void CopyFieldsForProcessing(XdcBlockHeader header)
+    {
+        header.Bloom = Bloom.Empty;
+        header.Author = Author;
+        header.Hash = Hash;
+        header.MixHash = MixHash;
+        header.Nonce = Nonce;
+        header.TxRoot = TxRoot;
+        header.TotalDifficulty = TotalDifficulty;
+        header.AuRaStep = AuRaStep;
+        header.AuRaSignature = AuRaSignature;
+        header.ReceiptsRoot = ReceiptsRoot;
+        header.BaseFeePerGas = BaseFeePerGas;
+        header.WithdrawalsRoot = WithdrawalsRoot;
+        header.RequestsHash = RequestsHash;
+        header.IsPostMerge = IsPostMerge;
+        header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        header.ExcessBlobGas = ExcessBlobGas;
+        header.BlobGasUsed = BlobGasUsed;
+        header.Validator = Validator;
+        header.Validators = Validators;
+        header.Penalties = Penalties;
+    }
+
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
     {
         XdcBlockHeader x = new(
