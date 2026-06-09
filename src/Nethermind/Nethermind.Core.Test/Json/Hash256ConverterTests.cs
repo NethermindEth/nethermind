@@ -25,6 +25,11 @@ public class Hash256ConverterTests
         Assert.That(result, Is.EqualTo(null));
     }
 
+    [TestCase("\"0x5102190bcfd53cc6a15761c9d2da43a628d0ca713bfad5a1e311b531c294b77\"", TestName = "63 hex digits (odd, short)")]
+    [TestCase("\"0x45102190bcfd53cc6a15761c9d2da43a628d0ca713bfad5a1e311b531c294b770\"", TestName = "65 hex digits (odd, long)")]
+    public void Rejects_odd_length_hex(string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<Hash256>(json, options), Throws.InstanceOf<FormatException>());
+
     [TestCaseSource(nameof(WriteTestCases))]
     public void Writes_correct_hex(Hash256 hash, string expected)
     {

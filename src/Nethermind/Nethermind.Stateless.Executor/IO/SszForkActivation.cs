@@ -15,20 +15,38 @@ public partial struct SszForkActivation
     [SszList(1)]
     public ulong[] Timestamp { get; set; }
 
-    public static SszForkActivation From(ForkActivation forkActivation) => new()
+    public static SszForkActivation From(ForkActivation forkActivation)
     {
-        BlockNumber = [(ulong)forkActivation.BlockNumber],
-        Timestamp = [forkActivation.Timestamp ?? 0ul]
-    };
+        if (forkActivation.Timestamp is { } timestamp)
+        {
+            return new()
+            {
+                BlockNumber = [],
+                Timestamp = [timestamp]
+            };
+        }
+
+        return new()
+        {
+            BlockNumber = [(ulong)forkActivation.BlockNumber],
+            Timestamp = []
+        };
+    }
 
     public readonly ForkActivation ToForkActivation()
     {
-        if (BlockNumber is not { Length: 1 })
-            throw new InvalidDataException($"{nameof(BlockNumber)} must have exactly one element.");
+        if (BlockNumber is not { Length: <= 1 })
+            throw new InvalidDataException($"{nameof(BlockNumber)} must have at most one element.");
 
-        if (Timestamp is not { Length: 1 })
-            throw new InvalidDataException($"{nameof(Timestamp)} must have exactly one element.");
+        if (Timestamp is not { Length: <= 1 })
+            throw new InvalidDataException($"{nameof(Timestamp)} must have at most one element.");
 
-        return new(checked((long)BlockNumber[0]), Timestamp[0]);
+        return (BlockNumber.Length, Timestamp.Length) switch
+        {
+            (0, 0) => throw new InvalidDataException($"{nameof(BlockNumber)} or {nameof(Timestamp)} must have one element."),
+            (0, 1) => ForkActivation.TimestampOnly(Timestamp[0]),
+            (1, 0) => new(checked((long)BlockNumber[0])),
+            _ => new(checked((long)BlockNumber[0]), Timestamp[0])
+        };
     }
 }
