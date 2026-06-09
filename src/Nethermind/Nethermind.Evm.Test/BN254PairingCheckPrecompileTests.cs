@@ -54,11 +54,6 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
     [TestCase("3431d14cfbe9a5a1244e88ada99303090b48f7580ae1e3aa0c82cd92025c03e41b1c9200304be38b893bd18ca5b528bb34fbcd8126c1104f0465a7ae1bf4455607caa9e61fc843cf2f3769884e7467dd341a07fac1374f901d6e0da3f47fd2ec2b31ee53ccd0449de5b996cb8159066ba398078ec282102f016265ddec59c3541b38870e413a29c6b0b709e0705b55ab61ccc2ce24bbee322f97bb40b1732a4b28d255308f12e81dc16363f0f4f1410e1e9dd297ccc79032c0379aeb707822f9", "", false)]
     public void Test(string input, string output, bool status) => RunTest(input, output, status);
 
-    // Regression for the infinity-pair skip path: DeserializeG1/G2 report the all-zero (point at
-    // infinity) input via `out bool isInfinity` and the pairing loop skips those pairs. A leading
-    // all-zero (infinity) pair must not change the result of an otherwise-valid pairing — the input
-    // below is the known-true 2-pair case (see the e(P,Q)·e(-P,Q)=1 vector) with a 192-byte zero
-    // (infinity) pair prepended.
     [Test]
     public void Pairing_with_leading_infinity_pair_is_skipped_and_result_unchanged()
     {
