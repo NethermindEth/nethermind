@@ -2,14 +2,6 @@ name: Deploy RPC Monitors
 
 on:
   workflow_dispatch:
-    inputs:
-      environment:
-        description: Target environment to deploy to
-        required: true
-        type: environment
-  push:
-    branches:
-      - feat/rpc-test-mon
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -53,7 +45,6 @@ jobs:
     name: Deploy ${{ matrix.name }} monitor
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
     strategy:
       matrix:
         include:
