@@ -19,6 +19,8 @@ public static class Ripemd
         RipeMD160Digest digest = _digest ??= new();
         digest.BlockUpdate(input);
         byte[] result = new byte[HashOutputLength];
+        RipeMD160Digest digest = _digest ??= new();
+        digest.BlockUpdate(input);
         int length = digest.GetDigestSize();
         Span<byte> span = result.AsSpan(HashOutputLength - length, length);
         digest.DoFinal(span);
