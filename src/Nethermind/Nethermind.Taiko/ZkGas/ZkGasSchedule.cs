@@ -111,11 +111,16 @@ public static class ZkGasSchedule
         }
     }
 
-    // Fixed raw-gas estimates for spawn opcodes (used when the opcode actually opens a child frame).
+    /// <summary>Fixed raw-gas estimate for CALL when it opens a child frame.</summary>
     public const ulong SpawnEstimateCall = 12_500;
+    /// <summary>Fixed raw-gas estimate for CALLCODE when it opens a child frame.</summary>
     public const ulong SpawnEstimateCallCode = 12_500;
+    /// <summary>Fixed raw-gas estimate for DELEGATECALL when it opens a child frame.</summary>
     public const ulong SpawnEstimateDelegateCall = 3_500;
+    /// <summary>Fixed raw-gas estimate for STATICCALL when it opens a child frame.</summary>
     public const ulong SpawnEstimateStaticCall = 3_500;
+    /// <summary>Fixed raw-gas estimate for CREATE when it opens a child frame.</summary>
     public const ulong SpawnEstimateCreate = 37_000;
+    /// <summary>Fixed raw-gas estimate for CREATE2 when it opens a child frame.</summary>
     public const ulong SpawnEstimateCreate2 = 44_500;
 }

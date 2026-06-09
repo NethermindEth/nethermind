@@ -295,6 +295,17 @@ public class CertainBatchLookupTests
         Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.Null);
     }
 
+    /// <summary>
+    /// Pins the exact threshold literals sourced from taiko-geth PR #558 and alethia-reth PR #177.
+    /// These are consensus-critical values; a typo would silently allow or block entire block ranges.
+    /// </summary>
+    [Test]
+    public void BatchLookupThresholds_are_pinned()
+    {
+        Assert.That(BatchLookupThresholds.TaikoMainnetBatchLookupThreshold, Is.EqualTo(4_990_434UL));
+        Assert.That(BatchLookupThresholds.TaikoHoodiBatchLookupThreshold, Is.EqualTo(3_951_005UL));
+    }
+
     private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore, ulong chainId = 0, IBlockFinder? blockFinder = null)
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
