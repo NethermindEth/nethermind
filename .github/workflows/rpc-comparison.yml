@@ -3,6 +3,11 @@ name: Compare JSON-RPC between clients and versions
 on:
   workflow_dispatch:
     inputs:
+      rpc_endpoints:
+        type: string
+        description: "Quick mode: comma-separated RPC endpoints to compare directly, skipping node creation and sync. Each entry is 'url' or 'label=url'; accepts host, host:port (default 8545), or a full http(s) URL. Example: \"1.2.3.4,reth=http://5.6.7.8:8545\"."
+        default: ''
+        required: false
       allowed_ips:
         type: string
         description: "A comma-separated list of ips allowed to connect to the node"
@@ -43,6 +48,17 @@ jobs:
     steps:
       - name: Verify if inputs are correctly applied
         run: |
+          if [ -n "$RPC_ENDPOINTS" ]; then
+            # Quick mode: compare user-provided endpoints directly; node creation and sync are skipped.
+            endpoint_count=$(echo "$RPC_ENDPOINTS" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | wc -l)
+            if [ "$endpoint_count" -lt 2 ]; then
+              echo "Error: 'rpc_endpoints' must contain at least two endpoints to compare."
+              exit 1
+            fi
+            echo "Quick mode enabled with $endpoint_count endpoints; node creation and sync wait will be skipped."
+            exit 0
+          fi
+
           if [ "$IS_PERFORMANCE_CHECK" == "true" ] && [ ! -z "$COMPARE_WITH" ]; then
             echo "Error: 'compare_with' should not be provided when 'is_performance_check' is true."
             exit 1
@@ -56,6 +72,7 @@ jobs:
           IS_PERFORMANCE_CHECK: ${{ inputs.is_performance_check }}
           BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
           COMPARE_WITH: ${{ inputs.compare_with }}
+          RPC_ENDPOINTS: ${{ inputs.rpc_endpoints }}
 
       - name: Compute Machine Type
         id: compute_machine_type
@@ -75,6 +92,7 @@ jobs:
   create_main_node:
     name: Create node from current branch
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    if: inputs.rpc_endpoints == ''
     needs: [verify_correctness_of_setup]
     secrets: inherit
     with:
@@ -97,7 +115,7 @@ jobs:
   create_compare_node:
     name: Create node from branch to compare
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
-    if: inputs.branch_to_compare != ''
+    if: inputs.rpc_endpoints == '' && inputs.branch_to_compare != ''
     secrets: inherit
     needs: [verify_correctness_of_setup]
     with:
@@ -120,7 +138,11 @@ jobs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
     needs: [create_main_node, create_compare_node]
-    if: always() && needs.create_main_node.result == 'success' && (needs.create_compare_node.result == 'skipped' || needs.create_compare_node.result == 'success')
+    if: |
+      always() && (
+        inputs.rpc_endpoints != '' ||
+        (needs.create_main_node.result == 'success' && (needs.create_compare_node.result == 'skipped' || needs.create_compare_node.result == 'success'))
+      )
     outputs:
       rpc_urls: ${{ steps.process_artifacts.outputs.rpc_urls }}
     steps:
@@ -140,13 +162,14 @@ jobs:
           echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
 
       - name: Download RPC Artifact for current branch
+        if: inputs.rpc_endpoints == ''
         uses: actions/download-artifact@v8
         with:
           name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
           path: artifacts
 
       - name: Download RPC Artifact for branch to compare
-        if: inputs.branch_to_compare != ''
+        if: inputs.rpc_endpoints == '' && inputs.branch_to_compare != ''
         uses: actions/download-artifact@v8
         with:
           name: rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
@@ -154,7 +177,44 @@ jobs:
 
       - name: Process Artifacts Content
         id: process_artifacts
+        env:
+          RPC_ENDPOINTS: ${{ inputs.rpc_endpoints }}
         run: |
+          # Quick mode: build the aggregated RPC list directly from the provided endpoints,
+          # producing the same "label::url,label::url" format the downstream jobs expect.
+          if [ -n "$RPC_ENDPOINTS" ]; then
+            quick_rpc_urls=""
+            idx=1
+            trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+            IFS=',' read -r -a endpoints_array <<< "$RPC_ENDPOINTS"
+            for entry in "${endpoints_array[@]}"; do
+              entry="$(trim "$entry")"
+              [ -z "$entry" ] && continue
+              # An entry is 'label::url', 'label=url', or a bare endpoint (auto-labeled nodeN).
+              if [[ "$entry" == *"::"* ]]; then
+                label="$(trim "${entry%%::*}")"; url="$(trim "${entry#*::}")"
+              elif [[ "$entry" == *"="* ]]; then
+                label="$(trim "${entry%%=*}")"; url="$(trim "${entry#*=}")"
+              else
+                label="node${idx}"; url="$entry"
+              fi
+              # Respect an explicit scheme; otherwise assume http and default port 8545 for a bare host.
+              if [[ "$url" != http://* && "$url" != https://* ]]; then
+                if [[ "$url" != *:* ]]; then
+                  url="${url}:8545"
+                fi
+                url="http://$url"
+              fi
+              label="$(echo "$label" | sed 's/[^a-zA-Z0-9._-]/-/g')"
+              quick_rpc_urls+="${label}::${url},"
+              idx=$((idx + 1))
+            done
+            quick_rpc_urls="${quick_rpc_urls%,}"
+            echo "Quick mode RPC URLs: $quick_rpc_urls"
+            echo "rpc_urls=$quick_rpc_urls" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           rpc_urls=""
           main_branch_file="rpc_url%${{ env.CLEAN_MAIN_REF }}%${{ github.run_id }}.txt"
           compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}.txt"
@@ -179,7 +239,7 @@ jobs:
     name: Wait for the nodes to sync
     runs-on: [vpn]
     needs: [aggregate_rpcs]
-    if: always() && needs.aggregate_rpcs.result == 'success'
+    if: always() && needs.aggregate_rpcs.result == 'success' && inputs.rpc_endpoints == ''
     timeout-minutes: 1440
     steps:
       - uses: actions/checkout@v6
@@ -434,7 +494,9 @@ jobs:
     name: Compare JSON-RPC responses between clients and versions
     runs-on: [vpn]
     needs: [wait_for_node_to_sync, aggregate_rpcs]
-    if: always() && needs.aggregate_rpcs.result == 'success' && needs.wait_for_node_to_sync.result == 'success'
+    if: |
+      always() && needs.aggregate_rpcs.result == 'success' &&
+      (needs.wait_for_node_to_sync.result == 'success' || needs.wait_for_node_to_sync.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
       - name: Install flood
@@ -472,15 +534,10 @@ jobs:
             fi
           done
 
-          # Flag for comparing to other branch
-          if [ ${#nethermind_urls_str[@]} -eq 1 ]; then
+          # Flag for comparing nethermind endpoints (supports two or more).
+          if [ ${#nethermind_urls_str[@]} -ge 1 ]; then
             echo "compare_to_other_branch=true" >> $GITHUB_ENV
-            echo "compare_to_other_branch_params=${nethermind_urls_str[0]}" >> $GITHUB_ENV
-
-          elif [ ${#nethermind_urls_str[@]} -eq 2 ]; then
-            echo "compare_to_other_branch=true" >> $GITHUB_ENV
-            echo "compare_to_other_branch_params=${nethermind_urls_str[0]} ${nethermind_urls_str[1]}" >> $GITHUB_ENV
-
+            echo "compare_to_other_branch_params=${nethermind_urls_str[*]}" >> $GITHUB_ENV
           else
             echo "compare_to_other_branch=false" >> $GITHUB_ENV
           fi
