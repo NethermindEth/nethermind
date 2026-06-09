@@ -24,7 +24,7 @@ internal sealed class BotSlackNotifier(BotSlackConfig config) : INotifier
     {
         string header =
             $"""
-             *RPC response mismatch* at block #{failure.Head:#}
+             ❌ *RPC response mismatch at block #`{failure.Head:#}`*
              Test: `{failure.Test.Definition.FilePath}`
              Method: `{failure.Request.MethodOrUnknown}`
              """;
@@ -58,7 +58,10 @@ internal sealed class BotSlackNotifier(BotSlackConfig config) : INotifier
             await _slack.Chat.PostMessage(new Message
             {
                 Channel = config.ChannelId,
-                Text = $"*RPC monitoring error*:\n```{error}```"
+                Text = $"""
+                        ⚠ *RPC monitoring error*:
+                        ```{error}```
+                        """
             });
         }
         catch (Exception ex)
@@ -67,14 +70,20 @@ internal sealed class BotSlackNotifier(BotSlackConfig config) : INotifier
         }
     }
 
-    public async Task NotifyInfoAsync(string message)
+    public async Task NotifyStatsAsync(MonitorStats stats)
     {
         try
         {
             await _slack.Chat.PostMessage(new Message
             {
                 Channel = config.ChannelId,
-                Text = message
+                Text = $"""
+                         ℹ *RPC Monitor statistic since `{stats.Since:u}`*:
+                         - `{stats.TestRuns}` tests executed
+                         - `{stats.RequestRuns}` requests sent
+                         - `{stats.TestFailures}` test failures
+                         - `{stats.Errors}` errors
+                        """
             });
         }
         catch (Exception ex)

@@ -5,7 +5,7 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class ErrorReporter(INotifier notifier, IMonitorStats stats)
+internal class ErrorReporter(INotifier notifier, IStatsReporter stats)
 {
     public void Report(string details, Exception ex) => Report($"{details}: {ex}");
 

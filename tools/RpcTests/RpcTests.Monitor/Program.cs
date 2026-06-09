@@ -67,10 +67,9 @@ rootCommand.SetAction(async (parseResult, ct) =>
     using INotifier notifier = GetNotifier(parseResult.GetRequiredValue(devOption));
 
     TimeSpan? statsInterval = parseResult.GetValue(statsIntervalOption);
-    MonitorStats? stats = statsInterval is { } interval ? new MonitorStats(notifier, interval) : null;
-    MonitorRunner runner = new(args, notifier, stats ?? (IMonitorStats)NullMonitorStats.Instance, client);
+    IStatsReporter stats = statsInterval is { } interval ? new StatsReporter(notifier, interval) : NullStatsReporter.Instance;
+    MonitorRunner runner = new(args, notifier, stats, client);
 
-    await notifier.NotifyInfoAsync("Starting monitoring...");
     await Task.WhenAll(
         runner.RunAsync(ct),
         stats?.RunAsync(ct) ?? Task.CompletedTask

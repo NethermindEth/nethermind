@@ -13,6 +13,7 @@ Test files follow a format similar to [Erigon rpc-tests](https://github.com/erig
 | `--reference` | `-r` | — | Reference node for comparison. Required when tests have no static `response` |
 | `--tests` | `-g` | `mainnet/**/*` | Glob pattern(s) for test files under `tests/`, repeatable                    |
 | `--parallelism` | `-p` | `4` | Number of concurrent test workers per block                                  |
+| `--stats-interval` | `-s` | — | Interval for posting execution statistics to Slack (e.g. `00:30:00`)        |
 
 ## Examples
 
@@ -41,6 +42,14 @@ Use static expected responses (no reference node needed):
 export RPC_MONITOR_BOT_TOKEN="xoxb-..."
 export RPC_MONITOR_CHANNEL_ID="C1234567890"
 dotnet run -- -t localhost:8545 -g "mainnet/eth_call/*"
+```
+
+Post statistics every 30 minutes:
+
+```bash
+export RPC_MONITOR_BOT_TOKEN="xoxb-..."
+export RPC_MONITOR_CHANNEL_ID="C1234567890"
+dotnet run -- -t node.example.com -r reference.example.com -s 00:30:00
 ```
 
 ## Test format

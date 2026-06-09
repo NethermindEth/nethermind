@@ -6,7 +6,7 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IMonitorStats stats, HttpClient client)
+internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsReporter stats, HttpClient client)
 {
     private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
     private readonly TestExecutor _executor = new(stats, client);

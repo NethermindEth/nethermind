@@ -7,7 +7,7 @@ internal interface INotifier : IDisposable
 {
     Task NotifyFailureAsync(TestFailure failure, CancellationToken ct);
     Task NotifyErrorAsync(string error);
-    Task NotifyInfoAsync(string message);
+    Task NotifyStatsAsync(MonitorStats stats);
 }
 
 internal class NullNotifier : INotifier
@@ -16,6 +16,6 @@ internal class NullNotifier : INotifier
 
     public Task NotifyFailureAsync(TestFailure failure, CancellationToken ct) => Task.CompletedTask;
     public Task NotifyErrorAsync(string error) => Task.CompletedTask;
-    public Task NotifyInfoAsync(string message) => Task.CompletedTask;
+    public Task NotifyStatsAsync(MonitorStats stats) => Task.CompletedTask;
     public void Dispose() { }
 }

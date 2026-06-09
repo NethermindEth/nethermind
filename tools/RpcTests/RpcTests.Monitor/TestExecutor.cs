@@ -7,7 +7,7 @@ using System.Text.Json.Nodes;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class TestExecutor(IMonitorStats stats, HttpClient httpClient)
+internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
 {
     private long _requestNumber;
 

@@ -30,12 +30,12 @@ internal sealed class RateLimitedNotifier(INotifier inner, int maxMessages, Time
             await inner.NotifyErrorAsync(RateLimitMessage);
     }
 
-    public async Task NotifyInfoAsync(string message)
+    public async Task NotifyStatsAsync(MonitorStats stats)
     {
         if (CheckRateLimit(out bool justHit))
-            await inner.NotifyInfoAsync(message);
+            await inner.NotifyStatsAsync(stats);
         else if (justHit)
-            await inner.NotifyInfoAsync(RateLimitMessage);
+            await inner.NotifyErrorAsync(RateLimitMessage);
     }
 
     private string RateLimitMessage =>
