@@ -146,6 +146,12 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+    // Returns gas available at start of execution as a 32-byte uint256.
+    private const string GasReturnContractAddress = "0xc200000000000000000000000000000000000000";
+    private static object GasReturnContractStateOverride() => JsonSerializer.Deserialize<object>(
+        $$"""{"{{GasReturnContractAddress}}":{"code":"0x5a60005260206000f3"}}""")!;
+
     [Test]
     public async Task Debug_traceCall_caps_gas_to_gas_cap()
     {
@@ -154,16 +160,11 @@ public partial class DebugRpcModuleTests
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a 32-byte uint256
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
-
         // Request 100K gas — should be capped to 50K by GasCap
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = "0xc200000000000000000000000000000000000000", gas = "0x186A0" },
+            new { to = GasReturnContractAddress, gas = "0x186A0" },
             null,
-            new { stateOverrides = stateOverride }
+            new { stateOverrides = GasReturnContractStateOverride() }
         );
 
         long gasAvailable = (long)ParseReturnValue(response).ToUInt256();
@@ -181,21 +182,16 @@ public partial class DebugRpcModuleTests
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a uint256
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
-
         string omittedGasResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = "0xc200000000000000000000000000000000000000" },
+            new { to = GasReturnContractAddress },
             null,
-            new { stateOverrides = stateOverride }
+            new { stateOverrides = GasReturnContractStateOverride() }
         );
 
         string explicitGasCapResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = "0xc200000000000000000000000000000000000000", gas = $"0x{gasCap:x}" },
+            new { to = GasReturnContractAddress, gas = $"0x{gasCap:x}" },
             null,
-            new { stateOverrides = stateOverride }
+            new { stateOverrides = GasReturnContractStateOverride() }
         );
 
         UInt256 omittedGasAvailable = ParseReturnValue(omittedGasResponse).ToUInt256();
@@ -213,18 +209,15 @@ public partial class DebugRpcModuleTests
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
-
+        // No state override needed: tx fails at intrinsic-gas validation before the EVM runs.
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = "0xc200000000000000000000000000000000000000", gas = "0x0" },
-            null,
-            new { stateOverrides = stateOverride }
+            new { to = GasReturnContractAddress, gas = "0x0" }
         );
 
-        JToken json = JToken.Parse(response);
-        Assert.That(json["result"]?["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
-        Assert.That(json["result"]?["gas"]?.Value<long>(), Is.EqualTo(0));
+        JToken result = JToken.Parse(response)["result"]!;
+        Assert.That(result["failed"]?.Value<bool>(), Is.True);
+        Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
+        Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
     }
 
     private static byte[] ParseReturnValue(string responseJson)
