@@ -20,7 +20,8 @@ public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<ch
     public static readonly RlpLimit L65 = new(65);
 
     /// <remarks>
-    /// Should not be used in a static context as can be set from client configuration.
+    /// Should not be captured in a static readonly field - the value is set from
+    /// client configuration during startup, type initializers can run before.
     /// </remarks>
     public static long MaxBlockGas { get; private set; } = 1_000_000_000;
     public static void InitMaxBlockGas(long maxBlockGas) => MaxBlockGas = maxBlockGas;
