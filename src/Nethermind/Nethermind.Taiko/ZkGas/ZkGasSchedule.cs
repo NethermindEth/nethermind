@@ -11,69 +11,20 @@ using Nethermind.Core.Exceptions;
 namespace Nethermind.Taiko.ZkGas;
 
 /// <summary>
-/// Consensus-owned ZK gas schedule constants for the Unzen hardfork, plus the resolver that
-/// builds a runtime 256-entry multiplier table from a sparse chainspec override map.
+/// Unzen ZK gas defaults and resolvers: the default scalars (block limit, intrinsic, fail-safe)
+/// plus the resolvers (<see cref="BuildOpcodeTable"/>, <see cref="BuildPrecompileTable"/>) that
+/// turn the sparse per-schedule maps from the chainspec into runtime multiplier tables.
 /// </summary>
-/// <remarks>
-/// The recalibrated default tables themselves no longer live in code: every chainspec that
-/// activates Unzen lists its own ordered set of <c>unzenZkGasSchedules</c>, and the spec provider
-/// picks the active schedule by block timestamp. The taiko-alethia chainspec carries the
-/// recalibrated tables from taiko-mono#21720 / alethia-reth#187; a network that finalized Unzen
-/// under an earlier schedule can pin its own table the same way.
-/// </remarks>
 public static class ZkGasSchedule
 {
-    /// <summary>Chain id of the Taiko Alethia mainnet.</summary>
-    public const ulong TaikoMainnetChainId = 167_000;
-
-    /// <summary>Chain id of the Taiko devnet.</summary>
-    public const ulong TaikoDevnetChainId = 167_001;
-
-    /// <summary>Chain id of the Taiko Masaya testnet.</summary>
-    public const ulong TaikoMasayaChainId = 167_011;
-
-    /// <summary>Chain id of the Taiko Hoodi testnet.</summary>
-    public const ulong TaikoHoodiChainId = 167_013;
-
-    /// <summary>Default Unzen block ZK gas limit.</summary>
+    /// <summary>Default Unzen block ZK gas limit. Chainspecs may override via <c>unzenBlockZkGasLimit</c>.</summary>
     public const ulong BlockZkGasLimit = 100_000_000;
 
-    /// <summary>Fixed ZK gas charged per transaction before any opcode runs; covers proving cost of sender ecrecovery.</summary>
+    /// <summary>
+    /// Default flat ZK gas charged per transaction before any opcode runs; covers proving cost of
+    /// sender ecrecovery. Chainspecs may override via <c>unzenTxIntrinsicZkGas</c>.
+    /// </summary>
     public const ulong TxIntrinsicZkGas = 243_000;
-
-    /// <summary>
-    /// Mainnet batch-lookup threshold: the first allowed block id (first Shasta block).
-    /// Resolved batch lookup results <em>strictly less than</em> this value are reported
-    /// to the driver as JSON null; the value itself passes through unchanged. Sourced
-    /// from taiko-geth PR #558 and alethia-reth PR #177. Named for the comparison
-    /// semantics rather than the upstream "last Pacaya" label, which is inverted
-    /// relative to the strict-<c>&lt;</c> operator.
-    /// </summary>
-    public const ulong TaikoMainnetBatchLookupThreshold = 4_990_434;
-
-    /// <summary>
-    /// Hoodi batch-lookup threshold: the first allowed block id (first Shasta block).
-    /// Resolved batch lookup results <em>strictly less than</em> this value are reported
-    /// to the driver as JSON null; the value itself passes through unchanged. Sourced
-    /// from taiko-geth PR #558 and alethia-reth PR #177.
-    /// </summary>
-    public const ulong TaikoHoodiBatchLookupThreshold = 3_951_005;
-
-    /// <summary>
-    /// Returns the per-network minimum block id for batch lookup RPC results, or
-    /// <c>null</c> on networks with no threshold (Devnet, Masaya, unknown). When a
-    /// threshold is configured, <c>taikoAuth_last{Certain,}{L1Origin,BlockID}ByBatchID</c>
-    /// must report JSON null for any resolved block id strictly below it. Mirrors
-    /// <c>batchLookupBlockThresholds</c> in taiko-geth (PR #558) and
-    /// <c>batch_lookup_last_pacaya_block_threshold</c> in alethia-reth (PR #177).
-    /// </summary>
-    /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
-    public static ulong? ResolveBatchLookupThreshold(ulong chainId) => chainId switch
-    {
-        TaikoMainnetChainId => TaikoMainnetBatchLookupThreshold,
-        TaikoHoodiChainId => TaikoHoodiBatchLookupThreshold,
-        _ => null,
-    };
 
     /// <summary>Fail-safe multiplier for any opcode or precompile not explicitly listed.</summary>
     public const ushort FailsafeMultiplier = ushort.MaxValue;

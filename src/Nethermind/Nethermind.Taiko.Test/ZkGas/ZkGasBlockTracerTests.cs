@@ -37,9 +37,8 @@ public class ZkGasBlockTracerTests
         Build.A.Transaction.TestObject;
 
     /// <summary>
-    /// Constructs a tracer with the alethia recalibrated opcode/precompile tables in place. The
-    /// production meter no longer carries in-code defaults, so tests that exercise specific
-    /// opcode multipliers (e.g. CREATE=1, ADD=19) must supply the tables explicitly here.
+    /// Constructs a tracer with <see cref="ZkGasTestSchedules"/> wired in so opcode-specific
+    /// assertions (e.g. CREATE=1, ADD=19) resolve against known multipliers.
     /// </summary>
     private static ZkGasBlockTracer MakeTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null,
         ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
