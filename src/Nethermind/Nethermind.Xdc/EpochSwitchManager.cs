@@ -99,7 +99,7 @@ internal class EpochSwitchManager(
             ? throw new InvalidOperationException($"PenaltiesAddress is null on epoch-switch block {header.Number}")
             : [.. header.PenaltiesAddress.Value];
 
-    private EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end)
+    public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
         List<EpochSwitchInfo> epochSwitchInfos = [];
 
@@ -279,7 +279,7 @@ internal class EpochSwitchManager(
             {
                 return null;
             }
-            EpochSwitchInfo[] epochSwitchInfos = GetEpochSwitchBetween(estBlockHeader, headHeader);
+            EpochSwitchInfo[] epochSwitchInfos = GetEpochSwitchInfoBetween(estBlockHeader, headHeader);
             if (epochSwitchInfos is null)
             {
                 return null;
