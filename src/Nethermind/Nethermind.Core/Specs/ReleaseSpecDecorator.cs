@@ -89,10 +89,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
     public virtual bool IsEip7951Enabled => spec.IsEip7951Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
-    public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
-    public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
-    public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
-    public virtual bool IsOpJovianEnabled => spec.IsOpJovianEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
     public virtual bool IsEip7976Enabled => spec.IsEip7976Enabled;
     public virtual bool IsEip7981Enabled => spec.IsEip7981Enabled;
