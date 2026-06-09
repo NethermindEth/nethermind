@@ -262,9 +262,10 @@ public static partial class EvmInstructions
             state.AddToBalance(inheritor, result, spec);
         }
 
-        // Special handling when SELFDESTRUCT is limited to the same transaction.
-        // No ETH moves and no log is emitted for this no-op case.
-        if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
+        // Self-targeting SELFDESTRUCT moves no ETH and emits no log.
+        // EIP-6780 made this a no-op for accounts not created in the same transaction;
+        // EIP-8246 extends it to all accounts, removing the residual self-burn.
+        if (inheritor.Equals(executingAccount) && (spec.RemoveSelfdestructBurn || (selfdestructOnlyOnSameTx && !createInSameTx)))
             goto Stop;
 
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);

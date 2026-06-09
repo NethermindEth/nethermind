@@ -94,6 +94,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip5656Enabled { get; set; } = spec.IsEip5656Enabled;
         public long Eip2935RingBufferSize { get; set; } = spec.Eip2935RingBufferSize;
         public bool IsEip6780Enabled { get; set; } = spec.IsEip6780Enabled;
+        public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress { get; set; } = spec.Eip4788ContractAddress;
