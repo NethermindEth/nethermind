@@ -314,6 +314,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     int count = destroyList.Count;
                     bool removeSelfdestructBurn = spec.IsEip8246Enabled;
+                    bool tracingRefunds = tracer.IsTracingRefunds;
+                    long destroyRefund = spec.GasCosts.DestroyRefund;
                     if (count > 1)
                     {
                         Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
@@ -322,19 +324,24 @@ namespace Nethermind.Evm.TransactionProcessing
                         for (int i = 0; i < count; i++)
                         {
                             FinalizeDestroyedAccount(WorldState, in substate, buffer[i], removeSelfdestructBurn);
+                            if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                         }
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                     else if (count == 1)
                     {
                         FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, removeSelfdestructBurn);
+                        if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
 
                 static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool removeSelfdestructBurn)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
-                    // EIP-7708 logs the burn; suppressed once EIP-8246 stops burning.
+                    // Pre-EIP-8246 this is a burn. This post-fee path emits a Burn log (the whole
+                    // balance, including priority fees credited at PayFees, leaves supply), whereas
+                    // the pre-fee path emits a SelfDestruct log. EIP-8246 removes the burn entirely,
+                    // so no log is emitted on either path.
                     if (!balance.IsZero && !removeSelfdestructBurn)
                     {
                         substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
