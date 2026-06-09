@@ -162,7 +162,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             activeBucketPrefixCapacity = _lastBucketRefreshTicks.Count;
         }
 
-        PooledHashSet<TKadKey> activeBucketPrefixes = new(activeBucketPrefixCapacity);
+        HashSet<TKadKey> activeBucketPrefixes = new(activeBucketPrefixCapacity);
         foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
         {
             activeBucketPrefixes.Add(Prefix);

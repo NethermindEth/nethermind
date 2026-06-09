@@ -153,7 +153,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return AddBootNode(bootNodes, seen, networkNode.Enr);
         }
 
-        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Port);
+        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Enode.DiscoveryPort);
         return AddBootNode(bootNodes, seen, node);
     }
 

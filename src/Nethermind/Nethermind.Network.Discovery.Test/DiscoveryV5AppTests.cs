@@ -379,6 +379,29 @@ public class DiscoveryV5AppTests
         }
     }
 
+    [Test]
+    public void Should_Use_Discovery_Port_From_Configured_Enode_Bootnode()
+    {
+        Enode enode = new(TestItem.PrivateKeyA.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, discoveryPort: 9001);
+        NetworkConfig networkConfig = new()
+        {
+            Bootnodes = [new NetworkNode(enode)]
+        };
+        DiscoveryConfig discoveryConfig = new()
+        {
+            UseDefaultDiscv5Bootnodes = false
+        };
+
+        List<Node> bootNodes = _discoveryV5App.CreateBootNodes(networkConfig, discoveryConfig);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootNodes, Has.Count.EqualTo(1));
+            Assert.That(bootNodes[0].Port, Is.EqualTo(9001));
+            Assert.That(bootNodes[0].Host, Is.EqualTo("8.8.8.8"));
+        }
+    }
+
     private sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])
     {
         public override string Key => EnrContentKey.Eth2;
