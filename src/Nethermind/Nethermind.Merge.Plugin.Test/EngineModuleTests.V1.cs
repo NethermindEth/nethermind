@@ -1681,7 +1681,7 @@ public partial class EngineModuleTests
         // Count FindHeader calls made by the repeated FCU only. Safe=Keccak.Zero skips its
         // ValidateBlockHash lookup, so the baseline calls are: 1 to resolve head, 1 for finalized
         // validation, plus the IsInconsistent walk (1 under the optimization, 2 without).
-        spy.ResetCounters();
+        spy!.ResetCounters();
         ForkchoiceStateV1 repeated = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
         Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
