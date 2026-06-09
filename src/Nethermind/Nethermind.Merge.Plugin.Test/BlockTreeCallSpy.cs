@@ -4,6 +4,7 @@
 using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -20,6 +21,25 @@ public class BlockTreeCallSpy : DispatchProxy
     protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
     {
         if (targetMethod?.Name == nameof(IBlockFinder.FindHeader)) FindHeaderCalls++;
+
+        // DispatchProxy cannot marshal params ReadOnlySpan<Block>; forward explicitly.
+        if (targetMethod?.Name == nameof(IBlockTree.TryUpdateMainChain) && args is { Length: >= 2 })
+        {
+            BlockHeader newHead = (BlockHeader)args[0]!;
+            bool wereProcessed = (bool)args[1]!;
+            bool forceUpdateHeadBlock = args.Length > 2 && args[2] is bool force && force;
+            ReadOnlySpan<Block> preloaded = default;
+            if (args.Length > 3)
+            {
+                if (args[3] is Block[] blocks)
+                    preloaded = blocks;
+                else if (args[3] is Block block)
+                    preloaded = new[] { block };
+            }
+
+            return _inner.TryUpdateMainChain(newHead, wereProcessed, forceUpdateHeadBlock, preloaded);
+        }
+
         return targetMethod?.Invoke(_inner, args);
     }
 
