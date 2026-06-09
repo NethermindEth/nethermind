@@ -1546,6 +1546,23 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_proof_for_non_existent_account_returns_zero_hashes()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", "0x000000000000000000000000000000000000dead", "[]", "0x2");
+
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+        Assert.Multiple(() =>
+        {
+            Assert.That((string?)result["address"], Is.EqualTo("0x000000000000000000000000000000000000dead"));
+            Assert.That((string?)result["balance"], Is.EqualTo("0x0"));
+            Assert.That((string?)result["nonce"], Is.EqualTo("0x0"));
+            Assert.That((string?)result["codeHash"], Is.EqualTo(Hash256.Zero.ToString()));
+            Assert.That((string?)result["storageHash"], Is.EqualTo(Hash256.Zero.ToString()));
+        });
+    }
+
+    [Test]
     public async Task Eth_get_block_by_number_empty_param()
     {
         using Context ctx = await Context.Create();
