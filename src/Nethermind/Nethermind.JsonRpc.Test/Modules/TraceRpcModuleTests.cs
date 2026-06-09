@@ -1106,21 +1106,16 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_callMany_with_zero_gas_matches_omitted_gas_path()
+    public async Task Trace_callMany_with_zero_gas_keeps_literal_zero_gas_semantics()
     {
         Context context = new();
         await context.Build();
-        long blockGasLimit = context.Blockchain.BlockTree.Head!.Header.GasLimit;
-        long gasCap = blockGasLimit * 10;
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
-        config.GasCap = gasCap;
+        config.GasCap = 50_000;
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> omittedGasTraces = TraceCallMany(context);
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> zeroGasTraces = TraceCallMany(context, gas: 0);
-
-        Assert.That(omittedGasTraces.Result.Error, Is.Null);
-        Assert.That(zeroGasTraces.Result.Error, Is.Null);
-        Assert.That(zeroGasTraces.Data.Single().Action!.Gas, Is.EqualTo(omittedGasTraces.Data.Single().Action!.Gas));
+        Assert.That(() => TraceCallMany(context, gas: 0),
+            Throws.InstanceOf<InvalidTransactionException>()
+                .With.Message.Contains("intrinsic gas too low"));
     }
 
     private static ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> TraceCallMany(Context context, long? gas = null) =>
