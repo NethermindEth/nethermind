@@ -303,6 +303,8 @@ public class BlockProcessorTests
             return CacheType.None;
         }
 
+        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
+
         public void Dispose() { }
     }
 
