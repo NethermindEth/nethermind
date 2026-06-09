@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
@@ -17,6 +18,7 @@ internal static class IPAddressRlp
             _ => Rlp.LengthOf(ip.GetAddressBytes())
         };
 
+    [SkipLocalsInit]
     public static void Encode(RlpStream stream, IPAddress ip)
     {
         Span<byte> bytes = stackalloc byte[16];

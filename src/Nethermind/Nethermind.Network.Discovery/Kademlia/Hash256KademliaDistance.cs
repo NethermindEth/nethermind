@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 
@@ -24,6 +25,7 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<Hash256>
     public Hash256 Zero => Hash256.Zero;
 
     /// <inheritdoc/>
+    [SkipLocalsInit]
     public int CalculateLogDistance(Hash256 left, Hash256 right)
     {
         Span<byte> xorDistance = stackalloc byte[Hash256.Size];
@@ -53,6 +55,7 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<Hash256>
     }
 
     /// <inheritdoc/>
+    [SkipLocalsInit]
     public int Compare(Hash256 left, Hash256 right, Hash256 target)
     {
         Span<byte> leftDistance = stackalloc byte[Hash256.Size];
@@ -73,6 +76,7 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<Hash256>
     }
 
     /// <inheritdoc/>
+    [SkipLocalsInit]
     public Hash256 SetBit(Hash256 key, int index)
     {
         Span<byte> bytes = stackalloc byte[Hash256.Size];
@@ -90,6 +94,7 @@ public sealed class Hash256KademliaDistance : IKademliaDistance<Hash256>
     /// <summary>
     /// Creates a random 256-bit key at the requested XOR log distance from <paramref name="currentHash"/>.
     /// </summary>
+    [SkipLocalsInit]
     public Hash256 GetRandomHashAtDistance(Hash256 currentHash, int distance, Random random)
     {
         if ((uint)distance > MaxDistance)

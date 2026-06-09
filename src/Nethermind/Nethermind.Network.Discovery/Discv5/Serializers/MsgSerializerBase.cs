@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Serialization.Rlp;
@@ -57,6 +58,7 @@ internal abstract class MsgSerializerBase<TMessage>
         return RequestId.From(requestId);
     }
 
+    [SkipLocalsInit]
     private static void EncodeRequestId(NettyRlpStream stream, RequestId requestId)
     {
         Span<byte> bytes = stackalloc byte[RequestId.MaxLength];

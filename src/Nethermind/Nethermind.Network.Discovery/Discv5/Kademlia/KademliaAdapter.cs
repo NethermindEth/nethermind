@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Collections.Pooled;
 using Nethermind.Core.Caching;
@@ -233,6 +234,7 @@ public sealed class KademliaAdapter(
         return await SendMessageWithoutSession(receiver, message);
     }
 
+    [SkipLocalsInit]
     private bool TryEncodeWithExistingSession(
         Node receiver,
         Discv5Message message,
@@ -260,13 +262,20 @@ public sealed class KademliaAdapter(
 
     private async Task<PendingNonceKey> SendMessageWithoutSession(Node receiver, Discv5Message message)
     {
+        PendingNonceKey pendingNonceKey = EncodeMessageWithoutSession(receiver, message, out byte[] initialPacket);
+        return await SendPendingPacket(receiver, message, pendingNonceKey, initialPacket, hasSession: false);
+    }
+
+    [SkipLocalsInit]
+    private PendingNonceKey EncodeMessageWithoutSession(Node receiver, Discv5Message message, out byte[] initialPacket)
+    {
         Span<byte> nonce = stackalloc byte[PacketCodec.NonceSize];
         cryptoRandom.GenerateRandomBytes(nonce);
         Span<byte> encryptionKey = stackalloc byte[Session.KeySize];
         cryptoRandom.GenerateRandomBytes(encryptionKey);
         PendingNonceKey pendingNonceKey = new(receiver.Address, NonceKey.From(nonce));
-        byte[] initialPacket = packetCodec.EncodeOrdinary(receiver.Id, encryptionKey, message, nonce);
-        return await SendPendingPacket(receiver, message, pendingNonceKey, initialPacket, hasSession: false);
+        initialPacket = packetCodec.EncodeOrdinary(receiver.Id, encryptionKey, message, nonce);
+        return pendingNonceKey;
     }
 
     private async Task<PendingNonceKey> SendPendingPacket(
@@ -292,23 +301,36 @@ public sealed class KademliaAdapter(
 
     private async Task SendResponse(Node receiver, Discv5Message message, CancellationToken token)
     {
+        if (!TryEncodeResponse(receiver, message, out byte[]? packet))
+        {
+            return;
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
+        await discoveryHandler.SendAsync(packet, receiver.Address);
+    }
+
+    [SkipLocalsInit]
+    private bool TryEncodeResponse(Node receiver, Discv5Message message, [NotNullWhen(true)] out byte[]? packet)
+    {
         SessionKey sessionKey = new(receiver.Id.Hash, receiver.Address);
         if (!TryGetSession(sessionKey, out Session? session))
         {
-            return;
+            packet = null;
+            return false;
         }
 
         Span<byte> writeKey = stackalloc byte[Session.KeySize];
         if (!session.TryCopyWriteKey(writeKey))
         {
-            return;
+            packet = null;
+            return false;
         }
 
         Span<byte> nonce = stackalloc byte[PacketCodec.NonceSize];
         session.WriteNextNonce(cryptoRandom, nonce);
-        byte[] packet = packetCodec.EncodeOrdinary(receiver.Id, writeKey, message, nonce);
-        if (_logger.IsTrace) _logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
-        await discoveryHandler.SendAsync(packet, receiver.Address);
+        packet = packetCodec.EncodeOrdinary(receiver.Id, writeKey, message, nonce);
+        return true;
     }
 
     private async Task HandlePacket(PooledUdpReceiveResult udpPacket, CancellationToken token)
@@ -372,10 +394,7 @@ public sealed class KademliaAdapter(
         }
 
         SessionKey sessionKey = new(nodeId, endpoint);
-        Span<byte> readKey = stackalloc byte[Session.KeySize];
-        if (!TryGetSession(sessionKey, out Session? session) ||
-            !session.TryCopyReadKey(readKey) ||
-            !packetCodec.TryDecryptMessage(packet, readKey, out Discv5Message message))
+        if (!TryDecryptOrdinaryMessage(packet, sessionKey, out Session? session, out Discv5Message? message))
         {
             if (_logger.IsTrace) _logger.Trace($"Discv5 ordinary packet from {endpoint} could not be decrypted with an existing session; sending WHOAREYOU.");
             await SendWhoAreYou(endpoint, packet, nodeId);
@@ -391,6 +410,22 @@ public sealed class KademliaAdapter(
         {
             message.Dispose();
         }
+    }
+
+    [SkipLocalsInit]
+    private bool TryDecryptOrdinaryMessage(Packet packet, SessionKey sessionKey, [NotNullWhen(true)] out Session? session, [NotNullWhen(true)] out Discv5Message? message)
+    {
+        Span<byte> readKey = stackalloc byte[Session.KeySize];
+        if (TryGetSession(sessionKey, out session) &&
+            session.TryCopyReadKey(readKey) &&
+            packetCodec.TryDecryptMessage(packet, readKey, out Discv5Message decodedMessage))
+        {
+            message = decodedMessage;
+            return true;
+        }
+
+        message = null;
+        return false;
     }
 
     private async Task HandleHandshake(IPEndPoint endpoint, Packet packet, CancellationToken token)
@@ -660,6 +695,7 @@ public sealed class KademliaAdapter(
         }
     }
 
+    [SkipLocalsInit]
     internal Distances GetLookupDistances(Node receiver, PublicKey target)
     {
         int distance = _distance.CalculateLogDistance(receiver.Id.Hash, target.Hash);
@@ -680,6 +716,7 @@ public sealed class KademliaAdapter(
         return new Distances(distances[..count]);
     }
 
+    [SkipLocalsInit]
     private static string FormatDistances(Distances distances)
     {
         Span<char> chars = stackalloc char[16];
@@ -702,6 +739,7 @@ public sealed class KademliaAdapter(
         return chars[..position].ToString();
     }
 
+    [SkipLocalsInit]
     private RequestId CreateRequestId()
     {
         Span<byte> requestId = stackalloc byte[sizeof(ulong)];

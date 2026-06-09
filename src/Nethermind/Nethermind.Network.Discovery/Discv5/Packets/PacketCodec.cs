@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.ObjectPool;
@@ -58,6 +59,7 @@ public sealed class PacketCodec(
     internal byte[] EncodeOrdinary(PublicKey destination, ReadOnlySpan<byte> encryptionKey, Discv5Message message, ReadOnlySpan<byte> nonce)
         => EncodePacket(destination.Hash.Bytes, PacketFlag.Ordinary, nonce, _localNodeId, encryptionKey, message);
 
+    [SkipLocalsInit]
     internal byte[] EncodeWhoAreYou(ReadOnlySpan<byte> destinationNodeId, ReadOnlySpan<byte> requestNonce, ulong enrSequence, out Challenge challenge)
     {
         byte[] idNonce = _cryptoRandom.GenerateRandomBytes(IdNonceSize);
@@ -70,6 +72,7 @@ public sealed class PacketCodec(
         return packet;
     }
 
+    [SkipLocalsInit]
     internal byte[] EncodeHandshake(PublicKey destination, Challenge challenge, Discv5Message message, out Session session)
     {
         using PrivateKey ephemeralKey = new PrivateKeyGenerator(_cryptoRandom).Generate();
@@ -141,6 +144,7 @@ public sealed class PacketCodec(
         return TryDecode(packetMemory, localNodeMaskingAes, out decoded);
     }
 
+    [SkipLocalsInit]
     private static bool TryDecode(ReadOnlyMemory<byte> packetMemory, Aes localNodeMaskingAes, out Packet decoded)
     {
         decoded = default;
@@ -368,6 +372,7 @@ public sealed class PacketCodec(
         return EncodePacketCore(destinationNodeId, flag, nonce, authData, encryptionKey, encodedMessage.AsSpan(), out messageAd);
     }
 
+    [SkipLocalsInit]
     private byte[] EncodePacketCore(
         ReadOnlySpan<byte> destinationNodeId,
         PacketFlag flag,
@@ -458,6 +463,7 @@ public sealed class PacketCodec(
         AesCtrTransform(aes, iv, input, output);
     }
 
+    [SkipLocalsInit]
     private static void AesCtrTransform(Aes aes, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
     {
         if (output.Length < input.Length)
@@ -552,6 +558,7 @@ public sealed class PacketCodec(
         DeriveKeys(sharedPoint, initiatorNodeId, recipientNodeId, challengeData, out initiatorKey, out recipientKey);
     }
 
+    [SkipLocalsInit]
     private static void DeriveKeys(
         byte[] secret,
         ReadOnlySpan<byte> initiatorNodeId,
@@ -589,6 +596,7 @@ public sealed class PacketCodec(
         return (initiatorKey, recipientKey);
     }
 
+    [SkipLocalsInit]
     private void SignIdNonce(
         ReadOnlySpan<byte> challengeData,
         ReadOnlySpan<byte> ephemeralPublicKey,
@@ -601,6 +609,7 @@ public sealed class PacketCodec(
         signature.Bytes[..IdSignatureSize].CopyTo(destination);
     }
 
+    [SkipLocalsInit]
     private bool VerifyIdSignature(
         CompressedPublicKey signer,
         ReadOnlySpan<byte> signatureBytes,
@@ -630,6 +639,7 @@ public sealed class PacketCodec(
         return signingHash;
     }
 
+    [SkipLocalsInit]
     private static void CalculateIdSignatureHash(
         ReadOnlySpan<byte> challengeData,
         ReadOnlySpan<byte> ephemeralPublicKey,

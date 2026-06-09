@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Stats.Model;
@@ -21,6 +22,7 @@ public sealed class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node, Hash256
     /// Constructing a public key whose Keccak hash lands in that prefix is not practical, so this uses a random
     /// 64-byte target and treats discv4 bucket refresh as best-effort sampling.
     /// </remarks>
+    [SkipLocalsInit]
     public PublicKey CreateRandomKeyAtDistance(Hash256 nodePrefix, int depth)
     {
         Span<byte> randomBytes = stackalloc byte[PublicKey.LengthInBytes];
