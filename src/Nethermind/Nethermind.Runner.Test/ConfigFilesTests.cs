@@ -325,7 +325,17 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IBlocksConfig, long?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
         Test<IBlocksConfig, ulong>(configWildcard, static c => c.SecondsPerSlot, secondsPerSlot);
         Test<IBlocksConfig, int>(configWildcard, static c => c.BlockProductionTimeoutMs, blockProductionTimeout);
+    }
 
+    [Test]
+    public void TargetBlockGasLimit_does_not_exceed_DefaultMaxBlockGasLimit()
+    {
+        BlocksConfig defaultConfig = new();
+        Test<IBlocksConfig, long?>("*", static c => c.TargetBlockGasLimit, (configFile, value) =>
+        {
+            if (value is not null)
+                Assert.That(value.Value, Is.LessThanOrEqualTo(defaultConfig.MaxGasLimit), configFile);
+        });
     }
 
     [Test]
