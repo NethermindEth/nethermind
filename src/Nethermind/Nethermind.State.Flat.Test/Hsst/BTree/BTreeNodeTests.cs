@@ -404,7 +404,10 @@ public class BTreeNodeTests
     [Test]
     public void FullHsst_AllKeysReachableViaIndex()
     {
-        int count = 100;
+        // Enough entries (4-byte keys + 4-byte values) to overflow many 4 KiB page-local
+        // leaves and build a genuine multi-level index; with too few the HSST is a single
+        // leaf and "via index" is vacuous (no index to traverse).
+        const int count = 1000;
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             for (int i = 0; i < count; i++)
@@ -414,6 +417,14 @@ public class BTreeNodeTests
                 builder.Add(key, System.BitConverter.GetBytes(i));
             }
         });
+
+        // Structural guard: the root's leftmost child must be an Intermediate node,
+        // proving the tree is multi-level rather than a single leaf — otherwise the
+        // per-key TrySeek below never actually descends through the index.
+        BTreeNodeReader rootIndex = ReadHsstRoot(data);
+        byte firstChildFlag = data[rootIndex.GetUInt64Value(0)];
+        Assert.That((BTreeNodeKind)(firstChildFlag & 0x03), Is.EqualTo(BTreeNodeKind.Intermediate),
+            "corpus must build a multi-level tree so lookups traverse the index");
 
         SpanByteReader reader = new(data);
         // Count entries via the new enumerator and verify each key is reachable via TrySeek.

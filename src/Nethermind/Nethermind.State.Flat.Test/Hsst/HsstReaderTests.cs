@@ -3,6 +3,7 @@
 
 using System;
 using System.Text;
+using Nethermind.State.Flat;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.BTree;
@@ -22,34 +23,47 @@ public class HsstReaderTests
     /// Regression for the BTree internal-node boundary separator bug.
     /// </summary>
     /// <remarks>
-    /// Builds two leaves:
-    ///   leaf 0: 32 keys with prefix [0xA9, 0xFF]
-    ///   leaf 1: 32 keys with prefix [0xAB, 0xCD]   ← leaf prefix length = 2
-    /// Natural separator between them = LCP([0xA9,0xFF,…], [0xAB,0xCD,…]) + 1 = 1
-    /// (= [0xAB]). The fix extends it to length 2 (= [0xAB, 0xCD]).
+    /// Every value is one full page, so each entry lands in its own page-local leaf and the
+    /// [0xA9,0xFF,*] and [0xAB,0xCD,*] families end up in separate leaves regardless of the
+    /// builder's page-packing heuristics. The natural separator between the two families is
+    /// LCP([0xA9,0xFF,…], [0xAB,0xCD,…]) + 1 = 1 byte (= [0xAB]).
     ///
-    /// Search key K = [0xAB, 0x00, 0x00] matches the OLD truncated separator (0xAB)
-    /// and would route to leaf 1 — where it falls before every key (0xAB &lt; 0xABCD…)
-    /// and TryGetFloor would have returned false, missing the actual floor in leaf 0.
-    /// With the extended separator the parent's floor compare detects K &lt; S_1 and
-    /// routes K to leaf 0, returning its last entry as the floor.
+    /// Search key K = [0xAB, 0x00, 0x00] matches that truncated separator (0xAB) and would
+    /// route to the [0xAB,0xCD,*] side — where it falls before every key (0xAB &lt; 0xABCD…)
+    /// and TryGetFloor would have returned false, missing the actual floor in the
+    /// [0xA9,0xFF,*] family. With the separator routing fixed, the parent's floor compare
+    /// detects K &lt; S and routes K left, returning the last [0xA9,0xFF,*] entry as the floor.
     /// </remarks>
     [Test]
     public void TrySeekFloor_AcrossTruncatedSeparatorBoundary_RoutesCorrectly()
     {
+        // One-page values force each entry into its own leaf (an entry larger than a page
+        // can never share one), guaranteeing the inter-family leaf boundary the bug needs.
+        static byte[] PageValue(int marker)
+        {
+            byte[] v = new byte[PageLayout.PageSize];
+            v[0] = (byte)marker;
+            return v;
+        }
+
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             for (int i = 0; i < 32; i++)
-                builder.Add([0xA9, 0xFF, (byte)i], [(byte)(0xA0 + i)]);
+                builder.Add([0xA9, 0xFF, (byte)i], PageValue(0xA0 + i));
             for (int i = 0; i < 32; i++)
-                builder.Add([0xAB, 0xCD, (byte)i], [(byte)(0xB0 + i)]);
+                builder.Add([0xAB, 0xCD, (byte)i], PageValue(0xB0 + i));
         });
 
+        // A single B-tree node is capped at 64 KiB, so a blob this large can only be a
+        // multi-leaf tree — the inter-family separator routing is genuinely exercised.
+        Assert.That(data.Length, Is.GreaterThan(64 * 1024));
+
         Assert.That(HsstTestUtil.TryGetFloor(data, [0xAB, 0x00, 0x00], out byte[] floorValue), Is.True,
-            "Floor of [0xAB, 0x00, 0x00] should resolve to the last entry of leaf 0");
-        // Last entry of leaf 0 is [0xA9, 0xFF, 0x1F] with value [0xA0 + 31] = [0xBF].
-        Assert.That(floorValue, Is.EqualTo(new byte[] { 0xBF }),
-            "Floor should be the last entry of leaf 0, not a leaf-1 entry");
+            "Floor of [0xAB, 0x00, 0x00] should resolve to the last [0xA9, 0xFF, *] entry");
+        // Last [0xA9, 0xFF, *] entry is [0xA9, 0xFF, 0x1F]; its page value's first byte is 0xA0 + 31 = 0xBF.
+        Assert.That(floorValue.Length, Is.EqualTo(PageLayout.PageSize),
+            "Floor must be the last [0xA9, 0xFF, *] entry's value, not a [0xAB, 0xCD, *] entry");
+        Assert.That(floorValue[0], Is.EqualTo((byte)0xBF));
     }
 
     /// <summary>
