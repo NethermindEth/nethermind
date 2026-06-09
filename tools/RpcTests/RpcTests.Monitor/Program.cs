@@ -80,7 +80,7 @@ rootCommand.SetAction(async (parseResult, ct) =>
 
     await Task.WhenAll(
         runner.RunAsync(ct),
-        stats?.RunAsync(ct) ?? Task.CompletedTask
+        stats.RunAsync(ct)
     );
 
     Console.WriteLine("Monitoring finished");

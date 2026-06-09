@@ -12,24 +12,24 @@ public class RequestSender(Uri clientUrl, HttpClient httpClient)
     private const int LogPerRequests = 10;
     private int _requestN;
 
-    public async Task<TestCase> SendAsync(TestInfo test)
+    public async Task<TestCase> SendAsync(TestInfo test, CancellationToken ct)
     {
         if (Interlocked.Increment(ref _requestN) % LogPerRequests == 0)
             await Console.Out.WriteLineAsync($"Sending request #{_requestN}");
 
-        JsonNode response = await SendToClientAsync(test.Data);
+        JsonNode response = await SendToClientAsync(test.Data, ct);
         return new TestCase(test, response);
     }
 
-    private async Task<JsonNode> SendToClientAsync(JsonNode requestData)
+    private async Task<JsonNode> SendToClientAsync(JsonNode requestData, CancellationToken ct)
     {
         try
         {
             using JsonContent content = JsonContent.Create(requestData);
-            using HttpResponseMessage response = await httpClient.PostAsync(clientUrl, content);
+            using HttpResponseMessage response = await httpClient.PostAsync(clientUrl, content, ct);
             response.EnsureSuccessStatusCode();
 
-            JsonNode responseData = await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync())
+            JsonNode responseData = await JsonNode.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct)
                 ?? throw new JsonException("Empty response received.");
 
             if (responseData["error"] is { } error)
@@ -39,7 +39,7 @@ public class RequestSender(Uri clientUrl, HttpClient httpClient)
         }
         catch (Exception ex)
         {
-            await Console.Error.WriteLineAsync(
+            Console.Error.WriteLine(
                 $"""
                  Request error: {ex.Message}
                    Client: {clientUrl}

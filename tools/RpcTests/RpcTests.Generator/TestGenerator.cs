@@ -51,7 +51,7 @@ public static class TestGenerator
         });
 
         TransformBlock<TestInfo, TestCase> senderBlock = new(
-            sender.SendAsync,
+            info => sender.SendAsync(info, ct),
             new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = args.Parallelism, BoundedCapacity = args.Parallelism }
         );
 
