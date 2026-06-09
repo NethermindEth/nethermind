@@ -769,7 +769,7 @@
           "Nethermind.Api": "[1.39.0-unstable, )",
           "Nethermind.Db": "[1.39.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-          "RocksDB": "[10.4.2.64152, 10.4.2.64152]"
+          "RocksDB": "[10.10.1.649, )"
         }
       },
       "nethermind.db.rpc": {
@@ -1637,9 +1637,12 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.4.2.64152, 10.4.2.64152]",
-        "resolved": "10.4.2.64152",
-        "contentHash": "AQ42+Bs36uSVCw6P2ilHW9r5Cq5rI/T9GMuI1s6XpMZ4yx8IMyTryk8yqZb8/5bBjJMjnqw6zJvwur+OsgZ2oA=="
+        "requested": "[10.10.1.649, 10.10.1.649]",
+        "resolved": "10.10.1.649",
+        "contentHash": "2zZnjtrhKjZFv/YhhGhGbZRW9Ddl2dXbJ1HKxulx9U+E41nxIsHA9vG2BOEUm6e3519V++Kz8ORHoioEyHenzg==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.7"
+        }
       },
       "SCrypt": {
         "type": "CentralTransitive",
@@ -1799,9 +1802,12 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.4.2.64152, 10.4.2.64152]",
-        "resolved": "10.4.2.64152",
-        "contentHash": "AQ42+Bs36uSVCw6P2ilHW9r5Cq5rI/T9GMuI1s6XpMZ4yx8IMyTryk8yqZb8/5bBjJMjnqw6zJvwur+OsgZ2oA=="
+        "requested": "[10.10.1.649, 10.10.1.649]",
+        "resolved": "10.10.1.649",
+        "contentHash": "2zZnjtrhKjZFv/YhhGhGbZRW9Ddl2dXbJ1HKxulx9U+E41nxIsHA9vG2BOEUm6e3519V++Kz8ORHoioEyHenzg==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.7"
+        }
       }
     },
     "net10.0/linux-x64": {
@@ -1897,9 +1903,12 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.4.2.64152, 10.4.2.64152]",
-        "resolved": "10.4.2.64152",
-        "contentHash": "AQ42+Bs36uSVCw6P2ilHW9r5Cq5rI/T9GMuI1s6XpMZ4yx8IMyTryk8yqZb8/5bBjJMjnqw6zJvwur+OsgZ2oA=="
+        "requested": "[10.10.1.649, 10.10.1.649]",
+        "resolved": "10.10.1.649",
+        "contentHash": "2zZnjtrhKjZFv/YhhGhGbZRW9Ddl2dXbJ1HKxulx9U+E41nxIsHA9vG2BOEUm6e3519V++Kz8ORHoioEyHenzg==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.7"
+        }
       }
     },
     "net10.0/osx-arm64": {
@@ -1995,9 +2004,12 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.4.2.64152, 10.4.2.64152]",
-        "resolved": "10.4.2.64152",
-        "contentHash": "AQ42+Bs36uSVCw6P2ilHW9r5Cq5rI/T9GMuI1s6XpMZ4yx8IMyTryk8yqZb8/5bBjJMjnqw6zJvwur+OsgZ2oA=="
+        "requested": "[10.10.1.649, 10.10.1.649]",
+        "resolved": "10.10.1.649",
+        "contentHash": "2zZnjtrhKjZFv/YhhGhGbZRW9Ddl2dXbJ1HKxulx9U+E41nxIsHA9vG2BOEUm6e3519V++Kz8ORHoioEyHenzg==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.7"
+        }
       }
     },
     "net10.0/osx-x64": {
@@ -2093,9 +2105,12 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.4.2.64152, 10.4.2.64152]",
-        "resolved": "10.4.2.64152",
-        "contentHash": "AQ42+Bs36uSVCw6P2ilHW9r5Cq5rI/T9GMuI1s6XpMZ4yx8IMyTryk8yqZb8/5bBjJMjnqw6zJvwur+OsgZ2oA=="
+        "requested": "[10.10.1.649, 10.10.1.649]",
+        "resolved": "10.10.1.649",
+        "contentHash": "2zZnjtrhKjZFv/YhhGhGbZRW9Ddl2dXbJ1HKxulx9U+E41nxIsHA9vG2BOEUm6e3519V++Kz8ORHoioEyHenzg==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.7"
+        }
       }
     },
     "net10.0/win-x64": {
@@ -2191,9 +2206,12 @@
       },
       "RocksDB": {
         "type": "CentralTransitive",
-        "requested": "[10.4.2.64152, 10.4.2.64152]",
-        "resolved": "10.4.2.64152",
-        "contentHash": "AQ42+Bs36uSVCw6P2ilHW9r5Cq5rI/T9GMuI1s6XpMZ4yx8IMyTryk8yqZb8/5bBjJMjnqw6zJvwur+OsgZ2oA=="
+        "requested": "[10.10.1.649, 10.10.1.649]",
+        "resolved": "10.10.1.649",
+        "contentHash": "2zZnjtrhKjZFv/YhhGhGbZRW9Ddl2dXbJ1HKxulx9U+E41nxIsHA9vG2BOEUm6e3519V++Kz8ORHoioEyHenzg==",
+        "dependencies": {
+          "ZstdSharp.Port": "0.8.7"
+        }
       }
     }
   }
