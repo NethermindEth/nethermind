@@ -36,19 +36,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
 
-        Assert.That(trace.Entries.Count, Is.EqualTo(5), "number of entries");
-        GethTxTraceEntry entry = trace.Entries[1];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(entry.Depth, Is.EqualTo(1), nameof(entry.Depth));
-            Assert.That(entry.Gas, Is.EqualTo(79000 - GasCostOf.VeryLow), nameof(entry.Gas));
-            Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
-            Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
-            Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-            Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
-            Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
-            Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
-        }
+        AssertFirstPushTrace(trace);
     }
 
     [Test]
@@ -130,6 +118,11 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
 
+        AssertFirstPushTrace(trace);
+    }
+
+    private static void AssertFirstPushTrace(GethLikeTxTrace trace)
+    {
         Assert.That(trace.Entries.Count, Is.EqualTo(5), "number of entries");
         GethTxTraceEntry entry = trace.Entries[1];
         using (Assert.EnterMultipleScope())

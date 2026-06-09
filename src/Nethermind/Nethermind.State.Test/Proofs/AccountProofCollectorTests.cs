@@ -87,16 +87,15 @@ namespace Nethermind.Store.Test.Proofs
             return (tree, memDb);
         }
 
-        [Test]
-        public void Non_existing_account_is_valid()
+        private static void AssertNonExistingAccountProof(AccountProof proof, Address expectedAddress, int? expectedProofLength = null)
         {
-            StateTree tree = new();
-            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new UInt256[] { 1, 2, 3 });
-            tree.Accept(accountProofCollector, tree.RootHash);
-            AccountProof proof = accountProofCollector.BuildResult();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
+                if (expectedProofLength is { } len)
+                {
+                    Assert.That(proof.Proof, Has.Length.EqualTo(len));
+                }
+                Assert.That(proof.Address, Is.EqualTo(expectedAddress));
                 Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
                 Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
                 Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
@@ -104,6 +103,16 @@ namespace Nethermind.Store.Test.Proofs
                 Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
                 Assert.That(proof.StorageProofs?[2].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
             }
+        }
+
+        [Test]
+        public void Non_existing_account_is_valid()
+        {
+            StateTree tree = new();
+            AccountProofCollector accountProofCollector = new(TestItem.AddressA, new UInt256[] { 1, 2, 3 });
+            tree.Accept(accountProofCollector, tree.RootHash);
+            AccountProof proof = accountProofCollector.BuildResult();
+            AssertNonExistingAccountProof(proof, TestItem.AddressA);
         }
 
         [Test]
@@ -120,17 +129,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(TestItem.AddressC, new UInt256[] { 1, 2, 3 });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(proof.Proof, Has.Length.EqualTo(1));
-                Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
-                Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
-                Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
-                Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
-                Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-                Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-                Assert.That(proof.StorageProofs?[2].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-            }
+            AssertNonExistingAccountProof(proof, TestItem.AddressC, expectedProofLength: 1);
         }
 
         [Test]
@@ -145,14 +144,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(TestItem.AddressC, new UInt256[] { 1, 2, 3 });
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.That(proof.Proof, Has.Length.EqualTo(1));
-            Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
-            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
-            Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
-            Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-            Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-            Assert.That(proof.StorageProofs?[2].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
+            AssertNonExistingAccountProof(proof, TestItem.AddressC, expectedProofLength: 1);
         }
 
         [Test]

@@ -425,24 +425,20 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         byte[] code = Bytes.FromHexString("0x60246044607460d1606b60b9603369866833515b6d086c607f3b15749e4886579008320052006f");
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        GethTxTraceEntry entry;
 
-        entry = trace.Entries[^3];
-        Assert.That(entry.ProgramCounter, Is.EqualTo(25));
-        Assert.That(entry.Opcode, Is.EqualTo("EXTCODESIZE"));
-        Assert.That(entry.Stack[^1], Is.EqualTo("0x866833515b6d086c607f"));
-        Assert.That(entry.Stack.Count, Is.EqualTo(8));
+        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: "0x866833515b6d086c607f", expectedStackCount: 8);
+        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: "0x0", expectedStackCount: 8);
+        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: "0x1", expectedStackCount: 8);
+    }
 
-        entry = trace.Entries[^2];
-        Assert.That(entry.ProgramCounter, Is.EqualTo(26));
-        Assert.That(entry.Opcode, Is.EqualTo("ISZERO"));
-        Assert.That(entry.Stack[^1], Is.EqualTo("0x0"));
-        Assert.That(entry.Stack.Count, Is.EqualTo(8));
-
-        entry = trace.Entries[^1];
-        Assert.That(entry.ProgramCounter, Is.EqualTo(27));
-        Assert.That(entry.Opcode, Is.EqualTo("PUSH21"));
-        Assert.That(entry.Stack[^1], Is.EqualTo("0x1"));
-        Assert.That(entry.Stack.Count, Is.EqualTo(8));
+    private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, string expectedStackTop, int expectedStackCount)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.ProgramCounter, Is.EqualTo(expectedPc));
+            Assert.That(entry.Opcode, Is.EqualTo(expectedOpcode));
+            Assert.That(entry.Stack[^1], Is.EqualTo(expectedStackTop));
+            Assert.That(entry.Stack.Count, Is.EqualTo(expectedStackCount));
+        }
     }
 }
