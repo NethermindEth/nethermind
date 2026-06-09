@@ -500,7 +500,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
             // Pass the just-processed blocks as a cache; TryUpdateMainChain walks the rest of the branch
             // (any deeper blocks that already had state) on its own, loading them one at a time.
-            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks) && _logger.IsWarn)
+            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks.AsSpan()) && _logger.IsWarn)
                 _logger.Warn($"Failed to update main chain to {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing.");
         }
 

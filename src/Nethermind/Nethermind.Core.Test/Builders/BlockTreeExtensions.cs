@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -51,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
 
             if (branchLength > blockTree.Head!.Number && blocks.Count > 0)
             {
-                blockTree.TryUpdateMainChain(blocks[^1].Header, true, preloadedBlocks: blocks);
+                blockTree.TryUpdateMainChain(blocks[^1].Header, true, preloadedBlocks: CollectionsMarshal.AsSpan(blocks));
             }
         }
 

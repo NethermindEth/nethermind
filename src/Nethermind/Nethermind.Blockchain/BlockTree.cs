@@ -978,7 +978,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null)
+        public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks)
         {
             // The head itself must have a body to be moved onto the main chain (the walk below checks every
             // ancestor the same way). Fail fast here rather than throwing later when GetBlock can't load it.
@@ -1053,7 +1053,7 @@ namespace Nethermind.Blockchain
             else
                 for (int i = 0; i < blocks.Count; i++) headers.Add(blocks[i].Header);
 
-            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, BuildPreloadedCache(blocks));
+            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, BuildPreloadedCache(blocks as Block[] ?? [.. blocks]));
         }
 
         /// <remarks>
@@ -1073,7 +1073,7 @@ namespace Nethermind.Blockchain
             long lastNumber = headers[^1].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
 
-            using ArrayPoolList<DeferredHeaderEvent> pending = new(headers.Count);
+            using ArrayPoolListRef<DeferredHeaderEvent> pending = new(headers.Count);
             Block? headBlock = null;
 
             using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
@@ -1161,16 +1161,16 @@ namespace Nethermind.Blockchain
 
         // Shared read-only empty cache for the no-preload path (e.g. FCU), to avoid a per-call allocation
         // on a hot path. Never mutated.
-        private static readonly Dictionary<Hash256, Block> s_emptyBlockCache = [];
+        private static readonly Dictionary<Hash256, Block> _emptyBlockCache = [];
 
-        private static Dictionary<Hash256, Block> BuildPreloadedCache(IReadOnlyList<Block>? preloadedBlocks)
+        private static Dictionary<Hash256, Block> BuildPreloadedCache(ReadOnlySpan<Block> preloadedBlocks)
         {
-            if (preloadedBlocks is null || preloadedBlocks.Count == 0)
+            if (preloadedBlocks.Length == 0)
             {
-                return s_emptyBlockCache;
+                return _emptyBlockCache;
             }
 
-            Dictionary<Hash256, Block> cache = new(preloadedBlocks.Count);
+            Dictionary<Hash256, Block> cache = new(preloadedBlocks.Length);
             foreach (Block block in preloadedBlocks)
             {
                 if (block.Hash is not null) cache[block.Hash] = block;

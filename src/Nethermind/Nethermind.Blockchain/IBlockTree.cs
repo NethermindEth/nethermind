@@ -149,7 +149,7 @@ namespace Nethermind.Blockchain
         /// <param name="forceUpdateHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> regardless of <see cref="Block.TotalDifficulty"/>.</param>
         /// <param name="preloadedBlocks">Optional blocks the caller already holds, used as a hash→block cache during the walk.</param>
         /// <returns><value>True</value> if the chain was updated; <value>False</value> if the branch could not be walked back to the main chain (a predecessor was missing) — in which case nothing is mutated.</returns>
-        bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null);
+        bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks);
 
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 

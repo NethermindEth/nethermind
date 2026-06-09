@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -426,7 +427,7 @@ public partial class BlockTreeTests
 
                 if (moveToBeaconMainChain)
                 {
-                    if (moveSyncedTree) SyncedTree.TryUpdateMainChain(blocks[^1].Header, true, true, preloadedBlocks: blocks);
+                    if (moveSyncedTree) SyncedTree.TryUpdateMainChain(blocks[^1].Header, true, true, preloadedBlocks: CollectionsMarshal.AsSpan(blocks));
                     NotSyncedTree.UpdateBeaconMainChain(blockInfos, blockInfos[^1].BlockNumber);
                 }
 
@@ -450,7 +451,7 @@ public partial class BlockTreeTests
                     parent = blockToInsert;
                 }
 
-                blockTree.TryUpdateMainChain(newBlocks[^1].Header, true, true, preloadedBlocks: newBlocks);
+                blockTree.TryUpdateMainChain(newBlocks[^1].Header, true, true, preloadedBlocks: CollectionsMarshal.AsSpan(newBlocks));
 
                 return this;
             }

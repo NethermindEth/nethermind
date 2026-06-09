@@ -2141,7 +2141,7 @@ public class BlockTreeTests
             tree.SuggestBlock(genesis);
             Assert.That(tree.Genesis, Is.Not.Null);
 
-            tree.TryUpdateMainChain(genesis.Header, wereProcessed, preloadedBlocks: ImmutableList.Create(genesis));
+            tree.TryUpdateMainChain(genesis.Header, wereProcessed, preloadedBlocks: [genesis]);
 
             tree.SuggestBlock(second);
             tree.SuggestBlock(third);

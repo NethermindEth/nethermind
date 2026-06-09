@@ -81,7 +81,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public bool WasProcessed(long number, Hash256 blockHash) => _overlayTree.WasProcessed(number, blockHash) || _baseTree.WasProcessed(number, blockHash);
 
-    public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, IReadOnlyList<Block>? preloadedBlocks = null) =>
+    public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks) =>
         _overlayTree.TryUpdateMainChain(newHead, wereProcessed, forceUpdateHeadBlock, preloadedBlocks);
 
     public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => _overlayTree.MarkChainAsProcessed(blocks);
