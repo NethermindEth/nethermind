@@ -97,12 +97,6 @@ static INotifier GetNotifier(bool isDevelopment)
             .RateLimited(10, TimeSpan.FromMinutes(1));
     }
 
-    if (Environment.GetEnvironmentVariable("RPC_MONITOR_WEBHOOK_URL") is { } webhookUrl)
-    {
-        return new WebhookSlackNotifier(webhookUrl)
-            .RateLimited(10, TimeSpan.FromMinutes(1));
-    }
-
     return isDevelopment
         ? NullNotifier.Instance
         : throw new Exception("No remote notification method configured.");

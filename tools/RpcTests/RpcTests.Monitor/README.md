@@ -11,7 +11,7 @@ Test files follow a format similar to [Erigon rpc-tests](https://github.com/erig
 |--------|-------|---------|------------------------------------------------------------------------------|
 | `--target` | `-t` | `http://localhost:8545` | Node under test (HTTP URL)                                                   |
 | `--reference` | `-r` | — | Reference node for comparison. Required when tests have no static `response` |
-| `--tests` | `-g` | `mainnet/**/*` | Glob pattern(s) for test files under `tests/`,repeatable                     |
+| `--tests` | `-g` | `mainnet/**/*` | Glob pattern(s) for test files under `tests/`, repeatable                    |
 | `--parallelism` | `-p` | `4` | Number of concurrent test workers per block                                  |
 
 ## Examples
@@ -19,7 +19,8 @@ Test files follow a format similar to [Erigon rpc-tests](https://github.com/erig
 Monitor mainnet node against a Geth reference:
 
 ```bash
-export RPC_MONITOR_WEBHOOK_URL="https://hooks.slack.com/services/..."
+export RPC_MONITOR_BOT_TOKEN="xoxb-..."
+export RPC_MONITOR_CHANNEL_ID="C1234567890"
 dotnet run -- -t http://localhost:8545 -r http://geth-archive:8545
 ```
 
@@ -37,16 +38,9 @@ dotnet run -- \
 Use static expected responses (no reference node needed):
 
 ```bash
-export RPC_MONITOR_WEBHOOK_URL="https://hooks.slack.com/services/..."
-dotnet run -- -t localhost:8545 -g "mainnet/eth_call/*"
-```
-
-Slack bot mode with file attachments:
-
-```bash
 export RPC_MONITOR_BOT_TOKEN="xoxb-..."
 export RPC_MONITOR_CHANNEL_ID="C1234567890"
-dotnet run -- -t node.example.com -r reference.example.com
+dotnet run -- -t localhost:8545 -g "mainnet/eth_call/*"
 ```
 
 ## Test format
@@ -100,8 +94,7 @@ compares responses, and notifies on any discrepancy.
 ## Notification options
 <img width="1022" height="168" alt="image" src="https://github.com/user-attachments/assets/5abf1004-7aeb-4c43-994a-3baf16484fe2" />
 
-Only Slack is supported for now, configuration is provided via environment variables:
-- `RPC_MONITOR_WEBHOOK_URL` - post messages directly to a Slack webhook, can truncate large data due to its limitations,
-- `RPC_MONITOR_BOT_TOKEN` + `RPC_MONITOR_CHANNEL_ID` - post messages to a Slack channel via a bot user, uploads responses as files.
+Only Slack is supported for now. Configure via environment variables:
+- `RPC_MONITOR_BOT_TOKEN` + `RPC_MONITOR_CHANNEL_ID` — post messages to a Slack channel via a bot user, uploads responses as files.
 
-Slack notifications are rate-limited to 10 messages per minute – to avoid spamming in case of consistent test/node/app failures.
+Slack notifications are rate-limited to 10 messages per minute to avoid spamming in case of consistent test/node/app failures.
