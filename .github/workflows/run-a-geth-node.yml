@@ -1,0 +1,136 @@
+name: "Spawn a pruned Geth node"
+
+# Spawns a pruned Geth node (snap sync, --gcmode full) through the smoke-tests
+# framework in post-merge-smoke-tests: dispatch run-smoketests.yml with a Geth
+# node-set config, wait for the machines to be created, and return the node's RPC
+# URL. Teardown is handled by the framework (timeout in metadata.json + the hourly
+# destroy-smoketests.yml cron), the same as every other smoke-tests node.
+
+on:
+  workflow_call:
+    inputs:
+      network:
+        description: "Network to sync (mainnet, sepolia, hoodi, ...)."
+        type: string
+        default: "mainnet"
+        required: false
+      allowed_ips:
+        description: "Comma-separated firewall IPs allowed to reach the node (e.g. the runner egress)."
+        type: string
+        default: ""
+        required: false
+      timeout:
+        description: "Hours before the smoke-tests framework reaps the node."
+        type: string
+        default: "24"
+        required: false
+    outputs:
+      rpc_url:
+        description: "HTTP JSON-RPC URL of the spawned Geth node."
+        value: ${{ jobs.create_geth_node.outputs.geth_rpc_url }}
+
+jobs:
+  create_geth_node:
+    name: Spawn pruned Geth node
+    runs-on: ubuntu-latest
+    outputs:
+      geth_rpc_url: ${{ steps.scrape.outputs.geth_rpc_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Build Geth smoke-tests config and dispatch
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          NETWORK: ${{ inputs.network }}
+          ALLOWED_IPS: ${{ inputs.allowed_ips }}
+          TIMEOUT: ${{ inputs.timeout }}
+        run: |
+          set -euo pipefail
+          # Short, letter-prefixed, low-collision tag mixing the run ID with entropy
+          # (kept brief because smoke-tests node/Terraform names derive from it).
+          base_tag="g$(echo "${GITHUB_RUN_ID}-$(shuf -i 100000-999999 -n 1)" | sha256sum | head -c 8)"
+          echo "base_tag=$base_tag" >> "$GITHUB_OUTPUT"
+
+          config_json=$(jq -cn --arg net "$NETWORK" '{
+            node_name_prefix: "RpcCmp-geth",
+            el: [{client: "geth", image: "ethereum/client-go:stable", alias: "", convert_to_paprika: "false"}],
+            el_extra_flags: {geth: ["--syncmode=snap", "--gcmode=full"]},
+            metrics_collection: false,
+            cl: [{client: "lighthouse", image: ""}],
+            cl_extra_flags: {lighthouse: []},
+            networks: [$net],
+            branch: ["core"],
+            fee_recipient: ["0x0000000000000000000000000000000000000000"],
+            tests_config: {categories: "", branch: ""}
+          }')
+
+          gh workflow run run-smoketests.yml \
+            --repo NethermindEth/post-merge-smoke-tests --ref main \
+            -f github_username="${{ github.actor }}" \
+            -f base_tag="$base_tag" \
+            -f tags="rpc-comparison" \
+            -f firewall_ips="$ALLOWED_IPS" \
+            -f config_json="$config_json" \
+            -f tests_active="0" \
+            -f monitor_enabled="false" \
+            -f timeout="$TIMEOUT"
+
+      - name: Wait for smoke-tests run to create the node
+        env:
+          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
+          WORKFLOW_ID: "run-smoketests.yml"
+          MAX_WAIT_MINUTES: "5"
+          INTERVAL: "5"
+          TIMEOUT: "30"
+          ORG_NAME: "NethermindEth"
+          REPO_NAME: "post-merge-smoke-tests"
+          NAME_FILTER: ${{ steps.dispatch.outputs.base_tag }}
+          REF: "main"
+        run: |
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh | tee wait-output.txt
+          run_id=$(grep -oP 'Run ID: \K\d+' wait-output.txt)
+          echo "RUN_ID=$run_id" >> "$GITHUB_ENV"
+
+      - name: Scrape Geth RPC URL from machine details
+        id: scrape
+        env:
+          GH_APP_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          # wait-for-workflow.sh returns the run ID once the run starts; the
+          # machine-details artifact only appears after create-machines finishes
+          # provisioning. Poll (bounded) until it's available.
+          ARTIFACT_ID=""
+          for attempt in $(seq 1 60); do
+            ARTIFACT_ID=$(curl -s -H "Authorization: token $GH_APP_TOKEN" \
+              "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts" \
+              | jq -r '.artifacts[0].id // empty')
+            [ -n "$ARTIFACT_ID" ] && break
+            echo "Artifacts not yet available (attempt $attempt/60); retrying in 30s..."
+            sleep 30
+          done
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "Timed out (~30m) waiting for the smoke-tests machine-details artifact."
+            exit 1
+          fi
+
+          curl -sL -H "Authorization: token $GH_APP_TOKEN" \
+            -o artifact.zip \
+            "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/${ARTIFACT_ID}/zip"
+          unzip -o artifact.zip -d downloaded-artifacts
+          FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
+          rpc_url=$(grep -oP '\s*RPC URL: \K.+' "downloaded-artifacts/machine-details/$FILE")
+          echo "Geth RPC URL: $rpc_url"
+          echo "geth_rpc_url=$rpc_url" >> "$GITHUB_OUTPUT"

@@ -58,6 +58,12 @@ on:
         default: "24"
         required: false
 
+# Avoid duplicate live nodes from concurrent triggers. Not cancel-in-progress:
+# these runs spawn/sync nodes for hours and must finish (and reach teardown).
+concurrency:
+  group: rpc-comparison-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   verify_correctness_of_setup:
     name: Verify inputs and resolve node mode
@@ -72,6 +78,7 @@ jobs:
         env:
           NODE_TYPE: ${{ inputs.node_type }}
           NETHERMIND_IP: ${{ inputs.nethermind_ip }}
+          CONVERT_TO_PAPRIKA: ${{ inputs.convert_to_paprika }}
         run: |
           set -euo pipefail
           # Map node_type to the rpc_int flag and decide whether to spawn a node.
@@ -100,6 +107,14 @@ jobs:
           # full/archive use an already-synced node addressed by IP; pruned is spawned.
           if [ "$NODE_TYPE" != "pruned" ] && [ -z "$NETHERMIND_IP" ]; then
             echo "Error: 'nethermind_ip' must be provided when node_type is 'full' or 'archive'."
+            exit 1
+          fi
+
+          # Paprika conversion only happens on a spawned node, so it's meaningless for
+          # full/archive (which reuse an existing node by IP). Fail loudly rather than
+          # silently ignoring the request.
+          if [ "$CONVERT_TO_PAPRIKA" == "true" ] && [ "$NODE_TYPE" != "pruned" ]; then
+            echo "Error: 'convert_to_paprika' only applies when node_type is 'pruned' (a node is spawned)."
             exit 1
           fi
 
@@ -141,93 +156,14 @@ jobs:
   # auto-teardown as every other node: create-machines + the hourly destroy cron).
   create_geth_node:
     name: Spawn pruned Geth node
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/run-a-geth-node.yml
     needs: [verify_correctness_of_setup]
     if: inputs.spawn_geth
-    outputs:
-      geth_rpc_url: ${{ steps.scrape.outputs.geth_rpc_url }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,post-merge-smoke-tests"
-
-      - name: Build Geth smoke-tests config and dispatch
-        id: dispatch
-        env:
-          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
-          NETWORK: ${{ inputs.network }}
-          ALLOWED_IPS: ${{ inputs.allowed_ips }}
-          TIMEOUT: ${{ inputs.timeout }}
-        run: |
-          set -euo pipefail
-          base_tag="g$(shuf -i 1000-9999 -n 1)"
-          echo "base_tag=$base_tag" >> "$GITHUB_OUTPUT"
-
-          # Pruned Geth (snap sync, --gcmode full) + a consensus client, declared in
-          # the smoke-tests node-set config schema.
-          config_json=$(jq -cn --arg net "$NETWORK" '{
-            node_name_prefix: "RpcCmp-geth",
-            el: [{client: "geth", image: "ethereum/client-go:stable", alias: "", convert_to_paprika: "false"}],
-            el_extra_flags: {geth: ["--syncmode=snap", "--gcmode=full"]},
-            metrics_collection: false,
-            cl: [{client: "lighthouse", image: ""}],
-            cl_extra_flags: {lighthouse: []},
-            networks: [$net],
-            branch: ["core"],
-            fee_recipient: ["0x0000000000000000000000000000000000000000"],
-            tests_config: {categories: "", branch: ""}
-          }')
-
-          gh workflow run run-smoketests.yml \
-            --repo NethermindEth/post-merge-smoke-tests --ref main \
-            -f github_username="${{ github.actor }}" \
-            -f base_tag="$base_tag" \
-            -f tags="rpc-comparison" \
-            -f firewall_ips="$ALLOWED_IPS" \
-            -f config_json="$config_json" \
-            -f tests_active="0" \
-            -f monitor_enabled="false" \
-            -f timeout="$TIMEOUT"
-
-      - name: Wait for smoke-tests run to create the node
-        env:
-          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
-          WORKFLOW_ID: "run-smoketests.yml"
-          MAX_WAIT_MINUTES: "5"
-          INTERVAL: "5"
-          TIMEOUT: "30"
-          ORG_NAME: "NethermindEth"
-          REPO_NAME: "post-merge-smoke-tests"
-          NAME_FILTER: ${{ steps.dispatch.outputs.base_tag }}
-          REF: "main"
-        run: |
-          chmod +x scripts/wait-for-workflow.sh
-          ./scripts/wait-for-workflow.sh | tee wait-output.txt
-          run_id=$(grep -oP 'Run ID: \K\d+' wait-output.txt)
-          echo "RUN_ID=$run_id" >> "$GITHUB_ENV"
-
-      - name: Scrape Geth RPC URL from machine details
-        id: scrape
-        run: |
-          set -euo pipefail
-          ARTIFACT_ID=$(curl -s -H "Authorization: token ${{ steps.gh-app.outputs.token }}" \
-            "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts" \
-            | jq '.artifacts[0].id')
-          curl -sL -H "Authorization: token ${{ steps.gh-app.outputs.token }}" \
-            -o artifact.zip \
-            "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/${ARTIFACT_ID}/zip"
-          unzip -o artifact.zip -d downloaded-artifacts
-          FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
-          rpc_url=$(grep -oP '\s*RPC URL: \K.+' "downloaded-artifacts/machine-details/$FILE")
-          echo "Geth RPC URL: $rpc_url"
-          echo "geth_rpc_url=$rpc_url" >> "$GITHUB_OUTPUT"
+    secrets: inherit
+    with:
+      network: ${{ inputs.network }}
+      allowed_ips: ${{ inputs.allowed_ips }}
+      timeout: ${{ inputs.timeout }}
 
   resolve_urls:
     name: Resolve Nethermind RPC URL
@@ -270,7 +206,7 @@ jobs:
           SPAWN_NM: ${{ needs.verify_correctness_of_setup.outputs.spawn_nm }}
           NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
           SPAWN_GETH: ${{ inputs.spawn_geth }}
-          GETH_URL: ${{ needs.create_geth_node.outputs.geth_rpc_url }}
+          GETH_URL: ${{ needs.create_geth_node.outputs.rpc_url }}
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         shell: bash
         run: |
@@ -529,13 +465,13 @@ jobs:
         env:
           NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
           # Prefer the spawned Geth URL; fall back to the provided geth_url.
-          GETH_URL: ${{ needs.create_geth_node.outputs.geth_rpc_url || inputs.geth_url }}
+          GETH_URL: ${{ needs.create_geth_node.outputs.rpc_url || inputs.geth_url }}
           RPC_FLAG: ${{ needs.verify_correctness_of_setup.outputs.rpc_flag }}
           NETWORK: ${{ inputs.network }}
           EXCLUDE_APIS: ${{ inputs.exclude_apis }}
           MAX_FAILURES: ${{ inputs.max_failures }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
           mkdir -p rpc-results
 
           # Nethermind is the daemon under test; parse host:port from its URL.
@@ -555,9 +491,13 @@ jobs:
           [ -n "$EXCLUDE_APIS" ] && exclude=(-x "$EXCLUDE_APIS")
 
           echo "=== rpc_int: $NM_URL  [-b $NETWORK $RPC_FLAG] ${ext[*]:-} ${exclude[*]:-} -M $MAX_FAILURES ==="
+          # Capture rpc_int's status explicitly (so we can log it) rather than letting
+          # errexit abort before the exit-code line on test failures.
+          set +e
           ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
             "${exclude[@]}" -M "$MAX_FAILURES" -c -f -R rpc-results/report.csv | tee rpc-results/output.txt
           rc=${PIPESTATUS[0]}
+          set -e
           echo "rpc_int exit code: $rc"
           exit $rc
 
@@ -566,7 +506,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rpc-int-results
-          # rpc-results/ = our summary (report.csv + captured stdout);
+          # rpc-results/ = summary (report.csv + captured stdout);
           # integration/<network>/results/ = rpc_int's per-test diffs/responses.
           path: |
             rpc-results/
