@@ -68,8 +68,8 @@ internal static class PersistedSnapshotBloomBuilder
 
     /// <summary>
     /// Bloom-key seed from the first 8 bytes of a raw 20-byte Address. Column 0x01's
-    /// outer key is exactly the raw Address bytes, so the merger byte-copy fast paths
-    /// can read the seed directly from the outer key via
+    /// outer key is exactly the raw Address bytes, so the merger can read the seed
+    /// directly from the outer key via
     /// <see cref="MemoryMarshal.Read{T}(ReadOnlySpan{byte})"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -282,46 +282,16 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <c>[FullKey][LEB128 ValueLength][Value]</c> and the recorded entry position aims at
     /// FullKey byte 0 (EntryStart).
     /// </summary>
-    public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value) =>
-        AddImpl(key, value, requireAligned: false);
-
-    /// <summary>
-    /// Try to add an entry such that the whole entry block — the key, its LEB128
-    /// value-length prefix, and the value — lands within a single
-    /// <see cref="PageLayout.PageSize"/> page in the destination writer. If the
-    /// current writer position would force the entry to straddle a page boundary,
-    /// up to <see cref="PageLayout.PadThreshold"/> zero bytes are written ahead
-    /// of the entry to push its start onto the next page. Returns true on a
-    /// successful (possibly padded) add; returns false without writing anything
-    /// if either of the unalignable cases applies:
-    /// <list type="bullet">
-    ///   <item>the entry is larger than one page (cannot fit at any offset)</item>
-    ///   <item>the alignment pad would exceed <see cref="PageLayout.PadThreshold"/></item>
-    /// </list>
-    /// Works uniformly in both key-after-value and key-first modes — the entry's
-    /// total byte count is the same in either layout (only the order differs),
-    /// and the pad bytes sit before the entry's captured index position so the
-    /// reader never reads them (key-after-value resolves the value via
-    /// <c>ValueStart = MetadataStart − ValueLength</c> back-reference; key-first
-    /// walks forward from EntryStart, which the index points at). Use this when
-    /// you want a definite success/failure signal so the caller can fall back
-    /// to a different code path on alignment failure; for best-effort alignment
-    /// without a signal, use <see cref="Add"/>.
-    /// </summary>
-    public bool TryAddAligned(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value) =>
-        AddImpl(key, value, requireAligned: true);
-
-    private bool AddImpl(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, bool requireAligned)
+    public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         // +1 for the leading per-entry flag byte.
         int lebSize = Leb128.EncodedSize((long)value.Length);
         long entryLen = 1L + key.Length + lebSize + value.Length;
         int lcp = MaybeFlushBeforeEntry(ref bufs, key, entryLen);
-        // requireAligned==false: best-effort alignment, entry lands unaligned on failure.
-        if (!TryAlign(entryLen) && requireAligned) return false;
+        // Best-effort page alignment; the entry lands unaligned when it can't be padded.
+        TryAlign(entryLen);
         AddCore(ref bufs, key, value, lebSize, lcp);
-        return true;
     }
 
     /// <summary>Pad to the next page when the entry would straddle a boundary, up to <see cref="PageLayout.PadThreshold"/>. Returns false when the entry exceeds one page or the pad would exceed the threshold.</summary>
@@ -342,8 +312,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Layout-mode-agnostic entry write, without page-alignment. Called from
     /// <see cref="Add"/> after <see cref="TryAlign"/> has run its best-effort pad,
-    /// and from <see cref="TryAddAligned"/> after a successful pad — so neither
-    /// public method pays double page-math. <paramref name="precomputedLcp"/> is
+    /// so it does not pay double page-math. <paramref name="precomputedLcp"/> is
     /// the raw LCP byte count returned by <see cref="MaybeFlushBeforeEntry"/>
     /// (<c>-1</c> if unknown) and is forwarded into
     /// <see cref="OnEntryAdded"/> so the per-key

@@ -4,13 +4,10 @@
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Per-emitted-key callback bundle for
+/// Per-emitted-key value merger for
 /// <see cref="HsstBTreeMerger.NWayMerge{TWriter,TWriterReader,TWriterPin,TReader,TPin,TSource,TValueMerger}"/>.
-/// Covers the three distinct lifecycle points of a BTree key emit: the path-independent
-/// post-write hook (<see cref="OnKey"/>), the verbatim-copy fast-path hook
-/// (<see cref="OnFastCopy"/>), and the actual multi-source value merge
-/// (<see cref="MergeValues"/>). Callers supply explicit empty bodies for the hooks they
-/// don't need.
+/// <see cref="MergeValues"/> is invoked once per emitted key to write the merged value
+/// across the matching sources.
 /// </summary>
 /// <remarks>
 /// Implemented as a generic struct constraint
@@ -30,21 +27,11 @@ internal interface IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource, TFacto
     where TSource : struct, IHsstMergeSource<TReader, TPin>
     where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
 {
-    /// <summary>Fired when matchCount==1 AND the source value was copied verbatim through
-    /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.TryAddAligned"/>. The destination
-    /// has no inner structure to walk, so this hook walks the SOURCE bytes for per-element
-    /// bookkeeping (e.g. iterating the source's per-address slot HSST to bloom-add each
-    /// slot key). Read source bytes via <c>cursor.MinValue</c> + <c>cursor.CreateMinReader()</c>.
-    /// Supply an empty body when not needed.</summary>
-    void OnFastCopy(scoped ReadOnlySpan<byte> key,
-        scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor);
-
-    /// <summary>Fired when the value must be merged: matchCount &gt; 1, OR matchCount==1
-    /// with a verbatim copy that didn't fit page-aligned. Emit the merged value bytes
-    /// through <paramref name="writer"/> (the outer builder has already opened
+    /// <summary>Fired once per emitted key to write the merged value. Emit the merged value
+    /// bytes through <paramref name="writer"/> (the outer builder has already opened
     /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/> on the caller's
-    /// behalf). Inline any per-element bookkeeping that <see cref="OnFastCopy"/> would have
-    /// done on a verbatim copy. Access matching sources via
+    /// behalf), inlining any per-element bookkeeping (e.g. bloom adds). A single matching
+    /// source is the degenerate case of the same merge. Access matching sources via
     /// <see cref="NWayMergeCursor{TReader,TPin,TSource,TFactory}.MatchingSources"/>,
     /// <c>cursor.ValueAt(srcIdx)</c>, and <c>cursor.CreateReaderAt(srcIdx)</c>.</summary>
     void MergeValues(ref TWriter writer, scoped ReadOnlySpan<byte> key,
