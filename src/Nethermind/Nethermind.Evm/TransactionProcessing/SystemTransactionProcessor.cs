@@ -29,20 +29,33 @@ public class SystemTransactionProcessor<TGasPolicy>(
     /// </summary>
     protected const int OriginalValidate = 2 << 30;
 
+    // SystemTransactionProcessor instances are created lazily by the base TransactionProcessor
+    // (including BAL pool workers) regardless of consensus engine, so AuRa behaviour cannot be
+    // applied only by an AuRaSystemTransactionProcessor subclass — we must detect AuRa here.
+    private readonly bool _isAura = specProvider?.SealEngine == SealEngineType.AuRa;
+
     /// <summary>
     /// Whether to suppress reads of the SYSTEM_ADDRESS account in the BAL for this transaction.
     /// </summary>
     /// <remarks>
-    /// EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls. Consensus
-    /// engines that surface the system user (e.g. AuRa) override this to <c>false</c>.
+    /// EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls. AuRa
+    /// surfaces SYSTEM_ADDRESS reads so its system contracts behave consistently with the
+    /// AuRa-specific BAL accounting; non-AuRa engines suppress.
     /// </remarks>
     protected virtual bool ShouldSuppressSystemAccountReads(Transaction tx) =>
-        tx.SenderAddress == Address.SystemUser;
+        !_isAura && tx.SenderAddress == Address.SystemUser;
 
     /// <summary>
-    /// Hook for consensus-specific pre-execution state setup. Default is a no-op.
+    /// Hook for consensus-specific pre-execution state setup. AuRa materialises the SYSTEM_ADDRESS
+    /// account on every non-genesis system call so the BAL records the create event.
     /// </summary>
-    protected virtual void OnBeforeSystemTransaction() { }
+    protected virtual void OnBeforeSystemTransaction()
+    {
+        if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
+        {
+            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+        }
+    }
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -66,7 +79,10 @@ public class SystemTransactionProcessor<TGasPolicy>(
         return TransactionResult.Ok;
     }
 
-    protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(header.IsGenesis);
+    // AuRa system transactions always wrap the spec (EIP-158 disabled at genesis), matching
+    // master's pre-PR behaviour; other engines short-circuit through the genesis fast path.
+    protected override IReleaseSpec GetSpec(BlockHeader header) =>
+        base.GetSpec(header).ForSystemTransaction(_isAura ? false : header.IsGenesis);
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in TGasPolicy intrinsicGas, long minGasRequired, bool validate) => TransactionResult.Ok;
 
