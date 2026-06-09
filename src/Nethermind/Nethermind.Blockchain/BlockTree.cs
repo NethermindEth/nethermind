@@ -947,7 +947,7 @@ namespace Nethermind.Blockchain
                 return false;
             }
 
-            Dictionary<Hash256, Block> cache = BuildPreloadedCache(preloadedBlocks);
+            PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
 
             // Walk back from the new head, collecting the branch of headers down to the current main chain.
             // Only headers are loaded here, so this stays cheap regardless of reorg depth. A missing
@@ -957,7 +957,7 @@ namespace Nethermind.Blockchain
             while (!current.IsGenesis)
             {
                 // Prefer the preloaded cache (a full block the caller already holds) over a store lookup.
-                bool fromCache = cache.TryGetValue(current.ParentHash!, out Block? cachedParent);
+                bool fromCache = cache.TryGet(current.ParentHash!, out Block? cachedParent);
                 BlockHeader? parent = fromCache
                     ? cachedParent!.Header
                     : this.FindParentHeader(current, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
@@ -1013,7 +1013,7 @@ namespace Nethermind.Blockchain
             else
                 for (int i = 0; i < blocks.Count; i++) headers.Add(blocks[i].Header);
 
-            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, BuildPreloadedCache(blocks as Block[] ?? [.. blocks]));
+            UpdateMainChainCore(headers, wereProcessed, forceUpdateHeadBlock, PreloadedBlockLookup.Build(blocks as Block[] ?? [.. blocks]));
         }
 
         /// <remarks>
@@ -1023,7 +1023,7 @@ namespace Nethermind.Blockchain
         /// memory stays bounded. Events are raised only after the chain-level batch is flushed, so
         /// subscribers always observe committed state.
         /// </remarks>
-        private void UpdateMainChainCore(IReadOnlyList<BlockHeader> headers, bool wereProcessed, bool forceUpdateHeadBlock, Dictionary<Hash256, Block> cache)
+        private void UpdateMainChainCore(IReadOnlyList<BlockHeader> headers, bool wereProcessed, bool forceUpdateHeadBlock, in PreloadedBlockLookup cache)
         {
             if (headers.Count == 0)
             {
@@ -1119,29 +1119,58 @@ namespace Nethermind.Blockchain
             OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(headers, wereProcessed));
         }
 
-        // Shared read-only empty cache for the no-preload path (e.g. FCU), to avoid a per-call allocation
-        // on a hot path. Never mutated.
-        private static readonly Dictionary<Hash256, Block> _emptyBlockCache = [];
-
-        private static Dictionary<Hash256, Block> BuildPreloadedCache(ReadOnlySpan<Block> preloadedBlocks)
+        /// <remarks>
+        /// Lookup over caller-preloaded blocks. The steady-state hot callers (BlockchainProcessor, BlockDownloader)
+        /// preload a single block, so a linear span scan is allocation-free and faster than building a dictionary.
+        /// Above the threshold we fall back to a Dictionary so deep reorgs stay O(1) per lookup.
+        /// </remarks>
+        private readonly ref struct PreloadedBlockLookup
         {
-            if (preloadedBlocks.Length == 0)
+            private const int DictionaryThreshold = 8;
+
+            private readonly ReadOnlySpan<Block> _span;
+            private readonly Dictionary<Hash256, Block>? _dict;
+
+            private PreloadedBlockLookup(ReadOnlySpan<Block> span, Dictionary<Hash256, Block>? dict)
             {
-                return _emptyBlockCache;
+                _span = span;
+                _dict = dict;
             }
 
-            Dictionary<Hash256, Block> cache = new(preloadedBlocks.Length);
-            foreach (Block block in preloadedBlocks)
+            public static PreloadedBlockLookup Build(ReadOnlySpan<Block> preloadedBlocks)
             {
-                if (block.Hash is not null) cache[block.Hash] = block;
+                if (preloadedBlocks.Length == 0) return default;
+                if (preloadedBlocks.Length <= DictionaryThreshold) return new PreloadedBlockLookup(preloadedBlocks, null);
+
+                Dictionary<Hash256, Block> dict = new(preloadedBlocks.Length);
+                foreach (Block block in preloadedBlocks)
+                {
+                    if (block.Hash is not null) dict[block.Hash] = block;
+                }
+                return new PreloadedBlockLookup(default, dict);
             }
 
-            return cache;
+            public bool TryGet(Hash256 hash, out Block? block)
+            {
+                if (_dict is not null) return _dict.TryGetValue(hash, out block);
+
+                foreach (Block b in _span)
+                {
+                    if (b.Hash == hash)
+                    {
+                        block = b;
+                        return true;
+                    }
+                }
+
+                block = null;
+                return false;
+            }
         }
 
-        private Block GetBlock(Dictionary<Hash256, Block> cache, BlockHeader header) =>
-            cache.TryGetValue(header.Hash!, out Block? block)
-                ? block
+        private Block GetBlock(in PreloadedBlockLookup cache, BlockHeader header) =>
+            cache.TryGet(header.Hash!, out Block? block)
+                ? block!
                 : FindBlock(header.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing, blockNumber: header.Number)
                   ?? throw new InvalidOperationException($"Cannot load block {header.ToString(BlockHeader.Format.FullHashAndNumber)} required to update main chain");
 
