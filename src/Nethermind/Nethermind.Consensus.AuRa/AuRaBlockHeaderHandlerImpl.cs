@@ -101,4 +101,15 @@ internal sealed class AuRaBlockHeaderHandlerImpl : IAuRaBlockHeaderHandler
         signature = null;
         return false;
     }
+
+    public bool IsAuRa(BlockHeader header) => header is AuRaBlockHeader;
+
+    public void CopySeal(BlockHeader src, BlockHeader dst)
+    {
+        if (src is AuRaBlockHeader auraSrc && dst is AuRaBlockHeader auraDst)
+        {
+            auraDst.AuRaStep = auraSrc.AuRaStep;
+            auraDst.AuRaSignature = auraSrc.AuRaSignature;
+        }
+    }
 }

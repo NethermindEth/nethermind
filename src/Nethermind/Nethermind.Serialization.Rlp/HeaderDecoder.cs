@@ -46,18 +46,18 @@ namespace Nethermind.Serialization.Rlp
 
             // Seal section: 32-byte item ⇒ Ethash (mixHash + nonce); otherwise AuRa (step + signature)
             // produced via the plugin-registered handler so the AuRaBlockHeader subclass stays in the plugin.
-            bool isAuRa = decoderContext.PeekPrefixAndContentLength().ContentLength != Hash256.Size;
+            // A null MixHash also encodes as an empty RLP item (length 0) — without an AuRa handler we
+            // tolerate that shape by discarding the seal bytes and producing a base BlockHeader.
+            bool isAuRaShape = decoderContext.PeekPrefixAndContentLength().ContentLength != Hash256.Size;
+            IAuRaBlockHeaderHandler? auraHandler = AuRaBlockHeaderHandler.Instance;
             BlockHeader blockHeader;
-            if (isAuRa)
+            if (isAuRaShape && auraHandler is not null)
             {
-                IAuRaBlockHeaderHandler handler = AuRaBlockHeaderHandler.Instance
-                    ?? throw new RlpException("Encountered AuRa-shaped header but no AuRa handler is registered.");
-
                 long step = (long)decoderContext.DecodeUInt256();
                 byte[]? auRaSignature = decoderContext.DecodeByteArray();
 
-                blockHeader = handler.CreateBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData!);
-                handler.SetSeal(blockHeader, step, auRaSignature);
+                blockHeader = auraHandler.CreateBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData!);
+                auraHandler.SetSeal(blockHeader, step, auRaSignature);
                 blockHeader.StateRoot = stateRoot;
                 blockHeader.TxRoot = transactionsRoot;
                 blockHeader.ReceiptsRoot = receiptsRoot;
@@ -67,6 +67,22 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
+                Hash256? mixHash;
+                ulong nonce;
+                if (isAuRaShape)
+                {
+                    // AuRa-shape without a handler: skip both items and leave MixHash/Nonce at defaults.
+                    // This is the tolerant fallback for headers whose null MixHash was encoded as empty RLP.
+                    decoderContext.SkipItem();
+                    decoderContext.SkipItem();
+                    mixHash = null;
+                    nonce = 0;
+                }
+                else
+                {
+                    mixHash = decoderContext.DecodeKeccak();
+                    nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
+                }
                 blockHeader = new BlockHeader(
                     parentHash,
                     unclesHash,
@@ -83,8 +99,8 @@ namespace Nethermind.Serialization.Rlp
                     Bloom = bloom,
                     GasUsed = gasUsed,
                     Hash = Keccak.Compute(headerRlp),
-                    MixHash = decoderContext.DecodeKeccak(),
-                    Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength),
+                    MixHash = mixHash,
+                    Nonce = nonce,
                 };
             }
 

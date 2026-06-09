@@ -17,7 +17,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Contracts;
@@ -201,6 +200,13 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         protected override ChainSpec CreateChainSpec()
         {
             ChainSpec baseChainSpec = base.CreateChainSpec();
+            // Stamp an AuRa seal on the genesis so its runtime type is AuRaBlockHeader. AuRa
+            // validators pattern-match parents on this subclass, and the base helper builds a
+            // plain BlockHeader. Genesis hash is downstream of these bytes — change with care.
+            baseChainSpec.Genesis = Core.Test.Builders.Build.A.Block
+                .WithDifficulty(0)
+                .WithAura(0, new byte[65])
+                .TestObject;
             AuRaChainSpecEngineParameters.AuRaValidatorJson validatorsJson = new()
             {
                 List = [Address.Zero]

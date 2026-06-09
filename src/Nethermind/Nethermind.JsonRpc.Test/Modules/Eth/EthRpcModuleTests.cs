@@ -27,7 +27,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Json;
 using Nethermind.Crypto;
 using Nethermind.Evm;

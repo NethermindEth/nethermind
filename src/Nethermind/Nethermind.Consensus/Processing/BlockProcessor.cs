@@ -293,13 +293,18 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
-        bool hasAuRaSeal = AuRaBlockHeaderHandler.TryGetSeal(bh, out long auRaStep, out byte[]? auRaSignature);
-        BlockHeader headerForProcessing = hasAuRaSeal
+        // Preserve the AuRa subclass on the rebuilt header. We can't gate on TryGetSeal because
+        // block-production hands us step-only headers (signature filled in later by AuRaSealer);
+        // those must still arrive at the sealer as AuRaBlockHeader.
+        bool isAuRa = AuRaBlockHeaderHandler.IsAuRa(bh);
+        BlockHeader headerForProcessing = isAuRa
             ? AuRaBlockHeaderHandler.Instance!.CreateBlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, in bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData)
             : new BlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData);
 
         CopyHeaderForProcessing(bh, headerForProcessing);
-        if (hasAuRaSeal) AuRaBlockHeaderHandler.Instance!.SetSeal(headerForProcessing, auRaStep, auRaSignature);
+        // CopySeal preserves a partial seal (step set, signature null) — critical between
+        // PrepareBlock (stamps step) and SealBlock (stamps signature).
+        AuRaBlockHeaderHandler.CopySeal(bh, headerForProcessing);
 
         if (!ShouldComputeStateRoot(bh))
         {

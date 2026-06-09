@@ -56,9 +56,29 @@ public interface IAuRaBlockHeaderHandler
     BlockHeader SetSeal(BlockHeader header, long step, byte[]? signature);
 
     /// <summary>
-    /// Read the AuRa seal fields off a header. Returns false for non-AuRa headers.
+    /// Read the AuRa seal fields off a header. Returns false for non-AuRa headers or
+    /// AuRa headers whose seal hasn't been stamped yet (step or signature missing).
     /// </summary>
     bool TryGetSeal(BlockHeader header, out long step, out byte[]? signature);
+
+    /// <summary>
+    /// Whether this header carries the AuRa subclass, regardless of whether the seal has
+    /// been stamped yet. Use this when the type itself matters (e.g. preserving the AuRa
+    /// shape across a header rebuild before sealing); use <see cref="TryGetSeal"/> when
+    /// the actual step/signature values are needed.
+    /// </summary>
+    bool IsAuRa(BlockHeader header);
+
+    /// <summary>
+    /// Copy the AuRa seal fields (step + signature, possibly nullable) from <paramref name="src"/>
+    /// onto <paramref name="dst"/>. No-op if either header is not AuRa-typed.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="TryGetSeal"/>/<see cref="SetSeal"/>, this preserves a partial seal
+    /// (e.g. step set, signature still null) — required by block-production paths that rebuild
+    /// the header between <c>PrepareBlock</c> (stamps step) and <c>SealBlock</c> (stamps signature).
+    /// </remarks>
+    void CopySeal(BlockHeader src, BlockHeader dst);
 }
 
 /// <summary>
@@ -94,6 +114,18 @@ public static class AuRaBlockHeaderHandler
         }
         return handler.TryGetSeal(header, out step, out signature);
     }
+
+    /// <summary>
+    /// Convenience shortcut for <see cref="IAuRaBlockHeaderHandler.IsAuRa"/> that returns
+    /// false when the handler has not been registered yet.
+    /// </summary>
+    public static bool IsAuRa(BlockHeader header) => _instance?.IsAuRa(header) ?? false;
+
+    /// <summary>
+    /// Convenience shortcut for <see cref="IAuRaBlockHeaderHandler.CopySeal"/>; no-op when the
+    /// handler has not been registered yet.
+    /// </summary>
+    public static void CopySeal(BlockHeader src, BlockHeader dst) => _instance?.CopySeal(src, dst);
 
     /// <summary>
     /// Registers the AuRa handler exactly once. Subsequent calls with the same instance
