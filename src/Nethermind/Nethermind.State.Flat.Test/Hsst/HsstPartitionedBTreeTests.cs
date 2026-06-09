@@ -480,6 +480,80 @@ public class HsstPartitionedBTreeTests
         Assert.That(floor, Is.EqualTo(val), "floor value mismatch");
     }
 
+    // Shared assertion: every key 0..count-1 must resolve by point lookup (hashtable hit or
+    // per-partition B-tree fallback) AND appear, in sorted order with the right value, in the
+    // forward enumeration.
+    private static void AssertEveryKvReadableAndEnumerable(byte[] data, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(HsstTestUtil.TryGet(data, Key(i), out byte[] value), Is.True, $"point lookup missed key {i}");
+            Assert.That(value, Is.EqualTo(Val(i)), $"point lookup wrong value for key {i}");
+        }
+
+        List<(byte[] key, byte[] val)> got = Enumerate(data);
+        Assert.That(got.Count, Is.EqualTo(count), "enumerator must yield every key exactly once");
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(got[i].key, Is.EqualTo(Key(i)), $"enumerator order wrong at {i}");
+            Assert.That(got[i].val, Is.EqualTo(Val(i)), $"enumerator value wrong at {i}");
+        }
+    }
+
+    // SINGLE partition + hashtable — 0x09 (key-first) / 0x0B (key-after-value). PartitionThresholdBytes
+    // is unbounded so all keys land in one partition; HashtableMinBytes=0 forces the hashtable.
+    // Every KV reads back by point lookup and via the enumerator, across small counts and a
+    // count that spans several hashtable buckets.
+    [TestCase(true, 1)]
+    [TestCase(true, 6)]
+    [TestCase(true, 7)]
+    [TestCase(true, 80)]
+    [TestCase(false, 1)]
+    [TestCase(false, 6)]
+    [TestCase(false, 7)]
+    [TestCase(false, 80)]
+    public void Hashtable_SinglePartition_EveryKv_ReadBack_And_Enumerated(bool keyFirst, int count)
+    {
+        HsstBTreeOptions opts = new() { HashtableMinBytes = 0, PartitionThresholdBytes = long.MaxValue };
+        byte[] data = keyFirst ? BuildPartitioned(count, opts) : BuildPartitionedKeyAfterValue(count, opts);
+
+        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
+            ? IndexType.SinglePartitionHashtableBTreeKeyFirst
+            : IndexType.SinglePartitionHashtableBTree)), "single partition + hashtable expected");
+
+        AssertEveryKvReadableAndEnumerable(data, count);
+    }
+
+    // MULTI partition — 0x08 (key-first) / 0x0A (key-after-value). A small per-partition threshold
+    // (~10 keys/partition) forces ≥2 partitions, so reads exercise the directory floor-seek + each
+    // partition's hashtable, and enumeration drains partitions in directory order. Every KV reads
+    // back by point lookup and via the enumerator.
+    [TestCase(true, 25)]
+    [TestCase(true, 80)]
+    [TestCase(true, 200)]
+    [TestCase(false, 25)]
+    [TestCase(false, 80)]
+    [TestCase(false, 200)]
+    public void Hashtable_MultiPartition_EveryKv_ReadBack_And_Enumerated(bool keyFirst, int count)
+    {
+        HsstBTreeOptions opts = new() { HashtableMinBytes = 0, PartitionThresholdBytes = 10 * KeyLength };
+        byte[] data = keyFirst ? BuildPartitioned(count, opts) : BuildPartitionedKeyAfterValue(count, opts);
+
+        Assert.That(data[^1], Is.EqualTo((byte)(keyFirst
+            ? IndexType.PartitionedBTreeKeyFirst
+            : IndexType.PartitionedBTree)), "multi-partition expected");
+
+        // The 0x08/0x0A blob's top-level tree IS the directory (always key-first); count its
+        // entries = partition count and require more than one so this really is multi-partition.
+        SpanByteReader reader = new(data);
+        HsstBTreeEnumerator<SpanByteReader, NoOpPin> dir = new(in reader, new Bound(0, data.Length), keyFirst: true);
+        int partitions = 0;
+        while (dir.MoveNext(in reader)) partitions++;
+        Assert.That(partitions, Is.GreaterThan(1), "test must produce multiple partitions");
+
+        AssertEveryKvReadableAndEnumerable(data, count);
+    }
+
     // Force a MULTI-LEVEL directory B-tree: with PartitionThresholdBytes == KeyLength every entry
     // is its own partition, so 700 entries ⇒ 700 directory entries ⇒ the directory leaf splits and
     // gains intermediate nodes. Exercises the directory floor-seek across B-tree levels (every
