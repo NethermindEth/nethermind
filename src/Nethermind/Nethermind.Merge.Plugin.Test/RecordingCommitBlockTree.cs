@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -11,7 +12,7 @@ namespace Nethermind.Merge.Plugin.Test;
 /// Records <see cref="IBlockTree.SuggestBlock"/> and <see cref="IBlockTree.TryUpdateMainChain"/> for commit-block
 /// unit tests. Castle DynamicProxy (NSubstitute) cannot proxy <c>params ReadOnlySpan&lt;Block&gt;</c>.
 /// </summary>
-internal sealed class RecordingCommitBlockTree : MinimalBlockTreeStub
+internal sealed class RecordingCommitBlockTree : BlockTreeTestDouble
 {
     public AddBlockResult SuggestResult { get; set; } = AddBlockResult.Added;
 

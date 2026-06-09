@@ -4,17 +4,18 @@
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 /// <summary>
-/// Counts <see cref="IBlockFinder.FindHeader"/> calls on a real block tree. See also
-/// <see cref="RecordingCommitBlockTree"/>, which extends <see cref="MinimalBlockTreeStub"/> for unit tests
-/// without a backing tree.
+/// Counts <see cref="IBlockFinder.FindHeader"/> calls on a real block tree.
 /// </summary>
-internal sealed class BlockTreeCallSpy(IBlockTree inner) : BlockTreeForwarder(inner)
+internal sealed class BlockTreeCallSpy : BlockTreeTestDouble
 {
     public int FindHeaderCalls { get; private set; }
+
+    public BlockTreeCallSpy(IBlockTree inner) : base(inner) { }
 
     public void ResetCounters() => FindHeaderCalls = 0;
 

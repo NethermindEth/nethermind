@@ -373,7 +373,7 @@ public class TestingRpcModuleTests
         Action<Block, ProcessingOptions>? onProcess = null)
     {
         RecordingCommitBlockTree recordingTree = new();
-        (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
+        (TestingRpcModule module, _, _, BlockHeader chainHeadHeader) =
             CreateModuleWithMocks(onProcessWithOptions: onProcess, blockTree: recordingTree);
 
         if (!nullChainHead)
