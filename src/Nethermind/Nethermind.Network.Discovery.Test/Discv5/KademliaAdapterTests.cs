@@ -179,29 +179,11 @@ public class KademliaAdapterTests
         }
     }
 
-    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, ulong enrSequence = 1, bool includeEth2 = false)
-    {
-        NodeRecord enr = new();
-        enr.SetEntry(IdEntry.Instance);
-        enr.SetEntry(new IpEntry(ipAddress));
-        enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        enr.SetEntry(new UdpEntry(30303));
-        if (includeEth2)
-        {
-            enr.SetEntry(new TestEth2Entry());
-        }
-        enr.EnrSequence = enrSequence;
-        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
-        return enr;
-    }
-
-    private sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])
-    {
-        public override string Key => EnrContentKey.Eth2;
-
-        protected override int GetRlpLengthOfValue() => Nethermind.Serialization.Rlp.Rlp.LengthOf(Value);
-
-        protected override void EncodeValue(Nethermind.Serialization.Rlp.RlpStream rlpStream) => rlpStream.Encode(Value);
-    }
-
+    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, ulong enrSequence = 1, bool includeEth2 = false) =>
+        TestEnrBuilder.BuildSigned(
+            privateKey,
+            ipAddress,
+            tcpPort: null,
+            enrSequence: enrSequence,
+            configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
 }

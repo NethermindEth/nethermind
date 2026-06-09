@@ -329,16 +329,8 @@ public class CodecTests
             "ea96c005ad52be8c7560413a7008f16c9e6d2f43bbea8814a546b7409ce783d3" +
             "4c4f53245d08dab84102ed931f66d1492acb308fa1c6715b9d139b81acbdcc");
 
-    private static NodeRecord CreateNodeRecord(PrivateKey privateKey)
-    {
-        NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(IdEntry.Instance);
-        nodeRecord.SetEntry(new IpEntry(IPAddress.Loopback));
-        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        nodeRecord.EnrSequence = 1;
-        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(nodeRecord);
-        return nodeRecord;
-    }
+    private static NodeRecord CreateNodeRecord(PrivateKey privateKey) =>
+        TestEnrBuilder.BuildSigned(privateKey, tcpPort: null, udpPort: null);
 
     private sealed class TestNodeRecordProvider(PrivateKey privateKey) : INodeRecordProvider
     {

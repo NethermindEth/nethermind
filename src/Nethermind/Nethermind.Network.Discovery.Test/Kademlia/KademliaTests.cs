@@ -226,12 +226,9 @@ public class KademliaTests
         Assert.That(lastRefreshTicks.ContainsKey(stalePrefix), Is.False);
     }
 
-    private static Hash256 ToHash(ValueHash256 hash) => ValueHashKeyOperator<ValueHash256>.ToHash(hash);
-
-    private static ValueHash256 ToValueHash(Hash256 hash) => ValueHashKeyOperator<ValueHash256>.ToValueHash(hash);
-
     private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>
-        ToValueHash(Hash256KademliaDistance.Instance.GetRandomHashAtDistance(ToHash(currentHash), distance));
+        ValueHashKeyOperator<ValueHash256>.ToValueHash(
+            Hash256KademliaDistance.Instance.GetRandomHashAtDistance(ValueHashKeyOperator<ValueHash256>.ToHash(currentHash), distance));
 
     private static Dictionary<Hash256, long> GetLastBucketRefreshTicks(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad)
         => (Dictionary<Hash256, long>)typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>)

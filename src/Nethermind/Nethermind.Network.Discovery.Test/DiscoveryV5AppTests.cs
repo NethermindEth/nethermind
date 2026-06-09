@@ -93,49 +93,16 @@ public class DiscoveryV5AppTests
         _discoveryDb.Dispose();
     }
 
-    private static NodeRecord CreateTestEnr(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303, int? udpPort = null, bool includeTcp = true, bool includeUdp = true, bool includeEth2 = false)
-    {
-        NodeRecord enr = new();
-        enr.SetEntry(IdEntry.Instance);
-        enr.SetEntry(new IpEntry(ipAddress ?? IPAddress.Loopback));
-        enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        if (includeTcp)
-        {
-            enr.SetEntry(new TcpEntry(port));
-        }
-        if (includeUdp)
-        {
-            enr.SetEntry(new UdpEntry(udpPort ?? port));
-        }
-        if (includeEth2)
-        {
-            enr.SetEntry(new TestEth2Entry());
-        }
-        enr.EnrSequence = 1;
-        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+    private static NodeRecord CreateTestEnr(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303, int? udpPort = null, bool includeTcp = true, bool includeUdp = true, bool includeEth2 = false) =>
+        TestEnrBuilder.BuildSigned(
+            privateKey,
+            ipAddress ?? IPAddress.Loopback,
+            tcpPort: includeTcp ? port : null,
+            udpPort: includeUdp ? udpPort ?? port : null,
+            configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
 
-        return enr;
-    }
-
-    private static NodeRecord CreateTestIpv6Enr(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress, int udpPort, bool useUdp6 = true)
-    {
-        NodeRecord enr = new();
-        enr.SetEntry(IdEntry.Instance);
-        enr.SetEntry(new Ip6Entry(ipAddress));
-        enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        if (useUdp6)
-        {
-            enr.SetEntry(new Udp6Entry(udpPort));
-        }
-        else
-        {
-            enr.SetEntry(new UdpEntry(udpPort));
-        }
-        enr.EnrSequence = 1;
-        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
-
-        return enr;
-    }
+    private static NodeRecord CreateTestIpv6Enr(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress, int udpPort, bool useUdp6 = true) =>
+        TestEnrBuilder.BuildSigned(privateKey, ipAddress, tcpPort: null, udpPort: udpPort, useUdp6: useUdp6);
 
     private static NodeRecord CreateEnrForAddress(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress) =>
         ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
@@ -400,14 +367,5 @@ public class DiscoveryV5AppTests
             Assert.That(bootNodes[0].Port, Is.EqualTo(9001));
             Assert.That(bootNodes[0].Host, Is.EqualTo("8.8.8.8"));
         }
-    }
-
-    private sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])
-    {
-        public override string Key => EnrContentKey.Eth2;
-
-        protected override int GetRlpLengthOfValue() => Nethermind.Serialization.Rlp.Rlp.LengthOf(Value);
-
-        protected override void EncodeValue(Nethermind.Serialization.Rlp.RlpStream rlpStream) => rlpStream.Encode(Value);
     }
 }

@@ -49,7 +49,7 @@ public class NodeHealthTrackerTests
         tracker.OnIncomingMessageFrom(Remote);
 
         Assert.That(routing.AddCalls, Has.Count.EqualTo(2));
-        Assert.That(routing.AddCalls[1].Hash, Is.EqualTo(ToHash(ValueKeccak.Compute(Self))));
+        Assert.That(routing.AddCalls[1].Hash, Is.EqualTo(IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Self))));
         Assert.That(routing.AddCalls[1].Node, Is.EqualTo(Self));
     }
 
@@ -67,7 +67,7 @@ public class NodeHealthTrackerTests
 
         tracker.OnIncomingMessageFrom(Remote);
 
-        Hash256 staleHash = ToHash(ValueKeccak.Compute(Stale));
+        Hash256 staleHash = IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Stale));
         await AssertEventuallyAsync(() => routing.RemoveCalls.Contains(staleHash), token);
     }
 
@@ -84,7 +84,7 @@ public class NodeHealthTrackerTests
 
         tracker.OnIncomingMessageFrom(Remote);
 
-        Hash256 staleHash = ToHash(ValueKeccak.Compute(Stale));
+        Hash256 staleHash = IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Stale));
         await AssertEventuallyAsync(() => routing.HasAddedNode(staleHash), token);
         Assert.That(routing.RemoveCalls, Does.Not.Contain(staleHash));
     }
@@ -131,7 +131,7 @@ public class NodeHealthTrackerTests
         }
 
         await pingCancelled.Task.WaitAsync(token);
-        Assert.That(routing.RemoveCalls, Does.Not.Contain(ToHash(ValueKeccak.Compute(Stale))));
+        Assert.That(routing.RemoveCalls, Does.Not.Contain(IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Stale))));
     }
 
     [Test]
@@ -144,7 +144,7 @@ public class NodeHealthTrackerTests
         tracker.OnRequestFailed(Remote);
 
         Assert.That(routing.RemoveCalls, Has.Count.EqualTo(1));
-        Assert.That(routing.RemoveCalls[0], Is.EqualTo(ToHash(ValueKeccak.Compute(Remote))));
+        Assert.That(routing.RemoveCalls[0], Is.EqualTo(IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(Remote))));
     }
 
     private static async Task AssertEventuallyAsync(Func<bool> condition, CancellationToken token)
@@ -157,13 +157,11 @@ public class NodeHealthTrackerTests
         Assert.Fail("Condition not met within timeout.");
     }
 
-    private static Hash256 ToHash(ValueHash256 hash) => hash.ToHash256();
-
     private sealed class StringNodeHashProvider : INodeHashProvider<string, Hash256>
     {
         public static readonly StringNodeHashProvider Instance = new();
 
-        public Hash256 GetHash(string node) => ToHash(ValueKeccak.Compute(node));
+        public Hash256 GetHash(string node) => IdentityNodeHashProvider.ToHash(ValueKeccak.Compute(node));
     }
 
     private sealed class RoutingTableStub : IRoutingTable<string, Hash256>
