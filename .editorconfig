@@ -123,6 +123,10 @@ dotnet_diagnostic.IDE0270.severity = warning
 dotnet_diagnostic.IDE1005.severity = warning
 dotnet_diagnostic.IDE0028.severity = warning
 
+# NUnit2045: independent assertions on the same fixture should be grouped in Assert.Multiple.
+# See .agents/rules/test-infrastructure.md for the when-to-wrap rule.
+dotnet_diagnostic.NUnit2045.severity = error
+
 # IDE0130: JSON converters intentionally exposed under Nethermind.Serialization.Json
 # despite living in Nethermind.Core to avoid a circular project reference.
 [src/Nethermind/Nethermind.Core/{BloomConverter,Crypto/PublicKeyConverter,Crypto/PublicKeyHashedConverter,JsonConverters/*}.cs]
