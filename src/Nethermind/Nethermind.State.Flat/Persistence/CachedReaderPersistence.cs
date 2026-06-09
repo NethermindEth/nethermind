@@ -3,6 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -22,6 +23,12 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private readonly Task _clearTimerTask;
 
+    // Read-through hot-slot value cache: (address, slot) -> value, shared across the periodic
+    // reader recreations. Consistency is free — the persisted state only changes on a write,
+    // and we Clear() this cache on write-batch completion (NOT on the 5s compaction timer,
+    // since compaction reorganizes SSTs without changing logical values).
+    private const int StorageReadCacheCapacity = 1 << 20; // ~1M entries (~100 MB)
+    private readonly AssociativeCache<StorageCell, CachedSlot> _storageCache = new(StorageReadCacheCapacity);
     private RefCountingPersistenceReader? _cachedReader;
     private int _isDisposed;
 
@@ -79,7 +86,8 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             {
                 _cachedReader = cachedReader = new RefCountingPersistenceReader(
                     _inner.CreateReader(),
-                    _logger
+                    _logger,
+                    _storageCache
                 );
             }
 
@@ -100,6 +108,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     public void Clear()
     {
         ClearReaderCache();
+        _storageCache.Clear();
         _inner.Clear();
     }
 
@@ -142,6 +151,10 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
             // not in lock as it has its own lock
             parent.ClearReaderCache();
+
+            // A persisted write may have changed slot values; drop the value cache so reads
+            // never serve stale entries.
+            parent._storageCache.Clear();
         }
     }
 }

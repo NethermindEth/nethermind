@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
@@ -16,10 +17,14 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
     private readonly IPersistence.IPersistenceReader _innerReader;
+    // Read-through hot-slot value cache, shared across reader recreations and owned by
+    // CachedReaderPersistence (which clears it on write). Null = caching disabled.
+    private readonly AssociativeCache<StorageCell, CachedSlot>? _storageCache;
     private CancellationTokenSource? _cts = new();
-    public RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader, ILogger logger)
+    public RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader, ILogger logger, AssociativeCache<StorageCell, CachedSlot>? storageCache = null)
     {
         _innerReader = innerReader;
+        _storageCache = storageCache;
 
         _ = Task.Run(async () =>
         {
@@ -38,8 +43,26 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public Account? GetAccount(Address address) =>
         _innerReader.GetAccount(address);
 
-    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
-        _innerReader.TryGetSlot(address, in slot, ref outValue);
+    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+    {
+        AssociativeCache<StorageCell, CachedSlot>? cache = _storageCache;
+        if (cache is null)
+        {
+            return _innerReader.TryGetSlot(address, in slot, ref outValue);
+        }
+
+        StorageCell cell = new(address, in slot);
+        if (cache.TryGet(in cell, out CachedSlot? cached) && cached is not null)
+        {
+            if (!cached.Found) return false;
+            outValue = cached.Value;
+            return true;
+        }
+
+        bool found = _innerReader.TryGetSlot(address, in slot, ref outValue);
+        cache.Set(in cell, new CachedSlot(found ? outValue : default, found));
+        return found;
+    }
 
     public StateId CurrentState => _innerReader.CurrentState;
 
@@ -70,4 +93,14 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     }
 
     public bool TryAcquire() => TryAcquireLease();
+}
+
+/// <summary>
+/// A cached storage-slot read result: the slot value and whether the slot existed.
+/// Caching the "not found" case too avoids repeated backend lookups for absent slots.
+/// </summary>
+public sealed class CachedSlot(SlotValue value, bool found)
+{
+    public SlotValue Value { get; } = value;
+    public bool Found { get; } = found;
 }
