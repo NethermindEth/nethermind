@@ -125,7 +125,7 @@ public class BytecodeAnalyzerTests
 
     [TestCase(true, 1, TestName = "Istanbul_ShlIsV1_SingleBlock")]
     [TestCase(false, 3, TestName = "Frontier_ShlIsInterpreterOnly_ThreeBlocks")]
-    public void Analyze_ShiftOpcode_CompilabilityFollowsSpec(bool useIstanbul, int expectedBlocks)
+    public void Analyze_ShiftOpcode_CompilableOnlyWhenSpecEnablesShifts(bool useIstanbul, int expectedBlocks)
     {
         byte[] code =
         [

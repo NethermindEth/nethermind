@@ -202,17 +202,17 @@ public static class IlSegmentCompiler
                 info = new OpInfo(GasCostOf.VeryLow, Pops: 0, Pushes: 1, ImmediateBytes: instruction - Instruction.PUSH1 + 1, OpKind.Linear);
                 return true;
             case >= Instruction.DUP1 and <= Instruction.DUP16:
-            {
-                int depth = instruction - Instruction.DUP1 + 1;
-                info = new OpInfo(GasCostOf.VeryLow, Pops: depth, Pushes: depth + 1, ImmediateBytes: 0, OpKind.Linear);
-                return true;
-            }
+                {
+                    int depth = instruction - Instruction.DUP1 + 1;
+                    info = new OpInfo(GasCostOf.VeryLow, Pops: depth, Pushes: depth + 1, ImmediateBytes: 0, OpKind.Linear);
+                    return true;
+                }
             case >= Instruction.SWAP1 and <= Instruction.SWAP16:
-            {
-                int depth = instruction - Instruction.SWAP1 + 2;
-                info = new OpInfo(GasCostOf.VeryLow, Pops: depth, Pushes: depth, ImmediateBytes: 0, OpKind.Linear);
-                return true;
-            }
+                {
+                    int depth = instruction - Instruction.SWAP1 + 2;
+                    info = new OpInfo(GasCostOf.VeryLow, Pops: depth, Pushes: depth, ImmediateBytes: 0, OpKind.Linear);
+                    return true;
+                }
             case Instruction.ADD when s_add is not null:
             case Instruction.SUB when s_subtract is not null:
                 info = new OpInfo(GasCostOf.VeryLow, Pops: 2, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
@@ -334,18 +334,18 @@ public static class IlSegmentCompiler
                 break;
 
             case >= Instruction.DUP1 and <= Instruction.DUP16:
-            {
-                int depth = op.Instruction - Instruction.DUP1 + 1;
-                symbolicStack.Add(symbolicStack[^depth]);
-                break;
-            }
+                {
+                    int depth = op.Instruction - Instruction.DUP1 + 1;
+                    symbolicStack.Add(symbolicStack[^depth]);
+                    break;
+                }
 
             case >= Instruction.SWAP1 and <= Instruction.SWAP16:
-            {
-                int depth = op.Instruction - Instruction.SWAP1 + 2;
-                (symbolicStack[^1], symbolicStack[^depth]) = (symbolicStack[^depth], symbolicStack[^1]);
-                break;
-            }
+                {
+                    int depth = op.Instruction - Instruction.SWAP1 + 2;
+                    (symbolicStack[^1], symbolicStack[^depth]) = (symbolicStack[^depth], symbolicStack[^1]);
+                    break;
+                }
 
             case Instruction.ADD:
                 EmitBinaryWithOut(il, symbolicStack, s_add!);
@@ -422,13 +422,13 @@ public static class IlSegmentCompiler
                 break;
 
             case Instruction.ISZERO:
-            {
-                Operand a = PopSymbolic(symbolicStack);
-                EmitOperandAddress(il, a);
-                il.Emit(OpCodes.Call, s_isZero!);
-                EmitBoolToUInt256(il, symbolicStack);
-                break;
-            }
+                {
+                    Operand a = PopSymbolic(symbolicStack);
+                    EmitOperandAddress(il, a);
+                    il.Emit(OpCodes.Call, s_isZero!);
+                    EmitBoolToUInt256(il, symbolicStack);
+                    break;
+                }
 
             default:
                 throw new InvalidOperationException($"Opcode {op.Instruction} decoded as emittable but has no emitter");

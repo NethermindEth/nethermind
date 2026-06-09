@@ -111,18 +111,18 @@ public static class IlEvmOpcodes
                 return true;
 
             case >= Instruction.DUP1 and <= Instruction.DUP16:
-            {
-                int depth = instruction - Instruction.DUP1 + 1;
-                info = new OpInfo(GasCostOf.VeryLow, Pops: depth, Pushes: depth + 1, ImmediateBytes: 0, OpKind.Linear);
-                return true;
-            }
+                {
+                    int depth = instruction - Instruction.DUP1 + 1;
+                    info = new OpInfo(GasCostOf.VeryLow, Pops: depth, Pushes: depth + 1, ImmediateBytes: 0, OpKind.Linear);
+                    return true;
+                }
 
             case >= Instruction.SWAP1 and <= Instruction.SWAP16:
-            {
-                int depth = instruction - Instruction.SWAP1 + 2;
-                info = new OpInfo(GasCostOf.VeryLow, Pops: depth, Pushes: depth, ImmediateBytes: 0, OpKind.Linear);
-                return true;
-            }
+                {
+                    int depth = instruction - Instruction.SWAP1 + 2;
+                    info = new OpInfo(GasCostOf.VeryLow, Pops: depth, Pushes: depth, ImmediateBytes: 0, OpKind.Linear);
+                    return true;
+                }
         }
 
         info = default;
