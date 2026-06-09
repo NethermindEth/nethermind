@@ -109,39 +109,18 @@ public class NodeSourceTests
     {
         PrivateKey privateKey = TestItem.PrivateKeys[index];
         string host = $"192.168.1.{index + 1}";
-        NodeRecord enr = CreateEnr(privateKey, IPAddress.Parse(host), tcpPort, udpPort, includeEth2);
+        NodeRecord enr = TestEnrBuilder.BuildSigned(
+            privateKey,
+            IPAddress.Parse(host),
+            tcpPort: tcpPort,
+            udpPort: udpPort,
+            configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
         return new Node(privateKey.PublicKey, host, udpPort)
         {
             Enr = enr.EnrString
         };
     }
 
-    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, int tcpPort, int udpPort, bool includeEth2)
-    {
-        NodeRecord enr = new();
-        enr.SetEntry(IdEntry.Instance);
-        enr.SetEntry(new IpEntry(ipAddress));
-        enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        enr.SetEntry(new TcpEntry(tcpPort));
-        enr.SetEntry(new UdpEntry(udpPort));
-        if (includeEth2)
-        {
-            enr.SetEntry(new TestEth2Entry());
-        }
-        enr.EnrSequence = 1;
-        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
-        return enr;
-    }
-
     private static void RaiseNode(IKademlia<PublicKey, Node> kademlia, Node node) =>
         kademlia.OnNodeAdded += Raise.Event<EventHandler<Node>>(null, node);
-
-    private sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])
-    {
-        public override string Key => EnrContentKey.Eth2;
-
-        protected override int GetRlpLengthOfValue() => Nethermind.Serialization.Rlp.Rlp.LengthOf(Value);
-
-        protected override void EncodeValue(Nethermind.Serialization.Rlp.RlpStream rlpStream) => rlpStream.Encode(Value);
-    }
 }

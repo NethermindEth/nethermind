@@ -31,17 +31,8 @@ public class NodesResponseHandlerTests
         Assert.That(handler.GetNodes(), Has.Length.EqualTo(expectedCount));
     }
 
-    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress)
-    {
-        NodeRecord enr = new();
-        enr.SetEntry(IdEntry.Instance);
-        enr.SetEntry(new IpEntry(ipAddress));
-        enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        enr.SetEntry(new UdpEntry(30303));
-        enr.EnrSequence = 1;
-        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
-        return enr;
-    }
+    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress) =>
+        TestEnrBuilder.BuildSigned(privateKey, ipAddress, tcpPort: null);
 
     private static NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record)
     {

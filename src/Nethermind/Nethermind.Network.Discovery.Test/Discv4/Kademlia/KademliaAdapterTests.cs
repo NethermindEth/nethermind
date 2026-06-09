@@ -92,7 +92,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _networkConfig.MaxActivePeers.Returns(25);
             _kademliaConfig = new KademliaConfig<Node> { CurrentNodeId = _testNode };
 
-            _selfNodeRecord = CreateNodeRecord();
+            _selfNodeRecord = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyA,
+                IPAddress.Parse("192.168.1.1"),
+                tcpPort: _networkConfig.P2PPort,
+                udpPort: _networkConfig.DiscoveryPort);
 
             _logManager = LimboLogs.Instance;
             _timestamper = Substitute.For<ITimestamper>();
@@ -141,25 +145,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Assert.That(sessions.All(session => ReferenceEquals(session, sessions[0])), Is.True);
             _nodeStatsManager.Received(1).GetOrAdd(Arg.Is<Node>(node => node.Id == _receiver.Id));
-        }
-
-        private NodeRecord CreateNodeRecord()
-        {
-            NodeRecord selfNodeRecord = new();
-            selfNodeRecord.SetEntry(IdEntry.Instance);
-            selfNodeRecord.SetEntry(new IpEntry(IPAddress.Parse("192.168.1.1")));
-            selfNodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
-            selfNodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
-            selfNodeRecord.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
-            selfNodeRecord.EnrSequence = 1;
-            NodeRecordSigner enrSigner = new(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyA);
-            enrSigner.Sign(selfNodeRecord);
-            if (!enrSigner.Verify(selfNodeRecord))
-            {
-                throw new NetworkingException("Self ENR initialization failed", NetworkExceptionType.Discovery);
-            }
-
-            return selfNodeRecord;
         }
 
         [TearDown]
