@@ -153,7 +153,7 @@ public class PersistedSnapshotCompactor(
             {
                 long sw = Stopwatch.GetTimestamp();
                 PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
-                    views, ref arenaWriter.GetWriter(), mergedBloom);
+                    views, ref arenaWriter.GetWriter(), mergedBloom, PersistedSnapshotBuilder.SlotOptions(config));
 
                 long len = arenaWriter.GetWriter().Written;
                 StringLabel sizeLabel = GetSizeLabel(compactSize);

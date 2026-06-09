@@ -142,7 +142,7 @@ public static class PersistedSnapshotMerger
     /// address) is held via <see cref="HsstBTreeBuilderBuffersContainer"/> — a class handle
     /// that hides the ref-to-ref-struct workaround.</remarks>
     private readonly struct PerAddressColumnValueMerger<TWriter, TReader, TPin>(
-        BloomFilter bloom, HsstBTreeBuilderBuffersContainer slotPrefixBuffers)
+        BloomFilter bloom, HsstPartitionedBTreeBuilderBuffersContainer slotPrefixBuffers, HsstBTreeOptions? slotOptions)
         : IHsstBTreeValueMerger<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory>
         where TWriter : IByteBufferWriterWithReader<TReader, TPin>
         where TReader : IHsstByteReader<TPin>, allows ref struct
@@ -246,13 +246,13 @@ public static class PersistedSnapshotMerger
                         default(TailDispatchEnumeratorFactory));
 
                 ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
-                HsstBTreeMerger.NWayMergeKeyFirst<
+                HsstBTreeMerger.NWayMergeKeyFirstPartitioned<
                     TWriter, TReader, TPin,
                     WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory,
                     SlotPrefixValueMerger>(
                         ref slotWriter, OuterKeyLen, ref outerCursor,
                         new SlotPrefixValueMerger(bloom, addrKey, scratch),
-                        ref slotPrefixBuffers.Buffers);
+                        ref slotPrefixBuffers.Buffers, slotOptions);
                 perAddrBuilder.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
             }
         }
@@ -566,7 +566,7 @@ public static class PersistedSnapshotMerger
     /// </summary>
     internal static void NWayMergeSnapshotsWithViews<TWriter, TReader, TPin>(
         ReadOnlySpan<WholeReadSessionView> views, ref TWriter writer,
-        BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        BloomFilter bloom, HsstBTreeOptions? slotOptions = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ArgumentNullException.ThrowIfNull(bloom);
         // All snapshots are blob-backed (values in trie columns are NodeRefs), so we can
@@ -618,7 +618,7 @@ public static class PersistedSnapshotMerger
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
             for (int i = 0; i < n; i++)
                 columnSources[i] = new(views[i], ResolveColumnBound(views[i], PersistedSnapshotTags.AccountColumnTag));
-            NWayMergePerAddressColumn<TWriter, TReader, TPin>(columnSources, ref valueWriter, bloom);
+            NWayMergePerAddressColumn<TWriter, TReader, TPin>(columnSources, ref valueWriter, bloom, slotOptions);
             outerBuilder.FinishValueWrite(PersistedSnapshotTags.AccountColumnTag);
         }
         {
@@ -667,7 +667,7 @@ public static class PersistedSnapshotMerger
     /// and are merged separately by <see cref="NWayMergeStorageTrieColumn"/>.
     /// </summary>
     private static void NWayMergePerAddressColumn<TWriter, TReader, TPin>(
-        Span<WholeReadSessionMergeSource> sources, ref TWriter writer, BloomFilter bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        Span<WholeReadSessionMergeSource> sources, ref TWriter writer, BloomFilter bloom, HsstBTreeOptions? slotOptions) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         int n = sources.Length;
         // Cache each source's current 20-byte Address key (stride 32 with room).
@@ -679,8 +679,9 @@ public static class PersistedSnapshotMerger
         // The container is a class so the value-merger can hold it as a regular field; the
         // contained buffers live across every merged address — the prefix builder is created
         // once per address and the suffix builder once per prefix group per address, so
-        // amortising the rentals matters.
-        using HsstBTreeBuilderBuffersContainer slotPrefixBuffers = new();
+        // amortising the rentals matters. The address level needs its own partitioned buffers.
+        using HsstPartitionedBTreeBuilderBuffersContainer addressBuffers = new();
+        using HsstPartitionedBTreeBuilderBuffersContainer slotPrefixBuffers = new();
         using ArrayPoolList<HsstEnumerator> enumeratorsList = new(n, n);
         Span<HsstEnumerator> enumerators = enumeratorsList.AsSpan();
 
@@ -688,11 +689,11 @@ public static class PersistedSnapshotMerger
             new(sources, enumerators, state, AddrKeyLen);
 
         PerAddressColumnValueMerger<TWriter, TReader, TPin> valueMerger =
-            new(bloom, slotPrefixBuffers);
-        HsstBTreeMerger.NWayMerge<TWriter, TReader, TPin,
+            new(bloom, slotPrefixBuffers, slotOptions);
+        HsstBTreeMerger.NWayMergePartitioned<TWriter, TReader, TPin,
             WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory,
             PerAddressColumnValueMerger<TWriter, TReader, TPin>>(
-            ref writer, AddrKeyLen, ref cursor, valueMerger);
+            ref writer, AddrKeyLen, ref cursor, valueMerger, ref addressBuffers.Buffers, slotOptions);
     }
 
     /// <summary>

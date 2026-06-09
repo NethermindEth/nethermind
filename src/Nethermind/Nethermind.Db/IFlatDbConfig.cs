@@ -87,4 +87,10 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Maximum total source bytes the compactor will merge into a single Linked compacted snapshot. If the sum of input PersistedSnapshot sizes exceeds this, the compactor halves compactSize and retries. Keeps the merged output safely below int.MaxValue and the underlying arena ceiling.", DefaultValue = "2147483648")]
     long PersistedSnapshotMaxCompactedSourceBytes { get; set; }
+
+    [ConfigItem(Description = "Key-bytes threshold at which a per-address column / slot-prefix HSST is split into a new partition (each partition gets its own 8-way hashtable). Larger = fewer directory entries but bigger per-partition hashtables. Lookups stay correct at any value.", DefaultValue = "4194304")]
+    long PersistedSnapshotSlotPartitionThresholdBytes { get; set; }
+
+    [ConfigItem(Description = "Minimum entry count for a single-partition per-address column / slot-prefix HSST to get a hashtable. Below this the blob is a plain B-tree (its shallow tree already reaches entries cheaply); at or above it the blob partitions and every partition is hashtabled.", DefaultValue = "1024")]
+    long PersistedSnapshotSlotHashtableMinKeys { get; set; }
 }

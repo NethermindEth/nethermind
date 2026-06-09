@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Hsst.BTree;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -22,7 +23,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
     /// resulting blob file via the same manager — matching how production wires
     /// <c>BlobArenaManager</c> as a long-lived shared component.
     /// </summary>
-    public static byte[] Build(Snapshot snapshot, BlobArenaManager blobs)
+    public static byte[] Build(Snapshot snapshot, BlobArenaManager blobs, HsstBTreeOptions? slotOptions = null)
     {
         int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);
@@ -30,15 +31,15 @@ internal static class PersistedSnapshotBuilderTestExtensions
         using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
             Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
         PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-            snapshot, ref pooled.GetWriter(), blobWriter, bloom);
+            snapshot, ref pooled.GetWriter(), blobWriter, bloom, slotOptions);
         blobWriter.Complete();
         return pooled.WrittenSpan.ToArray();
     }
 
-    public static byte[] MergeSnapshots(PersistedSnapshotList snapshots) =>
-        NWayMergeSnapshots(snapshots);
+    public static byte[] MergeSnapshots(PersistedSnapshotList snapshots, HsstBTreeOptions? slotOptions = null) =>
+        NWayMergeSnapshots(snapshots, slotOptions);
 
-    public static byte[] NWayMergeSnapshots(PersistedSnapshotList snapshots)
+    public static byte[] NWayMergeSnapshots(PersistedSnapshotList snapshots, HsstBTreeOptions? slotOptions = null)
     {
         if (snapshots.Count == 0) throw new ArgumentException("Cannot merge empty snapshot list");
         if (snapshots.Count == 1)
@@ -65,7 +66,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
                 views[i] = sessionArr[i].GetView();
             }
             PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-                views, ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());
+                views, ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue(), slotOptions);
         }
         finally
         {

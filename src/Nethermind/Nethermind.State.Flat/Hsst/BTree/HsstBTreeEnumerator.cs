@@ -154,6 +154,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
         int depth = depthHint;
         long scopeEndMinusTrailer = _scopeEnd - _trailerLen;
         Span<byte> flagBuf = stackalloc byte[1];
+        Span<byte> htInnerRoot = stackalloc byte[HsstPartitionHashtable.OffsetBytes];
         while (depth < MaxDepth)
         {
             // Peek the flag byte to detect Entry-kind children (an entry record sitting
@@ -161,7 +162,20 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             // Entries have no header, so we can't pass them to TryLoadNode — treat the
             // record as a single-entry virtual leaf at this depth.
             if (!reader.TryRead(currentStart, flagBuf)) return false;
-            if ((BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Entry)
+            BTreeNodeKind kind = (BTreeNodeKind)(flagBuf[0] & 0x03);
+
+            if (kind == BTreeNodeKind.Hashtable)
+            {
+                // Hashtable node (blob root or a directory leaf child): transparent to iteration —
+                // skip the buckets and descend into the partition's inner B-tree root (the first u48
+                // of the record), at this same depth so any ancestor directory frame stays intact and
+                // ascent later advances to the next partition.
+                if (!reader.TryRead(currentStart + 1, htInnerRoot)) return false;
+                currentStart = _scopeStart + HsstPartitionHashtable.ReadU48(htInnerRoot);
+                continue;
+            }
+
+            if (kind == BTreeNodeKind.Entry)
             {
                 _depth = depth;
                 if (_leafMetaStarts.Length < 1)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Hsst;
@@ -16,6 +17,7 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// </summary>
 internal static class HsstBTreeReader
 {
+
     /// <summary>
     /// Exact-match or floor lookup over a BTree HSST. On success sets
     /// <paramref name="resultBound"/> to the value region of the matched entry. Caller
@@ -116,10 +118,16 @@ internal static class HsstBTreeReader
         // bytes (CommonKeyPrefix || storedSlot in lex order). Entries don't have headers,
         // so the value is irrelevant once the cursor reaches one.
         Span<byte> separatorScratch = stackalloc byte[Math.Max(trailerKeyLength, 1)];
+        // Stable scratch for a Hashtable node's inner-root prefix; it seeds parentSeparator for the
+        // inner descent and must outlive the loop iteration (a prefix is part of a key, so ≤ keyLength).
+        Span<byte> innerPrefixScratch = stackalloc byte[Math.Max(trailerKeyLength, 1)];
         scoped ReadOnlySpan<byte> parentSeparator = rootPrefix;
         long currentAbsStart = rootStart;
 
         Span<byte> flagBuf = stackalloc byte[1];
+        // [27-byte fixed record][InnerRootPrefixLen u8] read together for a Hashtable node.
+        Span<byte> htRec = stackalloc byte[HsstPartitionHashtable.NodeRecordFixedSize + 1];
+        Span<byte> htBucket = stackalloc byte[HsstPartitionHashtable.BucketBytes];
         while (true)
         {
             if (!reader.TryRead(currentAbsStart, flagBuf)) return false;
@@ -129,6 +137,51 @@ internal static class HsstBTreeReader
             {
                 return DecodeEntry<TReader, TPin>(in reader, bound, currentAbsStart, key,
                     exactMatch, keyFirst, trailerKeyLength, out resultBound);
+            }
+
+            if (kind == BTreeNodeKind.Hashtable)
+            {
+                // Hashtable node: [Flag][27-byte record][InnerRootPrefixLen u8][InnerRootPrefix]. On an
+                // exact lookup probe one bucket and decode on a hit; on a miss (or a floor) descend into
+                // the partition's inner B-tree root the record carries, seeding the inner-root prefix.
+                if (!reader.TryRead(currentAbsStart + 1, htRec)) return false;
+                long innerRootOffset = HsstPartitionHashtable.ReadU48(htRec);
+                long innerBufferEnd = HsstPartitionHashtable.ReadU48(htRec[6..]);
+                long hashtableOffset = HsstPartitionHashtable.ReadU48(htRec[12..]);
+                long dataRegionStart = HsstPartitionHashtable.ReadU48(htRec[18..]);
+                int bucketCount = HsstPartitionHashtable.ReadU24(htRec[24..]);
+                int innerPrefixLen = htRec[HsstPartitionHashtable.NodeRecordFixedSize];
+
+                if (exactMatch && bucketCount > 0)
+                {
+                    ulong hash = HsstPartitionHashtable.Hash(key);
+                    int bucket = HsstPartitionHashtable.BucketIndex(hash, bucketCount);
+                    ushort tag = HsstPartitionHashtable.Tag(hash);
+                    long bucketAbs = bound.Offset + hashtableOffset + (long)bucket * HsstPartitionHashtable.BucketBytes;
+                    if (reader.TryRead(bucketAbs, htBucket))
+                    {
+                        uint matchMask = HsstPartitionHashtable.MatchMask(htBucket, tag);
+                        while (matchMask != 0)
+                        {
+                            int way = BitOperations.TrailingZeroCount(matchMask);
+                            long entryAbs = bound.Offset + dataRegionStart + HsstPartitionHashtable.OffsetAt(htBucket, way);
+                            // exactMatch:true — DecodeEntry verifies the full key, so a tag collision with
+                            // a different key returns false and we try the next matching way.
+                            if (DecodeEntry<TReader, TPin>(in reader, bound, entryAbs, key, exactMatch: true, keyFirst, trailerKeyLength, out resultBound))
+                                return true;
+                            matchMask &= matchMask - 1;
+                        }
+                    }
+                }
+
+                // Miss or floor: descend the partition's inner B-tree from the recorded root.
+                if (innerPrefixLen > 0
+                    && !reader.TryRead(currentAbsStart + 1 + HsstPartitionHashtable.NodeRecordFixedSize + 1, innerPrefixScratch[..innerPrefixLen]))
+                    return false;
+                parentSeparator = innerPrefixScratch[..innerPrefixLen];
+                currentAbsStart = bound.Offset + innerRootOffset;
+                scopeEnd = bound.Offset + innerBufferEnd;
+                continue;
             }
 
             // The flag-byte read above faulted this node's page and warmed its TLB entry, so a prefetch

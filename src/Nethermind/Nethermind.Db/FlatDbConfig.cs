@@ -34,4 +34,6 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
     public long PersistedSnapshotMaxCompactedSourceBytes { get; set; } = 2L * 1024 * 1024 * 1024;
+    public long PersistedSnapshotSlotPartitionThresholdBytes { get; set; } = 4L * 1024 * 1024;
+    public long PersistedSnapshotSlotHashtableMinKeys { get; set; } = 1024;
 }

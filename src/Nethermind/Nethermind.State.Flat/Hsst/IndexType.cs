@@ -63,4 +63,8 @@ public enum IndexType : byte
     /// builder requires <c>Add(key, valueSpan)</c>.
     /// </summary>
     BTreeKeyFirst = 0x07,
+    // 0x08–0x0B reserved (were the partitioned variants — partitioning and the per-partition
+    // hashtable are now folded into 0x01 / 0x07 via the BTreeNodeKind.Hashtable node, so a
+    // partitioned blob is an ordinary BTree / BTreeKeyFirst whose directory leaf children are
+    // Hashtable nodes; no distinct index type). See FORMAT.md and BTreeNodeKind.
 }

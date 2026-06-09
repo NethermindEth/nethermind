@@ -211,6 +211,79 @@ short separator for in-leaf binary search, while the data-region entry
 remains self-describing. No reader has to consult both at once — exact
 matches verify by reading the full key from `EntryStart` directly.
 
+### Partitioned B-tree + Hashtable node
+
+Large `BTree` / `BTreeKeyFirst` HSSTs (the per-address column and the
+per-address slot-prefix level) may be **partitioned** so each partition
+carries a cache-line hashtable for near-O(1) point lookups. Partitioning
+is transparent to the reader: the blob is still an ordinary `0x01` / `0x07`
+B-tree with the standard trailer, and the only addition is a third node
+kind, `BTreeNodeKind.Hashtable (0b10)`, reached as the blob root (single
+partition) or as a directory leaf-level child (multiple partitions). Every
+offset in a partitioned blob is **byte-0-relative to the whole blob**, so
+one whole-blob bound walks across all partitions and the directory.
+
+Build rules (see `HsstPartitionedBTreeBuilder`):
+
+- Entries are added in sorted key order. A partition closes once its
+  accumulated key bytes reach `PartitionThresholdBytes` (default 4 MiB).
+- A blob with fewer than `HashtableMinKeys` (default 1024) keys stays a
+  **single partition with no hashtable** — emitted as a plain `0x01`/`0x07`
+  B-tree, byte-identical to a non-partitioned build.
+- At or above the gate the blob partitions; **every** partition then gets a
+  hashtable. Each partition is laid out as
+  `[data + inline leaves][inner index]<innerBufferEnd>[pad to 64][buckets]`.
+- A single hashtabled partition makes its Hashtable node the blob root. With
+  multiple partitions the Hashtable nodes are written bunched, followed by a
+  trailing **directory** B-tree whose leaf-level children point at them,
+  keyed by each partition's first key, as the blob root.
+
+**Hashtable node** — `[FlagByte = Hashtable (0b10)][record][InnerRootPrefix]`:
+
+```
+[FlagByte: bits 0-1 = 0b10]
+[InnerRootOffset:  u48 LE]   byte-0-relative start of the partition's inner B-tree root
+[InnerBufferEnd:   u48 LE]   byte-0-relative end of the inner index (pin ceiling for inner nodes)
+[HashtableOffset:  u48 LE]   byte-0-relative, 64-byte-aligned start of the bucket region
+[DataRegionStart:  u48 LE]   byte-0-relative start of the partition's data section
+[HashtableBucketCount: u24 LE]
+[InnerRootPrefixLen: u8]
+[InnerRootPrefix: InnerRootPrefixLen bytes]   the inner root's CommonKeyPrefix bytes
+```
+
+The fixed record is 27 bytes; the trailing prefix carries the inner B-tree
+root's common-key-prefix (the inner root is reached through this node, not
+via the blob trailer, so its prefix bytes ride here). The node is
+self-describing, so the directory stores it as a variable-length child.
+
+**Bucket** — `BucketCount` cache-line buckets, each 64 bytes, 8 ways
+struct-of-arrays so the tags scan with one 128-bit compare:
+
+```
+[Tag_0..Tag_7: 8 × u16 LE]      bytes [0, 16)
+[Offset_0..Offset_7: 8 × u48 LE] bytes [16, 64)
+```
+
+- The bucket is `(uint)hash · BucketCount >> 32` (Lemire reduction of the low
+  32 hash bits); the way tag is the high 16 hash bits, forced ≥ 1 so `Tag == 0`
+  marks an empty way. Bucket count is `ceil(keyCount / 6)` (8 ways × 75% load).
+- `Offset_i = EntryFlagByteOffset − DataRegionStart` (forward u48 distance ⇒
+  a partition's data section is < 256 TiB), recovered as
+  `entry_abs = bound.Offset + DataRegionStart + Offset_i`.
+- The table is best-effort: a key whose bucket already holds 8 live tags is
+  dropped. On an exact lookup the reader probes one bucket and verifies the
+  full key (so a tag collision falls through); on a miss — or any floor /
+  iteration — it descends the inner B-tree root the node carries, seeding the
+  recorded inner-root prefix. So a dropped key is still found via the inner tree.
+
+**Directory separators are full keys.** The directory indexes per-partition
+key *ranges* (`[firstKey_i, firstKey_{i+1})`), not point entries, so its
+separators must be each partition's **full first key** — an LCP-truncated
+separator (the normal point-entry optimization) can be ≤ a partition's max
+key and misroute lookups whose key flips a byte inside the elided prefix
+region. The directory builder runs in `fullSeparators` mode (full-length
+separators, no prefix elision); ordinary point-entry B-trees are unaffected.
+
 ### PackedArray variant
 
 A specialised layout for fixed-size keys and values. The b-tree is replaced
