@@ -165,7 +165,7 @@ jobs:
           "timeout": "${{ inputs.timeout }}",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": ""
+          "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       network: ${{ inputs.network }}
       custom_run_id: ${{ github.run_id }}
