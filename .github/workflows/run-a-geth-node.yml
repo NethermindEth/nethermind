@@ -1,0 +1,186 @@
+name: "Run a pruned Geth node"
+
+# Spawns a pruned Geth node (snap sync, --gcmode full, --history.transactions=0)
+# the same way Nethermind nodes are brought up elsewhere in this repo: provision a
+# Linode VM runner, run it with sedge (geth EL + a consensus client), wait for it to
+# sync, and expose its RPC URL. Teardown of the VM is the caller's responsibility
+# (destroy-machine on the returned runner_label).
+
+on:
+  workflow_call:
+    inputs:
+      network:
+        description: "Network to sync (mainnet, sepolia, hoodi, ...)."
+        type: string
+        default: "mainnet"
+        required: false
+      geth_image:
+        description: "Geth Docker image."
+        type: string
+        default: "ethereum/client-go:stable"
+        required: false
+      cl_client:
+        description: "Consensus client to drive Geth via the Engine API (required post-merge)."
+        type: string
+        default: "lighthouse"
+        required: false
+      checkpoint_sync_url:
+        description: "Beacon checkpoint-sync URL for the consensus client. Strongly recommended on mainnet (genesis sync is impractically slow)."
+        type: string
+        default: ""
+        required: false
+      machine_type:
+        description: "Linode machine type for the node VM."
+        type: string
+        default: "g6-standard-8"
+        required: false
+      timeout_minutes:
+        description: "How long the spawned node job may run while syncing."
+        type: number
+        default: 1440
+        required: false
+      custom_run_id:
+        description: "Run ID used to build a unique runner label."
+        type: string
+        default: ""
+        required: false
+    outputs:
+      rpc_url:
+        description: "HTTP JSON-RPC URL of the synced Geth node."
+        value: ${{ jobs.start_geth.outputs.rpc_url }}
+      runner_label:
+        description: "Label of the provisioned VM runner (use it to destroy the VM)."
+        value: ${{ jobs.create_geth_runner.outputs.runner_label }}
+
+jobs:
+  create_geth_runner:
+    name: Provision Geth node VM
+    runs-on: ubuntu-latest
+    outputs:
+      runner_label: ${{ steps.create.outputs.runner_label }}
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
+      - name: Create a Runner
+        id: create
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ steps.gh-app.outputs.token }}"
+          action: "create"
+          runner_label: "geth-${{ inputs.custom_run_id || github.run_id }}"
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          machine_type: "${{ inputs.machine_type }}"
+          image: "linode/ubuntu24.04"
+          tags: "core, self-hosted, dynamic"
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+          # Leave 8545 (HTTP RPC) reachable so rpc_int can query it; keep the engine port closed.
+          blocked_ports: "8551,8552,8553"
+
+  start_geth:
+    name: Start and sync Geth
+    needs: [create_geth_runner]
+    runs-on: ["geth-${{ inputs.custom_run_id || github.run_id }}"]
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    outputs:
+      rpc_url: ${{ steps.expose.outputs.rpc_url }}
+    steps:
+      - name: Install requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make build-essential jq curl
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+          check-latest: true
+
+      - name: Install Sedge
+        run: |
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          cd sedge
+          make compile
+
+      - name: Generate node config (geth + ${{ inputs.cl_client }})
+        working-directory: sedge
+        env:
+          GETH_IMAGE: ${{ inputs.geth_image }}
+          CL_CLIENT: ${{ inputs.cl_client }}
+          NETWORK: ${{ inputs.network }}
+          CHECKPOINT_SYNC_URL: ${{ inputs.checkpoint_sync_url }}
+        run: |
+          ./build/sedge deps install
+
+          checkpoint_flag=()
+          if [ -n "$CHECKPOINT_SYNC_URL" ]; then
+            checkpoint_flag=(--checkpoint-sync-url="$CHECKPOINT_SYNC_URL")
+          fi
+
+          # Pruned Geth: snap sync, keep recent state only (full), drop tx-index history.
+          ./build/sedge generate \
+            --logging none \
+            -p "$GITHUB_WORKSPACE/sedge" \
+            full-node \
+            -c "$CL_CLIENT" \
+            -e "geth:$GETH_IMAGE" \
+            --map-all \
+            --no-mev-boost \
+            --no-validator \
+            --network "$NETWORK" \
+            --el-extra-flag "--syncmode=snap" \
+            --el-extra-flag "--gcmode=full" \
+            --el-extra-flag "--history.transactions=0" \
+            --el-extra-flag "--http.api=eth,net,web3,debug,txpool" \
+            "${checkpoint_flag[@]}"
+
+      - name: Run sedge
+        working-directory: sedge
+        run: ./build/sedge run -p "$GITHUB_WORKSPACE/sedge"
+
+      - name: Expose RPC URL
+        id: expose
+        run: |
+          ip="$(curl -s https://ifconfig.me)"
+          if [ -z "$ip" ]; then
+            echo "Could not determine the node public IP."
+            exit 1
+          fi
+          echo "rpc_url=http://${ip}:8545" >> "$GITHUB_OUTPUT"
+          echo "Geth RPC URL: http://${ip}:8545"
+
+      - name: Wait for eth_syncing = false
+        env:
+          RPC: "http://localhost:8545"
+        run: |
+          set -o pipefail
+          echo "Initial warmup sleep (60s)..."
+          sleep 60
+          echo "Waiting for Geth to report eth_syncing=false at $RPC ..."
+          while true; do
+            response="$(curl -sS -m 10 --connect-timeout 5 \
+                             --retry 5 --retry-all-errors --retry-connrefused \
+                             -H 'Content-Type: application/json' \
+                             -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+                             "$RPC")" \
+              || { echo "RPC unreachable; retrying in 60s"; sleep 60; continue; }
+
+            if ! echo "$response" | jq -e . >/dev/null 2>&1; then
+              echo "Invalid JSON ($response); retrying in 60s..."; sleep 60; continue
+            fi
+
+            if echo "$response" | jq -e '.result == false' >/dev/null 2>&1; then
+              echo "Geth reports synced (eth_syncing=false)."
+              break
+            fi
+
+            summary="$(echo "$response" | jq -c '.result | {currentBlock, highestBlock} // {}' 2>/dev/null)"
+            echo "Still syncing. Details: ${summary:-unknown}. Retrying in 60s..."
+            sleep 60
+          done
