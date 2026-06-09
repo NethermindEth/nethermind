@@ -12,20 +12,6 @@ namespace Ethereum.Test.Base
         public string? ForkChoiceUpdatedVersion { get; set; }
         public string? ValidationError { get; set; }
 
-        /// <summary>
-        /// Optional execution witness expected for this payload.
-        /// Present in <c>blockchain_test_engine</c> fixtures from the zkevm archive.
-        /// Contains <c>state</c>, <c>codes</c>, and <c>headers</c> byte lists.
-        /// </summary>
-        public JsonElement? ExecutionWitness { get; set; }
-
-        /// <summary>
-        /// When <c>true</c>, the payload's <c>executionWitness</c> was deliberately corrupted
-        /// for stateless-validator negative testing. Stateful nodes like Nethermind must skip
-        /// witness comparison for these payloads.
-        /// </summary>
-        public bool ExecutionWitnessMutated { get; set; }
-
         public class ParamsExecutionPayload
         {
             public string ParentHash { get; set; }

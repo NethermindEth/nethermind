@@ -4,27 +4,19 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Ethereum.Test.Base;
 
-namespace Ethereum.Test.Base;
-
-/// <summary>
-/// URL template for downloading pyspec fixture archives from GitHub releases.
-/// {0} = version tag, {1} = archive filename.
-/// </summary>
-public static class PyspecArchive
-{
-    public const string UrlTemplate = "https://github.com/ethereum/execution-specs/releases/download/{0}/{1}";
-}
+namespace Ethereum.Blockchain.Pyspec.Test;
 
 public class LoadPyspecTestsStrategy : ITestLoadStrategy
 {
-    public required string ArchiveVersion { get; init; }
-    public required string ArchiveName { get; init; }
+    public string ArchiveVersion { get; init; } = Constants.DEFAULT_ARCHIVE_VERSION;
+    public string ArchiveName { get; init; } = Constants.DEFAULT_ARCHIVE_NAME;
 
     public IEnumerable<EthereumTest> Load(string testsDir, string wildcard = null)
     {
         string testsDirectoryName = TestFixtureDownloader.EnsureDownloaded(
-            "PyTests", PyspecArchive.UrlTemplate, ArchiveVersion, ArchiveName);
+            "PyTests", Constants.ARCHIVE_URL_TEMPLATE, ArchiveVersion, ArchiveName);
 
         TestType testType = TestType.Blockchain;
         foreach (TestType type in Enum.GetValues<TestType>())
@@ -36,14 +28,10 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
         }
 
-        string resolvedDir = !string.IsNullOrEmpty(testsDir)
-            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
-            : testsDirectoryName;
+        IEnumerable<string> directories = !string.IsNullOrEmpty(testsDir)
+            ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
+            : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
 
-        if (!Directory.Exists(resolvedDir))
-            return [];
-
-        IEnumerable<string> directories = Directory.EnumerateDirectories(resolvedDir, "*", new EnumerationOptions { RecurseSubdirectories = true });
         List<string> testDirs = [];
         foreach (string testDir in directories)
         {

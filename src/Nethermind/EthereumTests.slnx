@@ -56,7 +56,6 @@
   <Project Path="Ethereum.Basic.Test/Ethereum.Basic.Test.csproj" />
   <Project Path="Ethereum.Blockchain.Block.Test/Ethereum.Blockchain.Block.Test.csproj" />
   <Project Path="Ethereum.Blockchain.Pyspec.Test/Ethereum.Blockchain.Pyspec.Test.csproj" />
-  <Project Path="Ethereum.Blockchain.Pyspec.Zkevm.Test/Ethereum.Blockchain.Pyspec.Zkevm.Test.csproj" />
   <Project Path="Ethereum.Difficulty.Test/Ethereum.Difficulty.Test.csproj" />
   <Project Path="Ethereum.HexPrefix.Test/Ethereum.HexPrefix.Test.csproj" />
   <Project Path="Ethereum.KeyAddress.Test/Ethereum.KeyAddress.Test.csproj" />
