@@ -769,7 +769,7 @@
           "Nethermind.Api": "[1.39.0-unstable, )",
           "Nethermind.Db": "[1.39.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-          "RocksDB": "[10.10.1.649, )"
+          "RocksDB": "[10.10.1.649, 10.10.1.649]"
         }
       },
       "nethermind.db.rpc": {
@@ -1698,7 +1698,7 @@
       },
       "YamlDotNet": {
         "type": "CentralTransitive",
-        "requested": "[17.0.1, )",
+        "requested": "[18.0.0, )",
         "resolved": "16.3.0",
         "contentHash": "SgMOdxbz8X65z8hraIs6hOEdnkH6hESTAIUa7viEngHOYaH+6q5XJmwr1+yb9vJpNQ19hCQY69xbFsLtXpobQA=="
       },
