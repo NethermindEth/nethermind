@@ -28,8 +28,20 @@ internal abstract class JsonlProcessor(FilePos[] sources)
 
                 FilePos pos = startLocation with { LineNumber = fileLineN };
 
-                if (JsonNode.Parse(line) is not {} json) continue;
-                await ProcessEntryAsync(json, pos, ct);
+                if (JsonNode.Parse(line) is not { } entry) continue;
+
+                if (entry is JsonArray array)
+                {
+                    foreach (JsonNode? arrayEntry in array)
+                    {
+                        if (arrayEntry is not null)
+                            await ProcessEntryAsync(arrayEntry, pos, ct);
+                    }
+                }
+                else
+                {
+                    await ProcessEntryAsync(entry, pos, ct);
+                }
             }
         }
     }
