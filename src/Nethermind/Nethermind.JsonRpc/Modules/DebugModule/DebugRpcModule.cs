@@ -902,7 +902,7 @@ public class DebugRpcModule(
             return ResultWrapper<Witness>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
         }
 
-        if (callRequest.Gas is null or 0)
+        if (callRequest.IsGasUnset)
         {
             callRequest.Gas = header.GasLimit;
         }

@@ -49,6 +49,9 @@ public abstract class TransactionForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Gas { get; set; }
 
+    [JsonIgnore]
+    public bool IsGasUnset => Gas is null or 0;
+
     // True when type came from a fallback (gasPrice-only or absolute default), not from an
     // explicit `type` field or a discriminator. Set only during JSON deserialization.
     [JsonIgnore]

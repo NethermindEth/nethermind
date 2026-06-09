@@ -249,12 +249,9 @@ public partial class DebugRpcModuleTests
     [TestCaseSource(nameof(ExecutionWitnessMissingGasCases))]
     public async Task Debug_executionWitnessCall_with_implicit_or_zero_gas_still_records_full_witness(bool useZeroGas)
     {
-        // Regression guard: the handler advertises that `gas` is optional via
-        // `callRequest.Gas ??= header.GasLimit;`, and this PR extends the same
-        // omitted-gas behavior to explicit `gas: 0x0`. If either path diverges
-        // again the caller gets a near-empty witness (just the state-root node)
-        // that still looks successful but fails stateless re-execution downstream.
-        // Seen in the wild with surge-raiko's L1STATICCALL preflight.
+        // Regression guard: a gas of null or 0 must yield a full witness. A divergence produces a
+        // near-empty-but-successful witness (state-root node only) that fails stateless re-execution —
+        // seen with surge-raiko's L1STATICCALL preflight.
         using Context ctx = await Context.Create();
         TestRpcBlockchain blockchain = ctx.Blockchain;
 
