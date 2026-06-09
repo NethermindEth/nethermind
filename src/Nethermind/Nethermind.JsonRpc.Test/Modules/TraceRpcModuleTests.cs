@@ -1100,9 +1100,9 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> omittedGasTraces = TraceCallMany(context);
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> explicitGasCapTraces = TraceCallMany(context, gas: gasCap);
 
-        omittedGasTraces.Result.Error.Should().BeNull();
-        explicitGasCapTraces.Result.Error.Should().BeNull();
-        omittedGasTraces.Data.Single().Action!.Gas.Should().Be(explicitGasCapTraces.Data.Single().Action!.Gas);
+        Assert.That(omittedGasTraces.Result.Error, Is.Null);
+        Assert.That(explicitGasCapTraces.Result.Error, Is.Null);
+        Assert.That(omittedGasTraces.Data.Single().Action!.Gas, Is.EqualTo(explicitGasCapTraces.Data.Single().Action!.Gas));
     }
 
     [Test]
@@ -1118,9 +1118,9 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> omittedGasTraces = TraceCallMany(context);
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> zeroGasTraces = TraceCallMany(context, gas: 0);
 
-        omittedGasTraces.Result.Error.Should().BeNull();
-        zeroGasTraces.Result.Error.Should().BeNull();
-        zeroGasTraces.Data.Single().Action!.Gas.Should().Be(omittedGasTraces.Data.Single().Action!.Gas);
+        Assert.That(omittedGasTraces.Result.Error, Is.Null);
+        Assert.That(zeroGasTraces.Result.Error, Is.Null);
+        Assert.That(zeroGasTraces.Data.Single().Action!.Gas, Is.EqualTo(omittedGasTraces.Data.Single().Action!.Gas));
     }
 
     private static ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> TraceCallMany(Context context, long? gas = null) =>
