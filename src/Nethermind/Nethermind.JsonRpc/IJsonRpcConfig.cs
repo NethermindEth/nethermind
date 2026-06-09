@@ -61,6 +61,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
     string IpcUnixDomainSocketPath { get; set; }
 
+    [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
+    bool RestrictIpcSocketPermissions { get; set; }
+
     [ConfigItem(
         Description = """
             An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
@@ -121,9 +124,19 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
-        Description = "Whether to stream `debug_trace*` responses as the EVM executes (lower TTFB and bounded memory). Can be overridden per-call via `GethTraceOptions.StreamMode`.",
+        Description = "Whether to stream `debug_trace*` and `trace_*` responses as the EVM executes (lower TTFB and bounded memory). For `debug_trace*` can be overridden per-call via `GethTraceOptions.StreamMode`.",
         DefaultValue = "true")]
     public bool EnableTracingStreamMode { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to stream `eth_getLogs` and `eth_getFilterLogs` responses as logs are found. When enabled, unauthenticated responses stop at `MaxLogsPerResponse` or `MaxLogsResponseBodySize` instead of buffering the full result and returning a limit error.",
+        DefaultValue = "false")]
+    public bool EnableLogsStreamMode { get; set; }
+
+    [ConfigItem(
+        Description = "The max response body size, in bytes, for streamed `eth_getLogs` and `eth_getFilterLogs` JSON-RPC responses. Ignored unless `EnableLogsStreamMode` is enabled. `null` to use `MaxBatchResponseBodySize`.",
+        DefaultValue = "null")]
+    public long? MaxLogsResponseBodySize { get; set; }
 
     [ConfigItem(
         Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors.")]
@@ -224,4 +237,13 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Maximum server-side wait, in milliseconds, that eth_sendRawTransactionSync will accept; client-supplied timeouts above this are clamped down.", DefaultValue = "60000")]
     int RpcTxSyncMaxTimeoutMs { get; set; }
+
+    [ConfigItem(
+        Description = """
+            Additional CIDR networks treated as trusted local sources for the JSON-RPC fast lane.
+            Loopback and RFC1918 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) are always trusted.
+            Invalid entries are logged and ignored.
+            """,
+        DefaultValue = "[]")]
+    string[] AdditionalTrustedNetworks { get; set; }
 }

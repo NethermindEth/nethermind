@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -30,10 +29,10 @@ public class BlockInfoDecoderTests
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((BlockInfo)null!);
-        rlp.Length.Should().Be(1);
+        Assert.That(rlp.Length, Is.EqualTo(1));
 
         BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
-        decoded.Should().BeNull();
+        Assert.That(decoded, Is.Null);
     }
 
     private static void Roundtrip(bool valueDecode)

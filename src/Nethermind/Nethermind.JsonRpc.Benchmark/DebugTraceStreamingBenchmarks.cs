@@ -5,8 +5,13 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Benchmark;
@@ -16,6 +21,18 @@ public class DebugTraceStreamingBenchmarks
 {
     [Params(1_000, 10_000, 100_000)]
     public int OpcodeCount { get; set; }
+
+    private Block _block = null!;
+    private Transaction _tx = null!;
+    private ExecutionEnvironment _env;
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _tx = Build.A.Transaction.WithTo(TestItem.AddressA).TestObject;
+        _block = Build.A.Block.WithTransactions(_tx).TestObject;
+        _env = ExecutionEnvironment.Rent(CodeInfo.Empty, Address.Zero, Address.Zero, null, 1, default, default);
+    }
 
     [Benchmark(Baseline = true, Description = "Throughput: buffered — accumulate N entries, then serialize the full envelope")]
     public int Throughput_Buffered()
@@ -87,6 +104,79 @@ public class DebugTraceStreamingBenchmarks
         long peak = GC.GetTotalMemory(false);
         GC.KeepAlive(live);
         return peak - baseline;
+    }
+
+    [Benchmark(Description = "PeakHeap (real tracer): 16 concurrent buffered GethLikeTxMemoryTracer instances driven through N opcodes")]
+    public long PeakHeap_BufferedWithTracer()
+    {
+        const int Concurrency = 16;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        long baseline = GC.GetTotalMemory(true);
+
+        List<GethLikeTxMemoryTracer> live = new(Concurrency);
+        for (int n = 0; n < Concurrency; n++)
+        {
+            GethLikeTxMemoryTracer tracer = new(_tx, GethTraceOptions.Default);
+            DriveGethOpcodes(tracer, OpcodeCount);
+            DiscardingBufferWriter sink = new();
+            using Utf8JsonWriter writer = new(sink);
+            JsonSerializer.Serialize(writer, tracer.BuildResult(), EthereumJsonSerializer.JsonOptions);
+            live.Add(tracer);
+        }
+
+        long peak = GC.GetTotalMemory(false);
+        GC.KeepAlive(live);
+        return peak - baseline;
+    }
+
+    [Benchmark(Description = "PeakHeap (real tracer): 16 concurrent GethLikeTxDirectStreamingTracer instances driven through N opcodes")]
+    public long PeakHeap_StreamingWithTracer()
+    {
+        const int Concurrency = 16;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        long baseline = GC.GetTotalMemory(true);
+
+        List<GethLikeTxDirectStreamingTracer> live = new(Concurrency);
+        List<DiscardingBufferWriter> sinks = new(Concurrency);
+        List<Utf8JsonWriter> writers = new(Concurrency);
+        for (int n = 0; n < Concurrency; n++)
+        {
+            DiscardingBufferWriter sink = new();
+            Utf8JsonWriter writer = new(sink);
+            writer.WriteStartObject();
+            writer.WritePropertyName("structLogs"u8);
+            writer.WriteStartArray();
+            GethLikeTxDirectStreamingTracer tracer = new(_tx, GethTraceOptions.Default, writer, pipeWriter: null, CancellationToken.None);
+            DriveGethOpcodes(tracer, OpcodeCount);
+            GethLikeTxTrace trace = tracer.BuildResult();
+            writer.WriteEndArray();
+            writer.WriteNumber("gas"u8, trace.Gas);
+            writer.WriteBoolean("failed"u8, false);
+            writer.WritePropertyName("returnValue"u8);
+            JsonSerializer.Serialize(writer, Array.Empty<byte>(), EthereumJsonSerializer.JsonOptions);
+            writer.WriteEndObject();
+            live.Add(tracer);
+            sinks.Add(sink);
+            writers.Add(writer);
+        }
+
+        long peak = GC.GetTotalMemory(false);
+        GC.KeepAlive(live);
+        GC.KeepAlive(sinks);
+        foreach (Utf8JsonWriter w in writers) w.Dispose();
+        return peak - baseline;
+    }
+
+    private void DriveGethOpcodes(GethLikeTxTracer tracer, int opcodeCount)
+    {
+        for (int op = 0; op < opcodeCount; op++)
+        {
+            tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - op, _env);
+            tracer.ReportOperationRemainingGas(900_000 - op);
+        }
+        tracer.MarkAsSuccess(Address.Zero, default, [], []);
     }
 
     private static void WriteStreamingEnvelope(Utf8JsonWriter writer, int opcodeCount)

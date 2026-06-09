@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 
@@ -28,16 +28,20 @@ internal sealed partial class PersistentStorageProvider
             AddressAsKey Key, PerContractState ContractState,
             IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
             )> storages = new(_toUpdateRoots.Count);
+
         foreach (KeyValuePair<AddressAsKey, PerContractState> kv in _storages)
         {
-            if (_toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-            {
-                storages.Add((kv.Key, kv.Value, writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)));
-            }
+            if (!_toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) || !hasChanges) continue;
+            storages.Add((
+                kv.Key,
+                kv.Value,
+                writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)));
         }
 
-        // Schedule larger changes first to help balance parallel work
-        storages.Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
+        if (storages.Count == 0) return;
+
+        // Schedule larger changes first to help balance the work
+        storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
         ParallelUnbalancedWork.For(
             0,

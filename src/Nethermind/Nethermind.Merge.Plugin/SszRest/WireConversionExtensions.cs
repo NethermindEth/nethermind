@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
@@ -17,19 +15,19 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// </summary>
 internal static class WireConversionExtensions
 {
-    public static SszTransaction[] ToTxsWire(this IReadOnlyList<byte[]> txs)
+    public static SszTransaction[] ToTxsWire(this byte[][] txs)
     {
-        if (txs.Count == 0) return [];
-        SszTransaction[] result = new SszTransaction[txs.Count];
+        if (txs.Length == 0) return [];
+        SszTransaction[] result = new SszTransaction[txs.Length];
         for (int i = 0; i < result.Length; i++) result[i] = new SszTransaction { Bytes = txs[i] };
         return result;
     }
 
-    public static SszWithdrawal[] ToWire(this IReadOnlyList<Withdrawal>? ws)
+    public static SszWithdrawal[] ToWire(this Withdrawal[]? ws)
     {
-        if (ws is null || ws.Count == 0) return [];
-        SszWithdrawal[] result = new SszWithdrawal[ws.Count];
-        for (int i = 0; i < ws.Count; i++)
+        if (ws is null || ws.Length == 0) return [];
+        SszWithdrawal[] result = new SszWithdrawal[ws.Length];
+        for (int i = 0; i < ws.Length; i++)
             result[i] = new SszWithdrawal
             {
                 Index = ws[i].Index,

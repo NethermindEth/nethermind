@@ -41,18 +41,11 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
 
         Address address = ctx.DecodeAddress();
 
-        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
+        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
         UInt256? lastSlot = null;
         foreach (ReadOnlySlotChanges slotChange in slotChanges)
         {
-            // EIP-7928 SlotChanges is a 2-field sequence (slot key + storage changes list);
-            // an empty inner list (RLP 0xc0) gets decoded as null by DecodeArray.
-            if (slotChange is null)
-            {
-                ThrowEmptySlotChanges();
-            }
-
-            UInt256 slot = slotChange.Key;
+            UInt256 slot = slotChange!.Key;
             if (lastSlot is not null && slot <= lastSlot)
             {
                 ThrowStorageChangesOutOfOrder();
@@ -60,7 +53,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             lastSlot = slot;
         }
 
-        UInt256[] storageReads = ctx.DecodeArray(UInt256Decoder.Instance, true, default, _storageLimit);
+        UInt256[] storageReads = UInt256Decoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _storageLimit);
         UInt256? lastRead = null;
         foreach (UInt256 storageRead in storageReads)
         {
@@ -77,13 +70,13 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             lastRead = storageRead;
         }
 
-        BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
+        BalanceChange[] balanceChanges = BalanceChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
         ValidateSortedByIndex(balanceChanges, "Balance");
 
-        NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
+        NonceChange[] nonceChanges = NonceChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
         ValidateSortedByIndex(nonceChanges, "Nonce");
 
-        CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
+        CodeChange[] codeChanges = CodeChangeDecoder.Instance.DecodeArray(ref ctx, RlpBehaviors.None, _txLimit);
         ValidateSortedByIndex(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -314,10 +307,6 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
         return false;
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowEmptySlotChanges() =>
-        throw new RlpException("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowStorageChangesOutOfOrder() =>

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -184,12 +183,12 @@ namespace Nethermind.Evm.Test
 
                 if (isValidOpcode)
                 {
-                    result.Error.Should().NotBe(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
+                    Assert.That(result.Error, Is.Not.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
                 }
                 else
                 {
-                    result.Error.Should().Be(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
-                    result.StatusCode.Should().Be(0, ((Instruction)i).ToString());
+                    Assert.That(result.Error, Is.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
+                    Assert.That(result.StatusCode, Is.EqualTo(0), ((Instruction)i).ToString());
                 }
             }
         }

@@ -7,10 +7,10 @@ namespace Nethermind.Db
 {
     public class MemDbFactory : IDbFactory
     {
-        public IColumnsDb<T> CreateColumnsDb<T>(string dbName) where T : struct, Enum => new MemColumnsDb<T>(dbName);
+        public IColumnsDb<T> CreateColumnsDb<T>(string dbName) where T : struct, Enum => new SnapshotableMemColumnsDb<T>(dbName);
 
         public IDb CreateDb(DbSettings dbSettings) => new MemDb(dbSettings.DbName);
 
-        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => new MemColumnsDb<T>(dbSettings.DbName);
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => new SnapshotableMemColumnsDb<T>(dbSettings.DbName);
     }
 }

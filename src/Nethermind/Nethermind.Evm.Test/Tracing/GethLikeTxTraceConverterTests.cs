@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Serialization.Json;
@@ -63,12 +62,22 @@ public class GethLikeTxTraceConverterTests
     {
         GethLikeTxTrace result = _serializer.Deserialize<GethLikeTxTrace>(json);
 
-        result.Should().BeEquivalentTo(expectedTrace);
+        AssertTraceEquivalent(result, expectedTrace);
     }
 
 
     [TestCaseSource(nameof(CustomValueTracerResults))]
     public void Read_custom_tracer_result_throws(object expectedValue, string json) => Assert.Throws<JsonException>(() => _serializer.Deserialize<GethLikeTxTrace>(json));
+
+    private void AssertTraceEquivalent(GethLikeTxTrace actual, GethLikeTxTrace expected)
+    {
+        string actualJson = _serializer.Serialize(actual);
+        string expectedJson = _serializer.Serialize(expected);
+        using JsonDocument actualDocument = JsonDocument.Parse(actualJson);
+        using JsonDocument expectedDocument = JsonDocument.Parse(expectedJson);
+
+        Assert.That(JsonElement.DeepEquals(actualDocument.RootElement, expectedDocument.RootElement), actualJson);
+    }
 
     private static IEnumerable<TestCaseData> TraceAndJsonSource()
     {

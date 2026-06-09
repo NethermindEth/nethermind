@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
@@ -162,30 +161,30 @@ namespace Nethermind.AuRa.Test
 
             using (stateProvider.BeginScope(currentBlock))
             {
-                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Array.Empty<byte>());
-                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
-                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Array.Empty<byte>());
-                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Array.Empty<byte>());
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Array.Empty<byte>()));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
-                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
-                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
-                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
-                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Bytes.FromHexString("0x321")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x321")));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
             {
-                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
-                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
-                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
-                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Bytes.FromHexString("0x654")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x654")));
             }
         }
 

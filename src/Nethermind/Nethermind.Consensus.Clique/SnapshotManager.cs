@@ -10,6 +10,7 @@ using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -17,7 +18,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {

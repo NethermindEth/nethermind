@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -14,7 +15,6 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -91,7 +91,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             tmpBalStore,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
-            NullBloomStorage.Instance,
             new SyncConfig(),
             new BlockTreeLogHider(logManager));
     }

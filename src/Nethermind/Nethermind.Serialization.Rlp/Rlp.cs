@@ -233,7 +233,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
                 throw new RlpException($"Error decoding {typeof(T).Name}.", e);
             }
@@ -1438,7 +1438,20 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            /// <summary>
+            /// Decodes an RLP sequence into a <typeparamref name="T"/>[], substituting <paramref name="defaultElement"/>
+            /// for any element encoded as an empty list (<c>0xc0</c>) instead of invoking <paramref name="decoder"/>.
+            /// </summary>
+            /// <remarks>
+            /// The empty-list-to-default substitution is only safe for reference types, hence the <c>class?</c> constraint.
+            /// For a reference type, <c>default(T)</c> is <c>null</c>, which a caller can detect and reject. For a value
+            /// type, <c>default(T)</c> is an ordinary zero value indistinguishable from legitimately-decoded data, so a
+            /// malformed <c>0xc0</c> element would be silently accepted as zero rather than throwing — a real
+            /// consensus-relevant decoding bug (see the EIP-7928 BAL decoder). Value-type arrays must therefore use
+            /// <see cref="RlpDecoder{T}.DecodeArray"/>, which decodes every element and rejects <c>0xc0</c>.
+            /// </remarks>
+            public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, bool allowNulls = false, T defaultElement = default, RlpLimit? limit = null)
+                where T : class?
             {
                 decoder ??= GetDecoder<T>()
                     ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
@@ -1451,12 +1464,18 @@ namespace Nethermind.Serialization.Rlp
                 {
                     if (PeekByte() == OfEmptyList[0])
                     {
+                        if (!allowNulls)
+                            RlpHelpers.ThrowNullArrayElement(i);
+
                         result[i] = defaultElement;
                         Position++;
                     }
                     else
                     {
                         result[i] = decoder.Decode(ref this);
+
+                        if (!allowNulls && result[i] is null)
+                            RlpHelpers.ThrowNullArrayElement(i);
                     }
                 }
 

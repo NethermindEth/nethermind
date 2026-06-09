@@ -6,6 +6,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -16,6 +17,8 @@ public class XdcSubnetModule : XdcModule
         base.Load(builder);
         builder
             .Add<StartXdcSubnetBlockProducer>()
+            .AddSingleton<XdcSubnetBlockProducerFactory>()
+            .Bind<IBlockProducerFactory, XdcSubnetBlockProducerFactory>() // overrides the base producer binding; runner stays XdcBlockProducerFactory
             .AddSingleton(new BlockDecoder(new XdcSubnetHeaderDecoder()))
             .AddSingleton<IEpochSwitchManager, SubnetEpochSwitchManager>()
             .AddSingleton<ISubnetMasternodesCalculator, SubnetMasternodesCalculator>()

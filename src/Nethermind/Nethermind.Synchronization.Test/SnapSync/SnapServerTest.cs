@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -170,8 +169,8 @@ public class SnapServerTest
         AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, Keccak.Zero,
             accounts.ToArray(), proofs);
 
-        result.Should().Be(AddRangeResult.OK);
-        context.PersistedNodeCount.Should().Be(10);
+        Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+        Assert.That(context.PersistedNodeCount, Is.EqualTo(10));
         accounts.Dispose();
         proofs.Dispose();
     }
@@ -185,7 +184,7 @@ public class SnapServerTest
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.MaxValue, Keccak.Zero, 4000, CancellationToken.None);
 
-        accounts.Count.Should().Be(0);
+        Assert.That(accounts.Count, Is.EqualTo(0));
         accounts.Dispose();
         proofs.Dispose();
     }
@@ -204,7 +203,7 @@ public class SnapServerTest
         ]);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
-        result.Count.Should().Be(1);
+        Assert.That(result.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -221,7 +220,7 @@ public class SnapServerTest
         ]);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
-        result.Count.Should().Be(1);
+        Assert.That(result.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -238,7 +237,7 @@ public class SnapServerTest
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
-        result.Count.Should().BeLessThan(requestCount);
+        Assert.That(result.Count, Is.LessThan(requestCount));
     }
 
     [TestCase(true)]
@@ -257,13 +256,13 @@ public class SnapServerTest
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList accountProofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
-        accounts.Count.Should().Be(0);
+        Assert.That(accounts.Count, Is.EqualTo(0));
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IByteArrayList? proofs) =
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
                 ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
-        storageSlots.Count.Should().Be(0);
+        Assert.That(storageSlots.Count, Is.EqualTo(0));
 
         accounts.Dispose();
         accountProofs.Dispose();
@@ -288,7 +287,7 @@ public class SnapServerTest
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
                     accounts, proofs);
 
-                result.Should().Be(AddRangeResult.OK);
+                Assert.That(result, Is.EqualTo(AddRangeResult.OK));
                 startRange = accounts[^1].Path.ToCommitment();
                 if (startRange.Bytes.SequenceEqual(TestItem.Tree.AccountsWithPaths[^1].Path.Bytes))
                 {
@@ -301,7 +300,7 @@ public class SnapServerTest
                 proofs.Dispose();
             }
         }
-        context.PersistedNodeCount.Should().Be(10);
+        Assert.That(context.PersistedNodeCount, Is.EqualTo(10));
     }
 
     [TestCase(10, 10)]
@@ -324,7 +323,7 @@ public class SnapServerTest
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
                     accounts, proofs);
 
-                result.Should().Be(AddRangeResult.OK);
+                Assert.That(result, Is.EqualTo(AddRangeResult.OK));
                 if (startRange == accounts[^1].Path.ToCommitment())
                 {
                     break;
@@ -361,7 +360,7 @@ public class SnapServerTest
                 AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, startRange,
                     accounts, proofs);
 
-                result.Should().Be(AddRangeResult.OK);
+                Assert.That(result, Is.EqualTo(AddRangeResult.OK));
                 if (startRange == accounts[^1].Path.ToCommitment())
                 {
                     break;
@@ -396,7 +395,7 @@ public class SnapServerTest
             };
             AddRangeResult result = context.SnapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
-            result.Should().Be(AddRangeResult.OK);
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
         finally
         {
@@ -419,8 +418,8 @@ public class SnapServerTest
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
                 beyondLast, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
-        storageSlots.Count.Should().Be(0);
-        proofs?.Count.Should().BeGreaterThan(0); //in worst case should get at least root node
+        Assert.That(storageSlots.Count, Is.EqualTo(0));
+        Assert.That(proofs?.Count, Is.GreaterThan(0)); //in worst case should get at least root node
 
         storageSlots.DisposeRecursive();
         proofs?.Dispose();
@@ -448,7 +447,7 @@ public class SnapServerTest
                 };
                 AddRangeResult result = context.SnapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
-                result.Should().Be(AddRangeResult.OK);
+                Assert.That(result, Is.EqualTo(AddRangeResult.OK));
                 if (startRange == storageSlots[0][^1].Path.ToCommitment())
                 {
                     break;
@@ -493,75 +492,75 @@ public class SnapServerTest
         // size of one PathWithAccount ranges from 39 -> 72
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList accountProofs)
             = context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
-        accounts.Count.Should().Be(1);
+        Assert.That(accounts.Count, Is.EqualTo(1));
         accounts.Dispose();
         accountProofs.Dispose();
 
         (accounts, accountProofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 100, CancellationToken.None);
-        accounts.Count.Should().BeGreaterThan(2);
+        Assert.That(accounts.Count, Is.GreaterThan(2));
         accounts.Dispose();
         accountProofs.Dispose();
 
         (accounts, accountProofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 10000, CancellationToken.None);
-        accounts.Count.Should().BeGreaterThan(138);
+        Assert.That(accounts.Count, Is.GreaterThan(138));
         accounts.Dispose();
         accountProofs.Dispose();
 
         // TODO: Double check the threshold
         (accounts, accountProofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 720000, CancellationToken.None);
-        accounts.Count.Should().Be(10009);
+        Assert.That(accounts.Count, Is.EqualTo(10009));
 
         accounts.Dispose();
         accountProofs.Dispose();
 
         (accounts, accountProofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 10000000, CancellationToken.None);
-        accounts.Count.Should().Be(10009);
+        Assert.That(accounts.Count, Is.EqualTo(10009));
         accounts.Dispose();
         accountProofs.Dispose();
 
         PathWithAccount[] accountWithStorageArray = accountWithStorage.ToArray();
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
-        slots.Count.Should().Be(1);
-        slots[0].Count.Should().Be(1);
-        proofs.Should().NotBeNull();
+        Assert.That(slots.Count, Is.EqualTo(1));
+        Assert.That(slots[0].Count, Is.EqualTo(1));
+        Assert.That(proofs, Is.Not.Null);
 
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 1000000, CancellationToken.None);
-        slots.Count.Should().Be(1);
-        slots[0].Count.Should().Be(1000);
-        proofs?.Count.Should().Be(0);
+        Assert.That(slots.Count, Is.EqualTo(1));
+        Assert.That(slots[0].Count, Is.EqualTo(1000));
+        Assert.That(proofs?.Count, Is.EqualTo(0));
 
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
-        slots.Count.Should().Be(1);
-        slots[0].Count.Should().Be(1);
-        proofs.Should().NotBeNull();
+        Assert.That(slots.Count, Is.EqualTo(1));
+        Assert.That(slots[0].Count, Is.EqualTo(1));
+        Assert.That(proofs, Is.Not.Null);
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 100000, CancellationToken.None);
-        slots.Count.Should().Be(2);
-        slots[0].Count.Should().Be(1000);
-        slots[1].Count.Should().Be(539);
-        proofs.Should().NotBeNull();
+        Assert.That(slots.Count, Is.EqualTo(2));
+        Assert.That(slots[0].Count, Is.EqualTo(1000));
+        Assert.That(slots[1].Count, Is.EqualTo(539));
+        Assert.That(proofs, Is.Not.Null);
         slots.DisposeRecursive();
         proofs?.Dispose();
 
 
         // incomplete tree will be returned as the hard limit is 2000000
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray, ValueKeccak.Zero, ValueKeccak.MaxValue, 3000000, CancellationToken.None);
-        slots.Count.Should().Be(8);
-        slots[^1].Count.Should().BeLessThan(8000);
-        proofs?.Count.Should().BeGreaterThan(0);
+        Assert.That(slots.Count, Is.EqualTo(8));
+        Assert.That(slots[^1].Count, Is.LessThan(8000));
+        Assert.That(proofs?.Count, Is.GreaterThan(0));
 
         slots.DisposeRecursive();
         proofs?.Dispose();

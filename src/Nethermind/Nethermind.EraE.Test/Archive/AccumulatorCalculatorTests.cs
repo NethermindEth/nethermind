@@ -25,7 +25,7 @@ public class AccumulatorCalculatorTests
 
         byte[] result = sut.ComputeRoot().ToByteArray();
 
-        Assert.That(result, Is.EquivalentTo(new byte[]
+        Assert.That(result, Is.EqualTo(new byte[]
         {
             0x3E, 0xD6, 0x26, 0x52, 0xDF, 0xB7, 0xE1, 0x07,
             0x2D, 0x0F, 0x04, 0x0F, 0xEB, 0x6D, 0x00, 0x2A,

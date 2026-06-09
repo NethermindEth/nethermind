@@ -21,6 +21,7 @@ namespace Nethermind.State.Flat;
 
 public class PersistenceManager(
     IFlatDbConfig configuration,
+    ICompactionSchedule compactionSchedule,
     IFinalizedStateProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
@@ -30,6 +31,7 @@ public class PersistenceManager(
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
+    private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
@@ -122,8 +124,8 @@ public class PersistenceManager(
 
         Snapshot? snapshotToPersist;
 
-        long afterPersistPersistedBlockNumber = currentPersistedState.BlockNumber + _compactSize;
-        if (afterPersistPersistedBlockNumber > finalizedBlockNumber)
+        long nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+        if (nextCompactedBoundary > finalizedBlockNumber)
         {
             if (inMemoryStateDepth <= _maxReorgDepth)
             {
@@ -132,12 +134,12 @@ public class PersistenceManager(
             }
 
             if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Force persisting to conserve memory. finalized block number is {finalizedBlockNumber}.");
-            snapshotToPersist = GetFirstSnapshotAtBlockNumber(currentPersistedState.BlockNumber + _compactSize, currentPersistedState, true) ??
+            snapshotToPersist = GetFirstSnapshotAtBlockNumber(nextCompactedBoundary, currentPersistedState, true) ??
                                 GetFirstSnapshotAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, false);
         }
         else
         {
-            snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + _compactSize, currentPersistedState, true) ??
+            snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(nextCompactedBoundary, currentPersistedState, true) ??
                                 GetFinalizedSnapshotAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, false);
         }
 
@@ -159,6 +161,8 @@ public class PersistenceManager(
 
             if (snapshotToSave is null) return;
             using Snapshot _ = snapshotToSave; // dispose
+
+            snapshotRepository.RemoveSiblingAndDescendents(snapshotToSave.To);
 
             // Add the canon snapshot
             PersistSnapshot(snapshotToSave);
@@ -185,9 +189,11 @@ public class PersistenceManager(
         // Persist all snapshots from current persisted state to latest
         while (currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
         {
+            long nextCompactedBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
+
             // Try finalized snapshots first (compacted, then non-compacted)
             Snapshot? snapshotToPersist = GetFinalizedSnapshotAtBlockNumber(
-                currentPersistedState.BlockNumber + _compactSize,
+                nextCompactedBoundary,
                 currentPersistedState,
                 compactedSnapshot: true);
 
@@ -198,7 +204,7 @@ public class PersistenceManager(
 
             // Fall back to the first available snapshot if finalized not available
             snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
-                currentPersistedState.BlockNumber + _compactSize,
+                nextCompactedBoundary,
                 currentPersistedState,
                 compactedSnapshot: true);
 
@@ -213,6 +219,9 @@ public class PersistenceManager(
             }
 
             using Snapshot _ = snapshotToPersist;
+
+            snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
+
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;
@@ -288,6 +297,7 @@ public class PersistenceManager(
                 batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
 
                 node.IsPersisted = true;
+                node.PrunePersistedRecursively(1);
             }
 
             _trieNodesSortBuffer.Clear();
@@ -315,6 +325,7 @@ public class PersistenceManager(
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 node.IsPersisted = true;
+                node.PrunePersistedRecursively(1);
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));

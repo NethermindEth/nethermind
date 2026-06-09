@@ -11,7 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using Nethermind.EraE.Config;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -43,7 +43,6 @@ public sealed class EraExporter(
     public const string ChecksumsSHA256FileName = "checksums_sha256.txt";
     public const string ChecksumsFileName = "checksums.txt";
 
-    private const int ProgressLogInterval = 10000;
     private const int RetryDelayMs = 100;
 
     public Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default)
@@ -70,8 +69,7 @@ public sealed class EraExporter(
         if (!fileSystem.Directory.Exists(destinationPath))
             fileSystem.Directory.CreateDirectory(destinationPath);
 
-        ProgressLogger progress = new("EraE export", logManager);
-        progress.Reset(0, to - from + 1);
+        using ProgressReporter progress = new("EraE export", logManager, to - from + 1);
         int totalProcessed = 0;
 
         long startEpoch = from / _eraSize;
@@ -109,7 +107,6 @@ public sealed class EraExporter(
         fileSystem.File.Delete(checksumFilePath);
         await WriteChecksumFile(checksumFilePath, checksums, cancellation);
 
-        progress.LogProgress();
         if (_logger.IsInfo) _logger.Info($"Finished EraE export from {from} to {to}");
 
         async Task WriteEpoch(long epochIdx, CancellationToken cancel)
@@ -160,12 +157,7 @@ public sealed class EraExporter(
 
                     await eraWriter.Add(block, receipts, cancel);
                     lastBlockHash = block.Hash!;
-
-                    if (Interlocked.Increment(ref totalProcessed) % ProgressLogInterval == 0)
-                    {
-                        progress.Update(totalProcessed);
-                        progress.LogProgress();
-                    }
+                    progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancel);
@@ -228,10 +220,15 @@ public sealed class EraExporter(
         ref int totalProcessed)
     {
         string? existingFile = null;
-        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*{EraPathUtils.FileExtension}"))
+        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*"))
         {
-            existingFile = f;
-            break;
+            if (!EraPathUtils.IsEraFile(f)) continue;
+            if (EraPathUtils.IsCanonicalEraFile(f))
+            {
+                existingFile = f;
+                break;
+            }
+            existingFile ??= f;
         }
 
         if (existingFile is null)

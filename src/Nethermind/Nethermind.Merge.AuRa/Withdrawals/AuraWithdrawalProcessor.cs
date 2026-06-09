@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;

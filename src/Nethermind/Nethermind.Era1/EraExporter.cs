@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 
@@ -57,8 +58,7 @@ public class EraExporter(
             fileSystem.Directory.CreateDirectory(destinationPath);
         }
 
-        ProgressLogger progress = new("Era export", logManager);
-        progress.Reset(0, to - from + 1);
+        using ProgressReporter progress = new("Era export", logManager, to - from + 1);
         int totalProcessed = 0;
 
         long startEpoch = from / _era1Size;
@@ -91,8 +91,6 @@ public class EraExporter(
         string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
         fileSystem.File.Delete(checksumPath);
         await WriteFileAsync(checksumPath, checksums, fileNames, cancellation);
-
-        progress.LogProgress();
 
         if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
 
@@ -130,13 +128,7 @@ public class EraExporter(
                     }
 
                     await eraWriter.Add(block, receipts, cancellation);
-
-                    bool shouldLog = (Interlocked.Increment(ref totalProcessed) % 10000) == 0;
-                    if (shouldLog)
-                    {
-                        progress.Update(totalProcessed);
-                        progress.LogProgress();
-                    }
+                    progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancellation);

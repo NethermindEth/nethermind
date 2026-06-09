@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -80,6 +80,16 @@ public class HistoryPrunerTests
             /*expectedPruneBelow:*/ 20L,
             /*finalCutoff:*/ BeaconGenesisBlockNumber
         ).SetName("Prunes_up_to_sync_pivot");
+
+        // 5 epochs × 32 slots = 160 blocks of retention > chain length (100) — CalculateRollingCutoff
+        // Retention window (5 × 32 = 160 blocks) exceeds chain length (100), so the cutoff is clamped to 0 and no pruning occurs.
+        yield return new TestCaseData(
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 5, PruningInterval = 0 },
+            /*syncPivot:*/ (long)blocks,
+            /*primeWithOldestRead:*/ false,
+            /*expectedPruneBelow:*/ 1L,
+            /*finalCutoff:*/ 0L
+        ).SetName("Rolling_mode_with_retention_larger_than_chain_age_does_not_prune");
     }
 
     private static IEnumerable<TestCaseData> BalPruningCases()
@@ -183,6 +193,18 @@ public class HistoryPrunerTests
         CheckOldestAndCutoff(expectedPruneBelow, finalCutoff, historyPruner);
     }
 
+    [TestCase(0L, 0L)]
+    [TestCase(1L, 32L)]
+    [TestCase(82125L, 2_628_000L)] // mainnet EIP-4444 default
+    public async Task GetRetentionBlocks_converts_epochs_to_blocks(long retentionEpochs, long expected)
+    {
+        IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks: 0);
+        IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        Assert.That(historyPruner.GetRetentionBlocks(retentionEpochs), Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task Can_find_oldest_block()
     {
@@ -255,7 +277,7 @@ public class HistoryPrunerTests
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
 
-        TestDelegate action = () => new HistoryPruner(
+        Action action = () => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IBlockAccessListStore>(),

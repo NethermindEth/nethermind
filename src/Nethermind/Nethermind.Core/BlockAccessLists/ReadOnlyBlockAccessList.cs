@@ -18,7 +18,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
 {
-    private readonly Dictionary<Address, ReadOnlyAccountChanges> _accountChanges;
+    private readonly Dictionary<AddressAsKey, ReadOnlyAccountChanges> _accountChanges;
     private readonly ReadOnlyAccountChanges[] _orderedAccounts;
 
     [JsonIgnore]
@@ -71,7 +71,7 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount, Hash256? wireHash)
     {
         _orderedAccounts = orderedAccounts;
-        _accountChanges = new Dictionary<Address, ReadOnlyAccountChanges>(orderedAccounts.Length);
+        _accountChanges = new Dictionary<AddressAsKey, ReadOnlyAccountChanges>(orderedAccounts.Length);
         int totalReads = 0;
         int totalChangeEvents = 0;
         foreach (ReadOnlyAccountChanges a in orderedAccounts)
@@ -90,7 +90,7 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     {
         if (other is null) return false;
         if (_accountChanges.Count != other._accountChanges.Count) return false;
-        foreach (KeyValuePair<Address, ReadOnlyAccountChanges> kv in _accountChanges)
+        foreach (KeyValuePair<AddressAsKey, ReadOnlyAccountChanges> kv in _accountChanges)
         {
             if (!other._accountChanges.TryGetValue(kv.Key, out ReadOnlyAccountChanges? otherAcc)) return false;
             if (!kv.Value.Equals(otherAcc)) return false;
