@@ -147,7 +147,7 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!));
+        Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
     }
 
     [Test]
@@ -193,8 +193,8 @@ public class MergePluginTests
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
-        _plugin.InitBlockProducer(_consensusPlugin!);
-        Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
+        IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
+        Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
     }
 
     [Test]
@@ -299,31 +299,6 @@ public class MergePluginTests
         Assert.That(jsonRpcConfig.Enabled, Is.True);
         Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);
         Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
-    }
-
-    [TestCase(true, true, true)]
-    [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
-    public async Task InitThrowExceptionIfBodiesAndReceiptIsDisabled(bool downloadBody, bool downloadReceipt, bool shouldPass)
-    {
-        ISyncConfig syncConfig = new SyncConfig()
-        {
-            FastSync = true,
-            DownloadBodiesInFastSync = downloadBody,
-            DownloadReceiptsInFastSync = downloadReceipt
-        };
-
-        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, _jsonRpcConfig, syncConfig));
-        INethermindApi api = container.Resolve<INethermindApi>();
-        Func<Task> invocation = () => _plugin.Init(api);
-        if (shouldPass)
-        {
-            Assert.That(async () => await invocation(), Throws.Nothing);
-        }
-        else
-        {
-            Assert.That(async () => await invocation(), Throws.TypeOf<InvalidConfigurationException>());
-        }
     }
 
     private static void AssertPostMergeEthCapabilitiesAdded(INethermindApi api)

@@ -58,7 +58,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            Substitute.For<IRewardsStore>()
         );
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -194,7 +195,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            Substitute.For<IRewardsStore>()
         );
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -373,7 +375,7 @@ public class RewardTests
             .Returns(ci => ci.ArgAt<Address>(2));
 
         SigningTxCache signingTxCache = new(tree, specProvider);
-        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, Substitute.For<ITransactionProcessor>());
+        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, Substitute.For<ITransactionProcessor>(), Substitute.For<IRewardsStore>());
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -518,7 +520,8 @@ public class RewardTests
             votingContract,
             mintedRecordContract,
             signingTxCache,
-            transactionProcessor);
+            transactionProcessor,
+            Substitute.For<IRewardsStore>());
 
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks[(int)checkpointNumber]);
 
@@ -563,7 +566,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            Substitute.For<IRewardsStore>()
             );
 
         UInt256 totalReward = UInt256.Parse("171000000000000000000");

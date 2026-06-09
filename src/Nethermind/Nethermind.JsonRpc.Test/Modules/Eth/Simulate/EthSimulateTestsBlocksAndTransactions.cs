@@ -196,6 +196,20 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
 
+    [Test]
+    public async Task Test_eth_simulateV1_empty_blockStateCalls_returns_error()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [] };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.False);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
+    }
+
     /// <summary>
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
     ///     We test on blocks before current head and after it,

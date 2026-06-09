@@ -21,7 +21,6 @@ public class NodeHealthTracker<TKey, TNode>(
     private readonly ConcurrentDictionary<ValueHash256, bool> _isRefreshing = new();
     private readonly LruCache<ValueHash256, int> _peerFailures = new(1024, "peer failure");
     private readonly ValueHash256 _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
-    private readonly TimeSpan _refreshPingTimeout = config.RefreshPingTimeout;
 
     private bool SameAsSelf(TNode node) => nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
 
@@ -40,15 +39,12 @@ public class NodeHealthTracker<TKey, TNode>(
                 }
 
                 // OK, fine, we'll ping it.
-                using CancellationTokenSource cts = new(_refreshPingTimeout);
                 try
                 {
-                    await kademliaMessageSender.Ping(toRefresh, cts.Token);
-                    OnIncomingMessageFrom(toRefresh);
-                }
-                catch (OperationCanceledException)
-                {
-                    OnRequestFailed(toRefresh);
+                    if (await kademliaMessageSender.Ping(toRefresh, CancellationToken.None))
+                    {
+                        OnIncomingMessageFrom(toRefresh);
+                    }
                 }
                 catch (Exception e)
                 {

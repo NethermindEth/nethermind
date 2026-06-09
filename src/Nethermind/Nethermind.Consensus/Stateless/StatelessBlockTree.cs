@@ -152,6 +152,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public void DeleteInvalidBlock(Block invalidBlock)
         => throw new NotSupportedException();
 
+    public void ReportBadBlock(Block badBlock)
+        => throw new NotSupportedException();
+
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash)
         => throw new NotSupportedException();
 

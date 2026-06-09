@@ -71,16 +71,16 @@ public class StartupTreeFixerTests
             .WithDatabaseFrom(builder)
             .TestObject;
 
-        StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance);
+        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        BlockTestAssertions.AssertBlockHeaderEquivalent(tree.Head!.Header, block2.Header);
-        BlockTestAssertions.AssertBlockHeaderEquivalent(tree.BestSuggestedHeader, block2.Header);
-        BlockTestAssertions.AssertBlockBodyEquivalent(tree.BestSuggestedBody?.Body, block2.Body);
+        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
     }
 
@@ -107,7 +107,7 @@ public class StartupTreeFixerTests
 
         await testRpc.RestartBlockchainProcessor();
 
-        StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
+        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, NoErrorLimboLogs.Instance, 5);
         await tree.Accept(fixer, CancellationToken.None);
 
         await waitTask;
@@ -132,7 +132,7 @@ public class StartupTreeFixerTests
         await testRpc.RestartBlockchainProcessor();
 
         // we create a new empty db for stateDb so we shouldn't suggest new blocks
-        IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance, 5);
+        using IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance, 5);
         BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
@@ -149,7 +149,7 @@ public class StartupTreeFixerTests
 
         await testRpc.RestartBlockchainProcessor();
 
-        IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
+        using IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.StateReader, NoErrorLimboLogs.Instance, 5);
         BlockVisitOutcome result = await fixer.VisitBlock(null!, CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
@@ -196,7 +196,7 @@ public class StartupTreeFixerTests
 
         tree.UpdateMainChain(block2);
 
-        StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance);
+        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
@@ -204,7 +204,7 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2L), "best known");
-        BlockTestAssertions.AssertBlockHeaderEquivalent(tree.Head?.Header, block2.Header);
-        BlockTestAssertions.AssertBlockHeaderEquivalent(tree.BestSuggestedHeader, block2.Header);
+        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
     }
 }
