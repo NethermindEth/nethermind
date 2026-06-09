@@ -54,6 +54,10 @@ namespace Nethermind.Synchronization.FastSync
                 if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
                 _bestHeader = bestHeader;
             }
+            else if (syncConfig.StaticSnapPivot && _logger.IsDebug)
+            {
+                _logger.Debug($"Snap - static pivot header {targetBlockNumber} not yet available in the block tree; waiting for fast headers.");
+            }
         }
 
         public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];

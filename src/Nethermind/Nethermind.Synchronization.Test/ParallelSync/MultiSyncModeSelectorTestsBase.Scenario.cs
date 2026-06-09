@@ -310,6 +310,23 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder IfThisNodeIsBehindThePivotInFastSync()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(MidWayToPivot.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "behind the pivot in fast sync";
+                        }
+                    );
+                    return this;
+                }
+
                 public ScenarioBuilder IfThisNodeFinishedFastBlocksButNotFastSync()
                 {
                     _syncProgressSetups.Add(
