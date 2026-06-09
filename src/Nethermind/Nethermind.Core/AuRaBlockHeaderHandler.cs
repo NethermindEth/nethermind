@@ -80,9 +80,11 @@ public static class AuRaBlockHeaderHandler
     /// are tolerated (idempotent), but a different instance throws — the AuRa header shape
     /// is a global RLP invariant that two implementations cannot disagree on at runtime.
     /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="handler"/> is null.</exception>
     /// <exception cref="InvalidOperationException">A different handler has already been registered.</exception>
     public static void Register(IAuRaBlockHeaderHandler handler)
     {
+        ArgumentNullException.ThrowIfNull(handler);
         IAuRaBlockHeaderHandler? prior = Interlocked.CompareExchange(ref s_instance, handler, null);
         if (prior is not null && !ReferenceEquals(prior, handler))
         {

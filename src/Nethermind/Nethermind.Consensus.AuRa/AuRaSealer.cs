@@ -56,7 +56,9 @@ namespace Nethermind.Consensus.AuRa
                 return null;
             }
             if (block.Header is not AuRaBlockHeader auraHeader)
+            {
                 throw new InvalidOperationException($"AuRa sealer reached a non-AuRa header (block {block.Number}, hash {block.Header.Hash}); producer must upgrade the header before sealing.");
+            }
             auraHeader.AuRaSignature = signature.BytesWithRecovery;
 
             return block;

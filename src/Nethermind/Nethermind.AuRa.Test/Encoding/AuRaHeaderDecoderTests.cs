@@ -17,8 +17,9 @@ public class AuRaHeaderDecoderTests
     [Test]
     public void Can_decode_aura()
     {
+        // Deterministic seed so a flake here is reproducible.
         byte[] auRaSignature = new byte[64];
-        new Random().NextBytes(auRaSignature);
+        new Random(0xA5A5).NextBytes(auRaSignature);
         BlockHeader header = Build.A.BlockHeader
             .WithAura(100000000, auRaSignature)
             .TestObject;
