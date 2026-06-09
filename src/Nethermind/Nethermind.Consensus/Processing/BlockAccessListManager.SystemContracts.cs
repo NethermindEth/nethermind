@@ -65,15 +65,15 @@ public partial class BlockAccessListManager
             return;
         }
 
-        CheckInitialized();
-
-        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        IWorldState worldState = preExecution.WorldState;
+        // Write directly to the raw worldstate (matching master's pre-PR behaviour). Routing
+        // through the BAL-traced pre-execution worldstate breaks in parallel mode because
+        // BlockAccessListBasedWorldState.CreateAccount is a no-op — the materialised accounts
+        // would never reach the underlying state and the state root would diverge.
         foreach (Address address in addresses)
         {
-            worldState.CreateAccount(address, UInt256.Zero, UInt256.Zero);
+            stateProvider.CreateAccount(address, UInt256.Zero, UInt256.Zero);
         }
 
-        worldState.Commit(spec, commitRoots: false);
+        stateProvider.Commit(spec, commitRoots: false);
     }
 }
