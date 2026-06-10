@@ -19,9 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Builders
@@ -76,7 +74,6 @@ namespace Nethermind.Core.Test.Builders
                         BlockAccessListStore,
                         ChainLevelInfoRepository,
                         _specProvider,
-                        BloomStorage,
                         SyncConfig,
                         LimboLogs.Instance);
                 }
@@ -91,8 +88,6 @@ namespace Nethermind.Core.Test.Builders
 
             TestObjectInternal ??= BlockTree;
         }
-
-        public IBloomStorage BloomStorage { get; set; } = Substitute.For<IBloomStorage>();
 
         public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
 
@@ -189,14 +184,6 @@ namespace Nethermind.Core.Test.Builders
 
         public bool PostMergeBlockTree { get; set; }
 
-        public BlockTreeBuilder WithRealBloom
-        {
-            get
-            {
-                BloomStorage = new BloomStorage(new BloomConfig(), HeadersDb, new InMemoryDictionaryFileStoreFactory());
-                return this;
-            }
-        }
 
         public BlockTreeBuilder WithStateRoot(Hash256 stateRoot)
         {
@@ -511,12 +498,6 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithMetadataDb(IDb metadataDb)
         {
             MetadataDb = metadataDb;
-            return this;
-        }
-
-        public BlockTreeBuilder WithBloomStorage(IBloomStorage bloomStorage)
-        {
-            BloomStorage = bloomStorage;
             return this;
         }
 

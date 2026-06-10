@@ -46,14 +46,17 @@ public partial class TransactionProcessorTests
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(testCase.ExpectedVmCalls));
-        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1));
-        Assert.That(tx.SpentGas, Is.EqualTo(testCase.ExpectedSpentGas));
-        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore - testCase.ExpectedSenderDebit));
-        if (recipient != TestItem.AddressA)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo(recipientBalanceBefore + testCase.Value));
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(testCase.ExpectedVmCalls));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1));
+            Assert.That(tx.SpentGas, Is.EqualTo(testCase.ExpectedSpentGas));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore - testCase.ExpectedSenderDebit));
+            if (recipient != TestItem.AddressA)
+            {
+                Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo(recipientBalanceBefore + testCase.Value));
+            }
         }
     }
 
@@ -73,19 +76,22 @@ public partial class TransactionProcessorTests
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
-        Assert.That(tracer.ActionCalls, Is.EqualTo(1));
-        Assert.That(tracer.ActionEndCalls, Is.EqualTo(1));
-        Assert.That(tracer.ActionGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
-        Assert.That(tracer.ActionEndGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
-        Assert.That(tracer.ActionValue, Is.EqualTo((UInt256)7.Wei));
-        Assert.That(tracer.ActionFrom, Is.EqualTo(TestItem.AddressA));
-        Assert.That(tracer.ActionTo, Is.EqualTo(recipient));
-        Assert.That(tracer.ActionInput, Is.Empty);
-        Assert.That(tracer.ActionType, Is.EqualTo(ExecutionType.TRANSACTION));
-        Assert.That(tracer.IsPrecompileCall, Is.False);
-        Assert.That(tracer.ActionOutput, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+            Assert.That(tracer.ActionCalls, Is.EqualTo(1));
+            Assert.That(tracer.ActionEndCalls, Is.EqualTo(1));
+            Assert.That(tracer.ActionGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
+            Assert.That(tracer.ActionEndGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
+            Assert.That(tracer.ActionValue, Is.EqualTo((UInt256)7.Wei));
+            Assert.That(tracer.ActionFrom, Is.EqualTo(TestItem.AddressA));
+            Assert.That(tracer.ActionTo, Is.EqualTo(recipient));
+            Assert.That(tracer.ActionInput, Is.Empty);
+            Assert.That(tracer.ActionType, Is.EqualTo(ExecutionType.TRANSACTION));
+            Assert.That(tracer.IsPrecompileCall, Is.False);
+            Assert.That(tracer.ActionOutput, Is.Empty);
+        }
     }
 
     [Test]
@@ -105,11 +111,14 @@ public partial class TransactionProcessorTests
 
         TransactionResult result = transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
-        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore));
-        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(senderNonceBefore));
-        Assert.That(_stateProvider.AccountExists(recipient), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(senderNonceBefore));
+            Assert.That(_stateProvider.AccountExists(recipient), Is.False);
+        }
     }
 
     [TestCase(false, 1ul, true, true)]
@@ -136,10 +145,13 @@ public partial class TransactionProcessorTests
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
-        Assert.That(tracer.ReceiptLogs, Has.Length.EqualTo(expectTransferLog ? 1 : 0));
-        Assert.That(tracer.ReportLogCalls, Is.EqualTo(expectTransferLog && isTracingLogs ? 1 : 0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+            Assert.That(tracer.ReceiptLogs, Has.Length.EqualTo(expectTransferLog ? 1 : 0));
+            Assert.That(tracer.ReportLogCalls, Is.EqualTo(expectTransferLog && isTracingLogs ? 1 : 0));
+        }
         if (expectTransferLog)
         {
             AssertLog(tracer.ReceiptLogs[0], ExpectedTransferLog(TestItem.AddressA, recipient, value));
@@ -250,9 +262,12 @@ public partial class TransactionProcessorTests
 
     private static void AssertLog(LogEntry actual, LogEntry expected)
     {
-        Assert.That(actual.Address, Is.EqualTo(expected.Address));
-        Assert.That(actual.Data, Is.EqualTo(expected.Data));
-        Assert.That(actual.Topics, Is.EqualTo(expected.Topics));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Address, Is.EqualTo(expected.Address));
+            Assert.That(actual.Data, Is.EqualTo(expected.Data));
+            Assert.That(actual.Topics, Is.EqualTo(expected.Topics));
+        }
     }
 
     private sealed class SimpleTransferLogTracer(bool isTracingLogs) : TxTracer

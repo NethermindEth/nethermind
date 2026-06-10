@@ -195,29 +195,32 @@ public class ScopeProviderTests(bool useFlat)
         {
             scope.HintBal(bal, sink).Wait();
 
-            Assert.That(sink.Accounts.ContainsKey(TestItem.AddressA), Is.True);
-            Assert.That(sink.Accounts[TestItem.AddressA]!.Balance, Is.EqualTo((UInt256)100));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sink.Accounts.ContainsKey(TestItem.AddressA), Is.True);
+                Assert.That(sink.Accounts[TestItem.AddressA]!.Balance, Is.EqualTo((UInt256)100));
 
-            Assert.That(sink.Accounts.ContainsKey(TestItem.AddressB), Is.True);
-            Assert.That(sink.Accounts[TestItem.AddressB]!.Balance, Is.EqualTo((UInt256)200));
+                Assert.That(sink.Accounts.ContainsKey(TestItem.AddressB), Is.True);
+                Assert.That(sink.Accounts[TestItem.AddressB]!.Balance, Is.EqualTo((UInt256)200));
 
-            Assert.That(sink.NullAccounts.ContainsKey(TestItem.AddressC), Is.True);
+                Assert.That(sink.NullAccounts.ContainsKey(TestItem.AddressC), Is.True);
 
-            IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
-            IWorldStateScopeProvider.IStorageTree storageTreeB = scope.CreateStorageTree(TestItem.AddressB);
+                IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
+                IWorldStateScopeProvider.IStorageTree storageTreeB = scope.CreateStorageTree(TestItem.AddressB);
 
-            StorageCell cellA1 = new(TestItem.AddressA, 1);
-            StorageCell cellA2 = new(TestItem.AddressA, 2);
-            StorageCell cellB5 = new(TestItem.AddressB, 5);
+                StorageCell cellA1 = new(TestItem.AddressA, 1);
+                StorageCell cellA2 = new(TestItem.AddressA, 2);
+                StorageCell cellB5 = new(TestItem.AddressB, 5);
 
-            Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
-            Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
+                Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
+                Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
 
-            Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
-            Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
+                Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
+                Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
 
-            Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
-            Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
+                Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
+                Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
+            }
         }
     }
 
