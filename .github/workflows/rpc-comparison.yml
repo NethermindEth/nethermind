@@ -505,9 +505,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: NethermindEth/rpc-tests
-          # Intentional: the rpc_int --archive/--pruned support and the @archive/@pruned
-          # tagging live on this branch.
-          ref: rpc-changes
+          ref: main
 
       - name: Setup Go environment
         uses: actions/setup-go@v6
