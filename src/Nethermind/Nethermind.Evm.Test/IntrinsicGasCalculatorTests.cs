@@ -308,7 +308,7 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(Eip2780IntrinsicCases))]
         public void Eip2780_intrinsic_gas_is_calculated_properly(Recipient recipient, UInt256 value, long expectedStandard)
         {
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
             Address to = recipient switch
             {
                 Recipient.Precompile => Address.FromNumber(1), // 0x01 ECRECOVER precompile
@@ -333,7 +333,7 @@ namespace Nethermind.Evm.Test
         public void Eip2780_recipient_warm_via_access_list_is_charged_warm_read()
         {
             // EIP-2780 test vector 7: a recipient present in the access list is touched at WARM_STATE_READ.
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
             AccessList accessList = new AccessList.Builder().AddAddress(TestItem.AddressB).Build();
             Transaction tx = Build.A.Transaction.WithValue(1).WithTo(TestItem.AddressB).WithAccessList(accessList)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -348,7 +348,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Eip2780_intrinsic_gas_for_create_charges_transfer_log_only_when_value_positive()
         {
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
 
             Transaction createZero = Build.A.Transaction.WithValue(0).WithCode(Array.Empty<byte>())
@@ -367,7 +367,7 @@ namespace Nethermind.Evm.Test
         public void Eip2780_reduces_the_calldata_floor_base()
         {
             // Without reducing the floor base, the legacy 21,000 floor would dominate and negate the EIP.
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
             Transaction tx = Build.A.Transaction.WithData([1]).SignedAndResolved().TestObject;
 
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);

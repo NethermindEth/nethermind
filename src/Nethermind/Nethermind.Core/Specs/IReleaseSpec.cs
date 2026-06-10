@@ -479,6 +479,10 @@ namespace Nethermind.Core.Specs
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
         /// and cold-account costs against actual state work.
         /// </summary>
+        /// <remarks>
+        /// Must be co-activated with EIP-7708: the value-transfer cost includes the transfer-log
+        /// charge, so enabling EIP-2780 without EIP-7708 would price a log that is never emitted.
+        /// </remarks>
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
