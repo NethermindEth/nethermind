@@ -131,6 +131,11 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
+            if (toBlock.Number < fromBlock.Number)
+            {
+                return [];
+            }
+
             static IEnumerable<ulong> BlockNumbers(ulong from, ulong count)
             {
                 for (ulong i = 0; i < count; i++) yield return from + i;
