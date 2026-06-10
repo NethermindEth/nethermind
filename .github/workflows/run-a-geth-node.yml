@@ -76,7 +76,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       run_id: ${{ steps.wait.outputs.run_id }}
-      rpc_url: ${{ steps.specs.outputs.rpc_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -119,6 +118,8 @@ jobs:
           set -euo pipefail
           [ "$ALLOWED_IPS" == "null" ] && ALLOWED_IPS=""
           [ "$MACHINE_TYPE" == "null" ] && MACHINE_TYPE=""
+          # node_custom_types needs a valid Linode plan id; default when none provided.
+          [ -z "$MACHINE_TYPE" ] && MACHINE_TYPE="g6-standard-8"
 
           # Fast/minimal-history pruned Geth (snap sync, --gcmode full), declared in the
           # smoke-tests node-set config schema. gh workflow run (vs benc-uk) is used so
@@ -170,27 +171,9 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Download machine specs artifact
-        env:
-          GH_APP_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          set -euo pipefail
-          # The machine-details artifact only appears after create-machines finishes
-          # provisioning, so poll (bounded) until it's available.
-          ARTIFACT_ID=""
-          for attempt in $(seq 1 60); do
-            ARTIFACT_ID=$(curl -s -H "Accept: application/vnd.github.v3+json" -H "Authorization: token $GH_APP_TOKEN" \
-              "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts" \
-              | jq -r '.artifacts[0].id // empty')
-            [ -n "$ARTIFACT_ID" ] && break
-            echo "Artifacts not yet available (attempt $attempt/60); retrying in 30s..."
-            sleep 30
-          done
-          if [ -z "$ARTIFACT_ID" ]; then
-            echo "Timed out (~30m) waiting for the smoke-tests machine-details artifact."
-            exit 1
-          fi
-          curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token $GH_APP_TOKEN" \
-            -o artifact.zip "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip"
+          ARTIFACT_ID=$(curl -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ steps.gh-app.outputs.token }}" https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts | jq '.artifacts[0].id')
+          curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ steps.gh-app.outputs.token }}" -o artifact.zip https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip
           unzip artifact.zip -d ./downloaded-artifacts/
 
       - name: Display machine specs content
