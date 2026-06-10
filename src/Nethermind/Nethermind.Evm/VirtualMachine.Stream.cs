@@ -28,6 +28,13 @@ public static class StreamInterpreter
     /// Unsynchronized — an approximate count is enough.
     /// </summary>
     public static long FramesExecuted;
+
+    // TEMPORARY divergence diagnostics — remove before merge.
+    internal static readonly bool Diagnose =
+        Environment.GetEnvironmentVariable("NETHERMIND_STREAM_DIAG") == "1";
+
+    internal static void Log(string file, int depth, int pc, Instruction instruction, long gas)
+        => System.IO.File.AppendAllText(file, $"{depth} {pc} {instruction} {gas}\n");
 }
 
 public unsafe partial class VirtualMachine<TGasPolicy>
@@ -97,6 +104,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ThrowStreamOperationCanceledException();
 
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
+                if (StreamInterpreter.Diagnose)
+                    StreamInterpreter.Log("/tmp/diag-stream.log", callDepth, programCounter, instruction, TGasPolicy.GetRemainingGas(in gas));
                 programCounter++;
                 opCodeCount++;
 
@@ -221,30 +230,26 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (ReturnData is not null)
                     break;
 
-                if (entry.Kind == StreamOpKind.JumpClass)
+                // Table handlers may consume MORE than one instruction (fused PUSH2+JUMP,
+                // EXTCODESIZE+ISZERO, and any future superinstruction), so after ANY table
+                // call the entry index is recomputed from the landing pc — blind increment is
+                // reserved for the check-free cores above, which provably advance exactly one
+                // instruction. The landing pc is always an instruction start or past the end
+                // of code (a truncated trailing PUSH advances past it — same clean exit as
+                // the bytecode loop). A landing inside immediate bytes cannot happen while
+                // ValidateJump holds — fail loudly rather than silently fall off the stream
+                // as an empty success.
+                if ((uint)programCounter >= (uint)pcToEntry.Length)
                 {
-                    // The handler moved the program counter (taken jump, fused PUSH2+JUMP, or
-                    // plain fall-through); recover the entry index from the landing pc, which
-                    // is always an instruction start or past the end of code (a truncated
-                    // trailing PUSH2 advances past it — same clean exit as the bytecode loop).
-                    // A landing inside immediate bytes cannot happen while ValidateJump holds —
-                    // fail loudly rather than silently fall off the stream as an empty success.
-                    if ((uint)programCounter >= (uint)pcToEntry.Length)
-                    {
-                        entryIndex = ops.Length;
-                        continue;
-                    }
-
-                    entryIndex = pcToEntry[programCounter];
-                    if (entryIndex == InstructionStream.InvalidEntry)
-                    {
-                        exceptionType = EvmExceptionType.InvalidJumpDestination;
-                        break;
-                    }
+                    entryIndex = ops.Length;
+                    continue;
                 }
-                else
+
+                entryIndex = pcToEntry[programCounter];
+                if (entryIndex == InstructionStream.InvalidEntry)
                 {
-                    entryIndex++;
+                    exceptionType = EvmExceptionType.InvalidJumpDestination;
+                    break;
                 }
             }
 

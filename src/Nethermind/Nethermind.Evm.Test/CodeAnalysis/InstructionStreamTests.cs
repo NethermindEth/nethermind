@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -209,6 +210,20 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     }
 
     private static Address CalleeAddress => TestItem.AddressC;
+    private static Address SolidityExampleAddress => TestItem.AddressE;
+
+    // Runtime code of the Legacy stExample.solidityExample contract — the smallest real-world
+    // reproducer of the mainnet stream divergence (CREATE of a child contract, then a CALL into
+    // it, with fused PUSH2+JUMPI dispatchers throughout).
+    private const string SolidityExampleRuntime =
+        "608060405234801561001057600080fd5b506004361061002b5760003560e01c8063b66176a714610030575b600080fd5b61004a6004803603810190610045919061018d565b61004c565b005b60405161005890610145565b604051809103906000f080158015610074573d6000803e3d6000fd5b506000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555060008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663b66176a783836040518363ffffffff1660e01b815260040161010f9291906101dc565b600060405180830381600087803b15801561012957600080fd5b505af115801561013d573d6000803e3d6000fd5b505050505050565b6101238061020683390190565b600080fd5b6000819050919050565b61016a81610157565b811461017557600080fd5b50565b60008135905061018781610161565b92915050565b600080604083850312156101a4576101a3610152565b5b60006101b285828601610178565b92505060206101c385828601610178565b9150509250929050565b6101d681610157565b82525050565b60006040820190506101f160008301856101cd565b6101fe60208301846101cd565b939250505056fe608060405267ff00ff00ff00ff0060005534801561001c57600080fd5b5060f88061002b6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063b66176a714602d575b600080fd5b60436004803603810190603f91906089565b6045565b005b806000819055508082555050565b600080fd5b6000819050919050565b6069816058565b8114607357600080fd5b50565b6000813590506083816062565b92915050565b60008060408385031215609d57609c6053565b5b600060a9858286016076565b925050602060b8858286016076565b915050925092905056fea26469706673582212209beb73a466a9b6fcce247e8e1ec0ac303febcb2192064276aa2188d57d06a98d64736f6c63430008150033a2646970667358221220223335c3b4079496a81c6cbdfc0adb8a4b8ed0637499a9301f31c89383d238e164736f6c63430008150033";
+
+    private static readonly byte[] s_solidityExampleCall = Prepare.EvmCode
+        .CallWithInput(SolidityExampleAddress, 4_000_000,
+            Core.Extensions.Bytes.FromHexString(
+                "b66176a700000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000045"))
+        .Op(Instruction.STOP)
+        .Done;
 
     public static IEnumerable<TestCaseData> DifferentialCases()
     {
@@ -221,6 +236,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(s_fusedPush2JumpiLoop) { TestName = "FusedPush2JumpiLoop" };
         yield return new TestCaseData(s_truncatedTrailingPush2) { TestName = "TruncatedTrailingPush2" };
         yield return new TestCaseData(s_deepStackToTheLimit) { TestName = "DeepStackToTheLimit" };
+        yield return new TestCaseData(s_solidityExampleCall) { TestName = "SolidityExampleCreateAndCall" };
     }
 
     [Test]
@@ -244,6 +260,8 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     {
         TestState.CreateAccount(CalleeAddress, 1000000);
         TestState.InsertCode(CalleeAddress, s_calleeCode, Spec);
+        TestState.CreateAccount(SolidityExampleAddress, 1000000);
+        TestState.InsertCode(SolidityExampleAddress, Core.Extensions.Bytes.FromHexString(SolidityExampleRuntime), Spec);
 
         ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
 
@@ -263,7 +281,11 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         StreamInterpreter.Enabled = useStream;
         try
         {
-            return Execute(new ReceiptCaptureTracer(), code);
+            // The base Execute helper caps gas at 100k; the CREATE-heavy cases need more.
+            (Block block, Transaction transaction) = PrepareTx(Activation, 8_000_000, code);
+            ReceiptCaptureTracer tracer = new();
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+            return tracer;
         }
         finally
         {

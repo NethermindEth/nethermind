@@ -1322,6 +1322,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                 // Call gas policy hook before instruction execution.
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
+                if (StreamInterpreter.Diagnose)
+                    StreamInterpreter.Log("/tmp/diag-loop.log", callDepth, programCounter, instruction, TGasPolicy.GetRemainingGas(in gas));
 
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)
