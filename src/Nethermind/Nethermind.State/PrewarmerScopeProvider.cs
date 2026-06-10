@@ -82,12 +82,8 @@ public class PrewarmerScopeProvider(
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
 
-            _prefetchCts.Cancel();
-            foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
-            {
-                // Joins reader threads so the base scope is never disposed under an in-flight read.
-                kv.Value.Dispose();
-            }
+            // Joins reader threads so the base scope is never disposed under an in-flight read.
+            StopStridePrefetchers();
             _prefetchCts.Dispose();
 
             baseScope.Dispose();
@@ -137,6 +133,11 @@ public class PrewarmerScopeProvider(
 
         public void Commit(long blockNumber)
         {
+            // Prefetched values are only valid for this block's parent state; a reader surviving
+            // into the next block would repopulate the freshly cleared cache with stale values.
+            // Join here, strictly inside the block lifecycle.
+            StopStridePrefetchers();
+
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
@@ -146,6 +147,18 @@ public class PrewarmerScopeProvider(
             long sw = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
+        }
+
+        private void StopStridePrefetchers()
+        {
+            if (_stridePrefetchers.IsEmpty) return;
+
+            _prefetchCts.Cancel();
+            foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
+            {
+                kv.Value.Dispose();
+            }
+            _stridePrefetchers.Clear();
         }
 
         public Hash256 RootHash => baseScope.RootHash;
