@@ -334,7 +334,23 @@ jobs:
               fi
 
               if echo "$response" | jq -e '.result == false' >/dev/null 2>&1; then
-                echo "Node at $rpc_url reports synced (eth_syncing=false)."
+                # eth_syncing=false is ambiguous post-merge: it also means "idle at genesis"
+                # (an EL not yet driven by the CL), not "synced". Require a non-genesis,
+                # recent head before declaring the node synced, else keep waiting.
+                head="$(rpc_post "$rpc_url" '{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest",false],"id":1}')" || head=""
+                head_hex="$(echo "$head" | jq -r '.result.number // empty' 2>/dev/null)"
+                head_ts_hex="$(echo "$head" | jq -r '.result.timestamp // empty' 2>/dev/null)"
+                if [ -z "$head_hex" ] || [ "$head_hex" = "0x0" ]; then
+                  echo "eth_syncing=false but still at genesis (block ${head_hex:-?}) at $rpc_url — CL not driving yet. Retrying in 60s..."
+                  sleep 60
+                  continue
+                fi
+                if [[ "$head_ts_hex" =~ ^0x[0-9a-fA-F]+$ ]] && [ "$(( $(date +%s) - $(( head_ts_hex )) ))" -gt 600 ]; then
+                  echo "eth_syncing=false at block $head_hex but head is stale (>600s old) at $rpc_url — not at tip yet. Retrying in 60s..."
+                  sleep 60
+                  continue
+                fi
+                echo "Node at $rpc_url reports synced (eth_syncing=false, head $head_hex)."
                 break
               else
                 # When syncing, .result is an object; show a short summary if available
