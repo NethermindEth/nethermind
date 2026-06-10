@@ -34,9 +34,9 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
 
     private struct EmptyIterator : IPersistence.IFlatIterator
     {
-        public readonly bool MoveNext() => false;
-        public readonly ValueHash256 CurrentKey => default;
-        public readonly ReadOnlySpan<byte> CurrentValue => default;
-        public readonly void Dispose() { }
+        public bool MoveNext() => false;
+        public ValueHash256 CurrentKey => default;
+        public ReadOnlySpan<byte> CurrentValue => default;
+        public void Dispose() { }
     }
 }

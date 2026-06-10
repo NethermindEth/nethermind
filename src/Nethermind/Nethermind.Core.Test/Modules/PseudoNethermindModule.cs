@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Reflection;
-using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
@@ -18,9 +17,7 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Module = Autofac.Module;
@@ -87,6 +84,4 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             }
         });
     }
-
-
 }
