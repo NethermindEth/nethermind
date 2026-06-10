@@ -17,10 +17,8 @@ public class PreBlockCaches
     private const int InitialCapacity = 4096 * 8;
 
     /// <summary>
-    /// Set-index bits for the per-block storage cache: 2^(17+1) = 262144 entries.
-    /// Sized above the distinct-slot working set of storage-heavy blocks (a 100M-gas block of cold
-    /// SLOADs touches ~47K slots; ~140K at 300M gas). With the default 32K entries such blocks evict
-    /// prewarmed values before the main loop reads them, turning would-be cache hits back into DB reads.
+    /// 2^(17+1) = 262144 entries — above the distinct-slot working set of storage-heavy blocks
+    /// (~140K slots at 300M gas), so prewarmed values survive until the main loop reads them.
     /// </summary>
     private const int StorageCacheSetsBits = 17;
 

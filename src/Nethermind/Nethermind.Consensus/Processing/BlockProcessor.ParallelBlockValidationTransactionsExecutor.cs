@@ -150,13 +150,9 @@ public partial class BlockProcessor
                                 if (i == 0)
                                 {
                                     // ApplyStateChanges commits a write batch, which cancels the read-warming
-                                    // task BlockProcessor started at the top of the block. Reissue the hint
-                                    // and let it drain BEFORE applying, so the BAL-declared reads land in the
-                                    // pre-block cache while the shared state still serves pre-block values —
-                                    // exactly what the tx workers read through their parent-state readers.
-                                    // Warming post-apply state instead would poison the shared cache and
-                                    // invalidate the block. The tx workers run concurrently and start hitting
-                                    // the cache as it fills.
+                                    // task BlockProcessor started. Reissue the hint and drain it BEFORE the
+                                    // apply: the state still serves the pre-block values the tx workers read;
+                                    // warming post-apply values would poison the shared cache.
                                     if (state.balManager.BatchReadEnabled && state.block.BlockAccessList is not null)
                                     {
                                         try
@@ -165,8 +161,7 @@ public partial class BlockProcessor
                                         }
                                         catch (Exception)
                                         {
-                                            // Warm reads are best-effort: a cancelled or faulted hint only
-                                            // means fewer cache hits and must never fail the block.
+                                            // Warming is best-effort; a faulted hint must never fail the block.
                                         }
                                     }
 

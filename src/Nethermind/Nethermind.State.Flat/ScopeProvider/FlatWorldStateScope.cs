@@ -251,10 +251,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }, token);
     }
 
-    /// <summary>
-    /// Minimum job count before sink reads are pumped on dedicated reader threads instead of the
-    /// shared thread pool. Below this the thread-spawn cost outweighs the latency win.
-    /// </summary>
+    /// <summary>Minimum job count before sink reads use dedicated reader threads; below this the
+    /// thread-spawn cost outweighs the win.</summary>
     private const int DedicatedWarmReadThreshold = 1024;
 
     private void RunSinkSlotReads(
@@ -313,15 +311,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     /// <summary>
-    /// Resolves the hinted slot reads on dedicated reader threads that pull from a shared job cursor.
+    /// Resolves the hinted slot reads on dedicated reader threads pulling a shared job cursor.
     /// </summary>
     /// <remarks>
-    /// These reads are disk-latency-bound, so getting them into the pre-block cache before block
-    /// execution needs them is purely a question of read concurrency. The shared thread pool cannot
-    /// provide it: block execution occupies the pool workers for the whole block, so pool-scheduled
-    /// reads (Parallel.For, Task.Run) get starved exactly when they are most valuable. Dedicated
-    /// threads sidestep the pool entirely; they spend most of their lifetime blocked on I/O, so
-    /// oversubscribing the processor count is intended and harmless.
+    /// Block execution occupies the thread pool for the whole block, starving pool-scheduled reads
+    /// exactly when they matter. The readers are disk-latency-bound, so oversubscribing the
+    /// processor count is intended.
     /// </remarks>
     private void PumpSinkSlotReads(
         ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs,
@@ -343,7 +338,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     {
                         int j = Interlocked.Increment(ref nextJob);
                         if (j >= jobCount) return;
-                        if (_pausePrewarmer) continue; // Same semantics as the pooled path: skip, don't retry.
+                        if (_pausePrewarmer) continue; // Skip, don't retry — same as the pooled path.
                         (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
                         ReadSlotToSink(sink, address, in slot, selfDestructIdx);
                     }
@@ -353,9 +348,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
         finally
         {
-            // Join every reader that actually started — also on a thread-creation failure mid-loop —
-            // so the caller's pooled jobs buffer is never disposed under a live reader. This blocks
-            // the hint task's pool worker, the same worker the pooled Parallel.For used to occupy.
+            // Join started readers even on a mid-loop spawn failure, so the pooled jobs buffer is
+            // never disposed under a live reader.
             Task.WaitAll(readers.AsSpan(0, started));
         }
     }

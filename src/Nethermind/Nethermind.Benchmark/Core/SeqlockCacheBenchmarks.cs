@@ -270,9 +270,7 @@ public class SeqlockCacheHitRateBenchmarks
 }
 
 /// <summary>
-/// Measures the impact of the configurable set count: per-op hot-path cost at different table
-/// sizes, and full working-set sweeps where the default capacity (32K entries) thrashes while
-/// a larger table retains the set.
+/// Measures the configurable set count: per-op cost across sizes, working-set sweeps above capacity.
 /// </summary>
 [MemoryDiagnoser]
 public class SeqlockCacheSizeBenchmarks
@@ -284,8 +282,7 @@ public class SeqlockCacheSizeBenchmarks
     [Params(SeqlockCache<StorageCell, byte[]>.DefaultSetsBits, 17)]
     public int SetsBits { get; set; }
 
-    // 1K = far below capacity (hot-path parity check); 48K = the ~47K distinct-slot working set
-    // of a 100M-gas cold-SLOAD block (overflows the default 32K entries); 140K = ~300M-gas block.
+    // 1K = below capacity; 48K/140K = distinct-slot working sets of 100M/300M-gas cold-SLOAD blocks.
     [Params(1_000, 48_000, 140_000)]
     public int KeyCount { get; set; }
 

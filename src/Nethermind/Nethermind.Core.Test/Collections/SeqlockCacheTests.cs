@@ -598,9 +598,7 @@ public class SeqlockCacheTests
     [Test]
     public void Larger_cache_retains_working_set_that_overflows_default_capacity()
     {
-        // Working set ~1.5x the default 32K-entry capacity: the default cache must lose a
-        // significant fraction to capacity evictions, while a cache sized above the working
-        // set must retain nearly everything (skew-associativity allows rare conflict misses).
+        // ~1.5x the default 32K-entry capacity: the default cache must evict, the larger one retain.
         const int workingSet = 48_000;
 
         SeqlockCache<StorageCell, byte[]> defaultCache = new();

@@ -47,9 +47,8 @@ public sealed class SeqlockCache<TKey, TValue>
     public const int DefaultSetsBits = 14;
 
     /// <summary>
-    /// Upper bound on set-index bits. Keeps the way 0 index (bits 0..setsBits-1) below the
-    /// hash-signature bits (22-41) and the way 1 index (bits 42..41+setsBits) within the hash,
-    /// so the three bit ranges stay independent.
+    /// Upper bound keeping the way 0 index (bits 0..setsBits-1), hash signature (bits 22-41) and
+    /// way 1 index (bits 42..41+setsBits) independent.
     /// </summary>
     public const int MaxSetsBits = 20;
 
@@ -109,14 +108,11 @@ public sealed class SeqlockCache<TKey, TValue>
     }
 
     /// <summary>
-    /// Creates a cache with 2^<paramref name="setsBits"/> sets per way (total entries = 2^(setsBits+1)).
+    /// Creates a cache with 2^<paramref name="setsBits"/> sets per way (total entries = 2^(setsBits+1),
+    /// allocated upfront). Size to the expected working set — capacity evictions turn repeat reads
+    /// into backing-store reads.
     /// </summary>
     /// <param name="setsBits">Number of set-index bits, between 1 and <see cref="MaxSetsBits"/>.</param>
-    /// <remarks>
-    /// Size the cache to the expected working set: entries evicted by capacity pressure turn
-    /// later reads of the same key into backing-store reads. Memory cost is
-    /// 2^(setsBits+1) × sizeof(Entry) allocated upfront.
-    /// </remarks>
     public SeqlockCache(int setsBits)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(setsBits, 1);
