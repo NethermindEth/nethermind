@@ -355,7 +355,7 @@ public class IlSegmentCompilerTests
         int programCounter = segment!.EntryPc;
         // These tests exercise pure-compute segments only; the VM argument is consumed solely
         // by embedded handler calls (memory/keccak), which the VM-level tests cover.
-        EvmExceptionType result = segment.Invoke(null!, ref stack, ref gas, ref programCounter);
+        EvmExceptionType result = segment.Invoke(null!, ref stack, ref gas, ref programCounter, segment.EntryIndex);
 
         UInt256[] finalStack = new UInt256[stack.Head];
         for (int i = finalStack.Length - 1; i >= 0; i--)

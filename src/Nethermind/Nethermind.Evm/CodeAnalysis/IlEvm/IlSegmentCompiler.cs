@@ -22,7 +22,7 @@ namespace Nethermind.Evm.CodeAnalysis.IlEvm;
 /// <see cref="IlCompiledSegment.ExitPc"/>; on a handler halt the frame is dead and the program
 /// counter is unobservable.
 /// </summary>
-public delegate EvmExceptionType CompiledSegmentInvoke(VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref int programCounter);
+public delegate EvmExceptionType CompiledSegmentInvoke(VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref int programCounter, int entryIndex);
 
 public sealed class IlCompiledSegment
 {
@@ -48,6 +48,12 @@ public sealed class IlCompiledSegment
     public required int StackRequired { get; init; }
 
     public required int StackMaxGrowth { get; init; }
+
+    /// <summary>
+    /// Which entry of the (possibly multi-entry) compiled region this segment represents;
+    /// passed verbatim to <see cref="Invoke"/>. Single-block segments use 0.
+    /// </summary>
+    public int EntryIndex { get; init; }
 }
 
 /// <summary>
@@ -71,7 +77,7 @@ public sealed class IlCompiledSegment
 /// interpreter's value transformations (the same Op*.Operation methods / mirrored intrinsics)
 /// and consumes exactly the same gas.
 /// </summary>
-public static class IlSegmentCompiler
+public static partial class IlSegmentCompiler
 {
     // Segment economics: a segment pays a fixed boundary toll — every entry operand is popped
     // and every surviving value pushed back through big-endian word conversions, each costing
@@ -90,6 +96,8 @@ public static class IlSegmentCompiler
     // return would silently unbalance the evaluation stack (DynamicMethods skip verification).
     // If the signature ever changes, the field becomes null and TryCompile turns itself off.
     private static readonly MethodInfo? s_gasConsume = RequireVoid(typeof(EthereumGasPolicy).GetMethod(nameof(EthereumGasPolicy.Consume), [typeof(EthereumGasPolicy).MakeByRefType(), typeof(long)]));
+    private static readonly MethodInfo? s_gasRemaining = typeof(EthereumGasPolicy).GetMethod(nameof(EthereumGasPolicy.GetRemainingGas), [typeof(EthereumGasPolicy).MakeByRefType()]);
+    private static readonly FieldInfo? s_stackHead = typeof(EvmStack).GetField(nameof(EvmStack.Head));
     private static readonly MethodInfo? s_popUInt256 = typeof(EvmStack).GetMethod(nameof(EvmStack.PopUInt256), [typeof(UInt256).MakeByRefType()]);
     private static readonly MethodInfo? s_pushUInt256 = typeof(EvmStack).GetMethod(nameof(EvmStack.PushUInt256))?.MakeGenericMethod(typeof(OffFlag));
     private static readonly FieldInfo? s_constantsValues = typeof(SegmentConstants).GetField(SegmentConstants.ValuesFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
@@ -358,7 +366,7 @@ public static class IlSegmentCompiler
         DynamicMethod method = new(
             $"IlEvmSegment_{block.Start}_{exitPc}_{ops.Count}",
             typeof(EvmExceptionType),
-            [typeof(SegmentConstants), typeof(VirtualMachine<EthereumGasPolicy>), typeof(EvmStack).MakeByRefType(), typeof(EthereumGasPolicy).MakeByRefType(), typeof(int).MakeByRefType()],
+            [typeof(SegmentConstants), typeof(VirtualMachine<EthereumGasPolicy>), typeof(EvmStack).MakeByRefType(), typeof(EthereumGasPolicy).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int)],
             typeof(IlSegmentCompiler).Module,
             skipVisibility: true);
         ILGenerator il = method.GetILGenerator();

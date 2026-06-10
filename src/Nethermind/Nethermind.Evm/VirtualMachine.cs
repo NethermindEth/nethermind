@@ -1346,7 +1346,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         Unsafe.As<VirtualMachine<EthereumGasPolicy>>(this),
                         ref stack,
                         ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas),
-                        ref programCounter);
+                        ref programCounter,
+                        ilSegment.EntryIndex);
                     opCodeCount += ilSegment.OpCount;
                     // Embedded handler calls (memory/keccak) charge dynamic gas and may halt —
                     // mirror the interpreter's post-dispatch checks exactly.

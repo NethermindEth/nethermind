@@ -155,13 +155,17 @@ public static class IlEvm
 
             IlCompiledSegment?[] segments = new IlCompiledSegment?[analyzed.BlockCount];
             int segmentCount = 0;
-            for (int i = 0; i < analyzed.BlockCount; i++)
+            int blockIndex = 0;
+            while (blockIndex < analyzed.BlockCount)
             {
-                if (analyzed.Blocks[i].IsCompilable
-                    && IlSegmentCompiler.TryCompile(code, analyzed.Blocks[i], out IlCompiledSegment? segment))
+                if (analyzed.Blocks[blockIndex].IsCompilable)
                 {
-                    segments[i] = segment;
-                    segmentCount++;
+                    blockIndex += IlSegmentCompiler.TryCompileRegion(code, analyzed, blockIndex, segments, out int regionSegments);
+                    segmentCount += regionSegments;
+                }
+                else
+                {
+                    blockIndex++;
                 }
             }
 
