@@ -63,6 +63,11 @@ on:
         default: ""
   pull_request:
     types: [labeled]
+  # Temporary while the workflow is under development: a push to its branch runs
+  # a narrow smoke test (also forces GitHub to register the workflow so it can
+  # be dispatched via the API). Remove before merging to master.
+  push:
+    branches: [feature/rpc-benchmarks-ci]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -125,7 +130,7 @@ jobs:
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
             node_config="${IN_NODE_CONFIG:-}"
-          else
+          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
             # PR labeled with 'rpc-benchmark': run flood with defaults, no profiling.
             branch="${PR_HEAD_BRANCH}"
             benchmark_tool="flood"
@@ -134,6 +139,16 @@ jobs:
             state_layout="flat"
             additional_flags=""
             tool_config=""
+            node_config=""
+          else
+            # push (development): narrow smoke test on the prebuilt master image.
+            branch="${PUSH_BRANCH}"
+            benchmark_tool="flood"
+            docker_image="nethermindeth/nethermind:master"
+            dottrace="false"
+            state_layout="flat"
+            additional_flags=""
+            tool_config='{"tests":"eth_call","rates":"10 50","duration":15}'
             node_config=""
           fi
 

@@ -46,11 +46,20 @@ fi
 vegeta --version || true
 
 # ---------------------------------------------------------------------------
-# Install flood (kamilchodola fork).
+# Install flood (kamilchodola fork). Prefer uv (guaranteed on this runner by
+# the expb workflow); fall back to pip like rpc-comparison.yml.
 # ---------------------------------------------------------------------------
 log "Installing flood from $FLOOD_REPO..."
-python3 -m pip install --user --force-reinstall --no-deps "$FLOOD_REPO"
-command -v flood >/dev/null 2>&1 || die "flood not on PATH after install (check ~/.local/bin)"
+if command -v uv >/dev/null 2>&1; then
+  # No explicit package name: uv infers it from the git source and exposes the
+  # `flood` entry point regardless of the package's distribution name.
+  uv tool install --force "$FLOOD_REPO"
+  export PATH="$(uv tool dir --bin):$PATH"
+else
+  python3 -m pip install --user --force-reinstall "$FLOOD_REPO" \
+    || python3 -m pip install --user --break-system-packages --force-reinstall "$FLOOD_REPO"
+fi
+command -v flood >/dev/null 2>&1 || die "flood not on PATH after install"
 
 # ---------------------------------------------------------------------------
 # Resolve the list of tests to run.
