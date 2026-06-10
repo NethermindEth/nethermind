@@ -150,20 +150,10 @@ public partial class BlockProcessor
                                 if (i == 0)
                                 {
                                     // ApplyStateChanges commits a write batch, which cancels the read-warming
-                                    // task BlockProcessor started. Reissue the hint and drain it BEFORE the
-                                    // apply: the state still serves the pre-block values the tx workers read;
-                                    // warming post-apply values would poison the shared cache.
-                                    if (state.balManager.BatchReadEnabled && state.block.BlockAccessList is not null)
-                                    {
-                                        try
-                                        {
-                                            state.stateProvider.HintBal(state.block.BlockAccessList).GetAwaiter().GetResult();
-                                        }
-                                        catch (Exception)
-                                        {
-                                            // Warming is best-effort; a faulted hint must never fail the block.
-                                        }
-                                    }
+                                    // task BlockProcessor started. Drain that task BEFORE the apply: the state
+                                    // still serves the pre-block values the tx workers read; warming post-apply
+                                    // values would poison the shared cache.
+                                    state.balManager.DrainBalReadHint();
 
                                     // ApplyStateChanges mutates the shared stateProvider so runs inside
                                     // the parallel loop (slot 0) rather than via Task.Run. Parallel tx

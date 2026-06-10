@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Withdrawals;
@@ -49,8 +50,10 @@ public partial class BlockAccessListManager(
     bool witnessMode = false)
     : IBlockAccessListManager, IDisposable
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
+    private Task? _balReadHint;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
@@ -115,6 +118,8 @@ public partial class BlockAccessListManager(
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
+        // The tracked hint must always belong to the block being processed.
+        _balReadHint = null;
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -154,6 +159,30 @@ public partial class BlockAccessListManager(
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+        }
+    }
+
+    public void TrackBalReadHint(Task balReadHint) => _balReadHint = balReadHint;
+
+    public void DrainBalReadHint()
+    {
+        Task? balReadHint = _balReadHint;
+        if (balReadHint is null) return;
+        _balReadHint = null;
+
+        try
+        {
+            balReadHint.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when warming was already cancelled, e.g. by an earlier write batch.
+        }
+        catch (Exception ex)
+        {
+            // Warming is best-effort: a faulted hint only means fewer pre-block cache hits and
+            // must never fail the block. Log so a slow block can be correlated with the failure.
+            if (_logger.IsDebug) _logger.Debug($"BAL read warming faulted: {ex}");
         }
     }
 
