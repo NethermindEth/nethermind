@@ -106,7 +106,7 @@ namespace Nethermind.Core.Test
             reference.Update([4, 5, 6]);
             reference.UpdateFinalTo(expected);
 
-            Assert.That(output.SequenceEqual(expected), Is.True);
+            Assert.That(output.ToArray(), Is.EqualTo(expected.ToArray()));
         }
 
         [Test]
