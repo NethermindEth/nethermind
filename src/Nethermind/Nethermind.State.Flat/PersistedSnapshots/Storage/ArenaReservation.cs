@@ -17,7 +17,6 @@ public sealed class ArenaReservation : RefCountingDisposable
     // ArenaFile dictionary lookup.
     private readonly ArenaFile _arenaFile;
     private readonly long _initialSize;
-    private readonly PersistedSnapshotTier _tier;
 
     internal int ArenaId { get; }
     internal long Offset { get; }
@@ -52,14 +51,12 @@ public sealed class ArenaReservation : RefCountingDisposable
                 $"Cannot construct ArenaReservation for arena {arenaId}: the underlying ArenaFile is already being disposed.");
         _arenaManager = arenaManager;
         _arenaFile = arenaFile;
-        _tier = arenaManager.Tier;
         ArenaId = arenaId;
         Offset = offset;
         Size = size;
         _initialSize = size;
-        Metrics.ArenaReservationCountByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
-        Metrics.ArenaReservationBytesByTier.AddOrUpdate(_tier,
-            static (_, s) => s, static (_, b, s) => b + s, size);
+        Interlocked.Increment(ref Metrics._arenaReservationCount);
+        Interlocked.Add(ref Metrics._arenaReservationBytes, size);
     }
 
     /// <summary>
@@ -224,10 +221,8 @@ public sealed class ArenaReservation : RefCountingDisposable
         if (!punched)
             _arenaFile.FadviseDontNeed(Offset, footprint);
         _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
-        Metrics.ArenaReservationCountByTier.AddOrUpdate(_tier,
-            0L, static (_, c) => Math.Max(0, c - 1));
-        Metrics.ArenaReservationBytesByTier.AddOrUpdate(_tier,
-            static (_, _) => 0L, static (_, b, s) => Math.Max(0, b - s), _initialSize);
+        Interlocked.Decrement(ref Metrics._arenaReservationCount);
+        Interlocked.Add(ref Metrics._arenaReservationBytes, -_initialSize);
         _arenaFile.Dispose();
     }
 }

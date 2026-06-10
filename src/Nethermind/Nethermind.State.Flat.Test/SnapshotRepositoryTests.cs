@@ -23,7 +23,7 @@ public class SnapshotRepositoryTests
     private SnapshotRepository _repository = null!;
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
-    private MemoryArenaManager _memArena = null!;
+    private TempDirArenaManager _memArena = null!;
     private BlobArenaManager _blobs = null!;
     private string _blobsDir = null!;
 
@@ -33,9 +33,9 @@ public class SnapshotRepositoryTests
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
         _repository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
-        _memArena = new MemoryArenaManager();
+        _memArena = new TempDirArenaManager();
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-sreptest-blobs-{Guid.NewGuid():N}");
-        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Persisted);
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);
     }
 
     [TearDown]
@@ -318,13 +318,7 @@ public class SnapshotRepositoryTests
         Snapshot snap = CreateSnapshot(from, to);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
         snap.Dispose();
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
-        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
-        data.CopyTo(span);
-        writer.GetWriter().Advance(data.Length);
-        (_, ArenaReservation reservation) = writer.Complete();
-        TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
-        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Persisted);
+        return TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data);
     }
 
     private static void SetupSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>

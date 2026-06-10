@@ -102,11 +102,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // resolving each id via _blobManager.GetFile(id) (lock-free O(1) array read). The
     // canonical list of leased ids lives on disk inside this snapshot's metadata HSST under
     // the "ref_ids" key — no in-memory dict.
-    private readonly IBlobArenaManager _blobManager;
+    private readonly BlobArenaManager _blobManager;
 
     public StateId From { get; }
     public StateId To { get; }
-    public PersistedSnapshotTier Tier { get; }
 
     /// <summary>
     /// The contiguous trie-RLP region this snapshot occupies in its blob arena. Non-empty
@@ -138,22 +137,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// Construct a snapshot over a pre-leased metadata reservation. The caller (typically
     /// <see cref="PersistedSnapshotRepository"/>) MUST have already acquired one lease per
     /// blob arena id referenced by the snapshot's <c>ref_ids</c> metadata via
-    /// <see cref="IBlobArenaManager.TryLeaseFile"/>, and is responsible for rolling those
+    /// <see cref="BlobArenaManager.TryLeaseFile"/>, and is responsible for rolling those
     /// leases back on construction failure. This ctor just bumps the metadata reservation
     /// lease and stashes the manager ref for later id → file resolution.
     /// </summary>
-    /// <remarks>
-    /// The address-bound cache is enabled on every snapshot regardless of <paramref name="tier"/>:
-    /// the slot storage is inline as a <see cref="Vector512{T}"/> field (64-byte aligned)
-    /// so there is no per-snapshot allocation to skip. <paramref name="tier"/> is retained
-    /// for caller compatibility but no longer affects the cache.
-    /// </remarks>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        IBlobArenaManager blobManager, PersistedSnapshotTier tier, BlobRange blobRange = default)
+        BlobArenaManager blobManager, BlobRange blobRange = default)
     {
         From = from;
         To = to;
-        Tier = tier;
         BlobRange = blobRange;
         _reservation = reservation;
         _blobManager = blobManager;
@@ -171,7 +163,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             while (e.MoveNext())
             {
                 if (!_blobManager.TryLeaseFile(e.Current, out _))
-                    throw new InvalidOperationException($"Blob arena {e.Current} not registered in this tier");
+                    throw new InvalidOperationException($"Blob arena {e.Current} not registered with the blob manager");
                 acquired++;
             }
 
@@ -227,8 +219,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
         // Increment only after every throw path above has been cleared, so a
         // partial-construction failure does not leave the gauge off by one.
-        Metrics.ActivePersistedSnapshotCountByTier.AddOrUpdate(tier,
-            1L, static (_, c) => c + 1);
+        Interlocked.Increment(ref Metrics._activePersistedSnapshotCount);
     }
 
     /// <summary>
@@ -245,14 +236,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// per-session mmap view + lease bookkeeping for a 2-byte read. The reader holds no
     /// resources of its own; the surrounding snapshot's lease keeps the mmap alive.
     /// </remarks>
-    public RefIdsEnumerator GetRefIdsEnumerator() => new(this);
+    private RefIdsEnumerator GetRefIdsEnumerator() => new(this);
 
     /// <summary>
     /// Ref-struct enumerator backing <see cref="GetRefIdsEnumerator"/>. Yields each
     /// <see cref="NodeRef.BlobArenaId"/> stored in the snapshot's <c>ref_ids</c>
     /// metadata entry in ascending order without allocating a <c>ushort[]</c>.
     /// </summary>
-    public ref struct RefIdsEnumerator
+    private ref struct RefIdsEnumerator
     {
         private ArenaByteReader _reader;
         private long _cursor;
@@ -574,17 +565,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    /// <summary>
-    /// Read the "ref_ids" list from a snapshot's metadata column as a fresh
-    /// <c>ushort[]</c>. Production code on the snapshot life-cycle path iterates via
-    /// <see cref="GetRefIdsEnumerator"/> instead; this method is preserved for test
-    /// assertions that need a materialised array to compare against.
-    /// </summary>
-    public static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct =>
-        PersistedSnapshotReader.ReadRefIdsFromMetadata<TReader, TPin>(in reader);
-
     // Worst-case Merkle-Patricia branch node: 17 entries × (1-byte prefix + 32-byte hash)
     // plus a 3-byte long-list framing header ≈ 564 bytes. Round up to 568 so the read
     // covers any branch node in one pread.
@@ -685,7 +665,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             BlobArenaFile file = _blobManager.GetFile(id);
             file.Dispose();
             // Opportunistic reclaim: if we were the last external lessee, signal the
-            // manager to drop the file's frontier back to 0 so BlobAllocatedBytesByTier
+            // manager to drop the file's frontier back to 0 so BlobAllocatedBytes
             // reflects "no live NodeRef into this file" and the file becomes packing-
             // reusable from offset 0. The manager re-validates under its own lock.
             if (file.HasOnlyManagerLease)
@@ -693,7 +673,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         }
         _reservation.Dispose();
 
-        Metrics.ActivePersistedSnapshotCountByTier.AddOrUpdate(Tier,
-            0L, static (_, c) => Math.Max(0, c - 1));
+        Interlocked.Decrement(ref Metrics._activePersistedSnapshotCount);
     }
 }

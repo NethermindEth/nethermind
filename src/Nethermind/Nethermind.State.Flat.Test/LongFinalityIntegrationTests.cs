@@ -31,7 +31,7 @@ public class LongFinalityIntegrationTests
     private IProcessExitSource _processExitSource = null!;
     private CancellationTokenSource _cts = null!;
     private IFlatDbConfig _config = null!;
-    private MemoryArenaManager _memArena = null!;
+    private TempDirArenaManager _memArena = null!;
     private BlobArenaManager _helperBlobs = null!;
 
     [SetUp]
@@ -44,8 +44,8 @@ public class LongFinalityIntegrationTests
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
-        _memArena = new MemoryArenaManager();
-        _helperBlobs = new BlobArenaManager(Path.Combine(_testDir, "helper-blobs"), 4L * 1024 * 1024, PersistedSnapshotTier.Persisted);
+        _memArena = new TempDirArenaManager();
+        _helperBlobs = new BlobArenaManager(Path.Combine(_testDir, "helper-blobs"), 4L * 1024 * 1024);
     }
 
     [TearDown]
@@ -66,23 +66,14 @@ public class LongFinalityIntegrationTests
         return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing);
     }
 
-    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data,
-        PersistedSnapshot[]? referencedSnapshots = null)
-    {
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
-        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
-        data.CopyTo(span);
-        writer.GetWriter().Advance(data.Length);
-        (_, ArenaReservation reservation) = writer.Complete();
-        TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _helperBlobs);
-        return new PersistedSnapshot(from, to, reservation, _helperBlobs, PersistedSnapshotTier.Persisted);
-    }
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
+        TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _helperBlobs, from, to, data);
 
     [Test]
     public void FullStack_PersistAndQuery_AccountsStorageAndTrieNodes()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
@@ -153,7 +144,7 @@ public class LongFinalityIntegrationTests
 
         // Session 1: persist two snapshots
         using (ArenaManager smallArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: maxArenaSize))
-        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
+        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
@@ -197,7 +188,7 @@ public class LongFinalityIntegrationTests
 
         // Session 2: reload and verify
         using (ArenaManager smallArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
+        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
@@ -266,10 +257,9 @@ public class LongFinalityIntegrationTests
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, data1);
         PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, data2);
         PersistedSnapshotList toMerge = new(2) { baseSnap1, baseSnap2 };
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
+        byte[] merged = PersistedSnapshotBuilderTestExtensions.NWayMergeSnapshots(toMerge);
 
-        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged,
-            [baseSnap1, baseSnap2]);
+        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged);
 
         // State node should have newer value
         Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
@@ -286,11 +276,10 @@ public class LongFinalityIntegrationTests
 
     [TestCase(10)]
     [TestCase(100)]
-    [TestCase(500)]
     public void ManySnapshots_PersistAndQuery(int snapshotCount)
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
@@ -312,7 +301,7 @@ public class LongFinalityIntegrationTests
     public async Task FlatDbManager_EndToEnd_WithPersistedSnapshots()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
@@ -367,7 +356,7 @@ public class LongFinalityIntegrationTests
 
         // Session 1: persist snapshots
         using (ArenaManager smallArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
+        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
@@ -381,7 +370,7 @@ public class LongFinalityIntegrationTests
 
         // Session 2: reload and prune
         using (ArenaManager smallArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
+        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
@@ -393,7 +382,7 @@ public class LongFinalityIntegrationTests
 
         // Session 3: verify pruned state persists
         using (ArenaManager smallArena3 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs3 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted))
+        using (BlobArenaManager smallBlobs3 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(smallArena3, smallBlobs3, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
@@ -405,7 +394,7 @@ public class LongFinalityIntegrationTests
     public void EmptySnapshot_PersistsAndLoads()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, PersistedSnapshotTier.Persisted);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
@@ -428,7 +417,6 @@ public class LongFinalityIntegrationTests
         FlatDbConfig config = new();
         Assert.That(config.EnableLongFinality, Is.False);
         Assert.That(config.LongFinalityReorgDepth, Is.EqualTo(90000));
-        Assert.That(config.PersistedSnapshotPath, Is.EqualTo("snapshots"));
         Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
     }
 }

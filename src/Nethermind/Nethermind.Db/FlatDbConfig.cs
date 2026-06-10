@@ -25,13 +25,12 @@ public class FlatDbConfig : IFlatDbConfig
     public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
     public bool EnableLongFinality { get; set; } = false;
     public int LongFinalityReorgDepth { get; set; } = 90000;
-    public string PersistedSnapshotPath { get; set; } = "snapshots";
-    public long ArenaFileSizeBytes { get; set; } = 1L * 1024 * 1024 * 1024;
-    public long PersistedSnapshotArenaPageCacheBytes { get; set; } = 8L * 1024 * 1024 * 1024;
+    public long ArenaFileSizeBytes { get; set; } = 1.GiB;
+    public long PersistedSnapshotArenaPageCacheBytes { get; set; } = 8.GiB;
     public bool PersistedSnapshotFadviseOnPageEviction { get; set; } = false;
     public bool PersistedSnapshotPunchHoleOnReclaim { get; set; } = true;
     public int PersistedSnapshotMaxCompactSize { get; set; } = 1024 * 8;
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
-    public long PersistedSnapshotMaxCompactedSourceBytes { get; set; } = 2L * 1024 * 1024 * 1024;
+    public long PersistedSnapshotMaxCompactedSourceBytes { get; set; } = 2.GiB;
 }

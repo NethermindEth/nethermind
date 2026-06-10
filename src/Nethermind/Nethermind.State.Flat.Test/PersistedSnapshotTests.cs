@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat.Test;
 public class PersistedSnapshotTests
 {
     private ResourcePool _resourcePool = null!;
-    private MemoryArenaManager _memArena = null!;
+    private TempDirArenaManager _memArena = null!;
     private BlobArenaManager _blobs = null!;
     private string _blobsDir = null!;
 
@@ -30,9 +30,9 @@ public class PersistedSnapshotTests
     public void SetUp()
     {
         _resourcePool = new ResourcePool(new FlatDbConfig());
-        _memArena = new MemoryArenaManager();
+        _memArena = new TempDirArenaManager();
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-pstest-blobs-{Guid.NewGuid():N}");
-        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Persisted);
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);
     }
 
     [TearDown]
@@ -44,18 +44,7 @@ public class PersistedSnapshotTests
     }
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
-        CreatePersistedSnapshot(from, to, data, PersistedSnapshotTier.Persisted);
-
-    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data, PersistedSnapshotTier tier)
-    {
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
-        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
-        data.CopyTo(span);
-        writer.GetWriter().Advance(data.Length);
-        (_, ArenaReservation reservation) = writer.Complete();
-        TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
-        return new PersistedSnapshot(from, to, reservation, _blobs, tier);
-    }
+        TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data);
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()
     {
@@ -210,10 +199,9 @@ public class PersistedSnapshotTests
 
         long baseline = Active();
 
-        PersistedSnapshot s1 = CreatePersistedSnapshot(from, to1, data1, PersistedSnapshotTier.Persisted);
-        PersistedSnapshot s2 = CreatePersistedSnapshot(from, to2, data2, PersistedSnapshotTier.Persisted);
+        PersistedSnapshot s1 = CreatePersistedSnapshot(from, to1, data1);
+        PersistedSnapshot s2 = CreatePersistedSnapshot(from, to2, data2);
 
-        Assert.That(s1.Tier, Is.EqualTo(PersistedSnapshotTier.Persisted));
         Assert.That(Active(), Is.EqualTo(baseline + 2));
 
         s1.Dispose();
@@ -222,8 +210,7 @@ public class PersistedSnapshotTests
         s2.Dispose();
         Assert.That(Active(), Is.EqualTo(baseline));
 
-        static long Active() =>
-            Metrics.ActivePersistedSnapshotCountByTier.TryGetValue(PersistedSnapshotTier.Persisted, out long c) ? c : 0;
+        static long Active() => Metrics.ActivePersistedSnapshotCount;
     }
 
     [Test]
@@ -236,32 +223,22 @@ public class PersistedSnapshotTests
         TreePath path = new(Keccak.Compute("p"), 8);
         inMem.Content.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
 
-        long baselineBytes = Bytes(PersistedSnapshotTier.Persisted);
+        long baselineBytes = Metrics.BlobAllocatedBytes;
         // Build writes the trie-node RLPs into _blobs; afterBuild captures that growth.
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(inMem, _blobs);
-        long afterBuild = Bytes(PersistedSnapshotTier.Persisted);
+        long afterBuild = Metrics.BlobAllocatedBytes;
         Assert.That(afterBuild, Is.GreaterThan(baselineBytes), "Building a snapshot with trie nodes should grow blob-allocated bytes");
 
-        // Inline construction (skip LeaseBlobIdsFromHsst): the helper acquires an extra
-        // lease per blob id that other tests rely on but that this test must not leave
-        // dangling, otherwise the orphan-reset would correctly refuse to fire.
-        using (ArenaWriter writer = _memArena.CreateWriter(data.Length))
-        {
-            Span<byte> span = writer.GetWriter().GetSpan(data.Length);
-            data.CopyTo(span);
-            writer.GetWriter().Advance(data.Length);
-            (_, ArenaReservation reservation) = writer.Complete();
-            PersistedSnapshot persisted = new(from, to, reservation, _blobs, PersistedSnapshotTier.Persisted);
-            persisted.Dispose();
-        }
+        // Skip LeaseBlobIdsFromHsst: it acquires an extra lease per blob id that other
+        // tests rely on but that this test must not leave dangling, otherwise the
+        // orphan-reset would correctly refuse to fire.
+        TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data, leaseBlobIds: false)
+            .Dispose();
 
         // After the last external lease drops, the manager's TryResetOrphanedFrontier
         // should have reset the file's frontier and pushed the delta back to the gauge.
-        Assert.That(Bytes(PersistedSnapshotTier.Persisted), Is.EqualTo(baselineBytes),
+        Assert.That(Metrics.BlobAllocatedBytes, Is.EqualTo(baselineBytes),
             "Blob-allocated bytes must drop back to baseline once the last referencing snapshot is disposed");
-
-        static long Bytes(PersistedSnapshotTier tier) =>
-            Metrics.BlobAllocatedBytesByTier.TryGetValue(tier, out long c) ? c : 0;
     }
 
     [TestCase((ushort)0, 0)]
@@ -351,7 +328,7 @@ public class PersistedSnapshotTests
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _blobs);
 
         PersistedSnapshotList toMerge = new(2) { CreatePersistedSnapshot(s0, s1, data1), CreatePersistedSnapshot(s1, s2, data2) };
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
+        byte[] merged = PersistedSnapshotBuilderTestExtensions.NWayMergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
         // addrA slot 1 should be overridden to val3
@@ -431,7 +408,7 @@ public class PersistedSnapshotTests
         byte[] dataNewer = PersistedSnapshotBuilderTestExtensions.Build(newer, _blobs);
 
         PersistedSnapshotList toMerge = new(2) { CreatePersistedSnapshot(s0, s1, dataOlder), CreatePersistedSnapshot(s1, s2, dataNewer) };
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
+        byte[] merged = PersistedSnapshotBuilderTestExtensions.NWayMergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
         verify(persisted);
@@ -508,7 +485,7 @@ public class PersistedSnapshotTests
         // cache. For a small bound this exercises the cache-hit-with-cold-pages branch:
         // TryGetAddressBound's hit path now also calls TouchRangePopulate on the whole bound
         // when bound.Length <= AddressBoundWarmupBytes, re-arming the tracker and (on a real
-        // mmap) re-faulting any cold page in one syscall. With MemoryArenaManager the kernel
+        // mmap) re-faulting any cold page in one syscall. With TempDirArenaManager the kernel
         // side is a no-op; the assertion below just proves the lookup path remains correct.
         persisted.AdviseDontNeed();
         Assert.That(persisted.TryGetAccount(addr, out Account? acc3), Is.True);

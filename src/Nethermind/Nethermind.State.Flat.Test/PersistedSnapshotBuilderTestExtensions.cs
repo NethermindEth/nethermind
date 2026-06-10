@@ -35,9 +35,6 @@ internal static class PersistedSnapshotBuilderTestExtensions
         return pooled.WrittenSpan.ToArray();
     }
 
-    public static byte[] MergeSnapshots(PersistedSnapshotList snapshots) =>
-        NWayMergeSnapshots(snapshots);
-
     public static byte[] NWayMergeSnapshots(PersistedSnapshotList snapshots)
     {
         if (snapshots.Count == 0) throw new ArgumentException("Cannot merge empty snapshot list");

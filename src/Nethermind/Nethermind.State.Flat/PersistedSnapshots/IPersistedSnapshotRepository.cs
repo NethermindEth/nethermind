@@ -11,13 +11,11 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public interface IPersistedSnapshotRepository : IDisposable
 {
     int SnapshotCount { get; }
-    long BaseSnapshotMemory { get; }
     long CompactedSnapshotMemory { get; }
 
     /// <summary>
     /// Most-recently-registered <see cref="StateId"/> tracked under this repository's
-    /// catalog lock. Used as a self-seed for backward walks
-    /// (see <see cref="TryGetSnapshotFrom(StateId)"/>).
+    /// catalog lock. Used as a self-seed for backward walks.
     /// </summary>
     StateId? LastRegisteredState { get; }
 
@@ -41,14 +39,6 @@ public interface IPersistedSnapshotRepository : IDisposable
     PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);
 
     // Lookup
-    PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState);
-
-    /// <summary>
-    /// Self-seeded variant of <see cref="TryGetSnapshotFrom(StateId, StateId)"/> — uses
-    /// this repository's <see cref="LastRegisteredState"/> as the seed. Returns <c>null</c>
-    /// when no snapshot is registered yet.
-    /// </summary>
-    PersistedSnapshot? TryGetSnapshotFrom(StateId fromState);
     bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
     bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
     bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);

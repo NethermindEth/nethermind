@@ -30,7 +30,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 public sealed class PersistedSnapshotRepository(
     IArenaManager arenaManager,
-    IBlobArenaManager blobArenaManager,
+    BlobArenaManager blobArenaManager,
     IDb catalogDb,
     IFlatDbConfig config,
     PersistedSnapshotBloomFilterManager bloomManager,
@@ -45,12 +45,12 @@ public sealed class PersistedSnapshotRepository(
     private const int ProgressLogIntervalMs = 1000;
 
     private readonly IArenaManager _arena = arenaManager;
-    private readonly IBlobArenaManager _blobs = blobArenaManager;
+    private readonly BlobArenaManager _blobs = blobArenaManager;
     private readonly SnapshotCatalog _catalog = new(catalogDb);
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
-    private readonly StringLabel _tierLabel = new(arenaManager.Tier.Name);
+    private readonly StringLabel _tierLabel = new("persisted");
     private readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotRepository>();
     // Do NOT iterate these dictionaries on hot or metric paths — entry counts can
@@ -73,7 +73,7 @@ public sealed class PersistedSnapshotRepository(
     private long _baseSnapshotCount;
     private long _compactedSnapshotCount;
     private long _persistableSnapshotCount;
-    // Shared across both per-tier repos. Owned by the DI container, not this repo —
+    // Owned by the DI container, not this repo —
     // see <see cref="Dispose"/> which does NOT dispose the manager.
     private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
     private readonly Lock _catalogLock = new();
@@ -95,7 +95,6 @@ public sealed class PersistedSnapshotRepository(
         (int)(Interlocked.Read(ref _baseSnapshotCount)
             + Interlocked.Read(ref _compactedSnapshotCount)
             + Interlocked.Read(ref _persistableSnapshotCount));
-    public long BaseSnapshotMemory => Interlocked.Read(ref _baseSnapshotMemoryBytes);
     // Persistable snapshots are compacted (linked) snapshots — count their bytes here too.
     public long CompactedSnapshotMemory =>
         Interlocked.Read(ref _compactedSnapshotMemoryBytes) + Interlocked.Read(ref _persistableSnapshotMemoryBytes);
@@ -188,7 +187,7 @@ public sealed class PersistedSnapshotRepository(
         Timer? heartbeat = null;
         if (entries.Count > ParallelLoadThreshold && _logger.IsInfo)
         {
-            loadLog = new ProgressLogger($"Persisted snapshot load ({_arena.Tier.Name})", _logManager);
+            loadLog = new ProgressLogger("Persisted snapshot load", _logManager);
             loadLog.Reset(0, entries.Count);
             heartbeat = new Timer(ProgressLogIntervalMs);
             heartbeat.Elapsed += (_, _) => loadLog.LogProgress();
@@ -226,7 +225,7 @@ public sealed class PersistedSnapshotRepository(
         // The PersistedSnapshot ctor walks its own ref_ids metadata and leases each blob
         // arena file; on partial failure it releases what it took and disposes the
         // reservation lease before rethrowing — no repository-side cleanup needed.
-        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, _arena.Tier, entry.BlobRange);
+        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, entry.BlobRange);
 
         // Bloom is intentionally NOT built here — the bloom subsystem starts empty after
         // LoadFromCatalog. Callers must invoke ReconstructBloom() before queries to get
@@ -288,7 +287,7 @@ public sealed class PersistedSnapshotRepository(
         using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize);
         using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize))
         {
-            PersistedSnapshotBuilder.Build<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
+            PersistedSnapshotBuilder.Build<ArenaBufferWriter, WholeReadSessionReader, NoOpPin>(
                 snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
             Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written, _tierLabel);
             (location, reservation) = arenaWriter.Complete();
@@ -317,7 +316,7 @@ public sealed class PersistedSnapshotRepository(
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, blobRange, SnapshotKind.Base));
 
-            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, _arena.Tier, blobRange);
+            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, blobRange);
             RegisterBlooms(persisted, bloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
@@ -355,7 +354,7 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, BlobRange.None,
                 isPersistable ? SnapshotKind.Persistable : SnapshotKind.Compacted));
 
-            snapshot = new PersistedSnapshot(from, to, reservation, _blobs, _arena.Tier);
+            snapshot = new PersistedSnapshot(from, to, reservation, _blobs);
             RegisterBlooms(snapshot, bloom);
 
             if (isPersistable)
@@ -513,14 +512,13 @@ public sealed class PersistedSnapshotRepository(
     /// must be a recent (>= <paramref name="fromState"/>) state to walk back from; callers typically pass the
     /// in-memory snapshot repository's earliest <c>StateId</c>.
     /// </remarks>
-    /// <inheritdoc/>
-    public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState)
+    internal PersistedSnapshot? TryGetSnapshotFrom(StateId fromState)
     {
         StateId? seed = LastRegisteredState;
         return seed is null ? null : TryGetSnapshotFrom(fromState, seed.Value);
     }
 
-    public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState)
+    internal PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState)
     {
         if (seedState.BlockNumber <= fromState.BlockNumber) return null;
 
@@ -566,7 +564,7 @@ public sealed class PersistedSnapshotRepository(
     /// <summary>
     /// Prune snapshots with To.BlockNumber before the given block number. Blob arenas referenced
     /// by surviving compacted snapshots stay alive automatically via the
-    /// <see cref="IBlobArenaManager"/> refcount — no explicit "referenced base id"
+    /// <see cref="BlobArenaManager"/> refcount — no explicit "referenced base id"
     /// check is needed at this layer.
     /// </summary>
     public void RemoveStatesUntil(long blockNumber)
@@ -654,7 +652,7 @@ public sealed class PersistedSnapshotRepository(
         Interlocked.Add(ref globalMemory, -snapshot.Size);
         Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
         Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-        RemoveFromCatalog(to, depth);
+        _catalog.Remove(to, depth);
         snapshot.Dispose();
         return true;
     }
@@ -796,7 +794,7 @@ public sealed class PersistedSnapshotRepository(
         Timer? heartbeat = null;
         if (picks.Count > ParallelLoadThreshold && _logger.IsInfo)
         {
-            bloomLog = new ProgressLogger($"Persisted snapshot bloom rebuild ({_arena.Tier.Name})", _logManager);
+            bloomLog = new ProgressLogger("Persisted snapshot bloom rebuild", _logManager);
             bloomLog.Reset(0, picks.Count);
             heartbeat = new Timer(ProgressLogIntervalMs);
             heartbeat.Elapsed += (_, _) => bloomLog.LogProgress();
@@ -864,13 +862,6 @@ public sealed class PersistedSnapshotRepository(
             if (range > bestRange) { best = cand; bestRange = range; }
         }
         return best;
-    }
-
-    private void RemoveFromCatalog(in StateId to, long depth)
-    {
-        SnapshotCatalog.CatalogEntry? entry = _catalog.Find(to, depth);
-        if (entry is not null)
-            _catalog.Remove(to, depth);
     }
 
     public void Dispose()

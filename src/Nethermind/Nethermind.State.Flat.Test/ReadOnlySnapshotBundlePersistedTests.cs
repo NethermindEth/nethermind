@@ -21,7 +21,7 @@ namespace Nethermind.State.Flat.Test;
 public class ReadOnlySnapshotBundlePersistedTests
 {
     private ResourcePool _pool = null!;
-    private MemoryArenaManager _memArena = null!;
+    private TempDirArenaManager _memArena = null!;
     private BlobArenaManager _blobs = null!;
     private string _blobsDir = null!;
 
@@ -29,9 +29,9 @@ public class ReadOnlySnapshotBundlePersistedTests
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
-        _memArena = new MemoryArenaManager();
+        _memArena = new TempDirArenaManager();
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-robtest-blobs-{Guid.NewGuid():N}");
-        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Persisted);
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);
     }
 
     [TearDown]
@@ -176,14 +176,6 @@ public class ReadOnlySnapshotBundlePersistedTests
         reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
-    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data)
-    {
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length);
-        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
-        data.CopyTo(span);
-        writer.GetWriter().Advance(data.Length);
-        (_, ArenaReservation reservation) = writer.Complete();
-        TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
-        return new PersistedSnapshot(from, to, reservation, _blobs, PersistedSnapshotTier.Persisted);
-    }
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
+        TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data);
 }

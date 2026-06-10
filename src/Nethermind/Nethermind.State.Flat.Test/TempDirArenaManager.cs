@@ -1,24 +1,29 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
+
+namespace Nethermind.State.Flat.Test;
 
 /// <summary>
 /// Test-only convenience wrapper over <see cref="ArenaManager"/> backed by a fresh
 /// per-instance temporary directory. Provides the same surface as the production
-/// manager so existing tests and benchmarks can drop it in without further setup:
-/// disposing this wrapper closes the inner manager and recursively deletes the
-/// tempdir. Page tracker is disabled (no madvise / eviction queue) so tests stay
-/// deterministic and side-effect free.
+/// manager so tests can drop it in without further setup: disposing this wrapper
+/// closes the inner manager and recursively deletes the tempdir. Page tracker is
+/// disabled (no madvise / eviction queue) so tests stay deterministic and
+/// side-effect free.
 /// </summary>
-public sealed class MemoryArenaManager : IArenaManager
+public sealed class TempDirArenaManager : IArenaManager
 {
     private readonly string _tempDir;
     private readonly ArenaManager _inner;
 
-    public MemoryArenaManager(int arenaSize = 64 * 1024)
+    public TempDirArenaManager(int arenaSize = 64 * 1024)
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), "nm-memarena-" + Guid.NewGuid().ToString("N"));
+        _tempDir = Path.Combine(Path.GetTempPath(), "nm-temparena-" + Guid.NewGuid().ToString("N"));
         // ArenaFile requires the mmap to be page-aligned; 4 KiB floor avoids tiny test sizes
         // tripping the mmap minimum.
         long maxArenaSize = Math.Max(arenaSize, Environment.SystemPageSize);
@@ -26,8 +31,6 @@ public sealed class MemoryArenaManager : IArenaManager
     }
 
     public PageResidencyTracker PageTracker => _inner.PageTracker;
-
-    public PersistedSnapshotTier Tier => _inner.Tier;
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => _inner.Initialize(entries);
 

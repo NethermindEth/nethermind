@@ -378,15 +378,6 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
         return sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
     }
 
-    public StateId? GetEarliestSnapshotId()
-    {
-        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
-
-        if (sortedSnapshots.Count == 0)
-            return null;
-        return sortedSnapshots.Min;
-    }
-
     public bool RemoveAndReleaseCompactedKnownState(in StateId stateId)
     {
         if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))

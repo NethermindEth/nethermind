@@ -44,11 +44,10 @@ public sealed class CompactionSchedule : ICompactionSchedule
         return from + distance;
     }
 
-    // The three methods below mirror the inline `b & -b` / `b % _compactSize` math the
-    // persisted-tier callers used before the schedule migration — they do NOT short-circuit
-    // on `_compactSize <= 1` (the "compaction disabled" sentinel honoured by GetCompactSize
-    // and NextFullCompactionAfter), because PersistedSnapshotCompactor runs with its own
-    // min/max caps and may legitimately operate even when config.CompactSize == 1.
+    // The three methods below do NOT short-circuit on `_compactSize <= 1` (the "compaction
+    // disabled" sentinel honoured by GetCompactSize and NextFullCompactionAfter), because
+    // PersistedSnapshotCompactor runs with its own min/max caps and may legitimately
+    // operate even when config.CompactSize == 1.
 
     public bool IsFullCompactionBoundary(long blockNumber) =>
         blockNumber != 0 && ShiftedAlignment(blockNumber) >= _compactSize;

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,7 +33,9 @@ public class PersistenceManagerTests
     private IPersistedSnapshotRepository _persistedSnapshotRepository = null!;
     private ResourcePool _resourcePool = null!;
     private StateId Block0 = new(0, Keccak.EmptyTreeHash);
-    private MemoryArenaManager _memArena = null!;
+    private TempDirArenaManager _memArena = null!;
+    private BlobArenaManager _blobs = null!;
+    private string _blobsDir = null!;
 
     [SetUp]
     public void SetUp()
@@ -56,7 +60,9 @@ public class PersistenceManagerTests
 
         _persistedSnapshotCompactor = Substitute.For<IPersistedSnapshotCompactor>();
         _persistedSnapshotRepository = Substitute.For<IPersistedSnapshotRepository>();
-        _memArena = new MemoryArenaManager();
+        _memArena = new TempDirArenaManager();
+        _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-pmtest-blobs-{Guid.NewGuid():N}");
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);
 
         _persistenceManager = new PersistenceManager(
             _config,
@@ -73,7 +79,9 @@ public class PersistenceManagerTests
     public async Task TearDown()
     {
         await _persistenceManager.DisposeAsync();
+        _blobs.Dispose();
         _memArena.Dispose();
+        try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
         _persistedSnapshotRepository.Dispose();
     }
 
@@ -314,7 +322,7 @@ public class PersistenceManagerTests
             {
                 using ArenaWriter writer = _memArena.CreateWriter(0);
                 (SnapshotLocation _, ArenaReservation res) = writer.Complete();
-                return new PersistedSnapshot(Block0, Block0, res, NullBlobArenaManager.Instance, PersistedSnapshotTier.Persisted);
+                return new PersistedSnapshot(Block0, Block0, res, _blobs);
             });
 
         // The converted/boundary snapshots are disposed by DoConvert (via RemoveAndRelease + the
@@ -379,7 +387,7 @@ public class PersistenceManagerTests
         // and returns persistedToPersist via the stubbed TryLeaseSnapshotTo below.
         using ArenaWriter emptyWriter = _memArena.CreateWriter(0);
         (_, ArenaReservation emptyRes) = emptyWriter.Complete();
-        PersistedSnapshot persisted = new(Block0, target, emptyRes, NullBlobArenaManager.Instance, PersistedSnapshotTier.Persisted);
+        PersistedSnapshot persisted = new(Block0, target, emptyRes, _blobs);
         _persistedSnapshotRepository.TryLeaseSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
             .Returns(x => { x[1] = persisted; return true; });
         _persistedSnapshotRepository.LeaseBaseSnapshotsInRange(Arg.Any<StateId>(), Arg.Any<StateId>())
@@ -445,7 +453,7 @@ public class PersistenceManagerTests
         // Don't create any in-memory snapshots — configure persisted snapshot fallback
         using ArenaWriter emptyWriter = _memArena.CreateWriter(0);
         (_, ArenaReservation emptyRes) = emptyWriter.Complete();
-        PersistedSnapshot persisted = new(Block0, target, emptyRes, NullBlobArenaManager.Instance, PersistedSnapshotTier.Persisted);
+        PersistedSnapshot persisted = new(Block0, target, emptyRes, _blobs);
         _persistedSnapshotRepository.TryLeaseSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
             .Returns(x => { x[1] = persisted; return true; });
 

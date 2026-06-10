@@ -63,13 +63,25 @@ public sealed class SnapshotCatalog(IDb db)
     private static readonly byte[] MetadataKey = new byte[4];
 
     private readonly IDb _db = db;
-    private readonly List<CatalogEntry> _entries = [];
+    private readonly Dictionary<(StateId To, long Depth), CatalogEntry> _entries = [];
 
-    public IReadOnlyList<CatalogEntry> Entries => _entries;
+    /// <summary>
+    /// All catalog entries, sorted by <c>To.BlockNumber</c> ascending so callers that
+    /// depend on block order (e.g. the registration-tip rebuild after a load) keep working.
+    /// </summary>
+    public IReadOnlyList<CatalogEntry> Entries
+    {
+        get
+        {
+            List<CatalogEntry> entries = [.. _entries.Values];
+            entries.Sort(static (a, b) => a.To.BlockNumber.CompareTo(b.To.BlockNumber));
+            return entries;
+        }
+    }
 
     public void Add(CatalogEntry entry)
     {
-        _entries.Add(entry);
+        _entries[(entry.To, Depth(entry))] = entry;
         Span<byte> key = stackalloc byte[KeySize];
         WriteKey(key, entry.To, Depth(entry));
         byte[] value = new byte[EntrySize];
@@ -79,48 +91,29 @@ public sealed class SnapshotCatalog(IDb db)
 
     public bool Remove(in StateId to, long depth)
     {
-        for (int i = 0; i < _entries.Count; i++)
-        {
-            if (_entries[i].To == to && Depth(_entries[i]) == depth)
-            {
-                _entries.RemoveAt(i);
-                Span<byte> key = stackalloc byte[KeySize];
-                WriteKey(key, to, depth);
-                _db.Remove(key);
-                return true;
-            }
-        }
-        return false;
+        if (!_entries.Remove((to, depth))) return false;
+        Span<byte> key = stackalloc byte[KeySize];
+        WriteKey(key, to, depth);
+        _db.Remove(key);
+        return true;
     }
 
-    public CatalogEntry? Find(in StateId to, long depth)
-    {
-        for (int i = 0; i < _entries.Count; i++)
-        {
-            if (_entries[i].To == to && Depth(_entries[i]) == depth) return _entries[i];
-        }
-        return null;
-    }
+    public CatalogEntry? Find(in StateId to, long depth) =>
+        _entries.TryGetValue((to, depth), out CatalogEntry? entry) ? entry : null;
 
     /// <summary>
     /// Update the location of a catalog entry (used after arena compaction).
     /// </summary>
     public void UpdateLocation(in StateId to, long depth, SnapshotLocation newLocation)
     {
-        for (int i = 0; i < _entries.Count; i++)
-        {
-            if (_entries[i].To == to && Depth(_entries[i]) == depth)
-            {
-                CatalogEntry updated = _entries[i] with { Location = newLocation };
-                _entries[i] = updated;
-                Span<byte> key = stackalloc byte[KeySize];
-                WriteKey(key, to, depth);
-                byte[] value = new byte[EntrySize];
-                WriteEntry(value, updated);
-                _db.Set(key, value);
-                return;
-            }
-        }
+        if (!_entries.TryGetValue((to, depth), out CatalogEntry? entry)) return;
+        CatalogEntry updated = entry with { Location = newLocation };
+        _entries[(to, depth)] = updated;
+        Span<byte> key = stackalloc byte[KeySize];
+        WriteKey(key, to, depth);
+        byte[] value = new byte[EntrySize];
+        WriteEntry(value, updated);
+        _db.Set(key, value);
     }
 
     private static long Depth(CatalogEntry entry) => entry.To.BlockNumber - entry.From.BlockNumber;
@@ -152,11 +145,9 @@ public sealed class SnapshotCatalog(IDb db)
             // Entry keys are exactly KeySize; the metadata key is 4 bytes.
             if (kv.Key.Length != KeySize) continue;
             if (kv.Value is null || kv.Value.Length != EntrySize) continue;
-            _entries.Add(ReadEntry(kv.Value));
+            CatalogEntry entry = ReadEntry(kv.Value);
+            _entries[(entry.To, Depth(entry))] = entry;
         }
-
-        // Stable order by To.BlockNumber so callers that depend on insertion order keep working.
-        _entries.Sort(static (a, b) => a.To.BlockNumber.CompareTo(b.To.BlockNumber));
 
         // Persist the version word if the catalog has never been written before.
         if (meta is null)

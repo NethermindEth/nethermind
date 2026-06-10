@@ -7,8 +7,11 @@ using System.Globalization;
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// File pool for trie-node RLP bytes. Standalone — owns its own file pool, with no
-/// dependency on <see cref="ArenaManager"/> or <see cref="IArenaManager"/>. Each known
+/// File pool for trie-node RLP bytes, stored back-to-back in its own files, separate from
+/// the metadata HSST arena files held by <see cref="IArenaManager"/>. A <see cref="NodeRef"/>
+/// embedded in a persisted snapshot's metadata points at <c>(BlobArenaId, file-absolute
+/// offset)</c>; the manager resolves the id to the underlying arena file. Standalone — owns
+/// its own file pool, with no dependency on <see cref="ArenaManager"/>. Each known
 /// blob file is a refcounted <see cref="BlobArenaFile"/>; the manager's array slot is
 /// the file's initial lease (count=1), the writer holds an additional one for the
 /// duration of <see cref="BlobArenaWriter"/>, and each leased
@@ -17,6 +20,12 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// zero (typically at manager shutdown or in <see cref="SweepUnreferenced"/>); the
 /// per-file <see cref="BlobArenaFile.PersistOnShutdown"/> flag overrides delete for files
 /// still referenced by loaded snapshots.
+///
+/// <para>
+/// Wiring convention: <c>FlatWorldStateModule</c> instantiates exactly one
+/// <c>(ArenaManager metadata, BlobArenaManager blobs)</c> pair, shared by the
+/// persisted-snapshot repository and the compactor.
+/// </para>
 ///
 /// <para>
 /// <b>One id per file.</b> A <c>BlobArenaId</c> is the file's stable numeric id
@@ -33,14 +42,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// 65 536 × 8 B ≈ 512 KiB per manager.
 /// </para>
 /// </summary>
-public sealed class BlobArenaManager : IBlobArenaManager
+public sealed class BlobArenaManager : IDisposable
 {
     private const string BlobFilePrefix = "blob_";
     private const string BlobFileExtension = ".bin";
 
     private readonly string _basePath;
     private readonly long _maxFileSize;
-    private readonly PersistedSnapshotTier _tier;
     private readonly Lock _lock = new();
     // Indexed by blob arena id. Null slot = no file. Reads (TryLeaseFile lookup) are
     // unlocked — reference-slot reads are atomic in the CLR memory model. Slot mutations
@@ -55,16 +63,12 @@ public sealed class BlobArenaManager : IBlobArenaManager
 
     /// <summary>
     /// Construct a blob arena manager rooted at <paramref name="basePath"/> with a per-file
-    /// size cap of <paramref name="maxFileSize"/>. <paramref name="tier"/> is the
-    /// pool-tier label (small / large); passed through to every <see cref="BlobArenaFile"/>
-    /// for its <see cref="Metrics.BlobFileCountByTier"/> / <see cref="Metrics.BlobAllocatedBytesByTier"/>
-    /// contributions.
+    /// size cap of <paramref name="maxFileSize"/>.
     /// </summary>
-    public BlobArenaManager(string basePath, long maxFileSize, PersistedSnapshotTier tier)
+    public BlobArenaManager(string basePath, long maxFileSize)
     {
         _basePath = basePath;
         _maxFileSize = maxFileSize;
-        _tier = tier;
         Directory.CreateDirectory(basePath);
     }
 
@@ -85,7 +89,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 if (id < 0 || id > ushort.MaxValue) continue;
                 long len = new FileInfo(path).Length;
                 long maxSize = len > 0 ? Math.Max(len, _maxFileSize) : _maxFileSize;
-                BlobArenaFile file = new(_tier, (ushort)id, path, maxSize, frontier: len);
+                BlobArenaFile file = new((ushort)id, path, maxSize, frontier: len);
                 _files[id] = file;
                 _nextFileId = Math.Max(_nextFileId, id + 1);
                 if (len < _maxFileSize) _mutableFiles.Add((ushort)id);
@@ -141,7 +145,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
                         $"Blob arena file id space exhausted ({ushort.MaxValue + 1} files).");
                 fileId = (ushort)_nextFileId++;
                 string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
-                file = new BlobArenaFile(_tier, fileId, path, _maxFileSize, frontier: 0);
+                file = new BlobArenaFile(fileId, path, _maxFileSize, frontier: 0);
                 _files[fileId] = file;
                 // Fresh file isn't added to _mutableFiles yet — Complete/Cancel adds it.
                 startOffset = 0;
@@ -159,6 +163,11 @@ public sealed class BlobArenaManager : IBlobArenaManager
         }
     }
 
+    /// <summary>
+    /// Acquire a lease on the file identified by <paramref name="blobArenaId"/>. Returns
+    /// false if the manager doesn't know the id, or if the file is mid-cleanup. The
+    /// caller drops the lease by calling <see cref="BlobArenaFile.Dispose"/>.
+    /// </summary>
     public bool TryLeaseFile(ushort blobArenaId, [NotNullWhen(true)] out BlobArenaFile? file)
     {
         // Lock-free: reference-slot reads are atomic and TryAcquireLease guards the race
@@ -175,6 +184,14 @@ public sealed class BlobArenaManager : IBlobArenaManager
         return true;
     }
 
+    /// <summary>
+    /// Return the blob arena file currently registered under <paramref name="blobArenaId"/>,
+    /// or throw if no slot is populated. Lock-free O(1) array read — the caller MUST already
+    /// hold a lease on the file (typically acquired via <see cref="TryLeaseFile"/> at snapshot
+    /// load time). Does NOT bump the refcount; used by the hot read path in
+    /// <see cref="PersistedSnapshots.PersistedSnapshot"/> and by the snapshot's teardown to
+    /// resolve ids it leased earlier without re-paying the lease-acquisition lock.
+    /// </summary>
     public BlobArenaFile GetFile(ushort blobArenaId) =>
         _files[blobArenaId]
             ?? throw new InvalidOperationException(
@@ -184,7 +201,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// Called by <see cref="BlobArenaWriter.Complete"/> after the writer has set the file's
     /// new frontier directly. The manager learns whether the id should be a packing
     /// candidate for the next writer and pushes the post-write frontier delta to
-    /// <c>Metrics.BlobAllocatedBytesByTier</c>.
+    /// <c>Metrics.BlobAllocatedBytes</c>.
     /// </summary>
     internal void OnWriteCompleted(BlobArenaFile file, bool hasHeadroom)
     {
@@ -195,19 +212,18 @@ public sealed class BlobArenaManager : IBlobArenaManager
         }
     }
 
-    // Ratchet BlobAllocatedBytesByTier up to file.Frontier. Matches ArenaManager.PushFrontierDelta's
+    // Ratchet BlobAllocatedBytes up to file.Frontier. Matches ArenaManager.PushFrontierDelta's
     // semantics: push the delta since the last report, bring ReportedFrontier in sync. Bytes are
     // **allocated** (Frontier), not mapped (MaxSize) — sparse-file zeros after the frontier are
     // excluded.
-    private void PushFrontierDelta(BlobArenaFile file)
+    private static void PushFrontierDelta(BlobArenaFile file)
     {
         long current = file.Frontier;
         long reported = file.ReportedFrontier;
         long delta = current - reported;
         if (delta == 0) return;
         file.ReportedFrontier = current;
-        Metrics.BlobAllocatedBytesByTier.AddOrUpdate(_tier,
-            static (_, d) => d, static (_, b, d) => b + d, delta);
+        Interlocked.Add(ref Metrics._blobAllocatedBytes, delta);
     }
 
     /// <summary>
@@ -248,7 +264,13 @@ public sealed class BlobArenaManager : IBlobArenaManager
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Called by <see cref="PersistedSnapshots.PersistedSnapshot.CleanUp"/> after it has
+    /// released its lease on a blob file. If only the manager's slot lease remains and
+    /// the file's frontier is non-zero, reset the frontier to 0 so the bytes gauge drops
+    /// and the file is reusable for packing from offset 0. No-op when the file still
+    /// has external lessees.
+    /// </summary>
     public void TryResetOrphanedFrontier(BlobArenaFile file)
     {
         lock (_lock)
@@ -290,8 +312,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
 
             file.Frontier = 0;
             file.ReportedFrontier = 0;
-            Metrics.BlobAllocatedBytesByTier.AddOrUpdate(_tier,
-                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), prev);
+            Interlocked.Add(ref Metrics._blobAllocatedBytes, -prev);
 
             _mutableFiles.Add(file.BlobArenaId);
         }

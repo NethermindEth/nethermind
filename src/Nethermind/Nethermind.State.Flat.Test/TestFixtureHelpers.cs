@@ -29,7 +29,7 @@ internal static class TestFixtureHelpers
     {
         using WholeReadSession session = reservation.BeginWholeReadSession();
         WholeReadSessionReader reader = session.GetReader();
-        ushort[]? ids = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+        ushort[]? ids = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
         if (ids is null) return;
         foreach (ushort id in ids)
         {
@@ -37,6 +37,25 @@ internal static class TestFixtureHelpers
                 throw new System.InvalidOperationException(
                     $"Test fixture's BlobArenaManager has no slot for id {id}; did Build() use a different manager?");
         }
+    }
+
+    /// <summary>
+    /// Write <paramref name="data"/> into a fresh reservation on <paramref name="arena"/>,
+    /// lease the blob ids referenced by its metadata HSST (skipped when
+    /// <paramref name="leaseBlobIds"/> is false) and wrap the result in a
+    /// <see cref="PersistedSnapshot"/> over <paramref name="blobs"/>.
+    /// </summary>
+    public static PersistedSnapshot CreatePersistedSnapshot(
+        IArenaManager arena, BlobArenaManager blobs, StateId from, StateId to, byte[] data,
+        bool leaseBlobIds = true)
+    {
+        using ArenaWriter writer = arena.CreateWriter(data.Length);
+        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
+        data.CopyTo(span);
+        writer.GetWriter().Advance(data.Length);
+        (_, ArenaReservation reservation) = writer.Complete();
+        if (leaseBlobIds) LeaseBlobIdsFromHsst(reservation, blobs);
+        return new PersistedSnapshot(from, to, reservation, blobs);
     }
 
     /// <summary>

@@ -33,13 +33,5 @@ public sealed class PersistedSnapshotList : IDisposable, IEnumerable<PersistedSn
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public void Dispose()
-    {
-        foreach (PersistedSnapshot snapshot in _list)
-        {
-            snapshot.Dispose();
-        }
-
-        _list.Dispose();
-    }
+    public void Dispose() => _list.DisposeRecursive();
 }

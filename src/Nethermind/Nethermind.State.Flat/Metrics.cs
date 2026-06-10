@@ -16,7 +16,7 @@ public static class Metrics
     public static long SnapshotBundleSize { get; set; }
 
     [GaugeMetric]
-    [Description("Average snapshot bundle size in terms of num of snapshot")]
+    [Description("Number of persisted snapshots in the most recently assembled snapshot bundle")]
     public static long SnapshotBundlePersistedSnapshotSize { get; set; }
 
     [GaugeMetric]
@@ -161,77 +161,126 @@ public static class Metrics
         set => Volatile.Write(ref _persistedSnapshotPrunes, value);
     }
 
-    // Push-style gauges keyed by the typed PersistedSnapshotTier singleton so the small and
-    // large pools surface separately in Prometheus; the metrics controller dispatches on
-    // IMetricLabels to produce the wire-format "small"/"large" label.
-    //
-    // Two separate gauge families: arena files (mmap-backed metadata) versus blob files
-    // (pread-only RLP). They had been mixed under a single Arena*ByTier pair, which made it
-    // impossible to attribute per-tier bytes to one or the other from the dashboard.
+    // Push-style gauges for the persisted-snapshot arena/blob storage. Two separate gauge
+    // families: arena files (mmap-backed metadata) versus blob files (pread-only RLP), so
+    // bytes can be attributed to one or the other from the dashboard.
     //
     // Bytes are reported as **allocated** (sum of `Frontier` across open files) — i.e. bytes
     // actually written, not the pre-extended sparse mmap region. Arena/Blob managers push
-    // deltas on every writer.Complete + on file open/close.
-    [Description("Number of arena (mmap metadata) files backing persisted snapshots, by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaFileCountByTier { get; } = new();
+    // deltas (via Interlocked on the backing fields) on every writer.Complete + on file
+    // open/close.
+    internal static long _arenaFileCount;
 
-    [Description("Allocated bytes in arena files (sum of per-file Frontier), by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaAllocatedBytesByTier { get; } = new();
+    [GaugeMetric]
+    [Description("Number of arena (mmap metadata) files backing persisted snapshots")]
+    public static long ArenaFileCount
+    {
+        get => Volatile.Read(ref _arenaFileCount);
+        set => Volatile.Write(ref _arenaFileCount, value);
+    }
 
-    [Description("Number of blob (pread RLP) files backing persisted snapshots, by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobFileCountByTier { get; } = new();
+    internal static long _arenaAllocatedBytes;
 
-    [Description("Allocated bytes in blob files (sum of per-file Frontier), by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> BlobAllocatedBytesByTier { get; } = new();
+    [GaugeMetric]
+    [Description("Allocated bytes in arena files (sum of per-file Frontier)")]
+    public static long ArenaAllocatedBytes
+    {
+        get => Volatile.Read(ref _arenaAllocatedBytes);
+        set => Volatile.Write(ref _arenaAllocatedBytes, value);
+    }
 
-    [Description("Number of live PersistedSnapshot instances (refcount > 0), by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> ActivePersistedSnapshotCountByTier { get; } = new();
+    internal static long _blobFileCount;
 
-    [Description("1 if fallocate(PUNCH_HOLE) disk reclamation is active for the tier, 0 if disabled (config off or filesystem unsupported)")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> PersistedSnapshotPunchHoleEnabledByTier { get; } = new();
+    [GaugeMetric]
+    [Description("Number of blob (pread RLP) files backing persisted snapshots")]
+    public static long BlobFileCount
+    {
+        get => Volatile.Read(ref _blobFileCount);
+        set => Volatile.Write(ref _blobFileCount, value);
+    }
 
-    // Per-tier PageResidencyTracker gauges. ResidentBytes is refreshed by ArenaManager on a
+    internal static long _blobAllocatedBytes;
+
+    [GaugeMetric]
+    [Description("Allocated bytes in blob files (sum of per-file Frontier)")]
+    public static long BlobAllocatedBytes
+    {
+        get => Volatile.Read(ref _blobAllocatedBytes);
+        set => Volatile.Write(ref _blobAllocatedBytes, value);
+    }
+
+    internal static long _activePersistedSnapshotCount;
+
+    [GaugeMetric]
+    [Description("Number of live PersistedSnapshot instances (refcount > 0)")]
+    public static long ActivePersistedSnapshotCount
+    {
+        get => Volatile.Read(ref _activePersistedSnapshotCount);
+        set => Volatile.Write(ref _activePersistedSnapshotCount, value);
+    }
+
+    [GaugeMetric]
+    [Description("1 if fallocate(PUNCH_HOLE) disk reclamation is active, 0 if disabled (config off or filesystem unsupported)")]
+    public static long PersistedSnapshotPunchHoleEnabled { get; set; }
+
+    // PageResidencyTracker gauges. ResidentBytes is refreshed by ArenaManager on a
     // 1-second System.Threading.Timer so the tracker's hot path stays untouched; the gauge
     // lags reality by at most ~1s. MetadataBytes and MaxBytes are fixed at tracker construction.
-    [Description("Currently-bounded resident bytes in the page-residency tracker, by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerResidentBytesByTier { get; } = new();
+    [GaugeMetric]
+    [Description("Currently-bounded resident bytes in the page-residency tracker")]
+    public static long PageTrackerResidentBytes { get; set; }
 
-    [Description("Unmanaged metadata bytes used by the page-residency tracker (slot + meta arrays), by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerMetadataBytesByTier { get; } = new();
+    [GaugeMetric]
+    [Description("Unmanaged metadata bytes used by the page-residency tracker (slot + meta arrays)")]
+    public static long PageTrackerMetadataBytes { get; set; }
 
-    [Description("Maximum bytes the page-residency tracker can bound (configured page-cache budget), by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerMaxBytesByTier { get; } = new();
+    [GaugeMetric]
+    [Description("Maximum bytes the page-residency tracker can bound (configured page-cache budget)")]
+    public static long PageTrackerMaxBytes { get; set; }
 
-    [DetailedMetric]
-    [CounterMetric]
-    [Description("Page-tracker evictions dispatched off the drain ring (madvise issued), by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerEvictionsDispatchedByTier { get; } = new();
+    internal static long _pageTrackerEvictionsDispatched;
 
     [DetailedMetric]
     [CounterMetric]
-    [Description("Page-tracker evictions dispatched inline because the drain ring was full, by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerEvictionsInlineFallbackByTier { get; } = new();
+    [Description("Page-tracker evictions dispatched off the drain ring (madvise issued)")]
+    public static long PageTrackerEvictionsDispatched
+    {
+        get => Volatile.Read(ref _pageTrackerEvictionsDispatched);
+        set => Volatile.Write(ref _pageTrackerEvictionsDispatched, value);
+    }
+
+    internal static long _pageTrackerEvictionsInlineFallback;
 
     [DetailedMetric]
-    [Description("Live arena reservations, by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaReservationCountByTier { get; } = new();
+    [CounterMetric]
+    [Description("Page-tracker evictions dispatched inline because the drain ring was full")]
+    public static long PageTrackerEvictionsInlineFallback
+    {
+        get => Volatile.Read(ref _pageTrackerEvictionsInlineFallback);
+        set => Volatile.Write(ref _pageTrackerEvictionsInlineFallback, value);
+    }
+
+    internal static long _arenaReservationCount;
 
     [DetailedMetric]
-    [Description("Live arena reservation bytes, by tier")]
-    [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaReservationBytesByTier { get; } = new();
+    [GaugeMetric]
+    [Description("Live arena reservations")]
+    public static long ArenaReservationCount
+    {
+        get => Volatile.Read(ref _arenaReservationCount);
+        set => Volatile.Write(ref _arenaReservationCount, value);
+    }
+
+    internal static long _arenaReservationBytes;
+
+    [DetailedMetric]
+    [GaugeMetric]
+    [Description("Live arena reservation bytes")]
+    public static long ArenaReservationBytes
+    {
+        get => Volatile.Read(ref _arenaReservationBytes);
+        set => Volatile.Write(ref _arenaReservationBytes, value);
+    }
 
     [DetailedMetric]
     [Description("Snapshot-bundle depth in blocks, by part (in_memory / persisted)")]

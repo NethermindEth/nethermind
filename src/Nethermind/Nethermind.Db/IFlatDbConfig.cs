@@ -37,7 +37,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]
     int MaxReorgDepth { get; set; }
 
-    [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "4")]
+    [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "2")]
     int MinCompactSize { get; set; }
 
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
@@ -61,9 +61,6 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Total max reorg depth in blocks (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
     int LongFinalityReorgDepth { get; set; }
 
-    [ConfigItem(Description = "Path for persisted snapshot arena files (relative to data dir)", DefaultValue = "snapshots")]
-    string PersistedSnapshotPath { get; set; }
-
     [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }
 
@@ -76,7 +73,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "When reclaiming dead persisted-snapshot arena ranges — metadata reservation cleanup and blob-file frontier reset — call fallocate(FALLOC_FL_PUNCH_HOLE) to free the underlying disk blocks. Linux-only; automatically and permanently disabled per arena pool if the filesystem reports the operation unsupported. Set false to skip hole-punching entirely (the page-cache posix_fadvise still runs).", DefaultValue = "true")]
     bool PersistedSnapshotPunchHoleOnReclaim { get; set; }
 
-    [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer)", DefaultValue = "1024")]
+    [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer)", DefaultValue = "8192")]
     int PersistedSnapshotMaxCompactSize { get; set; }
 
     [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]

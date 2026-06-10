@@ -22,9 +22,8 @@ public interface ICompactionSchedule
 
     /// <summary>
     /// True if <paramref name="blockNumber"/> sits exactly on a full <c>CompactSize</c>-wide
-    /// window — i.e. a persistence boundary. Replaces the inline
-    /// <c>blockNumber % CompactSize == 0</c> check at call sites so the per-instance offset is
-    /// applied transparently.
+    /// window — i.e. a persistence boundary — with the per-instance offset applied
+    /// transparently.
     /// </summary>
     bool IsFullCompactionBoundary(long blockNumber);
 

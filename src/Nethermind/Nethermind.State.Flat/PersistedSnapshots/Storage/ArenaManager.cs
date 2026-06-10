@@ -24,7 +24,6 @@ public sealed class ArenaManager : IArenaManager
     private readonly long _dedicatedArenaThreshold;
     private readonly bool _fadviseOnEviction;
     private readonly bool _punchHoleOnReclaim;
-    private readonly PersistedSnapshotTier _tier;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
     // Shared (non-dedicated) arenas with headroom for further packing AND not currently
@@ -33,7 +32,7 @@ public sealed class ArenaManager : IArenaManager
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
     private readonly PageResidencyTracker _pageTracker;
-    // 1s tick that mirrors _pageTracker.ResidentBytes into Metrics.PageTrackerResidentBytesByTier.
+    // 1s tick that mirrors _pageTracker.ResidentBytes into Metrics.PageTrackerResidentBytes.
     // Null when the tracker is disabled (no residency to track).
     private readonly Timer? _metricsTimer;
     // MPSC-used MpmcRingBuffer for queued evictions; null when the tracker is disabled
@@ -63,25 +62,22 @@ public sealed class ArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
-    public PersistedSnapshotTier Tier => _tier;
-
-    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, PersistedSnapshotTier? tier = null, bool punchHoleOnReclaim = true)
+    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, bool punchHoleOnReclaim = true)
     {
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
         _dedicatedArenaThreshold = dedicatedArenaThreshold;
         _fadviseOnEviction = fadviseOnEviction;
         _punchHoleOnReclaim = punchHoleOnReclaim;
-        _tier = tier ?? PersistedSnapshotTier.Persisted;
         Directory.CreateDirectory(basePath);
         _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
-        // Per-tier static facts: metadata footprint and configured cap. ResidentBytes is
+        // Static facts: metadata footprint and configured cap. ResidentBytes is
         // refreshed by _metricsTimer below; seed to 0 so the gauge appears immediately.
-        Metrics.PageTrackerResidentBytesByTier[_tier] = 0L;
-        Metrics.PageTrackerMetadataBytesByTier[_tier] = _pageTracker.MetadataBytes;
-        Metrics.PageTrackerMaxBytesByTier[_tier] =
+        Metrics.PageTrackerResidentBytes = 0L;
+        Metrics.PageTrackerMetadataBytes = _pageTracker.MetadataBytes;
+        Metrics.PageTrackerMaxBytes =
             (long)_pageTracker.MaxCapacity * Environment.SystemPageSize;
-        Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = _punchHoleOnReclaim ? 1L : 0L;
+        Metrics.PersistedSnapshotPunchHoleEnabled = _punchHoleOnReclaim ? 1L : 0L;
         // Poll the tracker's _residentPages counter once a second rather than pushing on
         // every Inserted — the hot path stays untouched and the gauge lags by at most ~1s.
         // Skip when the tracker is disabled (MaxCapacity == 0): no residency, no point ticking.
@@ -112,7 +108,7 @@ public sealed class ArenaManager : IArenaManager
         lock (_lock)
         {
             // Open existing arena files. Defer the per-file metric push until after frontier
-            // computation so the initial ArenaAllocatedBytesByTier delta reflects the
+            // computation so the initial ArenaAllocatedBytes delta reflects the
             // catalog-derived high-water mark, not 0.
             foreach (string file in Directory.GetFiles(_basePath, $"*{ArenaFileExtension}"))
             {
@@ -284,7 +280,7 @@ public sealed class ArenaManager : IArenaManager
         {
             // First permanent "unsupported" from the kernel — stop trying on every later cleanup.
             Volatile.Write(ref _punchHoleSupported, 0);
-            Metrics.PersistedSnapshotPunchHoleEnabledByTier[_tier] = 0L;
+            Metrics.PersistedSnapshotPunchHoleEnabled = 0L;
         }
         return outcome == PunchHoleOutcome.Done;
     }
@@ -345,7 +341,7 @@ public sealed class ArenaManager : IArenaManager
         // enough to fill 10% of the residency cap should be rare; if seen in practice, raise
         // the ring fraction or the per-arena budget.
         Interlocked.Increment(ref _evictionsInlineFallback);
-        Metrics.PageTrackerEvictionsInlineFallbackByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
+        Interlocked.Increment(ref Metrics._pageTrackerEvictionsInlineFallback);
         DispatchEvictionInline(arenaId, pageIdx);
     }
 
@@ -383,7 +379,7 @@ public sealed class ArenaManager : IArenaManager
             return;
         }
         Interlocked.Increment(ref _evictionsDispatched);
-        Metrics.PageTrackerEvictionsDispatchedByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
+        Interlocked.Increment(ref Metrics._pageTrackerEvictionsDispatched);
         DispatchEvictionInline(arenaId, pageIdx);
     }
 
@@ -464,54 +460,50 @@ public sealed class ArenaManager : IArenaManager
     }
 
     // Push-style gauge updates. Called under _lock at every file add / remove site so
-    // Metrics.ArenaFileCountByTier / ArenaAllocatedBytesByTier stay consistent with _arenas
-    // without periodic iteration. ConcurrentDictionary.AddOrUpdate is atomic.
+    // Metrics.ArenaFileCount / ArenaAllocatedBytes stay consistent with _arenas
+    // without periodic iteration.
     //
     // The bytes gauge tracks **allocated** bytes (file.Frontier — what's actually been written),
     // not the pre-extended mmap region. Fresh files have Frontier=0 (no-op on the bytes gauge);
     // catalog-loaded files seed Frontier from the on-disk high-water mark.
-    private void OnArenaAdded(ArenaFile file)
+    private static void OnArenaAdded(ArenaFile file)
     {
-        Metrics.ArenaFileCountByTier.AddOrUpdate(_tier, 1L, static (_, c) => c + 1);
+        Interlocked.Increment(ref Metrics._arenaFileCount);
         long frontier = file.Frontier;
         file.ReportedFrontier = frontier;
         if (frontier > 0)
-            Metrics.ArenaAllocatedBytesByTier.AddOrUpdate(_tier,
-                static (_, f) => f, static (_, b, f) => b + f, frontier);
+            Interlocked.Add(ref Metrics._arenaAllocatedBytes, frontier);
     }
 
-    private void OnArenaRemoved(ArenaFile file)
+    private static void OnArenaRemoved(ArenaFile file)
     {
-        Metrics.ArenaFileCountByTier.AddOrUpdate(_tier,
-            0L, static (_, c) => Math.Max(0, c - 1));
+        Interlocked.Decrement(ref Metrics._arenaFileCount);
         long reported = file.ReportedFrontier;
         file.ReportedFrontier = 0;
         if (reported > 0)
-            Metrics.ArenaAllocatedBytesByTier.AddOrUpdate(_tier,
-                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), reported);
+            Interlocked.Add(ref Metrics._arenaAllocatedBytes, -reported);
     }
 
-    // Ratchet ArenaAllocatedBytesByTier up to file.Frontier. Called from OnWriteCompleted —
+    // Ratchet ArenaAllocatedBytes up to file.Frontier. Called from OnWriteCompleted —
     // the writer has just advanced file.Frontier to the post-write high-water; push the delta
     // since the last time we reported and bring file.ReportedFrontier in sync.
-    private void PushFrontierDelta(ArenaFile file)
+    private static void PushFrontierDelta(ArenaFile file)
     {
         long current = file.Frontier;
         long reported = file.ReportedFrontier;
         long delta = current - reported;
         if (delta == 0) return;
         file.ReportedFrontier = current;
-        Metrics.ArenaAllocatedBytesByTier.AddOrUpdate(_tier,
-            static (_, d) => d, static (_, b, d) => b + d, delta);
+        Interlocked.Add(ref Metrics._arenaAllocatedBytes, delta);
     }
 
-    // Mirror the tracker's resident-bytes counter into the per-tier gauge. Runs on the
+    // Mirror the tracker's resident-bytes counter into the gauge. Runs on the
     // ThreadPool from a 1s System.Threading.Timer; ResidentBytes is a single Volatile.Read
     // so the work is trivial and Volatile-safe against the hot Inserted path.
     private void RefreshResidencyMetric(object? _)
     {
         if (_disposed) return;
-        Metrics.PageTrackerResidentBytesByTier[_tier] = _pageTracker.ResidentBytes;
+        Metrics.PageTrackerResidentBytes = _pageTracker.ResidentBytes;
     }
 
     private static int ParseArenaId(string filePath, bool dedicated)
@@ -559,11 +551,11 @@ public sealed class ArenaManager : IArenaManager
             _arenas.Clear();
         }
         _pageTracker.Dispose();
-        // Zero out per-tier gauges so a teardown doesn't leave stale entries behind. Matters
-        // in tests that build multiple managers; in production the entries are overwritten
+        // Zero out the gauges so a teardown doesn't leave stale values behind. Matters
+        // in tests that build multiple managers; in production the values are overwritten
         // on the next start.
-        Metrics.PageTrackerResidentBytesByTier[_tier] = 0L;
-        Metrics.PageTrackerMetadataBytesByTier[_tier] = 0L;
-        Metrics.PageTrackerMaxBytesByTier[_tier] = 0L;
+        Metrics.PageTrackerResidentBytes = 0L;
+        Metrics.PageTrackerMetadataBytes = 0L;
+        Metrics.PageTrackerMaxBytes = 0L;
     }
 }

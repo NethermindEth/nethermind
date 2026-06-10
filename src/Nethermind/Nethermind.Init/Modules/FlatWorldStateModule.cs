@@ -81,7 +81,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     cfg.PersistedSnapshotArenaPageCacheBytes,
                     cfg.ArenaFileSizeBytes,
                     cfg.PersistedSnapshotFadviseOnPageEviction,
-                    tier: PersistedSnapshotTier.Persisted,
                     punchHoleOnReclaim: cfg.PersistedSnapshotPunchHoleOnReclaim);
             })
             .AddSingleton<BlobArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
@@ -89,8 +88,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 string basePath = Path.Combine(initConfig.BaseDbPath, "persisted_snapshot");
                 return new BlobArenaManager(
                     Path.Combine(basePath, "blob"),
-                    cfg.ArenaFileSizeBytes,
-                    PersistedSnapshotTier.Persisted);
+                    cfg.ArenaFileSizeBytes);
             })
             .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
             {

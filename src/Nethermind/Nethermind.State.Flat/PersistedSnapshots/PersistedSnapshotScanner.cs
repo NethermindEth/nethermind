@@ -279,10 +279,9 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     // ---------------- StateNode ----------------
 
     public readonly ref struct StateNodeEntry(
-        PersistedSnapshot snapshot, WholeReadSessionReader reader, ReadOnlySpan<byte> key, Bound value, byte stage)
+        PersistedSnapshot snapshot, ReadOnlySpan<byte> key, Bound value, byte stage)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
-        private readonly WholeReadSessionReader _reader = reader;
         private readonly ReadOnlySpan<byte> _key = key;
         private readonly Bound _value = value;
         private readonly byte _stage = stage;
@@ -353,18 +352,17 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             return false;
         }
 
-        public readonly StateNodeEntry Current => new(_snapshot, _reader, _curKey.AsSpan(0, _curKeyLen), _curValue, _stage);
+        public readonly StateNodeEntry Current => new(_snapshot, _curKey.AsSpan(0, _curKeyLen), _curValue, _stage);
         public void Dispose() => _inner.Dispose();
     }
 
     // ---------------- StorageNode ----------------
 
     public readonly ref struct StorageNodeEntry(
-        PersistedSnapshot snapshot, WholeReadSessionReader reader, ValueHash256 addressHash,
+        PersistedSnapshot snapshot, ValueHash256 addressHash,
         ReadOnlySpan<byte> pathKey, Bound value, byte stage)
     {
         private readonly PersistedSnapshot _snapshot = snapshot;
-        private readonly WholeReadSessionReader _reader = reader;
         public ValueHash256 AddressHash { get; } = addressHash;
         private readonly ReadOnlySpan<byte> _pathKey = pathKey;
         private readonly Bound _value = value;
@@ -496,7 +494,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         }
 
         public readonly StorageNodeEntry Current =>
-            new(_snapshot, _reader, _curHash, _curPathKey.AsSpan(0, _curPathKeyLen), _curValue, _stage);
+            new(_snapshot, _curHash, _curPathKey.AsSpan(0, _curPathKeyLen), _curValue, _stage);
 
         public void Dispose()
         {

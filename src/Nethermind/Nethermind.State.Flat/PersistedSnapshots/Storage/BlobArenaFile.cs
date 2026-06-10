@@ -21,8 +21,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// </para>
 ///
 /// <para>
-/// Owns its own contribution to <see cref="Metrics.BlobFileCountByTier"/> /
-/// <see cref="Metrics.BlobAllocatedBytesByTier"/> under <see cref="Tier"/>: count +1 on
+/// Owns its own contribution to <see cref="Metrics.BlobFileCount"/> /
+/// <see cref="Metrics.BlobAllocatedBytes"/>: count +1 on
 /// construction (plus the initial <see cref="Frontier"/> as allocated bytes for rehydrated
 /// files); symmetric -1 / -<see cref="ReportedFrontier"/> on <see cref="CleanUp"/>.
 /// <see cref="BlobArenaManager.OnWriteCompleted"/> pushes frontier deltas as writes
@@ -35,8 +35,6 @@ public sealed class BlobArenaFile : RefCountingDisposable
     // Treated as bool; 0 = delete on CleanUp, 1 = keep the on-disk file. Set by
     // PersistOnShutdown via Interlocked.Exchange so it is safe to call from any path.
     private int _preserveOnDispose;
-
-    internal PersistedSnapshotTier Tier { get; }
 
     /// <summary>Stable file id, narrowed from int to ushort. Embedded in every <see cref="NodeRef"/>.</summary>
     public ushort BlobArenaId { get; }
@@ -54,15 +52,14 @@ public sealed class BlobArenaFile : RefCountingDisposable
     internal long Frontier { get; set; }
 
     /// <summary>
-    /// Last value of <see cref="Frontier"/> reported to <c>Metrics.BlobAllocatedBytesByTier</c>.
+    /// Last value of <see cref="Frontier"/> reported to <c>Metrics.BlobAllocatedBytes</c>.
     /// Lets <see cref="BlobArenaManager"/> push frontier deltas on
     /// <see cref="BlobArenaWriter.Complete"/> without re-counting bytes it already reported.
     /// </summary>
     internal long ReportedFrontier { get; set; }
 
-    internal BlobArenaFile(PersistedSnapshotTier tier, ushort id, string path, long maxSize, long frontier)
+    internal BlobArenaFile(ushort id, string path, long maxSize, long frontier)
     {
-        Tier = tier;
         BlobArenaId = id;
         Path = path;
         MaxSize = maxSize;
@@ -73,10 +70,9 @@ public sealed class BlobArenaFile : RefCountingDisposable
         // and lets restored files re-enter the packing pool when they still have headroom.
         Frontier = frontier;
         ReportedFrontier = frontier;
-        Metrics.BlobFileCountByTier.AddOrUpdate(tier, 1L, static (_, c) => c + 1);
+        Interlocked.Increment(ref Metrics._blobFileCount);
         if (frontier > 0)
-            Metrics.BlobAllocatedBytesByTier.AddOrUpdate(tier,
-                static (_, f) => f, static (_, b, f) => b + f, frontier);
+            Interlocked.Add(ref Metrics._blobAllocatedBytes, frontier);
     }
 
     /// <summary>
@@ -183,12 +179,10 @@ public sealed class BlobArenaFile : RefCountingDisposable
         {
             try { File.Delete(Path); } catch { /* best-effort */ }
         }
-        Metrics.BlobFileCountByTier.AddOrUpdate(Tier,
-            0L, static (_, c) => Math.Max(0, c - 1));
+        Interlocked.Decrement(ref Metrics._blobFileCount);
         long reported = ReportedFrontier;
         ReportedFrontier = 0;
         if (reported > 0)
-            Metrics.BlobAllocatedBytesByTier.AddOrUpdate(Tier,
-                static (_, _) => 0L, static (_, b, r) => Math.Max(0, b - r), reported);
+            Interlocked.Add(ref Metrics._blobAllocatedBytes, -reported);
     }
 }
