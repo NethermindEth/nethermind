@@ -52,6 +52,30 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
+    private InstructionStream? _stream;
+
+    /// <summary>
+    /// Returns the preprocessed instruction stream for this code, building it on first use.
+    /// Returns <c>null</c> when the code cannot be streamed (empty, precompile, oversized).
+    /// </summary>
+    /// <remarks>
+    /// Benign race: concurrent first callers may build twice; one immutable instance wins the
+    /// CAS and is the only one ever published.
+    /// </remarks>
+    public InstructionStream? GetOrBuildStream()
+    {
+        InstructionStream? stream = Volatile.Read(ref _stream);
+        if (stream is not null)
+            return stream;
+        if (IsEmpty || IsPrecompile)
+            return null;
+
+        stream = InstructionStream.TryBuild(CodeSpan);
+        if (stream is null)
+            return null;
+
+        return Interlocked.CompareExchange(ref _stream, stream, null) ?? stream;
+    }
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.

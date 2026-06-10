@@ -1249,9 +1249,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // chains and historical forks keep the generic function-pointer table path.
         int fingerprint = EvmSpecFingerprint.Compute(Spec);
         if (fingerprint == s_osakaDispatchFingerprint)
+        {
+            if (StreamInterpreter.Enabled && !TTracingInst.IsActive
+                && VmState.Env.CodeInfo.GetOrBuildStream() is { } osakaStream)
+            {
+                return RunStream<TCancelable>(osakaStream, ref stack, ref gas);
+            }
+
             return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
+        }
+
         if (fingerprint == s_cancunDispatchFingerprint)
+        {
+            if (StreamInterpreter.Enabled && !TTracingInst.IsActive
+                && VmState.Env.CodeInfo.GetOrBuildStream() is { } cancunStream)
+            {
+                return RunStream<TCancelable>(cancunStream, ref stack, ref gas);
+            }
+
             return RunByteCodeCore<TTracingInst, TCancelable, CancunEvmSpec>(ref stack, ref gas);
+        }
+
         return RunByteCodeCore<TTracingInst, TCancelable, GenericEvmSpec>(ref stack, ref gas);
     }
 
