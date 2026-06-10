@@ -19,11 +19,15 @@ public readonly record struct BlockchainTestsRunnerOptions(
     bool ExcludeStack = false,
     bool JsonOutput = false,
     bool SuppressOutput = false,
+    bool? ParallelExecution = null,
+    bool? ParallelExecutionBatchRead = null,
     Func<bool, string?>? ProgressUpdateFactory = null);
 
 public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITestSourceLoader? testsSource = null) : BlockchainTestBase, IBlockchainTestRunner
 {
     protected override ILogManager? ComponentLogManagerOverride => _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
+    protected override bool? ParallelExecutionOverride => _parallelExecution;
+    protected override bool? ParallelExecutionBatchReadOverride => _parallelExecutionBatchRead;
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader? _testsSource = testsSource;
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -34,6 +38,8 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     private readonly bool _excludeStack = options.ExcludeStack;
     private readonly bool _jsonOutput = options.JsonOutput;
     private readonly bool _suppressOutput = options.SuppressOutput;
+    private readonly bool? _parallelExecution = options.ParallelExecution;
+    private readonly bool? _parallelExecutionBatchRead = options.ParallelExecutionBatchRead;
     private readonly Func<bool, string?>? _progressUpdateFactory = options.ProgressUpdateFactory;
 
     public BlockchainTestsRunner(ITestSourceLoader testsSource, in BlockchainTestsRunnerOptions options)

@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -66,6 +67,18 @@ internal class Program
 
         public static Option<int> Workers { get; } =
             new("--workers", "-p") { Description = "Number of parallel workers for processing fixture files.", DefaultValueFactory = _ => 1 };
+
+        public static Option<string> Chunk { get; } =
+            new("--chunk", "-c") { Description = "Run only the Nth of M interleaved chunks of the collected fixture files, e.g. '2of8'. Used to split a large fixture set across CI jobs." };
+
+        public static Option<bool> FlatDb { get; } =
+            new("--flatdb") { Description = "Run with the flat state layout (equivalent to setting TEST_USE_FLAT=1)." };
+
+        public static Option<bool?> ParallelExecution { get; } =
+            new("--parallelExecution") { Description = "Force BAL parallel execution on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
+
+        public static Option<bool?> BatchRead { get; } =
+            new("--batchRead") { Description = "Force BAL batch-read prewarming on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
     }
 
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -89,6 +102,10 @@ internal class Program
             Options.EnableWarmup,
             Options.JsonOutput,
             Options.Workers,
+            Options.Chunk,
+            Options.FlatDb,
+            Options.ParallelExecution,
+            Options.BatchRead,
         ];
         rootCommand.SetAction(Run);
 
@@ -119,10 +136,18 @@ internal class Program
         bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
         int workers = Math.Max(1, parseResult.GetValue(Options.Workers));
         string filter = parseResult.GetValue(Options.Filter);
+        string chunk = parseResult.GetValue(Options.Chunk);
         bool trace = parseResult.GetValue(Options.TraceAlways);
         bool traceMemory = !parseResult.GetValue(Options.ExcludeMemory);
         bool excludeStack = parseResult.GetValue(Options.ExcludeStack);
         bool enableWarmup = parseResult.GetValue(Options.EnableWarmup);
+        bool? parallelExecution = parseResult.GetValue(Options.ParallelExecution);
+        bool? batchRead = parseResult.GetValue(Options.BatchRead);
+
+        if (parseResult.GetValue(Options.FlatDb))
+        {
+            PseudoNethermindModule.TestUseFlat = true;
+        }
 
         // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).
         // Cap at processor count to avoid thermal throttling on laptops.
@@ -137,11 +162,21 @@ internal class Program
 
         while (!string.IsNullOrWhiteSpace(input))
         {
-            List<string> files = CollectFiles(input);
+            List<string> files = CollectFiles(input, chunk);
 
             if (isEngineTest || isBlockTest)
             {
-                List<EthereumTestResult> results = await RunBlockTestFiles(files, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: true, workers);
+                BlockchainTestsRunnerOptions runnerOptions = new(
+                    Filter: filter,
+                    ChainId: chainId,
+                    Trace: trace,
+                    TraceMemory: traceMemory,
+                    ExcludeStack: excludeStack,
+                    JsonOutput: true,
+                    SuppressOutput: true,
+                    ParallelExecution: parallelExecution,
+                    ParallelExecutionBatchRead: batchRead);
+                List<EthereumTestResult> results = await RunBlockTestFiles(files, runnerOptions, workers);
                 Console.Out.Write(_serializer.Serialize(results, true));
             }
             else if (isStateTest)
@@ -159,34 +194,34 @@ internal class Program
         return 0;
     }
 
-    private static List<string> CollectFiles(string path)
+    private static List<string> CollectFiles(string path, string? chunk = null)
     {
+        List<string> result = [];
         if (File.Exists(path))
-            return [path];
-
-        if (Directory.Exists(path))
         {
-            List<string> result = [];
+            result.Add(path);
+        }
+        else if (Directory.Exists(path))
+        {
             foreach (string file in Directory.GetFiles(path, "*.json", SearchOption.AllDirectories))
             {
                 if (!file.Contains("/.meta/") && !file.Contains("\\.meta\\"))
                     result.Add(file);
             }
 
+            // Sorted before chunking so every chunk job sees the same order and the
+            // interleaved NofM partition is deterministic across CI jobs.
             result.Sort(StringComparer.Ordinal);
-            return result;
         }
 
-        return [];
+        return string.IsNullOrEmpty(chunk) ? result : [.. TestChunkFilter.FilterByChunk(result, chunk)];
     }
 
     private static async Task<List<EthereumTestResult>> RunBlockTestFiles(
-        List<string> files, string filter, ulong chainId,
-        bool trace, bool traceMemory, bool excludeStack,
-        bool jsonOutput, int workers)
+        List<string> files, BlockchainTestsRunnerOptions baseOptions, int workers)
     {
         await KzgPolynomialCommitments.InitializeAsync();
-        int effectiveWorkers = trace ? 1 : workers;
+        int effectiveWorkers = baseOptions.Trace ? 1 : workers;
         int completedTests = 0;
         long lastProgressReportTicks = DateTime.UtcNow.Ticks;
         string? UpdateProgress(bool forceReport)
@@ -209,6 +244,8 @@ internal class Program
             Console.Error.Flush();
         }
 
+        BlockchainTestsRunnerOptions runnerOptions = baseOptions with { ProgressUpdateFactory = UpdateProgress };
+
         if (effectiveWorkers <= 1)
         {
             List<EthereumTestResult> allResults = [];
@@ -217,15 +254,7 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
-                    BlockchainTestsRunner runner = new(source, new BlockchainTestsRunnerOptions(
-                        Filter: filter,
-                        ChainId: chainId,
-                        Trace: trace,
-                        TraceMemory: traceMemory,
-                        ExcludeStack: excludeStack,
-                        JsonOutput: jsonOutput,
-                        SuppressOutput: true,
-                        ProgressUpdateFactory: UpdateProgress));
+                    BlockchainTestsRunner runner = new(source, runnerOptions);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     allResults.AddRange(results);
                 }
@@ -254,15 +283,7 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), item.file);
-                    BlockchainTestsRunner runner = new(source, new BlockchainTestsRunnerOptions(
-                        Filter: filter,
-                        ChainId: chainId,
-                        Trace: trace,
-                        TraceMemory: traceMemory,
-                        ExcludeStack: excludeStack,
-                        JsonOutput: true,
-                        SuppressOutput: true,
-                        ProgressUpdateFactory: UpdateProgress));
+                    BlockchainTestsRunner runner = new(source, runnerOptions);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     resultsByFile[item.index] = results;
                 }
