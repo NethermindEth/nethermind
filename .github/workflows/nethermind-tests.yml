@@ -21,9 +21,11 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   # IL-EVM experiment branch only — force every contract through the segment compiler on its
-  # first execution so the entire test corpus exercises compiled code. Remove before merging.
+  # first execution (synchronously, so the same test execution runs the compiled code) so the
+  # entire test corpus exercises compiled paths. Remove before merging.
   NETHERMIND_ILEVM: "1"
   NETHERMIND_ILEVM_THRESHOLD: "1"
+  NETHERMIND_ILEVM_SYNC: "1"
 
 defaults:
   run:

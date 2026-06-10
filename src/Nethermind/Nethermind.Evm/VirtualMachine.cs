@@ -1344,8 +1344,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                     exceptionType = ilSegment.Invoke(ref stack, ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas), ref programCounter);
                     opCodeCount += ilSegment.OpCount;
-                    // Deliberately not interlocked — see the IlEvm.SegmentExecutions field doc.
-                    IlEvm.SegmentExecutions++;
                     continue;
                 }
 

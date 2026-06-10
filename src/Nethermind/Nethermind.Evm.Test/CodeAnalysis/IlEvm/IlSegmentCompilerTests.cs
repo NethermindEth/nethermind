@@ -13,9 +13,31 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.CodeAnalysis.IlEvm;
 
 [TestFixture]
+[NonParallelizable]
 public class IlSegmentCompilerTests
 {
     private static readonly IReleaseSpec Spec = Nethermind.Specs.Forks.Istanbul.Instance;
+
+    private int _minimumOpsBackup;
+    private int _boundaryFactorBackup;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _minimumOpsBackup = IlSegmentCompiler.MinimumPrefixOps;
+        _boundaryFactorBackup = IlSegmentCompiler.BoundaryCostFactor;
+        // These tests target emission semantics on intentionally tiny segments; relax the
+        // production profitability gate so they compile.
+        IlSegmentCompiler.MinimumPrefixOps = 1;
+        IlSegmentCompiler.BoundaryCostFactor = 0;
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        IlSegmentCompiler.MinimumPrefixOps = _minimumOpsBackup;
+        IlSegmentCompiler.BoundaryCostFactor = _boundaryFactorBackup;
+    }
 
     [Test]
     public void Compile_PushAddChain_ComputesResultAndAdvancesPc()
@@ -93,6 +115,40 @@ public class IlSegmentCompilerTests
         Assert.That(run.Result, Is.EqualTo(EvmExceptionType.None), "the arithmetic chain executes cleanly");
         Assert.That(run.Segment.OpCount, Is.EqualTo(6), "every op before STOP is emittable, including DIV");
         Assert.That(run.StackBottomFirst, Is.EqualTo(new UInt256[] { 8 }), "42 / 5 = 8 in integer division");
+    }
+
+    [Test]
+    public void Compile_ProductionProfitabilityGate_RejectsBoundaryHeavyAndAcceptsLongChains()
+    {
+        IlSegmentCompiler.MinimumPrefixOps = 8;
+        IlSegmentCompiler.BoundaryCostFactor = 3;
+
+        byte[] shortStackHeavy =
+        [
+            (byte)Instruction.SWAP1,
+            (byte)Instruction.SUB,
+            (byte)Instruction.DUP1,
+            (byte)Instruction.STOP,
+        ];
+        AnalyzedCode analyzedShort = BytecodeAnalyzer.Analyze(shortStackHeavy, Spec);
+        bool compiledShort = IlSegmentCompiler.TryCompile(shortStackHeavy, analyzedShort.Blocks[0], out _);
+        Assert.That(compiledShort, Is.False, "three ops against five boundary conversions is a net loss");
+
+        byte[] longChain = new byte[2 + 6 * 3 + 1];
+        int i = 0;
+        longChain[i++] = (byte)Instruction.PUSH1;
+        longChain[i++] = 9;
+        for (int round = 0; round < 6; round++)
+        {
+            longChain[i++] = (byte)Instruction.PUSH1;
+            longChain[i++] = 7;
+            longChain[i++] = (byte)Instruction.ADD;
+        }
+        longChain[i] = (byte)Instruction.STOP;
+        AnalyzedCode analyzedLong = BytecodeAnalyzer.Analyze(longChain, Spec);
+        bool compiledLong = IlSegmentCompiler.TryCompile(longChain, analyzedLong.Blocks[0], out IlCompiledSegment? segment);
+        Assert.That(compiledLong, Is.True, "a 13-op dependence chain with one exit value amortizes its boundary");
+        Assert.That(segment!.StackRequired, Is.EqualTo(0), "the chain produces its own operands");
     }
 
     [Test]

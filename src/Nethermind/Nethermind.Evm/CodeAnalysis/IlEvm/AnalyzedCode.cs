@@ -29,6 +29,8 @@ public sealed class AnalyzedCode
 
     public int BlockCount => _blocks.Length;
 
+    public int CodeLength => _blockIndexByPc.Length;
+
     /// <summary>
     /// Looks up the block whose first opcode sits at <paramref name="programCounter"/> —
     /// the query a jump lands on, and the hook the segment dispatcher will use.

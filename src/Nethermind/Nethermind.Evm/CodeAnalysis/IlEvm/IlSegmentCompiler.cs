@@ -69,7 +69,15 @@ public sealed class IlCompiledSegment
 /// </summary>
 public static class IlSegmentCompiler
 {
-    private const int MinimumOpsWorthCompiling = 3;
+    // Segment economics: a segment pays a fixed boundary toll — every entry operand is popped
+    // and every surviving value pushed back through big-endian word conversions, each costing
+    // several interpreted-ops' worth of time. Mainnet measurement showed that compiling short,
+    // stack-traffic-heavy blocks is a net LOSS versus the fused interpreter. Only compile when
+    // the interior is long enough to amortize the boundary:
+    //   ops >= MinimumPrefixOps  AND  ops >= BoundaryCostFactor × (entryPops + exitPushes).
+    // Mutable so tests can exercise small segments; volatile for cross-thread visibility.
+    public static volatile int MinimumPrefixOps = 8;
+    public static volatile int BoundaryCostFactor = 3;
 
     /// <summary>Head may grow to MaxStackSize - RegisterLength; one more and the interpreter's push fails.</summary>
     public const int UsableStackSlots = EvmStack.MaxStackSize - EvmStack.RegisterLength;
@@ -121,7 +129,9 @@ public static class IlSegmentCompiler
         }
 
         List<DecodedOp> ops = DecodePrefix(code, in block, out int exitPc, out PrefixMetrics metrics);
-        if (ops.Count < MinimumOpsWorthCompiling)
+        int exitPushes = metrics.StackRequired + metrics.StackDelta;
+        int boundaryTraffic = metrics.StackRequired + exitPushes;
+        if (ops.Count < MinimumPrefixOps || ops.Count < BoundaryCostFactor * boundaryTraffic)
             return false;
 
         CompiledSegmentInvoke invoke = Emit(ops, in block, exitPc, in metrics);

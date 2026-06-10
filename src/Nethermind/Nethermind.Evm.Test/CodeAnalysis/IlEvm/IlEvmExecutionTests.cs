@@ -31,12 +31,23 @@ public class IlEvmExecutionTests
 {
     private bool _enabledBackup;
     private int _thresholdBackup;
+    private bool _syncBackup;
+    private int _minimumOpsBackup;
+    private int _boundaryFactorBackup;
 
     [SetUp]
     public void SetUp()
     {
         _enabledBackup = Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.Enabled;
         _thresholdBackup = Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.CompileThreshold;
+        _syncBackup = Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.SynchronousCompilation;
+        _minimumOpsBackup = IlSegmentCompiler.MinimumPrefixOps;
+        _boundaryFactorBackup = IlSegmentCompiler.BoundaryCostFactor;
+        // Deterministic compiled-path coverage: compile on the executing thread, and let the
+        // short test segments through the production profitability gate.
+        Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.SynchronousCompilation = true;
+        IlSegmentCompiler.MinimumPrefixOps = 1;
+        IlSegmentCompiler.BoundaryCostFactor = 0;
     }
 
     [TearDown]
@@ -44,6 +55,9 @@ public class IlEvmExecutionTests
     {
         Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.Enabled = _enabledBackup;
         Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.CompileThreshold = _thresholdBackup;
+        Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.SynchronousCompilation = _syncBackup;
+        IlSegmentCompiler.MinimumPrefixOps = _minimumOpsBackup;
+        IlSegmentCompiler.BoundaryCostFactor = _boundaryFactorBackup;
     }
 
     [Test]

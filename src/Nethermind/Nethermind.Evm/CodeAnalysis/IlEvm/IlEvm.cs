@@ -16,6 +16,10 @@ public sealed class IlCompiledCode
 {
     private readonly AnalyzedCode _analyzed;
     private readonly IlCompiledSegment?[] _segmentsByBlockIndex;
+    // One byte per code byte, non-zero only at pcs where a compiled segment starts. The
+    // dispatch loop probes EVERY iteration, so the miss path must be a single hot-cache load
+    // and a predicted-not-taken branch; the two-array walk happens only on actual hits.
+    private readonly byte[] _segmentStartMap;
 
     internal IlCompiledCode(AnalyzedCode analyzed, IlCompiledSegment?[] segmentsByBlockIndex, IReleaseSpec spec, int segmentCount)
     {
@@ -23,6 +27,14 @@ public sealed class IlCompiledCode
         _segmentsByBlockIndex = segmentsByBlockIndex;
         Spec = spec;
         SegmentCount = segmentCount;
+
+        _segmentStartMap = new byte[analyzed.CodeLength];
+        ReadOnlySpan<BasicBlock> blocks = analyzed.Blocks;
+        for (int i = 0; i < segmentsByBlockIndex.Length; i++)
+        {
+            if (segmentsByBlockIndex[i] is not null)
+                _segmentStartMap[blocks[i].Start] = 1;
+        }
     }
 
     /// <summary>The spec the segments were compiled under; a different spec must not use them.</summary>
@@ -32,7 +44,9 @@ public sealed class IlCompiledCode
 
     public bool TryGetSegmentStartingAt(int programCounter, out IlCompiledSegment segment)
     {
-        if (_analyzed.TryGetBlockIndexStartingAt(programCounter, out int blockIndex))
+        byte[] map = _segmentStartMap;
+        if ((uint)programCounter < (uint)map.Length && map[programCounter] != 0
+            && _analyzed.TryGetBlockIndexStartingAt(programCounter, out int blockIndex))
         {
             IlCompiledSegment? candidate = _segmentsByBlockIndex[blockIndex];
             if (candidate is not null)
@@ -72,13 +86,16 @@ public static class IlEvm
 
     public static volatile int CompileThreshold = ParseThreshold();
 
-    // Observability: proves compiled code actually executed (test gates, Grafana). The
-    // execution counter is deliberately not interlocked — a lossy count is acceptable there
-    // (64-bit process assumed; on 32-bit a long increment could tear). Compilation counters
-    // are interlocked since they are written rarely and read as exact values.
+    // Compile on the noticing thread instead of the thread pool. For tests and forced-on
+    // consensus gates (NETHERMIND_ILEVM_SYNC=1), where executions must deterministically run
+    // on compiled code; never for production traffic.
+    public static volatile bool SynchronousCompilation = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SYNC") == "1";
+
+    // Observability (Grafana / test assertions). Interlocked: written once per contract, read
+    // as exact values. Deliberately NO per-segment-execution counter — a shared counter written
+    // by every RPC thread on every segment was measurable cache-line contention on the hot path.
     public static long ContractsCompiled;
     public static long SegmentsCompiled;
-    public static long SegmentExecutions;
     public static long ContractCompilationFailures;
 
     /// <summary>
@@ -103,8 +120,20 @@ public static class IlEvm
         if (Interlocked.Increment(ref codeInfo.IlEvmExecutionCount) != CompileThreshold)
             return;
 
-        object artifact = Compile(codeInfo, spec);
-        Volatile.Write(ref codeInfo.IlEvmArtifact, artifact);
+        if (SynchronousCompilation)
+        {
+            Volatile.Write(ref codeInfo.IlEvmArtifact, Compile(codeInfo, spec));
+            return;
+        }
+
+        // Compile in the background — never on the noticing thread, which is block processing
+        // or an RPC call (synchronous compilation of the mainnet hot set measurably stalled
+        // block throughput). Until the artifact is published the interpreter keeps serving.
+        // The Interlocked threshold compare above guarantees this enqueues exactly once.
+        ThreadPool.UnsafeQueueUserWorkItem(
+            static state => Volatile.Write(ref state.codeInfo.IlEvmArtifact, Compile(state.codeInfo, state.spec)),
+            (codeInfo, spec),
+            preferLocal: false);
     }
 
     public static IlCompiledCode? GetForExecution(CodeInfo codeInfo, IReleaseSpec spec)
