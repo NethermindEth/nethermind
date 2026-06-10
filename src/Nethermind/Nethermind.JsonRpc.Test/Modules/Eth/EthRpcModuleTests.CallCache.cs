@@ -69,6 +69,7 @@ public partial class EthRpcModuleTests
                 $"{{\"to\": \"{TestItem.AddressC}\", \"input\": \"0x01\"}}");
 
             long hitsBefore = EthCallResultCache.Hits;
+            long missesBefore = EthCallResultCache.Misses;
 
             // Sum 50..1 = 1275 = 0x4FB.
             const string expected = "{\"jsonrpc\":\"2.0\",\"result\":\"0x00000000000000000000000000000000000000000000000000000000000004fb\",\"id\":67}";
@@ -78,7 +79,9 @@ public partial class EthRpcModuleTests
             Assert.That(first, Is.EqualTo(expected), "the first call computes the result");
             Assert.That(second, Is.EqualTo(expected), "the cached result must be byte-identical");
             Assert.That(EthCallResultCache.Hits - hitsBefore, Is.EqualTo(1),
-                "the second identical call against the same head must be a cache hit");
+                $"the second identical call against the same head must be a cache hit " +
+                $"(misses delta: {EthCallResultCache.Misses - missesBefore} — 0 means the cache path was never reached, " +
+                "2 means the two calls computed different keys or Set failed)");
 
             long hitsBeforeDifferent = EthCallResultCache.Hits;
             string different = await ctx.Test.TestEthRpc("eth_call", differentTransaction, "latest");
