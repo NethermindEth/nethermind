@@ -191,7 +191,6 @@ namespace Nethermind.Consensus.Validators
             else if (parent.Hash != header.ParentHash)
             {
                 error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
-                parent.SlotNumber = 0;
                 return false;
             }
 
@@ -239,6 +238,14 @@ namespace Nethermind.Consensus.Validators
             // ValidateParent (called earlier in the chain) accepts a null parent only for genesis.
             // Gas-limit-vs-parent comparisons don't apply at genesis, so skip them.
             if (parent is null) return true;
+
+            // Ethereum protocol hard-caps block gas limit at 2^63-1 to prevent overflow and ensure compatibility with signed 64-bit systems.
+            if (header.GasLimit > 0x7FFFFFFFFFFFFFFF)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit higher than 2^63-1. Gas limit: {header.GasLimit}");
+                error = BlockErrorMessages.InvalidGasLimit;
+                return false;
+            }
 
             ulong adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             ulong maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;

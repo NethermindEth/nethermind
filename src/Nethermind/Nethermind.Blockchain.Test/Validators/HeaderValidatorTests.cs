@@ -241,13 +241,13 @@ public class HeaderValidatorTests
     {
         _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _parentBlock = Build.A.Block.WithDifficulty(1)
-            .WithGasLimit(ulong.MaxValue)
+            .WithGasLimit(long.MaxValue)
             .WithNumber(5)
             .TestObject;
         _block = Build.A.Block.WithParent(_parentBlock)
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
-            .WithGasLimit(ulong.MaxValue)
+            .WithGasLimit(long.MaxValue)
             .WithNumber(_parentBlock.Number + 1)
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
@@ -340,6 +340,19 @@ public class HeaderValidatorTests
 
         Assert.That(result, Is.False);
         Assert.That(error, Does.StartWith("Mismatched parent"));
+    }
+
+    [Test]
+    public void Validate_does_not_mutate_parent_header_on_mismatch()
+    {
+        _block.Header.Hash = _block.CalculateHash();
+        BlockHeader parentHeader = Build.A.BlockHeader.WithNonce(999).TestObject;
+        parentHeader.SlotNumber = null;
+
+        bool result = _validator.Validate(_block.Header, parentHeader, false, out string? error);
+
+        Assert.That(result, Is.False);
+        Assert.That(parentHeader.SlotNumber, Is.Null);
     }
 
     [Test]

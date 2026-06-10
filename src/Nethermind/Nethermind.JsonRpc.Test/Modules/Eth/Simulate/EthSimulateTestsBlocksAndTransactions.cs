@@ -157,7 +157,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Transaction tx = new()
         {
             Type = type,
-            Value = amount > ulong.MaxValue ? ulong.MaxValue : (ulong)amount,
+            Value = amount,
             Nonce = nonce,
             GasLimit = 50_000,
             SenderAddress = from.Address,
