@@ -21,7 +21,9 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
         spec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
         spec.IsEip8024Enabled = true;
         spec.IsEip8037Enabled = true;
-        spec.IsEip8246Enabled = true;
+        // EIP-8246 is implemented but stays off here: it is still a Draft and not part of the
+        // EEST `for_amsterdam` fixtures, so enabling it would diverge from conformance tests.
+        // It can be activated via the Eip8246Transition chainspec parameter when scheduled.
     }
 
     public static IReleaseSpec NoEip8037Instance { get; } = new Amsterdam { IsEip8037Enabled = false };
