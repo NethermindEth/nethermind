@@ -4,15 +4,13 @@
 namespace Nethermind.RpcTests.Monitor.Notifiers;
 
 /// <summary>
-/// Wraps an <see cref="INotifier"/> with one or more sliding-window rate limiters.
-/// A notification is forwarded only when every configured window allows it.
+/// Wraps an <see cref="INotifier"/> with a sliding-window rate limiter.
 /// When the limit is first exceeded, a single warning is forwarded to the inner notifier;
-/// further messages are silently dropped until all windows clear.
+/// further messages are silently dropped until the window clears.
 /// </summary>
-internal sealed class RateLimitedNotifier(INotifier inner, params (int MaxMessages, TimeSpan Window)[] limits) : INotifier
+internal sealed class RateLimitedNotifier(INotifier inner, int maxMessages, TimeSpan window) : INotifier
 {
-    private readonly (int MaxMessages, TimeSpan Window, Queue<DateTime> Timestamps)[] _windows =
-        limits.Select(static l => (l.MaxMessages, l.Window, new Queue<DateTime>(l.MaxMessages))).ToArray();
+    private readonly Queue<DateTime> _timestamps = new(maxMessages);
     private readonly Lock _lock = new();
     private bool _limitActive;
 
@@ -41,26 +39,19 @@ internal sealed class RateLimitedNotifier(INotifier inner, params (int MaxMessag
     }
 
     private string RateLimitMessage =>
-        $"Rate limit reached ({string.Join(", ", _windows.Select(static w => $"{w.MaxMessages} per {w.Window:g}"))}) — subsequent notifications suppressed until the window clears.";
+        $"Rate limit reached ({maxMessages} messages per {window:g}) — subsequent notifications suppressed until the window clears.";
 
     private bool CheckRateLimit(out bool justHit)
     {
         DateTime now = DateTime.UtcNow;
         lock (_lock)
         {
-            bool exceeded = false;
-            foreach (var (max, window, ts) in _windows)
-            {
-                while (ts.Count > 0 && now - ts.Peek() > window)
-                    ts.Dequeue();
-                if (ts.Count >= max)
-                    exceeded = true;
-            }
+            while (_timestamps.Count > 0 && now - _timestamps.Peek() > window)
+                _timestamps.Dequeue();
 
-            if (!exceeded)
+            if (_timestamps.Count < maxMessages)
             {
-                foreach (var (_, _, ts) in _windows)
-                    ts.Enqueue(now);
+                _timestamps.Enqueue(now);
                 _limitActive = false;
                 justHit = false;
                 return true;
@@ -77,6 +68,6 @@ internal sealed class RateLimitedNotifier(INotifier inner, params (int MaxMessag
 
 internal static class RateLimitedNotifierExtensions
 {
-    public static INotifier RateLimited(this INotifier notifier, params (int MaxMessages, TimeSpan Window)[] limits) =>
-        new RateLimitedNotifier(notifier, limits);
+    public static INotifier RateLimited(this INotifier notifier, int maxMessages, TimeSpan window) =>
+        new RateLimitedNotifier(notifier, maxMessages, window);
 }
