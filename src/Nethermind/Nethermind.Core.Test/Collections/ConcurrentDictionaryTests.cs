@@ -20,8 +20,11 @@ public class ConcurrentDictionaryTests
         {
             updateTask = Task.Run(() => dictionary[3] = 3);
             Task.WaitAny(updateTask, Task.Delay(100));
-            Assert.That(updateTask.IsCompleted, Is.False);
-            Assert.That(dictionary.ContainsKey(3), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(updateTask.IsCompleted, Is.False);
+                Assert.That(dictionary.ContainsKey(3), Is.False);
+            }
         }
 
         updateTask.Wait();

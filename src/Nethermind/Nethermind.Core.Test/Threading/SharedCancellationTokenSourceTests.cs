@@ -15,13 +15,19 @@ public class SharedCancellationTokenSourceTests
         SharedCancellationTokenSource shared = new(new CancellationTokenSource());
         CancellationToken token = shared.Token;
 
-        Assert.That(shared.IsCancellationRequested, Is.False);
-        Assert.That(token.IsCancellationRequested, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shared.IsCancellationRequested, Is.False);
+            Assert.That(token.IsCancellationRequested, Is.False);
+        }
 
         shared.CancelAndDispose();
 
-        Assert.That(shared.IsCancellationRequested, Is.True);
-        Assert.That(token.IsCancellationRequested, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shared.IsCancellationRequested, Is.True);
+            Assert.That(token.IsCancellationRequested, Is.True);
+        }
     }
 
     [TestCase(1)]
@@ -48,7 +54,10 @@ public class SharedCancellationTokenSourceTests
         gate.Set();
         foreach (Thread t in threads) t.Join();
 
-        Assert.That(trueCount, Is.EqualTo(1));
-        Assert.That(shared.IsCancellationRequested, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trueCount, Is.EqualTo(1));
+            Assert.That(shared.IsCancellationRequested, Is.True);
+        }
     }
 }

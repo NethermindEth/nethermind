@@ -25,10 +25,13 @@ public class SyncStatusListTests
         FastBlockStatus a = list[0];
         list.TrySet(0, a);
 
-        Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[-1]; });
-        Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[1]; });
-        Assert.Throws<IndexOutOfRangeException>(() => { list.TrySet(-1, FastBlockStatus.Pending); });
-        Assert.Throws<IndexOutOfRangeException>(() => { list.TrySet(1, FastBlockStatus.Pending); });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[-1]; });
+            Assert.Throws<IndexOutOfRangeException>(() => { FastBlockStatus a = list[1]; });
+            Assert.Throws<IndexOutOfRangeException>(() => { list.TrySet(-1, FastBlockStatus.Pending); });
+            Assert.Throws<IndexOutOfRangeException>(() => { list.TrySet(1, FastBlockStatus.Pending); });
+        }
     }
 
     [Test]

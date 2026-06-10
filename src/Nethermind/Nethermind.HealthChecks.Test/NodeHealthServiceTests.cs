@@ -65,11 +65,7 @@ public class NodeHealthServiceTests
             new(syncServer, blockchainProcessor, blockProducerRunner, new HealthChecksConfig(),
                 healthHintService, ethSyncingInfo, tracker, null, new[] { drive }, test.IsMining);
         CheckHealthResult result = nodeHealthService.CheckHealth();
-        Assert.That(result.Healthy, Is.EqualTo(test.ExpectedHealthy));
-        Assert.That(FormatMessages(result.Messages.Select(static x => x.Message)), Is.EqualTo(test.ExpectedMessage));
-        Assert.That(FormatMessages(result.Messages.Select(static x => x.LongMessage)), Is.EqualTo(test.ExpectedLongMessage));
-        Assert.That(result.IsSyncing, Is.EqualTo(test.IsSyncing));
-        Assert.That(test.ExpectedErrors, Is.EqualTo(result.Errors).AsCollection);
+        AssertHealth(result, test.ExpectedHealthy, test.ExpectedMessage, test.ExpectedLongMessage, test.IsSyncing, test.ExpectedErrors);
     }
 
     [Test]
@@ -108,11 +104,19 @@ public class NodeHealthServiceTests
                 healthHintService, ethSyncingInfo, tracker, UInt256.Zero, new[] { drive }, false);
 
         CheckHealthResult result = nodeHealthService.CheckHealth();
-        Assert.That(result.Healthy, Is.EqualTo(test.ExpectedHealthy));
-        Assert.That(FormatMessages(result.Messages.Select(static x => x.Message)), Is.EqualTo(test.ExpectedMessage));
-        Assert.That(FormatMessages(result.Messages.Select(static x => x.LongMessage)), Is.EqualTo(test.ExpectedLongMessage));
-        Assert.That(result.IsSyncing, Is.EqualTo(test.IsSyncing));
-        Assert.That(test.ExpectedErrors, Is.EqualTo(result.Errors).AsCollection);
+        AssertHealth(result, test.ExpectedHealthy, test.ExpectedMessage, test.ExpectedLongMessage, test.IsSyncing, test.ExpectedErrors);
+    }
+
+    private static void AssertHealth(CheckHealthResult result, bool expectedHealthy, string expectedMessage, string expectedLongMessage, bool expectedIsSyncing, IEnumerable<string> expectedErrors)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Healthy, Is.EqualTo(expectedHealthy));
+            Assert.That(FormatMessages(result.Messages.Select(static x => x.Message)), Is.EqualTo(expectedMessage));
+            Assert.That(FormatMessages(result.Messages.Select(static x => x.LongMessage)), Is.EqualTo(expectedLongMessage));
+            Assert.That(result.IsSyncing, Is.EqualTo(expectedIsSyncing));
+            Assert.That(expectedErrors, Is.EqualTo(result.Errors).AsCollection);
+        }
     }
 
     public class CheckHealthPostMergeTest
