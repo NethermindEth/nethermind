@@ -1330,11 +1330,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // (underflow/overflow/out-of-gas) is produced with exact per-opcode accounting
                 // — segments only ever execute to completion.
                 if (typeof(TGasPolicy) == typeof(EthereumGasPolicy) && ilCompiled is not null
-                    && ilCompiled.TryGetSegmentStartingAt(programCounter, out IlCompiledSegment ilSegment)
-                    && stack.Head >= ilSegment.StackRequired
-                    && stack.Head <= EvmStack.MaxStackSize - EvmStack.RegisterLength - ilSegment.StackMaxGrowth
-                    && TGasPolicy.GetRemainingGas(in gas) >= ilSegment.StaticGas)
+                    && ilCompiled.TryGetSegmentStartingAt(programCounter, out IlCompiledSegment ilSegment))
                 {
+                    if (stack.Head < ilSegment.StackRequired
+                        || stack.Head > EvmStack.MaxStackSize - EvmStack.RegisterLength - ilSegment.StackMaxGrowth
+                        || TGasPolicy.GetRemainingGas(in gas) < ilSegment.StaticGas)
+                    {
+                        // A compiled segment exists here but cannot run — the interpreter takes
+                        // the block. If this counter grows like SegmentInvocations, segments are
+                        // being priced out by their own entry preconditions (lossy, off-hot-path:
+                        // only reached on a segment-start hit).
+                        IlEvm.DispatchRejections++;
+                        goto Interpret;
+                    }
                     // Poll cancellation per segment: chained segments bypass the interpreter's
                     // batched gate via `continue`, and a fully-compiled stretch must still be
                     // abortable. One interface call per ≥3 fused opcodes is cheaper than the
@@ -1349,6 +1357,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         ref programCounter,
                         ilSegment.EntryIndex);
                     IlEvm.SegmentInvocations++; // lossy engagement signal — see the field doc
+                    IlEvm.SegmentOps += ilSegment.OpCount; // lossy coverage signal
                     opCodeCount += ilSegment.OpCount;
                     // Embedded handler calls (memory/keccak) charge dynamic gas and may halt —
                     // mirror the interpreter's post-dispatch checks exactly.
@@ -1362,6 +1371,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     continue;
                 }
 
+            Interpret:
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
                 debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);

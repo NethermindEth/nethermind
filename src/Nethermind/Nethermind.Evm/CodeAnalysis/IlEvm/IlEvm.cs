@@ -118,6 +118,22 @@ public static class IlEvm
     public static long SegmentInvocations;
 
     /// <summary>
+    /// Opcodes executed INSIDE compiled segments (lossy, like <see cref="SegmentInvocations"/>).
+    /// The coverage ratio — this against the workload's total executed opcodes — is the number
+    /// that says whether IL-EVM is doing 5% or 60% of the work, which "is it engaged?" cannot.
+    /// </summary>
+    public static long SegmentOps;
+
+    /// <summary>
+    /// Dispatch hits where a compiled segment exists at the program counter but its entry
+    /// preconditions (stack depth, headroom, static gas) failed, sending the block to the
+    /// interpreter (lossy). Growing in step with <see cref="SegmentInvocations"/> means the
+    /// compiler's entry requirements — e.g. component-window StackRequired on merged regions —
+    /// are pricing the segments out of their own hot paths.
+    /// </summary>
+    public static long DispatchRejections;
+
+    /// <summary>
     /// Per-frame notice: increments the execution counter and compiles exactly once at the
     /// threshold. Compilation is synchronous on the noticing thread — a one-time cost per code
     /// hash, never repeated (failures publish the sentinel).

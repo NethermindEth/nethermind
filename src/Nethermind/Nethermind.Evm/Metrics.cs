@@ -74,6 +74,14 @@ public class Metrics
     [CounterMetric]
     [Description("Number of IL-EVM compiled segment invocations — the engagement signal.")]
     public static long IlEvmSegmentInvocations => CodeAnalysis.IlEvm.IlEvm.SegmentInvocations;
+
+    [CounterMetric]
+    [Description("Number of opcodes executed inside IL-EVM compiled segments — the coverage signal.")]
+    public static long IlEvmSegmentOps => CodeAnalysis.IlEvm.IlEvm.SegmentOps;
+
+    [CounterMetric]
+    [Description("Number of IL-EVM dispatch hits whose entry preconditions failed (interpreter took the block).")]
+    public static long IlEvmDispatchRejections => CodeAnalysis.IlEvm.IlEvm.DispatchRejections;
     [Description("Number of Code DB cache reads on main processing thread.")]
     public static long MainThreadCodeDbCache => _mainCodeDbCache;
     internal static void IncrementCodeDbCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache : ref _otherCodeDbCache);
