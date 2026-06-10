@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.CodeAnalysis.IlEvm;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis.IlEvm;

@@ -129,7 +129,7 @@ public static class IlSegmentCompiler
         }
 
         List<DecodedOp> ops = DecodePrefix(code, in block, out int exitPc, out PrefixMetrics metrics);
-        int exitPushes = metrics.StackRequired + metrics.StackDelta;
+        int exitPushes = metrics.StackRequired + metrics.StackFinalDelta;
         int boundaryTraffic = metrics.StackRequired + exitPushes;
         if (ops.Count < MinimumPrefixOps || ops.Count < BoundaryCostFactor * boundaryTraffic)
             return false;
@@ -155,6 +155,7 @@ public static class IlSegmentCompiler
         public long StaticGas;
         public int StackRequired;
         public int StackMaxDelta;
+        public int StackFinalDelta;
     }
 
     private static List<DecodedOp> DecodePrefix(ReadOnlySpan<byte> code, in BasicBlock block, out int exitPc, out PrefixMetrics metrics)
@@ -190,6 +191,7 @@ public static class IlSegmentCompiler
             pc += 1 + info.ImmediateBytes;
         }
 
+        metrics.StackFinalDelta = delta;
         exitPc = pc;
         return ops;
     }
