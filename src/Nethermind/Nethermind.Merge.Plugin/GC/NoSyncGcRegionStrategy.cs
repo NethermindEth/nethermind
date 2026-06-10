@@ -23,7 +23,7 @@ public class NoSyncGcRegionStrategy : IGCStrategy
         PostBlockDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)((mergeConfig.SecondsPerSlot * 1000) / 8);
     }
 
-    public int CollectionsPerDecommit { get; }
+    public ulong CollectionsPerDecommit { get; }
     public int PostBlockDelayMs { get; }
 
     public bool CanStartNoGCRegion() => _canStartNoGCRegion && _syncModeSelector.Current == SyncMode.WaitingForBlock;

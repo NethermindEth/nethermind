@@ -32,7 +32,7 @@ public class EraImporter(
 {
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
-    private readonly int _maxEra1Size = eraConfig.MaxEra1Size;
+    private readonly ulong _maxEra1Size = eraConfig.MaxEra1Size;
 
     /// <summary>
     /// Snapshot of the pacer used by the current import run. <see cref="BlockTreeSuggestPacer.WaitForPausedAsync"/>
@@ -138,7 +138,7 @@ public class EraImporter(
         }
 
         // Earlier part can be parallelized
-        ulong partitionSize = (ulong)_maxEra1Size;
+        ulong partitionSize = _maxEra1Size;
         if (blockNumber + partitionSize < suggestFromBlock)
         {
             ConcurrentQueue<ulong> partitionStartBlocks = new();

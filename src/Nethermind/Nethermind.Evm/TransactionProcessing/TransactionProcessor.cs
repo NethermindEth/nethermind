@@ -284,8 +284,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsContractCreation) Metrics.IncrementCreates();
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
-            int delegationRefunds = 0;
-            int delegationAuthBaseRefunds = 0;
+            ulong delegationRefunds = 0UL;
+            ulong delegationAuthBaseRefunds = 0UL;
             TransactionResult result;
             if (!(result = Validate8037DelegationRefundBounds(tx, spec, in gasAvailable))) return result;
 
@@ -585,8 +585,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             in IntrinsicGas<TGasPolicy> intrinsicGas,
             ref TGasPolicy gasAvailable,
-            ref int delegationRefunds,
-            ref int delegationAuthBaseRefunds)
+            ref ulong delegationRefunds,
+            ref ulong delegationAuthBaseRefunds)
         {
             if (spec.IsEip8037Enabled && (delegationRefunds > 0 || delegationAuthBaseRefunds > 0))
             {
@@ -629,8 +629,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!TryCalculate8037DelegationRefund(
                     newAccountStateCost,
                     perAuthBaseStateCost,
-                    maxRefunds,
-                    maxRefunds,
+                    (ulong)maxRefunds,
+                    (ulong)maxRefunds,
                     out _))
             {
                 TraceLogInvalidTx(tx, "AUTHORIZATION_REFUND_OVERFLOW");
@@ -643,24 +643,20 @@ namespace Nethermind.Evm.TransactionProcessing
         private static bool TryCalculate8037DelegationRefund(
             ulong newAccountStateCost,
             ulong perAuthBaseStateCost,
-            int delegationRefunds,
-            int delegationAuthBaseRefunds,
+            ulong delegationRefunds,
+            ulong delegationAuthBaseRefunds,
             out ulong stateGasRefund)
         {
             stateGasRefund = 0;
-            if (delegationRefunds < 0 || delegationAuthBaseRefunds < 0)
+
+            if ((delegationRefunds != 0UL && newAccountStateCost > ulong.MaxValue / delegationRefunds) ||
+                (delegationAuthBaseRefunds != 0UL && perAuthBaseStateCost > ulong.MaxValue / delegationAuthBaseRefunds))
             {
                 return false;
             }
 
-            if ((delegationRefunds != 0 && newAccountStateCost > ulong.MaxValue / (ulong)delegationRefunds) ||
-                (delegationAuthBaseRefunds != 0 && perAuthBaseStateCost > ulong.MaxValue / (ulong)delegationAuthBaseRefunds))
-            {
-                return false;
-            }
-
-            ulong newAccountStateRefund = newAccountStateCost * (ulong)delegationRefunds;
-            ulong authBaseStateRefund = perAuthBaseStateCost * (ulong)delegationAuthBaseRefunds;
+            ulong newAccountStateRefund = newAccountStateCost * delegationRefunds;
+            ulong authBaseStateRefund = perAuthBaseStateCost * delegationAuthBaseRefunds;
             if (newAccountStateRefund > ulong.MaxValue - authBaseStateRefund)
             {
                 return false;
@@ -671,12 +667,12 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker, out int authBaseRefunds)
+        private ulong ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker, out ulong authBaseRefunds)
         {
             Debug.Assert(spec.IsEip7702Enabled && tx.HasAuthorizationList);
 
-            int refunds = 0;
-            authBaseRefunds = 0;
+            ulong refunds = 0UL;
+            authBaseRefunds = 0UL;
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
@@ -1175,7 +1171,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ITxTracer tracer,
             ExecutionOptions opts,
-            int delegationRefunds,
+            ulong delegationRefunds,
             IntrinsicGas<TGasPolicy> gas,
             in StackAccessTracker accessedItems,
             TGasPolicy gasAvailable,
@@ -1538,7 +1534,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard, ulong postIntrinsicStateReservoir)
+            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard, ulong postIntrinsicStateReservoir)
         {
             TGasPolicy gasAfterExecution = unspentGas;
             ulong stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);

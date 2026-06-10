@@ -31,7 +31,7 @@ internal class XdcBlockProducerTest
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
-        xdcReleaseSpec.MinePeriod.Returns(2);
+        xdcReleaseSpec.MinePeriod.Returns(2UL);
         xdcReleaseSpec.EpochLength.Returns(900UL);
         xdcReleaseSpec.GasLimitBoundDivisor.Returns(1UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);

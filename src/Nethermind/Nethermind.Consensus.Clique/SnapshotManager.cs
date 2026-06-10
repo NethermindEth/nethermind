@@ -183,7 +183,7 @@ namespace Nethermind.Consensus.Clique
             ulong signedAt = snapshot.Signers[signer];
             if (signedAt == 0UL) return false;
 
-            return number - signedAt < (ulong)snapshot.SignerLimit;
+            return number - signedAt < snapshot.SignerLimit;
         }
 
         public bool IsValidVote(Snapshot snapshot, Address address, bool authorize)

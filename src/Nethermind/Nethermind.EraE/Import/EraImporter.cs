@@ -34,7 +34,7 @@ public sealed class EraImporter(
     : IEraImporter
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
-    private readonly int _maxEraSize = eraConfig.MaxEraSize;
+    private readonly ulong _maxEraSize = eraConfig.MaxEraSize;
 
     public async Task Import(string src, ulong from, ulong to, string? accumulatorFile, CancellationToken cancellation = default)
     {
@@ -108,7 +108,7 @@ public sealed class EraImporter(
         }
 
         // Parallel historical import (blocks without state)
-        ulong partitionSize = (ulong)_maxEraSize;
+        ulong partitionSize = _maxEraSize;
         if (blockNumber + partitionSize < suggestFromBlock)
         {
             ConcurrentQueue<ulong> partitionStartBlocks = new();

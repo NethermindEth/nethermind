@@ -35,7 +35,7 @@ public sealed class EraExporter(
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly int _eraSize = eraConfig.MaxEraSize is > 0 and <= EraWriter.MaxEraSize
+    private readonly ulong _eraSize = eraConfig.MaxEraSize is > 0UL and <= (ulong)EraWriter.MaxEraSize
         ? eraConfig.MaxEraSize
         : throw new ArgumentException($"MaxEraSize must be between 1 and {EraWriter.MaxEraSize} (SLOTS_PER_HISTORICAL_ROOT). Got {eraConfig.MaxEraSize}.");
 
@@ -72,8 +72,8 @@ public sealed class EraExporter(
         using ProgressReporter progress = new("EraE export", logManager, to - from + 1);
         long totalProcessed = 0;
 
-        ulong startEpoch = from / (ulong)_eraSize;
-        ulong endEpoch = to / (ulong)_eraSize;
+        ulong startEpoch = from / _eraSize;
+        ulong endEpoch = to / _eraSize;
         ulong epochCount = endEpoch - startEpoch + 1;
 
         using ArrayPoolList<long> epochIdxs = new((int)epochCount);
@@ -115,9 +115,9 @@ public sealed class EraExporter(
             ulong epoch = startEpoch + (ulong)epochIdx;
             // Each epoch covers [epoch * eraSize, epoch * eraSize + eraSize - 1].
             // Clamp to [from, to] to handle partial first and last epochs.
-            ulong epochBlockStart = epoch * (ulong)_eraSize;
+            ulong epochBlockStart = epoch * _eraSize;
             ulong writeFrom = Math.Max(epochBlockStart, from);
-            ulong writeTo = Math.Min(epochBlockStart + (ulong)_eraSize - 1, to);
+            ulong writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
 
             if (TrySkipExistingEpoch(destinationPath, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
                 return;

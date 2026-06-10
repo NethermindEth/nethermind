@@ -105,5 +105,5 @@ public sealed class V2ConfigParams
     public double CertificateThreshold { get; init; }
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
-    public int MinePeriod { get; init; }
+    public ulong MinePeriod { get; init; }
 }

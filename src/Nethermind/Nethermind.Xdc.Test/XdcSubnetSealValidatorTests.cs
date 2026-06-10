@@ -186,7 +186,7 @@ public class XdcSubnetSealValidatorTests
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.EpochLength.Returns(Epoch);
         releaseSpec.Gap.Returns(Gap);
-        releaseSpec.MinePeriod.Returns(10);
+        releaseSpec.MinePeriod.Returns(10UL);
         releaseSpec.GasLimitBoundDivisor.Returns(1024UL);
         releaseSpec.When(x => x.ApplyV2Config(Arg.Any<ulong>())).Do(_ => { });
 

@@ -218,7 +218,7 @@ namespace Nethermind.Xdc
 
             // Gate 1: enforce minimum mine period since parent block was produced
             long now = _timestamper.UnixTime.SecondsLong;
-            long mineReadyAt = (long)proposalParent.Timestamp + proposalSpec.MinePeriod;
+            long mineReadyAt = (long)(proposalParent.Timestamp + proposalSpec.MinePeriod);
             if (mineReadyAt > now)
                 await Task.Delay(TimeSpan.FromSeconds(mineReadyAt - now), ct);
 

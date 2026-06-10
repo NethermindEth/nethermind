@@ -68,7 +68,7 @@ internal class XdcBlockProducer(
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 
-        xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + (ulong)spec.MinePeriod;
+        xdcBlockHeader.Timestamp = payloadAttributes?.Timestamp ?? parent.Timestamp + spec.MinePeriod;
 
         xdcBlockHeader.Difficulty = 1;
 

@@ -28,7 +28,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     // Changed int → uint: era size is always a small positive count (e.g. 8192),
     // never negative, so uint is the honest type and avoids (ulong) casts in
     // epoch arithmetic.
-    private readonly uint _maxEraSize;
+    private readonly ulong _maxEraSize;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockValidator _blockValidator;
     private readonly Proofs.Validator? _validator;
@@ -63,7 +63,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         IEraStore? localStore,
         IRemoteEraClient client,
         string downloadDir,
-        int maxEraSize,
+        ulong maxEraSize,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         ISet<ValueHash256>? trustedAccumulators = null,
@@ -72,7 +72,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentException.ThrowIfNullOrWhiteSpace(downloadDir);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEraSize, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEraSize, 0UL);
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(blockValidator);
 
@@ -81,7 +81,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         _downloadDir = downloadDir;
         // Boundary cast — safe: validated > 0 immediately above, and era sizes
         // are small counts (e.g. 8192) that trivially fit in uint.
-        _maxEraSize = (uint)maxEraSize;
+        _maxEraSize = maxEraSize;
         _specProvider = specProvider;
         _blockValidator = blockValidator;
         _trustedAccumulators = trustedAccumulators;
@@ -182,7 +182,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         // The actual last block may be slightly lower for a non-full final epoch.
         // FindBlockAndReceipts returns (null, null) when number > reader.LastBlock, so importers that
         // rely on this value (to=0 / auto mode) will stop naturally at the real end.
-        return ((ulong)minEpoch * (ulong)_maxEraSize, (ulong)(maxEpoch + 1) * (ulong)_maxEraSize - 1);
+        return ((ulong)minEpoch * _maxEraSize, (ulong)(maxEpoch + 1) * _maxEraSize - 1);
     }
 
     private async Task<IReadOnlyDictionary<int, RemoteEraEntry>> GetManifestAsync(CancellationToken cancellation = default)

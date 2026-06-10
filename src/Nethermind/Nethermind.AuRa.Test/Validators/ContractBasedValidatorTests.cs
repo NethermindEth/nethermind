@@ -525,7 +525,7 @@ public class ContractBasedValidatorTests
             Action preProcess = () => validator.OnBlockProcessingStart(_block);
             Assert.That(preProcess, Throws.Nothing, test.TestName);
             validator.OnBlockProcessingEnd(_block, txReceipts);
-            ulong finalizedNumber = blockNumber - (ulong)validator.Validators.MinSealersForFinalization() + 1UL;
+            ulong finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1UL;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
             _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
                 new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)

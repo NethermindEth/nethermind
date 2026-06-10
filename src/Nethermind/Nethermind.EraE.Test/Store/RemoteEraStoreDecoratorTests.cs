@@ -156,7 +156,7 @@ public class RemoteEraStoreDecoratorTests
     }
 
     private RemoteEraStoreDecorator CreateDecorator(
-        IEraStore? localStore, int maxEraSize, ISpecProvider? specProvider = null,
+        IEraStore? localStore, ulong maxEraSize, ISpecProvider? specProvider = null,
         IBlockValidator? blockValidator = null, ISet<ValueHash256>? trustedAccumulators = null) =>
         new(localStore, _client, _downloadDir.Path, maxEraSize,
             specProvider ?? Substitute.For<ISpecProvider>(), blockValidator ?? Always.Valid, trustedAccumulators);

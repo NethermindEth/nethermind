@@ -93,16 +93,16 @@ public interface IPruningConfig : IConfig
     long PrunePersistedNodeMinimumTarget { get; set; }
 
     [ConfigItem(Description = "Maximum number of blocks worth of unpersisted state in memory. Default is 297, which is the number of mainnet blocks per hour.", DefaultValue = "297")]
-    long MaxUnpersistedBlockCount { get; set; }
+    ulong MaxUnpersistedBlockCount { get; set; }
 
     [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
-    long MinUnpersistedBlockCount { get; set; }
+    ulong MinUnpersistedBlockCount { get; set; }
 
     [ConfigItem(Description = "Maximum number of block in commit buffer before blocking.", DefaultValue = "128", HiddenFromDocs = true)]
     int MaxBufferedCommitCount { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Simulate long finalization by not moving finalized block pointer until after this depth.", DefaultValue = "0", HiddenFromDocs = true)]
-    int SimulateLongFinalizationDepth { get; set; }
+    ulong SimulateLongFinalizationDepth { get; set; }
 
     [ConfigItem(Description = "If in-memory pruning is scheduled, the duration between `newPayload` and the GC trigger. If too short, it may clash with fork choice; if too long, it may overlap with GC.", DefaultValue = "75", HiddenFromDocs = true)]
     int PruneDelayMilliseconds { get; set; }

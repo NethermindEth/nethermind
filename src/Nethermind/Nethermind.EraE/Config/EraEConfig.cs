@@ -12,7 +12,7 @@ public class EraEConfig : IEraEConfig
     public ulong From { get; set; }
     public ulong To { get; set; }
     public string? TrustedAccumulatorFile { get; set; }
-    public int MaxEraSize { get; set; } = EraWriter.MaxEraSize;
+    public ulong MaxEraSize { get; set; } = EraWriter.MaxEraSize;
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }
     public ulong ImportBlocksBufferSize { get; set; } = 4096;

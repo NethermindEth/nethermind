@@ -14,6 +14,9 @@ public static class BlobGasCalculator
     /// </summary>
     /// <returns><see langword="false"/> if the multiplication overflows; otherwise <see langword="true"/>.</returns>
     public static bool TryCalculateBlobMaxFee(int blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
+        TryCalculateBlobMaxFee((ulong)blobCount, maxFeePerBlobGas, out blobFee);
+
+    public static bool TryCalculateBlobMaxFee(ulong blobCount, UInt256 maxFeePerBlobGas, out UInt256 blobFee) =>
         !UInt256.MultiplyOverflow((UInt256)blobCount * (UInt256)Eip4844Constants.GasPerBlob, maxFeePerBlobGas, out blobFee);
 
     public static bool TrySubtractBlobFee(IReleaseSpec spec, Transaction tx, ref UInt256 available)
@@ -21,7 +24,7 @@ public static class BlobGasCalculator
         if (!spec.IsEip4844Enabled || tx.BlobVersionedHashes?.Length is not > 0)
             return true;
 
-        if (!TryCalculateBlobMaxFee(tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
+        if (!TryCalculateBlobMaxFee((ulong)tx.BlobVersionedHashes.Length, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
             || blobFee > available)
             return false;
 
@@ -30,19 +33,22 @@ public static class BlobGasCalculator
     }
 
     public static ulong CalculateBlobGas(int blobCount) =>
-        (ulong)blobCount * Eip4844Constants.GasPerBlob;
+        CalculateBlobGas((ulong)blobCount);
+
+    public static ulong CalculateBlobGas(ulong blobCount) =>
+        blobCount * Eip4844Constants.GasPerBlob;
 
     public static ulong CalculateBlobGas(Transaction transaction) =>
         CalculateBlobGas(transaction.GetBlobCount());
 
     public static ulong CalculateBlobGas(Transaction[] transactions)
     {
-        int blobCount = 0;
+        ulong blobCount = 0UL;
         foreach (Transaction tx in transactions)
         {
             if (tx.SupportsBlobs)
             {
-                blobCount += tx.BlobVersionedHashes!.Length;
+                blobCount += tx.GetBlobCount();
             }
         }
 

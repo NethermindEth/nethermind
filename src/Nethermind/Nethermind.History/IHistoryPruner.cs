@@ -24,5 +24,5 @@ public interface IHistoryPruner
     /// Converts a retention window expressed in epochs to a block count using this pruner's
     /// slots-per-epoch constant. Keeps the epoch→blocks conversion co-located with the pruner.
     /// </summary>
-    long GetRetentionBlocks(long retentionEpochs);
+    ulong GetRetentionBlocks(ulong retentionEpochs);
 }

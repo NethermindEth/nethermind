@@ -40,8 +40,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Bodies, 0, true);
 
-        private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
-        private readonly long _flushDbInterval; // About every 10GB on mainnet
+        private const ulong DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
+        private readonly ulong _flushDbInterval; // About every 10GB on mainnet
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
             [KeyFilter(DbNames.Blocks)] IDb blocksDb,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
-            long flushDbInterval = DefaultFlushDbInterval)
+            ulong flushDbInterval = DefaultFlushDbInterval)
             : base(metadataDb, specProvider, logManager.GetClassLogger<BodiesSyncFeed>())
         {
             _blockTree = blockTree;
@@ -173,7 +173,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             if (
-                (_syncPointers.LowestInsertedBodyNumber ?? ulong.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > (ulong)_flushDbInterval ||
+                (_syncPointers.LowestInsertedBodyNumber ?? ulong.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
                 _syncStatusList.LowestInsertWithoutGaps <= _barrier // Other state depends on LowestInsertedBodyNumber, so this need to flush or it wont finish
             )
             {

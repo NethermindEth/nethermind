@@ -26,9 +26,9 @@ namespace Nethermind.History;
 public class HistoryPruner : IHistoryPruner
 {
     private const int LockWaitTimeoutMs = 100;
-    private const int SlotsPerEpoch = 32;
+    private const ulong SlotsPerEpoch = 32;
 
-    public long GetRetentionBlocks(long retentionEpochs) => retentionEpochs * SlotsPerEpoch;
+    public ulong GetRetentionBlocks(ulong retentionEpochs) => retentionEpochs * SlotsPerEpoch;
 
     private readonly object _pruneLock = new();
 
@@ -89,8 +89,7 @@ public class HistoryPruner : IHistoryPruner
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled();
-        // SlotsPerEpoch is int; promote to ulong before multiply.
-        _pruningInterval = historyConfig.PruningInterval * (ulong)SlotsPerEpoch;
+        _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis

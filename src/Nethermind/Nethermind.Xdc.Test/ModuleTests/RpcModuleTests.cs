@@ -75,7 +75,7 @@ public class RpcModuleTests
                 CertificateThreshold = certThreshold ?? 0.667,
                 TimeoutSyncThreshold = 3,
                 TimeoutPeriod = timeoutPeriod ?? 30000,
-                MinePeriod = minePeriod ?? 2
+                MinePeriod = (ulong)(minePeriod ?? 2)
             });
         }
 
@@ -95,7 +95,7 @@ public class RpcModuleTests
             SwitchRound = 0,
 
             // Timing parameters
-            MinePeriod = minePeriod ?? 2,              // 2 seconds per block
+            MinePeriod = (ulong)(minePeriod ?? 2),              // 2 seconds per block
             TimeoutSyncThreshold = 3,                   // Send sync info after 3 timeouts
             TimeoutPeriod = timeoutPeriod ?? 30000,    // 30 seconds timeout
 

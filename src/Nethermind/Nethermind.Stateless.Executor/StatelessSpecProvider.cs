@@ -29,7 +29,7 @@ internal sealed class StatelessSpecProvider(
 
     public IReleaseSpec GenesisSpec => baseProvider.GenesisSpec;
 
-    public long? DaoBlockNumber => baseProvider.DaoBlockNumber;
+    public ulong? DaoBlockNumber => baseProvider.DaoBlockNumber;
 
     public ulong? BeaconChainGenesisTimestamp => baseProvider.BeaconChainGenesisTimestamp;
 
@@ -44,7 +44,7 @@ internal sealed class StatelessSpecProvider(
     public IReleaseSpec GetSpec(ForkActivation activation) =>
         activation >= activeForkActivation ? activeForkSpec : baseProvider.GetSpec(activation);
 
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) =>
+    public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null) =>
         baseProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
     public static StatelessSpecProvider Create(IForkAwareSpecProvider baseProvider, ForkConfig forkConfig)
@@ -65,6 +65,6 @@ internal sealed class StatelessSpecProvider(
     {
         public override ulong TargetBlobCount => blobSchedule.Target;
         public override ulong MaxBlobCount => blobSchedule.Max;
-        public override UInt256 BlobBaseFeeUpdateFraction => new(blobSchedule.BaseFeeUpdateFraction);
+        public override ulong BlobBaseFeeUpdateFraction => blobSchedule.BaseFeeUpdateFraction;
     }
 }

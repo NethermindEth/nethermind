@@ -122,16 +122,16 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void ResetForHalt(ref TSelf gas, ulong initialStateReservoir, ulong initialStateGasUsed) { }
 
     // EIP-7702 code-insert refund regular-gas portion. Pre-EIP-8037: (NewAccount - PerAuthBaseCost) each.
-    static virtual ulong GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec) =>
-        codeInsertRefunds > 0 ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * (ulong)codeInsertRefunds : 0;
+    static virtual ulong GetCodeInsertRegularRefund(ulong codeInsertRefunds, IReleaseSpec spec) =>
+        codeInsertRefunds > 0UL ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0UL;
 
     // EIP-8037: replenishes tx state reservoir before exec (intrinsic state gas already charged).
-    static virtual ulong ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec, ulong stateGasFloor) =>
+    static virtual ulong ApplyCodeInsertRefunds(ref TSelf gas, ulong codeInsertRefunds, IReleaseSpec spec, ulong stateGasFloor) =>
         TSelf.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
 
     static abstract bool ConsumeCallValueTransfer(ref TSelf gas);
     static abstract bool ConsumeNewAccountCreation<TEip8037>(ref TSelf gas) where TEip8037 : struct, IFlag;
-    static abstract bool ConsumeLogEmission(ref TSelf gas, long topicCount, long dataSize);
+    static abstract bool ConsumeLogEmission(ref TSelf gas, ulong topicCount, ulong dataSize);
     static abstract TSelf Max(in TSelf a, in TSelf b);
 
     static virtual IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>

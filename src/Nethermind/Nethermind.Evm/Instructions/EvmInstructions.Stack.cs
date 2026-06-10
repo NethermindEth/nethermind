@@ -1087,12 +1087,12 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
 
         // The number of topics is defined by the generic parameter.
-        long topicsCount = TOpCount.Count;
+        ulong topicsCount = (ulong)TOpCount.Count;
 
         // Ensure that the memory expansion for the log data is accounted for.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, vmState)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
-        long dataSize = (long)length;
+        ulong dataSize = (ulong)length;
         if (!TGasPolicy.ConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
 
         // Load the log data from memory.

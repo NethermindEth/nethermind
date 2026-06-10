@@ -82,6 +82,7 @@ namespace Nethermind.Blockchain.Receipts
                 Block newMain = e.Block;
 
                 // Delete old tx index
+                // safe: TxLookupLimit is checked to be > 0, so it is safe to cast to ulong
                 if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > (ulong)_receiptConfig.TxLookupLimit.Value)
                 {
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - (ulong)_receiptConfig.TxLookupLimit.Value);
@@ -368,6 +369,7 @@ namespace Nethermind.Blockchain.Receipts
             lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;
 
             if (_receiptConfig.TxLookupLimit == -1) return;
+            // safe: TxLookupLimit != 0 and the -1 case is already handled above, so it is safe to cast to ulong
             if (_receiptConfig.TxLookupLimit != 0 && lastBlockNumber.Value >= (ulong)_receiptConfig.TxLookupLimit && block.Number <= lastBlockNumber.Value - (ulong)_receiptConfig.TxLookupLimit) return;
             if (_receiptConfig.CompactTxIndex)
             {

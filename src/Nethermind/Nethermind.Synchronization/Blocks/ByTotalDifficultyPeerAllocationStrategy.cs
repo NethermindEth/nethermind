@@ -12,9 +12,9 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class ByTotalDifficultyPeerAllocationStrategy(long? minBlocksAhead) : IPeerAllocationStrategy
+    public class ByTotalDifficultyPeerAllocationStrategy(ulong? minBlocksAhead) : IPeerAllocationStrategy
     {
-        private readonly long? _minBlocksAhead = minBlocksAhead;
+        private readonly ulong? _minBlocksAhead = minBlocksAhead;
 
         private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
         private const int MinDiffForSpeedSwitch = 10;
@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_minBlocksAhead is not null)
                 {
-                    if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0UL) + (ulong)_minBlocksAhead)
+                    if (info.HeadNumber < (blockTree.BestSuggestedHeader?.Number ?? 0UL) + _minBlocksAhead.Value)
                     {
                         // we need to be able to download some blocks ahead
                         continue;
@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization.Blocks
                 return fastestPeer.Info;
             }
 
-            const int minBlocksDiff = 16;
+            const ulong minBlocksDiff = 16;
 
             averageSpeed /= peersCount;
             if (bestDiffPeer.Info.TotalDifficulty is { } bestPeerTD) // Try to compare by TD if present
@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 // at least 16 blocks
                 if (blockDifference > 0
-                    && (blockDifference >= localNumber + (ulong)minBlocksDiff
+                    && (blockDifference >= localNumber + minBlocksDiff
                         || bestDiffPeer.TransferSpeed > averageSpeed))
                 {
                     return bestDiffPeer.Info;

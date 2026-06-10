@@ -191,7 +191,7 @@ namespace Nethermind.Consensus.AuRa
             private readonly List<AuthorBlockForStep> _list
                 = [];
 
-            private const int CacheSizeFullRoundsMultiplier = 4;
+            private const ulong CacheSizeFullRoundsMultiplier = 4;
 
             public bool ContainsSiblingOrInsert(BlockHeader header, int validatorCount)
             {
@@ -243,7 +243,7 @@ namespace Nethermind.Consensus.AuRa
             /// <param name="validatorCount"></param>
             private void ClearOldCache(ulong step, int validatorCount)
             {
-                ulong siblingMaliceDetectionPeriod = (ulong)CacheSizeFullRoundsMultiplier * (ulong)validatorCount;
+                ulong siblingMaliceDetectionPeriod = CacheSizeFullRoundsMultiplier * (ulong)validatorCount;
                 ulong oldestStepToKeep = step > siblingMaliceDetectionPeriod ? step - siblingMaliceDetectionPeriod : 0UL;
                 int index = BinarySearch(oldestStepToKeep);
                 int positiveIndex = index >= 0 ? index : ~index;

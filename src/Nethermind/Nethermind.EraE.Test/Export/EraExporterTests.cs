@@ -18,13 +18,13 @@ namespace Nethermind.EraE.Test.Export;
 
 public class EraExporterTests
 {
-    [TestCase(1, 0UL, 0UL, 1, 1)]
-    [TestCase(3, 0UL, 2UL, 1, 3)]
-    [TestCase(16, 0UL, 15UL, 16, 1)]
-    [TestCase(32, 0UL, 31UL, 16, 2)]
-    [TestCase(48, 8UL, 39UL, 16, 3)]
+    [TestCase(1, 0UL, 0UL, 1UL, 1)]
+    [TestCase(3, 0UL, 2UL, 1UL, 3)]
+    [TestCase(16, 0UL, 15UL, 16UL, 1)]
+    [TestCase(32, 0UL, 31UL, 16UL, 2)]
+    [TestCase(48, 8UL, 39UL, 16UL, 3)]
     public async Task Export_WithVaryingChainLength_CreatesCorrectNumberOfEpochFiles(
-        int chainLength, ulong from, ulong to, int eraSize, int expectedEraFiles)
+        int chainLength, ulong from, ulong to, ulong eraSize, int expectedEraFiles)
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
             .AddSingleton<IEraEConfig>(new EraEConfig

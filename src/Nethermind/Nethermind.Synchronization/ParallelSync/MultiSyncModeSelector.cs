@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <summary>
         /// How many blocks can fast sync stay behind while state nodes is still syncing
         /// </summary>
-        private const int StickyStateNodesDelta = 32;
+        private const ulong StickyStateNodesDelta = 32;
 
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
@@ -575,7 +575,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // ints whose sum fits comfortably in ulong. If TargetBlock < Header the subtraction wraps
             // (ulong underflow) yielding a very large number, so stickyStateNodes is false — correct
             // behaviour because we are already ahead of the target.
-            bool stickyStateNodes = best.TargetBlock - best.Header < (ulong)(_syncConfig.StateMinDistanceFromHead + StickyStateNodesDelta);
+            bool stickyStateNodes = best.TargetBlock - best.Header < _syncConfig.StateMinDistanceFromHead + StickyStateNodesDelta;
 
             bool stateNotDownloadedYet = !best.StateDownloaded;
 

@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain
         ILogManager? logManager)
         : IBlockhashProvider
     {
-        public const int MaxDepth = 256;
+        public const ulong MaxDepth = 256;
         private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
         private readonly ILogger _logger = logManager?.GetClassLogger<BlockhashProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         private Hash256[]? _hashes;
@@ -29,25 +29,24 @@ namespace Nethermind.Blockchain
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
-            if (number < 0)
-            {
-                return ReturnOutOfBounds(currentBlock, number);
-            }
-
             if (spec.IsBlockHashInStateAvailable)
             {
                 return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
-            long depth = (long)(currentBlock.Number - number);
+            ulong depth = currentBlock.Number - number;
+            if (depth == 0 || depth > MaxDepth)
+            {
+                return ReturnOutOfBounds(currentBlock, number);
+            }
+
             Hash256[]? hashes = Volatile.Read(ref _hashes);
 
             return depth switch
             {
-                <= 0 or > MaxDepth => ReturnOutOfBounds(currentBlock, number),
-                1 => currentBlock.ParentHash,
+                1UL => currentBlock.ParentHash,
                 _ => hashes is not null
-                    ? hashes[depth - 1]
+                    ? hashes[(int)(depth - 1)]
                     : blockhashCache.GetHash(currentBlock, (int)depth)
                       ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation")
             };

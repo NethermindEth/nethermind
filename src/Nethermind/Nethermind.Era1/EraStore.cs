@@ -38,7 +38,7 @@ public class EraStore : IEraStore
     private readonly ConcurrentDictionary<int, (long, EraReader)> _openedReader = new();
 
     private bool _disposed = false;
-    private readonly int _maxEraFile;
+    private readonly ulong _maxEraFile;
 
     private int LastEpoch { get; set; }
     private int FirstEpoch { get; set; } = int.MaxValue;
@@ -78,7 +78,7 @@ public class EraStore : IEraStore
         IBlockValidator blockValidator,
         IFileSystem fileSystem,
         string networkName,
-        int maxEraSize,
+        ulong maxEraSize,
         ISet<ValueHash256>? trustedAccumulators,
         string directory,
         int verifyConcurrency = 0
@@ -122,7 +122,7 @@ public class EraStore : IEraStore
     {
         // This seems to be the geth way of encoding blocks.
         // Cast to long is safe here: epoch numbers are small integers well within long range.
-        long epochOffset = (long)((blockNumber - FirstBlock) / (ulong)_maxEraFile);
+        long epochOffset = (long)((blockNumber - FirstBlock) / _maxEraFile);
         return FirstEpoch + epochOffset;
     }
 

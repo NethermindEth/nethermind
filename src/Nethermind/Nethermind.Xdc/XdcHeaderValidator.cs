@@ -124,7 +124,7 @@ public class XdcHeaderValidator(
         IXdcReleaseSpec xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found
 
         //TODO check if V2 header
-        if (parent.Timestamp + (ulong)xdcSpec.MinePeriod > header.Timestamp)
+        if (parent.Timestamp + xdcSpec.MinePeriod > header.Timestamp)
         {
             error = "Timestamp in header cannot be lower than ancestor plus slot time.";
             return false;

@@ -10,7 +10,7 @@ public class EraConfig : IEraConfig
     public ulong From { get; set; }
     public ulong To { get; set; }
     public string? TrustedAccumulatorFile { get; set; }
-    public int MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
+    public ulong MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }
     public ulong ImportBlocksBufferSize { get; set; } = 1024 * 4;

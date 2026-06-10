@@ -232,9 +232,9 @@ namespace Ethereum.Test.Base
             Transaction transaction = new()
             {
                 Value = transactionJson.Value,
-                GasLimit = transactionJson.GasLimit,
+                GasLimit = (ulong)transactionJson.GasLimit,
                 GasPrice = transactionJson.GasPrice,
-                Nonce = transactionJson.Nonce,
+                Nonce = (ulong)transactionJson.Nonce,
                 To = transactionJson.To,
                 Data = transactionJson.Data,
                 Signature = new Signature(transactionJson.R, transactionJson.S, transactionJson.V)

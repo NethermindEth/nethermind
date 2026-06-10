@@ -99,8 +99,8 @@ namespace Nethermind.Consensus.AuRa
             {
                 using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
                 // need to un-finalize blocks
-                int minSealersForFinalization = GetMinSealersForFinalization(header.Number);
-                for (int i = 1; i < minSealersForFinalization; i++)
+                ulong minSealersForFinalization = GetMinSealersForFinalization(header.Number);
+                for (ulong i = 1UL; i < minSealersForFinalization; i++)
                 {
                     header = _blockTree.FindParentHeader(header!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (header is not null)
@@ -140,11 +140,11 @@ namespace Nethermind.Consensus.AuRa
                 if (_logger.IsInfo) _logger.Info($"Block {twoThirdsMajorityTransition}: Transitioning to 2/3 quorum.");
             }
 
-            int minSealersForFinalization = GetMinSealersForFinalization(block.Number);
+            ulong minSealersForFinalization = GetMinSealersForFinalization(block.Number);
             BlockHeader originalBlock = block;
 
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
-            bool ConsecutiveBlockWillFinalizeBlocks() => _consecutiveValidatorsForNotYetFinalizedBlocks.Count >= minSealersForFinalization;
+            bool ConsecutiveBlockWillFinalizeBlocks() => (ulong)_consecutiveValidatorsForNotYetFinalizedBlocks.Count >= minSealersForFinalization;
 
             List<BlockHeader> finalizedBlocks;
             bool isConsecutiveBlock = IsConsecutiveBlock();
@@ -191,7 +191,7 @@ namespace Nethermind.Consensus.AuRa
                         while (!blockInfo.IsFinalized && (isConsecutiveBlock || OriginalBlockSealerSignedOnlyOnce()))
                         {
                             validators.Add(block.Beneficiary);
-                            if (validators.Count >= minSealersForFinalization)
+                            if ((ulong)validators.Count >= minSealersForFinalization)
                             {
                                 blockInfo.IsFinalized = true;
                                 _chainLevelInfoRepository.PersistLevel(block.Number, chainLevel, batch);
@@ -292,11 +292,11 @@ namespace Nethermind.Consensus.AuRa
         {
             BlockHeader block = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None)!;
             HashSet<Address> validators = [];
-            int minSealersForFinalization = GetMinSealersForFinalization(block.Number);
+            ulong minSealersForFinalization = GetMinSealersForFinalization(block.Number);
             while (block!.Number > 0)
             {
                 validators.Add(block.Beneficiary);
-                if (validators.Count >= minSealersForFinalization)
+                if ((ulong)validators.Count >= minSealersForFinalization)
                 {
                     return block.Number;
                 }
@@ -311,7 +311,7 @@ namespace Nethermind.Consensus.AuRa
         {
             BlockHeader? block = _blockTree.FindHeader(level, BlockTreeLookupOptions.None);
             HashSet<Address> validators = [];
-            int minSealersForFinalization = GetMinSealersForFinalization(level);
+            ulong minSealersForFinalization = GetMinSealersForFinalization(level);
 
             // this can only happen when we are fast syncing headers before pivot
             if (block is null)
@@ -319,16 +319,17 @@ namespace Nethermind.Consensus.AuRa
                 // in that case check if it has enough blocks to best known to be finalized
                 // as everything before pivot should be finalized
                 long blocksAfter = (long)_blockTree.BestKnownNumber - (long)level + 1;
-                if (blocksAfter >= minSealersForFinalization)
+                // safe: minSealersForFinalization is derived from validator counts and is bounded well within positive long range
+                if (blocksAfter >= (long)minSealersForFinalization)
                 {
-                    return level + (ulong)minSealersForFinalization - 1;
+                    return level + minSealersForFinalization - 1UL;
                 }
             }
 
             while (block is not null)
             {
                 validators.Add(block.Beneficiary);
-                if (validators.Count >= minSealersForFinalization)
+                if ((ulong)validators.Count >= minSealersForFinalization)
                 {
                     return block.Number;
                 }
@@ -339,9 +340,9 @@ namespace Nethermind.Consensus.AuRa
             return null;
         }
 
-        private int GetMinSealersForFinalization(ulong blockNumber) =>
-            blockNumber == 0
-                ? 1
+        private ulong GetMinSealersForFinalization(ulong blockNumber) =>
+            blockNumber == 0UL
+                ? 1UL
                 : _validatorStore.GetValidators(blockNumber).MinSealersForFinalization(blockNumber >= twoThirdsMajorityTransition);
 
         public ulong LastFinalizedBlockLevel
@@ -424,14 +425,14 @@ namespace Nethermind.Consensus.AuRa
                 _blocks.Clear();
             }
 
-            public BlockHeader? GetBlockThatWillBeFinalized(out HashSet<Address> validators, int minSealersForFinalization)
+            public BlockHeader? GetBlockThatWillBeFinalized(out HashSet<Address> validators, ulong minSealersForFinalization)
             {
                 validators = [];
                 for (int i = 0; i < _blocks.Count; i++)
                 {
                     BlockHeader? block = _blocks[i];
                     validators.Add(block.Beneficiary);
-                    if (validators.Count >= minSealersForFinalization)
+                    if ((ulong)validators.Count >= minSealersForFinalization)
                     {
                         return block;
                     }

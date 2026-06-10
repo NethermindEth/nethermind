@@ -61,7 +61,7 @@ public partial class EthRpcModuleTests
     {
         IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
         pruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(oldestBlockNumber).TestObject);
-        pruner.GetRetentionBlocks(Arg.Any<long>()).Returns(call => (long)call[0] * 32);
+        pruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(call => (ulong)call[0] * 32UL);
         return pruner;
     }
 

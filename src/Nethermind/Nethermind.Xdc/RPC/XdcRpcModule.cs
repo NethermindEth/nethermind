@@ -638,7 +638,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             {
                 Epoch = (int)spec.EpochLength,
                 Gap = (int)spec.Gap,
-                Period = spec.MinePeriod,
+                Period = (int)spec.MinePeriod,
                 Reward = (int)spec.Reward,
                 SwitchEpoch = (int)spec.SwitchEpoch,
                 SwitchBlock = (long)spec.SwitchBlock,

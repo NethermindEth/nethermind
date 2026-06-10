@@ -1042,7 +1042,7 @@ namespace Nethermind.Blockchain
         {
             BlockHeader? newPivotHeader = FinalizedHash is not null
                 ? FindHeader(FinalizedHash, BlockTreeLookupOptions.RequireCanonical)
-                : FindHeader((Head?.Number ?? 0UL) > (ulong)Reorganization.MaxDepth ? (Head.Number - (ulong)Reorganization.MaxDepth) : 0UL, BlockTreeLookupOptions.RequireCanonical);
+                : FindHeader((Head?.Number ?? 0UL) > Reorganization.MaxDepth ? (Head.Number - Reorganization.MaxDepth) : 0UL, BlockTreeLookupOptions.RequireCanonical);
 
             if (newPivotHeader is null)
             {
@@ -1412,7 +1412,7 @@ namespace Nethermind.Blockchain
         /// <param name="number"></param>
         /// <returns></returns>
         private bool ShouldCache(ulong number) =>
-            number == _genesisBlockNumber || Head is null || Head.Number < (ulong)BlockStore.CacheSize || number >= Head.Number - (ulong)BlockStore.CacheSize;
+            number == _genesisBlockNumber || Head is null || Head.Number < BlockStore.CacheSize || number >= Head.Number - BlockStore.CacheSize;
 
         public ChainLevelInfo? FindLevel(ulong number) => _chainLevelInfoRepository.LoadLevel(number);
 

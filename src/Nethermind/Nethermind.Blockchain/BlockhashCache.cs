@@ -23,22 +23,22 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
     private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
     private readonly Lock _lock = new();
-    public const int MaxDepth = BlockhashProvider.MaxDepth;
+    public const ulong MaxDepth = BlockhashProvider.MaxDepth;
     private ulong _minBlock = ulong.MaxValue;
     private Task _pruningTask = Task.CompletedTask;
 
     public Hash256? GetHash(BlockHeader headBlock, int depth) =>
         depth == 0 ? headBlock.Hash
         : depth == 1 ? headBlock.ParentHash
-        : depth > MaxDepth ? null
+        : (ulong)depth > MaxDepth ? null
         : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[depth - 2]
         : Load(headBlock, depth, out _)?.Hash;
 
     private CacheNode? Load(BlockHeader blockHeader, int depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
     {
         hashes = null;
-        if (depth > MaxDepth) return null;
-        bool alwaysAdd = depth == MaxDepth;
+        if ((ulong)depth > MaxDepth) return null;
+        bool alwaysAdd = (ulong)depth == MaxDepth;
         using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new(depth + 1);
         Hash256 currentHash = blockHeader.Hash!;
         CacheNode currentNode = null;
@@ -148,7 +148,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                     }
                     else
                     {
-                        Load(blockHeader, MaxDepth, out hashes, cancellationToken);
+                        Load(blockHeader, (int)MaxDepth, out hashes, cancellationToken);
                     }
                 }
             }

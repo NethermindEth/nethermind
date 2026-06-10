@@ -37,7 +37,7 @@ public sealed class EraStore : IEraStore
     // Changed int → uint: era size is always a small positive count (e.g. 8192),
     // never negative, so uint is the honest type and avoids the (ulong) cast in
     // GetEpochNumber without overstating the range as ulong.
-    private readonly uint _maxEraSize;
+    private readonly ulong _maxEraSize;
     private readonly int _verifyConcurrency;
     private volatile bool _disposed;
 
@@ -53,7 +53,7 @@ public sealed class EraStore : IEraStore
         IBlockValidator blockValidator,
         IFileSystem fileSystem,
         string networkName,
-        int maxEraSize,
+        ulong maxEraSize,
         ISet<ValueHash256>? trustedAccumulators,
         string directory,
         int verifyConcurrency = 0,
@@ -62,7 +62,7 @@ public sealed class EraStore : IEraStore
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(blockValidator);
         ArgumentException.ThrowIfNullOrEmpty(networkName);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEraSize, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxEraSize, 0UL);
 
         _specProvider = specProvider;
         _blockValidator = blockValidator;
@@ -70,7 +70,7 @@ public sealed class EraStore : IEraStore
         _validator = validator;
         // Boundary cast — safe: validated > 0 immediately above, and era sizes
         // are small counts (e.g. 8192) that trivially fit in uint.
-        _maxEraSize = (uint)maxEraSize;
+        _maxEraSize = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
         _verifyConcurrency = verifyConcurrency == 0 ? Environment.ProcessorCount : verifyConcurrency;
 

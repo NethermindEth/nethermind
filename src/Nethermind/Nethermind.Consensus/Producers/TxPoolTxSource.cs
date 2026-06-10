@@ -154,7 +154,7 @@ namespace Nethermind.Consensus.Producers
         private void SelectBlobTransactions(IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions, BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs, int maxBlobs)
         {
             int maxBlobsToConsider = maxBlobs * 5;
-            int countOfRemainingBlobs = 0;
+            ulong countOfRemainingBlobs = 0UL;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
             {
@@ -165,8 +165,8 @@ namespace Nethermind.Consensus.Producers
             ArrayPoolList<(Transaction tx, ulong blobChain)>? candidates = null;
             foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
             {
-                int txBlobCount = blobTx.GetBlobCount();
-                if (txBlobCount > maxBlobs)
+                ulong txBlobCount = blobTx.GetBlobCount();
+                if (txBlobCount > (ulong)maxBlobs)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
@@ -178,7 +178,7 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                if (txBlobCount == 1 && candidates is null)
+                if (txBlobCount == 1UL && candidates is null)
                 {
                     selectedBlobTxs.Add(blobTx);
                     if (selectedBlobTxs.Count == maxBlobs)
@@ -196,7 +196,7 @@ namespace Nethermind.Consensus.Producers
                     countOfRemainingBlobs += txBlobCount;
                 }
 
-                if (countOfRemainingBlobs > maxBlobsToConsider)
+                if (countOfRemainingBlobs > (ulong)maxBlobsToConsider)
                 {
                     // Reached max blobs to consider, should have enough to fill the block.
                     break;
@@ -210,7 +210,7 @@ namespace Nethermind.Consensus.Producers
             {
                 // We have leftover candidates. Check how many blob slots remain.
                 int leftoverCapacity = maxBlobs - selectedBlobTxs.Count;
-                if (countOfRemainingBlobs <= leftoverCapacity)
+                if (countOfRemainingBlobs <= (ulong)leftoverCapacity)
                 {
                     // We can take all, no optimal picking needed.
                     foreach ((Transaction tx, ulong blobChain) tx in candidates.AsSpan())
@@ -266,11 +266,11 @@ namespace Nethermind.Consensus.Producers
                 }
 
                 // How many blobs does this tx actually consume?
-                int blobCount = tx.GetBlobCount();
+                ulong blobCount = tx.GetBlobCount();
                 // If this tx has explicit dependencies (i.e. it requires k prior blobs
                 // from the *same address* to be in the block before it), include them here.
                 // We'll need a capacity of blobDependenciesCount slots *plus* its own blobCount.
-                ulong blobCapacityNeeded = blobChain + (ulong)blobCount;
+                ulong blobCapacityNeeded = blobChain + blobCount;
                 // Compute the total fee this tx contributes (premium * gas used).
                 // Use actual gas used (SpentGas) when available as the tx may be using over-estimated gaslimit
                 ulong feeValue = (ulong)premiumPerGas * tx.SpentGas;
@@ -280,7 +280,7 @@ namespace Nethermind.Consensus.Producers
                 // if blobDependenciesCount > 0, then we require *the* previous
                 // nonce from the same address to also be chosen in order to
                 // include this tx's extra blob-dependency slots.
-                if (blobCapacityNeeded > (ulong)blobCount)
+                if (blobCapacityNeeded > blobCount)
                 {
                     // scan backward from i–1 until you hit a tx from the same address
                     // this ensures we only link to the immediate prior-nonce.
@@ -315,7 +315,7 @@ namespace Nethermind.Consensus.Producers
                     // because the dpFees index represents total blobs used;
                     // dependencies are "paid for" by only allowing this path
                     // if dependencyIndex was chosen at the smaller capacity.
-                    ulong candidateFee = dpFees[capacity - blobCount] + feeValue;
+                    ulong candidateFee = dpFees[capacity - (int)blobCount] + feeValue;
                     // If this improves the max fee at [capacity], record it
                     if (candidateFee >= dpFees[capacity])
                     {
@@ -324,7 +324,7 @@ namespace Nethermind.Consensus.Producers
                         isChosen[i * maxCapacity + capacity] = dependencyIndex < 0 ||
                             // with a dependency: only mark this tx as chosen
                             // if *its* predecessor was also marked in the smaller capacity.
-                            isChosen[dependencyIndex * maxCapacity + (capacity - blobCount)];
+                            isChosen[dependencyIndex * maxCapacity + (capacity - (int)blobCount)];
                     }
                 }
             }
@@ -337,9 +337,9 @@ namespace Nethermind.Consensus.Producers
                 if (isChosen[i * maxCapacity + remainingCapacity])
                 {
                     Transaction tx = candidateTxs[i].tx;
-                    int blobCount = tx.GetBlobCount();
+                    ulong blobCount = tx.GetBlobCount();
                     selectedBlobTxs.Add(tx);
-                    remainingCapacity -= blobCount;
+                    remainingCapacity -= (int)blobCount;
                 }
             }
 
@@ -384,7 +384,7 @@ namespace Nethermind.Consensus.Producers
             Order(pendingTransactions, comparer, filter, gasLimit);
 
         private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, int maxBlobs = 0) =>
-            OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, (ulong)maxBlobs);
+            OrderCore(pendingTransactions, comparer, static tx => tx.GetBlobCount(), filter, (ulong)maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);

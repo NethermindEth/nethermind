@@ -23,7 +23,7 @@ public interface IEraConfig : IConfig
     string? TrustedAccumulatorFile { get; set; }
 
     [ConfigItem(Description = "Max era1 size.", DefaultValue = "8192", HiddenFromDocs = true)]
-    int MaxEra1Size { get; set; }
+    ulong MaxEra1Size { get; set; }
 
     [ConfigItem(Description = "Network name used for era directory naming. When null, it will imply from chain spec.", DefaultValue = "null", HiddenFromDocs = true)]
     string? NetworkName { get; set; }

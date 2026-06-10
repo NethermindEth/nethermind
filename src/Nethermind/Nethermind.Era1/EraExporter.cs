@@ -27,7 +27,7 @@ public class EraExporter(
         : eraConfig.NetworkName.Trim().ToLower();
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
-    private readonly int _era1Size = eraConfig.MaxEra1Size;
+    private readonly ulong _era1Size = eraConfig.MaxEra1Size;
 
     public const string AccumulatorFileName = "accumulators.txt";
     public const string ChecksumsFileName = "checksums.txt";
@@ -62,7 +62,7 @@ public class EraExporter(
         long totalProcessed = 0;
 
         // Cast to long is safe: epoch numbers are small ordinals (thousands at most).
-        ulong era1Size = (ulong)_era1Size;
+        ulong era1Size = _era1Size;
         ulong startEpoch = from / era1Size;
         // Ceiling division without floating point, all ulong.
         ulong epochCount = (to - from + era1Size) / era1Size;

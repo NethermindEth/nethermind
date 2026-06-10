@@ -39,6 +39,6 @@ namespace Nethermind.Consensus.Clique
                 Votes = [.. Votes]
             };
 
-        public long SignerLimit => Signers.Count / 2 + 1;
+        public ulong SignerLimit => (ulong)Signers.Count / 2 + 1;
     }
 }

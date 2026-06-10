@@ -62,7 +62,7 @@ public interface IMergeConfig : IConfig
 
 
             """, DefaultValue = "25")]
-    public int CollectionsPerDecommit { get; set; }
+    public ulong CollectionsPerDecommit { get; set; }
 
     [ConfigItem(Description = "The timeout, in milliseconds, for the `engine_newPayload` method.", DefaultValue = "7000", HiddenFromDocs = true)]
     public int NewPayloadBlockProcessingTimeout { get; set; }

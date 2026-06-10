@@ -383,17 +383,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec) =>
-        spec.IsEip8037Enabled || codeInsertRefunds <= 0
-            ? 0
-            : (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * (ulong)codeInsertRefunds;
+    public static ulong GetCodeInsertRegularRefund(ulong codeInsertRefunds, IReleaseSpec spec) =>
+        spec.IsEip8037Enabled || codeInsertRefunds == 0UL
+            ? 0UL
+            : (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, int codeInsertRefunds, IReleaseSpec spec, ulong stateGasFloor)
+    public static ulong ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, ulong codeInsertRefunds, IReleaseSpec spec, ulong stateGasFloor)
     {
-        if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
+        if (codeInsertRefunds > 0UL && spec.IsEip8037Enabled)
         {
-            ulong stateGasRefund = checked(GetNewAccountStateCost(in gas) * (ulong)codeInsertRefunds);
+            ulong stateGasRefund = checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
             ulong refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
             RefundStateGas(ref gas, stateGasRefund, refundFloor, trackSpillRefund: false);
         }
@@ -413,9 +413,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeLogEmission(ref EthereumGasPolicy gas, long topicCount, long dataSize)
+    public static bool ConsumeLogEmission(ref EthereumGasPolicy gas, ulong topicCount, ulong dataSize)
     {
-        ulong cost = GasCostOf.Log + (ulong)topicCount * GasCostOf.LogTopic + (ulong)dataSize * GasCostOf.LogData;
+        ulong cost = GasCostOf.Log + topicCount * GasCostOf.LogTopic + dataSize * GasCostOf.LogData;
         return UpdateGas(ref gas, cost);
     }
 

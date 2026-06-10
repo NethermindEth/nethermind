@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockhashCacheTests
 {
-    private const int FlatCacheItemLength = BlockhashCache.MaxDepth + 1;
+    private const int FlatCacheItemLength = (int)BlockhashCache.MaxDepth + 1;
 
     [Test]
     public void GetHash_with_depth_zero_returns_block_hash()
@@ -236,7 +236,7 @@ public class BlockhashCacheTests
         for (ulong i = 100ul; i <= 500ul; i += 100ul)
         {
             BlockHeader block = tree.FindHeader(i, BlockTreeLookupOptions.None)!;
-            cache.GetHash(block, BlockhashCache.MaxDepth);
+            cache.GetHash(block, (int)BlockhashCache.MaxDepth);
         }
 
         Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(501, 1, 5)));
@@ -268,13 +268,13 @@ public class BlockhashCacheTests
         (BlockTree tree, BlockhashCache cache) = BuildTest((int)depth);
         for (ulong i = BlockhashCache.MaxDepth; i < depth; i += BlockhashCache.MaxDepth)
         {
-            cache.GetHash(tree.FindHeader(i, BlockTreeLookupOptions.RequireCanonical)!, BlockhashCache.MaxDepth);
+            cache.GetHash(tree.FindHeader(i, BlockTreeLookupOptions.RequireCanonical)!, (int)BlockhashCache.MaxDepth);
         }
 
         Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats((int)depth, 1, 5)));
         await cache.Prefetch(tree.FindHeader(depth - 1ul, BlockTreeLookupOptions.RequireCanonical)!);
         await Task.Delay(100);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(BlockhashCache.MaxDepth * 2 + 1, 1, 3)));
+        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats((int)BlockhashCache.MaxDepth * 2 + 1, 1, 3)));
     }
 
     [Test]

@@ -23,7 +23,7 @@ public interface IEraEConfig : IConfig
     string? TrustedAccumulatorFile { get; set; }
 
     [ConfigItem(Description = "Max number of blocks per era file.", DefaultValue = "8192", HiddenFromDocs = true)]
-    int MaxEraSize { get; set; }
+    ulong MaxEraSize { get; set; }
 
     [ConfigItem(Description = "Network name used for EraE directory naming. When null, inferred from chain spec.", DefaultValue = "null", HiddenFromDocs = true)]
     string? NetworkName { get; set; }

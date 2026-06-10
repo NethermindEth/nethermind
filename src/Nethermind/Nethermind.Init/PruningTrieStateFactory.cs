@@ -148,8 +148,8 @@ public class MainPruningTrieStoreFactory
         IPruningStrategy pruningStrategy = Prune
             .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB)
             .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB - pruningConfig.DirtyCacheMb.MB)
-            .WhenLastPersistedBlockIsTooOld((ulong)pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
-            .UnlessLastPersistedBlockIsTooNew((ulong)pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
+            .WhenLastPersistedBlockIsTooOld(pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
+            .UnlessLastPersistedBlockIsTooNew(pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
 
         if (!pruningConfig.Mode.IsMemory())
         {
@@ -164,9 +164,9 @@ public class MainPruningTrieStoreFactory
 
         INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
 
-        if (pruningConfig.SimulateLongFinalizationDepth != 0)
+        if (pruningConfig.SimulateLongFinalizationDepth != 0UL)
         {
-            finalizedStateProvider = new DelayedFinalizedStateProvider(finalizedStateProvider, blockTree, (ulong)pruningConfig.SimulateLongFinalizationDepth);
+            finalizedStateProvider = new DelayedFinalizedStateProvider(finalizedStateProvider, blockTree, pruningConfig.SimulateLongFinalizationDepth);
         }
 
         PruningTrieStore = new TrieStore(
