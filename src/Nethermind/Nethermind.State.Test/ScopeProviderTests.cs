@@ -346,7 +346,7 @@ public class ScopeProviderTests(bool useFlat)
     public async Task Test_StridePrefetcher_WarmsAheadOfStridingReads()
     {
         const int slotCount = 256;
-        UInt256 start = 11;
+        UInt256 start = (UInt256)1 << 40; // Above the minimum engagement index.
         UInt256 stride = 7;
 
         using Context ctx = new(useFlat);
@@ -378,7 +378,7 @@ public class ScopeProviderTests(bool useFlat)
 
             // Enough on-pattern reads to engage the prefetcher.
             UInt256 index = start;
-            for (int i = 0; i < 8; i++, index += stride)
+            for (int i = 0; i < 12; i++, index += stride)
             {
                 storage.Get(in index);
             }
