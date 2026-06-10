@@ -11,18 +11,20 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class InclusionListBuilder(ITxPool txPool)
 {
-    public InclusionListBytes GetInclusionList() =>
-        EncodeTransactionsUpToLimit(ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions()));
+    public InclusionListBytes GetInclusionList()
+    {
+        using ArrayPoolList<Transaction> reservoir = ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions());
+        return EncodeTransactionsUpToLimit(reservoir);
+    }
 
     // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(N=MaxTxs) for any
-    // mempool size. The earlier .Where(...).Shuffle(...) path materialised the entire filtered
-    // mempool into an ArrayPoolList that grew through power-of-2 reallocations.
+    // mempool size. Pooled buffer + Count-tracking avoids the prior alloc+resize+copy pair when
+    // the mempool yields fewer than capacity non-blob txs.
     // TODO: score txs and randomly sample weighted by score.
-    private static Transaction[] ReservoirSampleNonBlobTxs(Transaction[] mempool)
+    private static ArrayPoolList<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
     {
         const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
-        // Cap the initial allocation to mempool size — avoids the 256-slot waste when the pool is small.
-        Transaction[] reservoir = new Transaction[Math.Min(mempool.Length, capacity)];
+        ArrayPoolList<Transaction> reservoir = new(capacity);
         Random rnd = Random.Shared;
         int seen = 0;
 
@@ -32,9 +34,9 @@ public class InclusionListBuilder(ITxPool txPool)
             // blob txs MUST NOT appear in the IL.
             if (tx.Type == TxType.Blob) continue;
 
-            if (seen < capacity)
+            if (reservoir.Count < capacity)
             {
-                reservoir[seen] = tx;
+                reservoir.Add(tx);
             }
             else
             {
@@ -44,22 +46,20 @@ public class InclusionListBuilder(ITxPool txPool)
             seen++;
         }
 
-        int actual = Math.Min(seen, capacity);
-        // Fisher-Yates over the reservoir prefix — the byte-cap loop below treats position as
+        // Fisher-Yates over the reservoir — the byte-cap loop below treats position as
         // priority, so the order needs to be random too, not just the membership.
-        for (int i = actual - 1; i > 0; i--)
+        for (int i = reservoir.Count - 1; i > 0; i--)
         {
             int j = rnd.Next(i + 1);
             (reservoir[i], reservoir[j]) = (reservoir[j], reservoir[i]);
         }
 
-        if (actual < capacity) Array.Resize(ref reservoir, actual);
         return reservoir;
     }
 
-    private static InclusionListBytes EncodeTransactionsUpToLimit(Transaction[] txs)
+    private static InclusionListBytes EncodeTransactionsUpToLimit(ArrayPoolList<Transaction> txs)
     {
-        InclusionListBytes result = new(txs.Length);
+        InclusionListBytes result = new(txs.Count);
         int size = 0;
         foreach (Transaction tx in txs)
         {
