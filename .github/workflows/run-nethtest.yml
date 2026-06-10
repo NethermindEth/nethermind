@@ -150,19 +150,29 @@ jobs:
           - { test_setup: flat_sequential, chunk: 7of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
           - { test_setup: flat_sequential, chunk: 8of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
           # Parallel-execution variants run every tx of a block concurrently with
-          # per-tx overlay state, so their peak memory is much higher than the
-          # sequential runs — smaller chunks and fewer workers keep them within
+          # per-tx overlay state, and process memory grows with the number of
+          # parallel-executed tests (run 27300384186: ~14 GB after ~5k tests even
+          # with 2 workers under workstation GC). Until that growth is fixed,
+          # keep these chunks small and single-worker so each job stays within
           # the ubuntu-latest limit.
-          - { test_setup: flat_parallel, chunk: 1of4, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '2' }
-          - { test_setup: flat_parallel, chunk: 2of4, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '2' }
-          - { test_setup: flat_parallel, chunk: 3of4, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '2' }
-          - { test_setup: flat_parallel, chunk: 4of4, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '2' }
+          - { test_setup: flat_parallel, chunk: 1of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '1' }
+          - { test_setup: flat_parallel, chunk: 2of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '1' }
+          - { test_setup: flat_parallel, chunk: 3of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '1' }
+          - { test_setup: flat_parallel, chunk: 4of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '1' }
+          - { test_setup: flat_parallel, chunk: 5of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '1' }
+          - { test_setup: flat_parallel, chunk: 6of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '1' }
+          - { test_setup: flat_parallel, chunk: 7of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '1' }
+          - { test_setup: flat_parallel, chunk: 8of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false', workers: '1' }
           - { test_setup: flat_batchread, chunk: 1of2, scope: amsterdam, flatdb: '1', parallel: 'false', batchread: 'true' }
           - { test_setup: flat_batchread, chunk: 2of2, scope: amsterdam, flatdb: '1', parallel: 'false', batchread: 'true' }
-          - { test_setup: flat_parallelfull, chunk: 1of4, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '2' }
-          - { test_setup: flat_parallelfull, chunk: 2of4, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '2' }
-          - { test_setup: flat_parallelfull, chunk: 3of4, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '2' }
-          - { test_setup: flat_parallelfull, chunk: 4of4, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '2' }
+          - { test_setup: flat_parallelfull, chunk: 1of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '1' }
+          - { test_setup: flat_parallelfull, chunk: 2of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '1' }
+          - { test_setup: flat_parallelfull, chunk: 3of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '1' }
+          - { test_setup: flat_parallelfull, chunk: 4of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '1' }
+          - { test_setup: flat_parallelfull, chunk: 5of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '1' }
+          - { test_setup: flat_parallelfull, chunk: 6of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '1' }
+          - { test_setup: flat_parallelfull, chunk: 7of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '1' }
+          - { test_setup: flat_parallelfull, chunk: 8of8, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true', workers: '1' }
     env:
       TEST_SETUP: ${{ matrix.test_setup }}
       CHUNK: ${{ matrix.chunk }}
