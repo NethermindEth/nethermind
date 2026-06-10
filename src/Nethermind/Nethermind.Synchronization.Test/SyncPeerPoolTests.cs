@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -494,7 +495,7 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        await WaitFor(() => peer.DisconnectRequested);
+        await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(50));
         Assert.That(peer.DisconnectRequested, Is.True);
     }
 
@@ -732,19 +733,5 @@ public class SyncPeerPoolTests
     }
 
     private async Task WaitForPeersInitialization(Context ctx) =>
-        await WaitFor(() => ctx.Pool.AllPeers.All(p => p.IsInitialized));
-
-    private async Task WaitFor(Func<bool> isConditionMet)
-    {
-        const int waitInterval = 50;
-        for (int i = 0; i < 20; i++)
-        {
-            if (isConditionMet())
-            {
-                return;
-            }
-
-            await Task.Delay(waitInterval);
-        }
-    }
+        await Wait.ForCondition(() => ctx.Pool.AllPeers.All(p => p.IsInitialized), TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(50));
 }

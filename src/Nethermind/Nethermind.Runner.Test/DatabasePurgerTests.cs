@@ -52,7 +52,6 @@ public class DatabasePurgerTests
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Metadata)), Is.False, "metadata should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Flat)), Is.False, "flat should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Code)), Is.False, "code should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Bloom)), Is.False, "bloom should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BadBlocks)), Is.False, "badBlocks should be deleted");
         Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlobTransactions)), Is.False, "blobTransactions should be deleted");
     }
@@ -94,6 +93,37 @@ public class DatabasePurgerTests
         Assert.DoesNotThrow(() => DatabasePurger.Purge(missing, preserveNetwork: true, _logger));
     }
 
+    [Test]
+    public void DeleteOrphan_removes_directory_when_present()
+    {
+        string orphan = Path.Combine(_tempDir, "bloom");
+        Directory.CreateDirectory(orphan);
+        File.WriteAllText(Path.Combine(orphan, "0000.bloom"), "stale");
+
+        DatabasePurger.DeleteOrphan(_tempDir, "bloom", _logger);
+
+        Assert.That(Directory.Exists(orphan), Is.False);
+    }
+
+    [Test]
+    public void DeleteOrphan_is_noop_when_directory_missing()
+    {
+        Assert.DoesNotThrow(() => DatabasePurger.DeleteOrphan(_tempDir, "bloom", _logger));
+        Assert.That(Directory.Exists(_tempDir), Is.True, "other databases must be untouched");
+    }
+
+    [Test]
+    public void DeleteOrphan_does_not_touch_other_directories()
+    {
+        string orphan = Path.Combine(_tempDir, "bloom");
+        Directory.CreateDirectory(orphan);
+
+        DatabasePurger.DeleteOrphan(_tempDir, "bloom", _logger);
+
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.State)), Is.True);
+        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.True);
+    }
+
     private static void CreateTestDbLayout(string basePath)
     {
         // Chain databases
@@ -106,7 +136,6 @@ public class DatabasePurgerTests
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.Metadata));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.Flat));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.Code));
-        Directory.CreateDirectory(Path.Combine(basePath, DbNames.Bloom));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.BadBlocks));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.BlobTransactions));
         Directory.CreateDirectory(Path.Combine(basePath, DbNames.BlockAccessLists));
