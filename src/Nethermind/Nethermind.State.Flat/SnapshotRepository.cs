@@ -83,7 +83,8 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
                     StateId from = snapshot.From;
 
-                    if (from.BlockNumber < minBlockNumber || !seen.Add(from))
+                    ulong targetBlock = minBlockNumber == ulong.MaxValue ? 0 : minBlockNumber;
+                    if ((from != StateId.PreGenesis && from.BlockNumber < targetBlock) || !seen.Add(from))
                     {
                         snapshot.Dispose();
                         continue;

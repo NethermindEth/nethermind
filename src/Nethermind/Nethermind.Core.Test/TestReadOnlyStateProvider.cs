@@ -32,7 +32,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 
     public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
 
-    public void CreateAccount(Address address, UInt256 wei, ulong nonce = default) => _accounts[address] = new AccountStruct(nonce, (ulong)wei);
+    public void CreateAccount(Address address, UInt256 wei, ulong nonce = default) => _accounts[address] = new AccountStruct(nonce, wei);
 
 
     public void InsertCode(Address address, Memory<byte> code, IReleaseSpec spec) => InsertCode(code.ToArray(), address);
@@ -45,7 +45,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
         }
 
         ValueHash256 codeHash = Keccak.Compute(code);
-        account = new AccountStruct(account.Nonce, (ulong)account.Balance, account.StorageRoot, codeHash);
+        account = new AccountStruct(account.Nonce, account.Balance, account.StorageRoot, codeHash);
         _codes[codeHash] = code;
         _accounts[address] = account;
     }
@@ -57,7 +57,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
             account = new AccountStruct();
         }
 
-        account = new AccountStruct(account.Nonce + 1, (ulong)account.Balance, account.StorageRoot, account.CodeHash);
+        account = new AccountStruct(account.Nonce + 1, account.Balance, account.StorageRoot, account.CodeHash);
         _accounts[address] = account;
     }
 }

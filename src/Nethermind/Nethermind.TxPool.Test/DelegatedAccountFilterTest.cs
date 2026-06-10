@@ -92,8 +92,8 @@ internal class DelegatedAccountFilterTest
 
     private static readonly object[] DelegatedWithTxInPoolCases =
     {
-        new object[] { 0, AcceptTxResult.Accepted },
-        new object[] { 1, AcceptTxResult.NotCurrentNonceForDelegation },
+        new object[] { 0UL, AcceptTxResult.Accepted },
+        new object[] { 1UL, AcceptTxResult.NotCurrentNonceForDelegation },
     };
 
     [TestCaseSource(nameof(DelegatedWithTxInPoolCases))]
@@ -137,9 +137,9 @@ internal class DelegatedAccountFilterTest
 
     private static readonly object[] PendingDelegationNonceCases =
     {
-        new object[] { 0, AcceptTxResult.NotCurrentNonceForDelegation },
-        new object[] { 1, AcceptTxResult.Accepted },
-        new object[] { 2, AcceptTxResult.NotCurrentNonceForDelegation },
+        new object[] { 0UL, AcceptTxResult.NotCurrentNonceForDelegation },
+        new object[] { 1UL, AcceptTxResult.Accepted },
+        new object[] { 2UL, AcceptTxResult.NotCurrentNonceForDelegation },
     };
 
     [TestCaseSource(nameof(PendingDelegationNonceCases))]

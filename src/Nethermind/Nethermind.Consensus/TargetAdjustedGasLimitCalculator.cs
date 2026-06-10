@@ -24,7 +24,8 @@ namespace Nethermind.Consensus
             if (targetGasLimit is not null)
             {
                 ulong target = targetGasLimit.Value;
-                ulong maxGasLimitDifference = Math.Max(0UL, parentGasLimit / spec.GasLimitBoundDivisor - 1);
+                ulong div = parentGasLimit / spec.GasLimitBoundDivisor;
+                ulong maxGasLimitDifference = div > 1 ? div - 1 : 0UL;
                 gasLimit = target > parentGasLimit
                     ? parentGasLimit + Math.Min(target - parentGasLimit, maxGasLimitDifference)
                     : parentGasLimit - Math.Min(parentGasLimit - target, maxGasLimitDifference);

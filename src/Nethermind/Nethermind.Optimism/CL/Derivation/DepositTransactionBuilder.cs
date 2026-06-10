@@ -149,7 +149,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
                 SenderAddress = from,
                 To = depositLogEventV0.IsCreation ? null : to,
                 Mint = depositLogEventV0.Mint,
-                Value = (ulong)depositLogEventV0.Value,
+                Value = depositLogEventV0.Value,
                 GasLimit = depositLogEventV0.Gas,
                 Data = depositLogEventV0.Data.ToArray(),
                 SourceHash = sourceHash,

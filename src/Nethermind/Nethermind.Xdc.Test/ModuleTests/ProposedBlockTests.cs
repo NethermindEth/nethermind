@@ -8,6 +8,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -29,7 +30,9 @@ internal class ProposedBlockTests
         PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
 
         BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        ulong gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0UL ? 0UL : (switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
+        ulong gapNumber = epochSwitchNumber > offset ? epochSwitchNumber - offset : 0UL;
         //We skip 1 vote so we are 1 under the vote threshold, proving that if the round advances the module cast a vote itself
         foreach (PrivateKey? key in masternodes.Skip(1))
         {
@@ -42,6 +45,9 @@ internal class ProposedBlockTests
 
         //Set current signer as the one that didn't vote
         blockChain.Signer.SetSigner(masternodes.First());
+
+        // Align timestamper with block timestamps so TryPropose does not block on the mine-period gate
+        blockChain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
 
         //Starting here will trigger the final vote to be cast and round should advance
         blockChain.StartHotStuffModule();
@@ -100,7 +106,9 @@ internal class ProposedBlockTests
         PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
 
         BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        ulong gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0UL ? 0UL : (switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
+        ulong gapNumber = epochSwitchNumber > offset ? epochSwitchNumber - offset : 0UL;
         //We skip 1 vote so we are 1 under the vote threshold
         foreach (PrivateKey? key in masternodes.Skip(1))
         {
@@ -118,6 +126,9 @@ internal class ProposedBlockTests
 
         //Set current signer as the one that didn't vote
         blockChain.Signer.SetSigner(masternodes.First());
+
+        // Align timestamper with block timestamps so TryPropose does not block on the mine-period gate
+        blockChain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
 
         //Starting here will trigger the final vote to be cast
         blockChain.StartHotStuffModule();
@@ -179,7 +190,9 @@ internal class ProposedBlockTests
         }
 
         BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        ulong gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0UL ? 0UL : (switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
+        ulong gapNumber = epochSwitchNumber > offset ? epochSwitchNumber - offset : 0UL;
         //We skip 1 vote so we are 1 under the vote threshold
         foreach (PrivateKey? key in masternodes.Skip(1))
         {

@@ -607,7 +607,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("authorization refund gas overflow");
                 }
 
-                ulong refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
+                ulong refundFloor = stateGasFloor > stateGasRefund ? stateGasFloor - stateGasRefund : 0UL;
                 TGasPolicy.RefundStateGas(ref gasAvailable, stateGasRefund, refundFloor, trackSpillRefund: false);
                 delegationRefunds = 0;
                 delegationAuthBaseRefunds = 0;
@@ -1350,8 +1350,8 @@ namespace Nethermind.Evm.TransactionProcessing
             ulong intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
             ulong refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
             ulong initialStateReservoir = CalculateInitialStateReservoir(tx.GasLimit, in intrinsicGasStandard);
-            ulong refundedIntrinsicStateGas = Math.Max(0, postIntrinsicStateReservoir - initialStateReservoir) + refundedTopLevelCreateStateGas;
-            ulong postHaltIntrinsicStateGas = Math.Max(0, intrinsicStateGas - refundedIntrinsicStateGas);
+            ulong refundedIntrinsicStateGas = (postIntrinsicStateReservoir > initialStateReservoir ? postIntrinsicStateReservoir - initialStateReservoir : 0UL) + refundedTopLevelCreateStateGas;
+            ulong postHaltIntrinsicStateGas = intrinsicStateGas > refundedIntrinsicStateGas ? intrinsicStateGas - refundedIntrinsicStateGas : 0UL;
             RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
             ulong refundedCreateStateSpillForHalt = CalculateRefundedCreateStateSpillForHalt(in gas);
             ulong postHaltStateReservoir = Math.Max(postIntrinsicStateReservoir, TGasPolicy.GetStateReservoir(in gas));
@@ -1373,7 +1373,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong remainingRegularGas = TGasPolicy.GetRemainingGas(in gas);
             ulong stateReservoir = TGasPolicy.GetStateReservoir(in gas);
-            ulong spentGas = Math.Max(tx.GasLimit - remainingRegularGas - stateReservoir, floorGas);
+            ulong totalSub = remainingRegularGas + stateReservoir;
+            ulong spentGas = Math.Max(tx.GasLimit > totalSub ? tx.GasLimit - totalSub : 0UL, floorGas);
             ulong blockGas = Calculate8037BlockRegularGas(in gas, in intrinsicGasStandard, tx.GasLimit, floorGas, remainingRegularGas);
             ulong blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
 
@@ -1401,8 +1402,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 TGasPolicy.RefundStateGas(ref gasAfterCollision, refundedTopLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
             }
 
+            TGasPolicy.SetOutOfGas(ref gasAfterCollision);
+            ulong reservoirAfterCollision = TGasPolicy.GetStateReservoir(in gasAfterCollision);
+            ulong spentGas = Math.Max(tx.GasLimit > reservoirAfterCollision ? tx.GasLimit - reservoirAfterCollision : 0UL, floorGas);
             ulong blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterCollision);
-            ulong spentGas = Math.Max(tx.GasLimit - TGasPolicy.GetStateReservoir(in gasAfterCollision), floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, spentGas, blockStateGas);
         }
@@ -1421,11 +1424,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 return tx.GasLimit;
 
             ulong stateReservoir = TGasPolicy.GetStateReservoir(in gas);
-            ulong spentGas = Math.Max(tx.GasLimit - stateReservoir, floorGas);
+            ulong spentGas = Math.Max(tx.GasLimit > stateReservoir ? tx.GasLimit - stateReservoir : 0UL, floorGas);
             ulong intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
             ulong spillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
-            ulong effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned) + refundedCreateStateSpillForHalt;
-            ulong blockGas = Math.Max(tx.GasLimit - stateReservoir - effectiveStateGas, floorGas);
+            ulong effectiveStateGas = (intrinsicStateGas > spillBurned ? intrinsicStateGas - spillBurned : 0UL) + refundedCreateStateSpillForHalt;
+            ulong totalSub = stateReservoir + effectiveStateGas;
+            ulong blockGas = Math.Max(tx.GasLimit > totalSub ? tx.GasLimit - totalSub : 0UL, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
         }
@@ -1592,7 +1596,8 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy intrinsicGasStandard)
         {
             ulong intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            return Math.Max(0, txGasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
+            ulong totalCap = intrinsicStateGas + Eip7825Constants.DefaultTxGasLimitCap;
+            return txGasLimit > totalCap ? txGasLimit - totalCap : 0UL;
         }
 
         private (ulong spentGas, ulong refund) CalculateSpentGasAndRefund(
@@ -1616,10 +1621,10 @@ namespace Nethermind.Evm.TransactionProcessing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong CalculateRefundedCreateStateSpillForHalt(in TGasPolicy gas)
         {
-            ulong returnedSpillNotInReservoir =
-                TGasPolicy.GetStateGasSpill(in gas) -
-                TGasPolicy.GetStateReservoir(in gas) -
-                TGasPolicy.GetStateGasSpillBurned(in gas);
+            ulong stateReservoir = TGasPolicy.GetStateReservoir(in gas);
+            ulong stateGasSpillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
+            ulong totalSub = stateReservoir + stateGasSpillBurned;
+            ulong returnedSpillNotInReservoir = TGasPolicy.GetStateGasSpill(in gas) > totalSub ? TGasPolicy.GetStateGasSpill(in gas) - totalSub : 0UL;
             ulong refundedSpill = TGasPolicy.GetStateGasSpillRefunded(in gas);
             ulong refundedSpillNotInReservoir = Math.Min(returnedSpillNotInReservoir, refundedSpill);
             ulong createStateGas = TGasPolicy.GetCreateStateCost(in gas);
@@ -1629,7 +1634,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             // Only whole CREATE-state units are restored to state on halt; partial spill remains regular.
-            return Math.Max(0, (refundedSpillNotInReservoir / createStateGas) * createStateGas);
+            return (refundedSpillNotInReservoir / createStateGas) * createStateGas;
         }
 
         private static (ulong blockGas, ulong blockStateGas) CalculateBlockGas(
@@ -1664,8 +1669,10 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             ulong intrinsicRegularGas = TGasPolicy.GetRemainingGas(in intrinsicGasStandard);
             ulong intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            ulong initialReservoir = Math.Max(0, txGasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
-            ulong initialRegularGas = txGasLimit - intrinsicRegularGas - intrinsicStateGas - initialReservoir;
+            ulong totalCap = intrinsicStateGas + Eip7825Constants.DefaultTxGasLimitCap;
+            ulong initialReservoir = txGasLimit > totalCap ? txGasLimit - totalCap : 0UL;
+            ulong totalSub = intrinsicRegularGas + intrinsicStateGas + initialReservoir;
+            ulong initialRegularGas = txGasLimit > totalSub ? txGasLimit - totalSub : 0UL;
             ulong stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution);
             ulong stateGasSpillReclassified = TGasPolicy.GetStateGasSpillReclassified(in gasAfterExecution);
             return Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(

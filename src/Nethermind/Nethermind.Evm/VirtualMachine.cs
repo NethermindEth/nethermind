@@ -432,7 +432,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
         ulong childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
-        ulong stateSpill = Math.Max(0, stateDepositCost - childStateReservoir);
+        ulong stateSpill = stateDepositCost > childStateReservoir ? stateDepositCost - childStateReservoir : 0UL;
         bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + stateSpill;
         bool chargedCodeDeposit = false;
 
@@ -647,7 +647,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         VmState<TGasPolicy> vmState = VmState;
         ulong stateGasFloor = vmState.InitialStateGasUsed;
-        ulong refundableStateGas = Math.Max(0, TGasPolicy.GetStateGasUsed(in gas) - stateGasFloor);
+        ulong refundableStateGas = TGasPolicy.GetStateGasUsed(in gas) > stateGasFloor ? TGasPolicy.GetStateGasUsed(in gas) - stateGasFloor : 0UL;
         ulong appliedRefund = Math.Min(amount, refundableStateGas);
 
         if (appliedRefund > 0)

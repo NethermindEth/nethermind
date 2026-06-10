@@ -152,7 +152,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     {
         ReadOnlySpan<byte> data = transaction.Data.Span;
         int totalZeros = data.CountZeros();
-        return (ulong)(totalZeros + (data.Length - totalZeros)) * spec.GasCosts.TxDataNonZeroMultiplier;
+        return (ulong)totalZeros + (ulong)(data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
     // 0 when floor pricing is not active.

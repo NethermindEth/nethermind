@@ -107,11 +107,11 @@ namespace Nethermind.TxPool.Test.Collections
 
         private static IEnumerable<TestCaseData> VisitBucketCases()
         {
-            yield return new TestCaseData(Array.Empty<int>(), int.MaxValue, Array.Empty<int>())
+            yield return new TestCaseData(Array.Empty<ulong>(), int.MaxValue, Array.Empty<int>())
                 .SetName("VisitBucket_missing_group_visits_nothing");
-            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 })
+            yield return new TestCaseData(new ulong[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 })
                 .SetName("VisitBucket_iterates_all_items_in_ascending_nonce_order");
-            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 })
+            yield return new TestCaseData(new ulong[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 })
                 .SetName("VisitBucket_stops_after_visitor_returns_false");
         }
 

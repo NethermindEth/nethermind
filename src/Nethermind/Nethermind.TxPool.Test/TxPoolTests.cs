@@ -1766,14 +1766,14 @@ namespace Nethermind.TxPool.Test
 
         private static IEnumerable<object> DifferentOrderNonces()
         {
-            yield return new object[] { 0, 1, AcceptTxResult.Accepted, AcceptTxResult.NotCurrentNonceForDelegation };
-            yield return new object[] { 2, 5, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.NotCurrentNonceForDelegation };
-            yield return new object[] { 1, 0, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.Accepted };
-            yield return new object[] { 5, 0, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.Accepted };
+            yield return new object[] { 0UL, 1UL, AcceptTxResult.Accepted, AcceptTxResult.NotCurrentNonceForDelegation };
+            yield return new object[] { 2UL, 5UL, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.NotCurrentNonceForDelegation };
+            yield return new object[] { 1UL, 0UL, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.Accepted };
+            yield return new object[] { 5UL, 0UL, AcceptTxResult.NotCurrentNonceForDelegation, AcceptTxResult.Accepted };
         }
 
         [TestCaseSource(nameof(DifferentOrderNonces))]
-        public void Delegated_account_can_only_have_one_tx_with_current_account_nonce(uint firstNonce, int secondNonce, AcceptTxResult firstExpectation, AcceptTxResult secondExpectation)
+        public void Delegated_account_can_only_have_one_tx_with_current_account_nonce(ulong firstNonce, ulong secondNonce, AcceptTxResult firstExpectation, AcceptTxResult secondExpectation)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
@@ -1785,7 +1785,7 @@ namespace Nethermind.TxPool.Test
             _stateProvider.InsertCode(signer.Address, delegation.AsMemory(), Prague.Instance);
 
             Transaction firstTx = Build.A.Transaction
-                .WithNonce((ulong)firstNonce)
+                .WithNonce(firstNonce)
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(9.GWei)
                 .WithMaxPriorityFeePerGas(9.GWei)
@@ -1797,7 +1797,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(firstExpectation));
 
             Transaction secondTx = Build.A.Transaction
-                .WithNonce((ulong)secondNonce)
+                .WithNonce(secondNonce)
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(9.GWei)
                 .WithMaxPriorityFeePerGas(9.GWei)
@@ -1813,14 +1813,14 @@ namespace Nethermind.TxPool.Test
 
         private static readonly object[] NonceAndRemovedCases =
         {
-            new object[]{ true, 1, AcceptTxResult.Accepted },
-            new object[]{ true, 0, AcceptTxResult.Accepted},
-            new object[]{ false, 0, AcceptTxResult.Accepted},
-            new object[]{ false, 1, AcceptTxResult.NotCurrentNonceForDelegation},
+            new object[]{ true, 1UL, AcceptTxResult.Accepted },
+            new object[]{ true, 0UL, AcceptTxResult.Accepted},
+            new object[]{ false, 0UL, AcceptTxResult.Accepted},
+            new object[]{ false, 1UL, AcceptTxResult.NotCurrentNonceForDelegation},
         };
 
         [TestCaseSource(nameof(NonceAndRemovedCases))]
-        public void Tx_with_conflicting_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval, int secondNonce, AcceptTxResult expected)
+        public void Tx_with_conflicting_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval, ulong secondNonce, AcceptTxResult expected)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
@@ -1852,7 +1852,7 @@ namespace Nethermind.TxPool.Test
             }
 
             Transaction secondTx = Build.A.Transaction
-                .WithNonce((ulong)secondNonce)
+                .WithNonce(secondNonce)
                 .WithType(TxType.EIP1559)
                 .WithMaxFeePerGas(12.GWei)
                 .WithMaxPriorityFeePerGas(12.GWei)
