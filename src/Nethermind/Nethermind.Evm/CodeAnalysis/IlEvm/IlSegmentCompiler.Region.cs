@@ -76,6 +76,14 @@ public static partial class IlSegmentCompiler
         // so the single-pass gate must not apply (it was silently rejecting every hot loop).
         if (totalOps < MinimumPrefixOps)
             return region.Count;
+        // Loop regions only, by default: measured on a live mainnet node (segment_ops /
+        // segment_invocations), straight-line regions average ~4 ops per entry — the per-entry
+        // boundary (preconditions, delegate, operand traffic ≈ 10-20 interpreted ops' worth)
+        // exceeds the per-op savings, a strict net loss at ~42k entries per heavy eth_call.
+        // Straight-line compilation reopens when the boundary cost itself is engineered down
+        // (in-place stack access), with the break-even re-measured on-node first.
+        if (RequireLoopRegions && !hasInRegionBackEdge)
+            return region.Count;
         if (!hasInRegionBackEdge && totalOps < BoundaryCostFactor * totalBoundaryTraffic)
             return region.Count;
 
@@ -128,6 +136,10 @@ public static partial class IlSegmentCompiler
 
         return region.Count;
     }
+
+    // Compile only regions with an internal back-edge (loops). Volatile for the same reason
+    // as the tunables in IlSegmentCompiler: tests relax it from another thread.
+    public static volatile bool RequireLoopRegions = true;
 
     // Diagnostics (lossy, compile-time only — never on an execution path): how many regions
     // got register-resident frames vs the v4.0 flush-at-boundaries fallback. A fallback-heavy

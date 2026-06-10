@@ -29,6 +29,7 @@ public class IlSegmentCompilerTests
         // These tests target emission semantics on intentionally tiny segments; relax the
         // production profitability gate so they compile.
         IlSegmentCompiler.MinimumPrefixOps = 1;
+        IlSegmentCompiler.RequireLoopRegions = false;
         IlSegmentCompiler.BoundaryCostFactor = 0;
     }
 
@@ -36,6 +37,7 @@ public class IlSegmentCompilerTests
     public void TearDown()
     {
         IlSegmentCompiler.MinimumPrefixOps = _minimumOpsBackup;
+        IlSegmentCompiler.RequireLoopRegions = true;
         IlSegmentCompiler.BoundaryCostFactor = _boundaryFactorBackup;
     }
 

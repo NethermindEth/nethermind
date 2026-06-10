@@ -47,6 +47,7 @@ public class IlEvmExecutionTests
         // short test segments through the production profitability gate.
         Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.SynchronousCompilation = true;
         IlSegmentCompiler.MinimumPrefixOps = 1;
+        IlSegmentCompiler.RequireLoopRegions = false;
         IlSegmentCompiler.BoundaryCostFactor = 0;
     }
 
@@ -57,6 +58,7 @@ public class IlEvmExecutionTests
         Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.CompileThreshold = _thresholdBackup;
         Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.SynchronousCompilation = _syncBackup;
         IlSegmentCompiler.MinimumPrefixOps = _minimumOpsBackup;
+        IlSegmentCompiler.RequireLoopRegions = true;
         IlSegmentCompiler.BoundaryCostFactor = _boundaryFactorBackup;
     }
 
