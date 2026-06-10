@@ -251,10 +251,10 @@ jobs:
     runs-on: [vpn]
     needs: [verify_correctness_of_setup, resolve_urls, create_geth_node]
     if: always() && needs.resolve_urls.result == 'success' && (needs.verify_correctness_of_setup.outputs.spawn_nm == 'true' || inputs.spawn_geth)
-    timeout-minutes: 1440
+    timeout-minutes: 5
     steps:
       - name: Wait for the nodes to sync
-        timeout-minutes: 1440
+        timeout-minutes: 5
         env:
           SPAWN_NM: ${{ needs.verify_correctness_of_setup.outputs.spawn_nm }}
           NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
