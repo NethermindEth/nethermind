@@ -118,9 +118,6 @@ public partial class BlockAccessListManager(
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
-        // Any stale warmup from a prior block belongs to a prior state root and must not bleed
-        // through; re-issued below if BAL warming applies to this block.
-        _balWarmupTask = null;
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -162,10 +159,9 @@ public partial class BlockAccessListManager(
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
 
-        if (BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
-        {
-            _balWarmupTask = stateProvider.HintBal(suggestedBlock.BlockAccessList);
-        }
+        _balWarmupTask  = BatchReadEnabled && suggestedBlock.BlockAccessList is not null
+            ? stateProvider.HintBal(suggestedBlock.BlockAccessList)
+            : null;
     }
 
     public void WaitForBalWarmup()

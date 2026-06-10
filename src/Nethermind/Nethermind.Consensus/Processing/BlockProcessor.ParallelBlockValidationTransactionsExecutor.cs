@@ -149,11 +149,7 @@ public partial class BlockProcessor
                             {
                                 if (i == 0)
                                 {
-                                    // Must finish warming BEFORE ApplyStateChanges' write batch cancels it.
                                     state.balManager.WaitForBalWarmup();
-
-                                    // Slot 0 (not Task.Run) so the write to stateProvider stays inside the
-                                    // parallel loop; tx workers read BAL-backed world states, not this one.
                                     BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                     return state;
                                 }
