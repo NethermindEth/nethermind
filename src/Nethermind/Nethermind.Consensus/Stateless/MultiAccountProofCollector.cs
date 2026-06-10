@@ -35,6 +35,10 @@ internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextW
             _accountHashes[i++] = ValueKeccak.Compute(entry.Key.Value.Bytes);
         }
 
+        // Sorted so ShouldVisit can binary search instead of scanning every hash. The scan is
+        // O(accounts) per visited child, which dominates block-scale walks (thousands of accounts).
+        Array.Sort(_accountHashes);
+
         // Capacity hint: one state-trie path of typical depth per account. Storage slots don't
         // count — ShouldVisit filters storage tries out of this walk.
         _nodes = new List<byte[]>(Math.Max(16, n * 8));
@@ -46,12 +50,13 @@ internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextW
     {
         // State trie only: storage tries are walked by the per-account AccountProofCollector pass.
         if (ctx.Storage is not null) return false;
-        for (int i = 0; i < _accountHashes.Length; i++)
-        {
-            ReadOnlySpan<byte> accountHash = _accountHashes[i].Bytes;
-            if (IsPrefix(accountHash, ctx.Path)) return true;
-        }
-        return false;
+
+        // Hashes with ctx.Path as nibble-prefix form one contiguous run in the sorted array, and
+        // the run starts at the first hash >= the zero-padded path (any later non-member exceeds
+        // the path in a prefix nibble) — so the lower-bound element alone decides membership.
+        int index = Array.BinarySearch(_accountHashes, ctx.Path.ToLowerBoundPath());
+        if (index < 0) index = ~index;
+        return index < _accountHashes.Length && IsPrefix(_accountHashes[index].Bytes, ctx.Path);
     }
 
     public void VisitTree(in TreePathContextWithStorage ctx, in ValueHash256 rootHash) { }
