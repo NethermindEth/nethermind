@@ -314,9 +314,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     /// Resolves the hinted slot reads on dedicated reader threads pulling a shared job cursor.
     /// </summary>
     /// <remarks>
-    /// Block execution occupies the thread pool for the whole block, starving pool-scheduled reads
-    /// exactly when they matter. The readers are disk-latency-bound, so oversubscribing the
-    /// processor count is intended.
+    /// Deliberately not <see cref="Parallel.For"/>: that schedules on the shared thread pool,
+    /// which block execution keeps saturated for the whole block, so pooled reads are starved
+    /// exactly when they matter — and the pool's slow thread injection never reaches the
+    /// oversubscribed concurrency a disk-latency-bound drain needs.
+    /// <see cref="TaskCreationOptions.LongRunning"/> gives each reader its own OS thread
+    /// outside the pool, so the drain runs at full width alongside the tx executors.
     /// </remarks>
     private void PumpSinkSlotReads(
         ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs,
@@ -326,31 +329,31 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CancellationToken token)
     {
         int nextJob = -1;
-        int started = 0;
-        Task[] readers = new Task[concurrency];
+        using ArrayPoolListRef<Task> readers = new(concurrency);
         try
         {
             for (int t = 0; t < concurrency; t++)
             {
-                readers[t] = Task.Factory.StartNew(() =>
+                readers.Add(Task.Factory.StartNew(() =>
                 {
                     while (!token.IsCancellationRequested)
                     {
                         int j = Interlocked.Increment(ref nextJob);
                         if (j >= jobCount) return;
-                        if (_pausePrewarmer) continue; // Skip, don't retry — same as the pooled path.
+                        // Paused: claim the slot but skip the read, so the cursor drains without
+                        // I/O — the same slots the pooled path would have skipped.
+                        if (_pausePrewarmer) continue;
                         (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
                         ReadSlotToSink(sink, address, in slot, selfDestructIdx);
                     }
-                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-                started++;
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default));
             }
         }
         finally
         {
             // Join started readers even on a mid-loop spawn failure, so the pooled jobs buffer is
             // never disposed under a live reader.
-            Task.WaitAll(readers.AsSpan(0, started));
+            Task.WaitAll(readers.AsSpan());
         }
     }
 

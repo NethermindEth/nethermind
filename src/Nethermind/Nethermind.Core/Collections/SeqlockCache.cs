@@ -20,10 +20,11 @@ namespace Nethermind.Core.Collections;
 ///   breaking correlation between ways ("power of two choices"). Keys that collide
 ///   in way 0 scatter to different sets in way 1, virtually eliminating conflict misses.
 ///
-/// Hash bit partitioning (64-bit hash, shown for the default 14 set-index bits):
-///   Bits  0-13: way 0 set index (up to bits 0-19 at <see cref="MaxSetsBits"/>)
+/// Hash bit partitioning (64-bit hash) for a cache with setsBits set-index bits
+/// (<see cref="DefaultSetsBits"/> unless specified, at most <see cref="MaxSetsBits"/>):
+///   Bits 0..setsBits-1: way 0 set index (bits 0-13 at the default size)
 ///   Bits 22-41: hash signature stored in header (20 bits)
-///   Bits 42-55: way 1 set index (up to bits 42-61 at <see cref="MaxSetsBits"/>, independent from way 0)
+///   Bits 42..41+setsBits: way 1 set index (bits 42-55 at the default size, independent from way 0)
 ///
 /// Header layout (64-bit):
 /// [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
