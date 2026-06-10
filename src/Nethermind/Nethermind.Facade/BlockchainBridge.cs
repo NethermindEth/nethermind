@@ -159,8 +159,18 @@ namespace Nethermind.Facade
 
         private CallOutput CallShareable(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
+            // Identical (block hash, call) pairs are deterministic — serve repeats from the
+            // memo instead of re-executing megagas (see EthCallResultCache for the contract).
+            ValueHash256 cacheKey = default;
+            bool cacheable = EthCallResultCache.Enabled && EthCallResultCache.TryComputeKey(header, tx, out cacheKey);
+            if (cacheable && EthCallResultCache.TryGet(in cacheKey, out CallOutput cachedOutput))
+                return cachedOutput;
+
             using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);
-            return RunCall(stateReader, scope.TransactionProcessor, header, tx, blobBaseFeeOverride: null, cancellationToken);
+            CallOutput output = RunCall(stateReader, scope.TransactionProcessor, header, tx, blobBaseFeeOverride: null, cancellationToken);
+            if (cacheable)
+                EthCallResultCache.Set(in cacheKey, output);
+            return output;
         }
 
         private CallOutput CallExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, CancellationToken cancellationToken)
