@@ -6,8 +6,11 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Proof;
 
@@ -58,11 +61,32 @@ internal sealed class WitnessCall(
 
         tx.SenderAddress ??= Address.Zero;
 
-        // Clone + zero GasUsed so the budget check (block.GasUsed + tx.GasLimit <= block.GasLimit)
-        // doesn't reject default-gas calls. Hash is a stored field copied by Clone(), so
-        // callHeader.Hash == sourceHeader.Hash and witness header lookup resolves to the real chain header.
+        // Mirrors BlockchainBridge.CallAndRestore: derive the per-call header from the source
+        // header so the EVM sees a consistent block context (IsPostMerge, base fee, blob fees).
         BlockHeader callHeader = sourceHeader.Clone();
         callHeader.GasUsed = 0;
+        callHeader.MixHash = sourceHeader.MixHash;
+        callHeader.IsPostMerge = sourceHeader.Difficulty == 0;
+
+        IReleaseSpec releaseSpec = specProvider.GetSpec(callHeader);
+        if (!callRequest.ShouldSetBaseFee())
+        {
+            callHeader.BaseFeePerGas = 0;
+        }
+
+        if (releaseSpec.IsEip4844Enabled)
+        {
+            callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(tx);
+            callHeader.ExcessBlobGas = sourceHeader.ExcessBlobGas;
+
+            BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee);
+            if (tx.Type is TxType.Blob && tx.MaxFeePerBlobGas is null)
+            {
+                tx.MaxFeePerBlobGas = blobBaseFee;
+            }
+        }
+
+        tx.Hash = tx.CalculateHash();
 
         // Bound the EVM run by the RPC timeout so a heavy call can't pin a thread past the deadline; the
         // EVM then throws OperationCanceledException, which JsonRpcService maps to a Timeout error. A

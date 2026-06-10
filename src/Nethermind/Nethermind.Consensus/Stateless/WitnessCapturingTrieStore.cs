@@ -20,7 +20,7 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
     // Plain Dictionary, not ConcurrentDictionary: a rented entry is exclusive to a single synchronous
     // caller, so the collector only ever sees one writer per rent.
     private readonly Dictionary<Hash256AsKey, byte[]> _rlpCollector = [];
-    private bool _recording = true;
+    private volatile bool _recording = true;
 
     public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Values;
 

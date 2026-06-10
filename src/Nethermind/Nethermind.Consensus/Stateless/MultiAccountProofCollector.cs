@@ -11,23 +11,15 @@ using Nethermind.Trie;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// Tree visitor that walks the state trie once, collecting trie-node RLP along the path to each of N
-/// target accounts and their requested storage slots. Replaces N independent per-account
-/// <see cref="State.Proofs.AccountProofCollector"/> walks (O(K × depth) → O(unique nodes on the path
-/// union)) for the witness path. Storage tries stay per-account, dispatched via <c>ctx.Storage</c>.
-/// Output is a flat node list; the consumer deduplicates.
+/// Walks the state trie once and captures trie-node RLP along the path to each of N target accounts,
+/// replacing N independent per-account <see cref="State.Proofs.AccountProofCollector"/> walks for
+/// the state-trie portion. Storage tries are walked separately — one
+/// <see cref="State.Proofs.AccountProofCollector"/> per account — because the visitor framework's
+/// <c>ctx.Storage</c> is a state-trie path commitment, not the address hash a discriminator would need.
 /// </summary>
 internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextWithStorage>
 {
-    // Targets are the hashed keys themselves (32 bytes = 64 nibbles); ShouldVisit reads nibbles straight
-    // from these, so no Nibble[] is expanded per account/slot and the hashes stay as value types.
     private readonly ValueHash256[] _accountHashes;
-    // Parallel to _accountHashes; true if the account had a slot requested. Lets ShouldVisit skip the
-    // storage subtree for accounts with no touched slots (avoids capturing nodes the verifier won't need).
-    private readonly bool[] _hasSlots;
-    // Keyed by the hashed address (== TreePathContextWithStorage.Storage). The framework hands us the
-    // address-hash, never the original Address, when traversing the storage subtrie.
-    private readonly Dictionary<ValueHash256, ValueHash256[]> _slotsByAddress;
     private readonly List<byte[]> _nodes;
 
     public IReadOnlyList<byte[]> Nodes => _nodes;
@@ -36,35 +28,15 @@ internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextW
     {
         int n = storageSlots.Count;
         _accountHashes = new ValueHash256[n];
-        _hasSlots = new bool[n];
-        _slotsByAddress = new Dictionary<ValueHash256, ValueHash256[]>(n, GenericEqualityComparer.GetOptimized<ValueHash256>());
-
-        Span<byte> slotBuf = stackalloc byte[32];
         int i = 0;
         int totalSlots = 0;
         foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> entry in storageSlots)
         {
-            ValueHash256 addressHash = ValueKeccak.Compute(entry.Key.Value.Bytes);
-            _accountHashes[i] = addressHash;
-            int slotCount = entry.Value.Count;
-            _hasSlots[i] = slotCount > 0;
-            i++;
-            totalSlots += slotCount;
-
-            if (slotCount == 0) continue;
-
-            ValueHash256[] slotHashes = new ValueHash256[slotCount];
-            int j = 0;
-            foreach (UInt256 slot in entry.Value)
-            {
-                slot.ToBigEndian(slotBuf);
-                slotHashes[j++] = ValueKeccak.Compute(slotBuf);
-            }
-            _slotsByAddress[addressHash] = slotHashes;
+            _accountHashes[i++] = ValueKeccak.Compute(entry.Key.Value.Bytes);
+            totalSlots += entry.Value.Count;
         }
 
-        // Pre-size for the branch/extension/leaf nodes captured along the path union (≈ a short chain
-        // per touched account and slot) so the list doesn't resize repeatedly during the walk.
+        // Approximate capacity: a short branch/extension/leaf chain per touched account and slot.
         _nodes = new List<byte[]>(Math.Max(16, (n + totalSlots) * 2));
     }
 
@@ -72,26 +44,12 @@ internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextW
 
     public bool ShouldVisit(in TreePathContextWithStorage ctx, in ValueHash256 nextNode)
     {
-        if (ctx.Storage is null)
+        // State trie only: storage tries are walked by the per-account AccountProofCollector pass.
+        if (ctx.Storage is not null) return false;
+        for (int i = 0; i < _accountHashes.Length; i++)
         {
-            // State trie: descend if any target's account hash passes through the current node AND
-            // either we haven't yet reached that target's leaf (still descending) or that target has
-            // slots to descend into. Linear in K per node; fine for the typical K (5–50 touched accounts).
-            for (int i = 0; i < _accountHashes.Length; i++)
-            {
-                ReadOnlySpan<byte> accountHash = _accountHashes[i].Bytes;
-                if (IsPrefix(accountHash, ctx.Path) && (_hasSlots[i] || ctx.Path.Length < accountHash.Length * 2))
-                    return true;
-            }
-            return false;
-        }
-
-        // Storage trie: ctx.Storage is the hashed-address whose storage root we entered. Walk only
-        // the requested slots for that specific account.
-        if (!_slotsByAddress.TryGetValue(ctx.Storage, out ValueHash256[]? slotHashes)) return false;
-        foreach (ValueHash256 slotHash in slotHashes)
-        {
-            if (IsPrefix(slotHash.Bytes, ctx.Path)) return true;
+            ReadOnlySpan<byte> accountHash = _accountHashes[i].Bytes;
+            if (IsPrefix(accountHash, ctx.Path)) return true;
         }
         return false;
     }
@@ -106,21 +64,14 @@ internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextW
 
     public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node) => AddProofItem(node);
 
-    // VisitAccount is consumed by the eth_getProof flow to extract nonce/balance/storageRoot/codeHash
-    // for the AccountProof struct; the witness path only needs the raw RLP captured by VisitLeaf, so
-    // we no-op this hook.
     public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account) { }
 
     private void AddProofItem(TrieNode node)
     {
-        // Inline nodes have no standalone hash; their RLP is already embedded in the parent's RLP, so
-        // EIP-1186 / go-ethereum convention is to omit them. Matches AccountProofCollector.
         if (node.Keccak is null) return;
         _nodes.Add(node.FullRlp.ToArray());
     }
 
-    // currentPath (≤ 64 nibbles) must be a prefix of the 64-nibble target key; nibbles are read straight
-    // from the 32-byte hash rather than from a pre-expanded Nibble[].
     private static bool IsPrefix(ReadOnlySpan<byte> target, in TreePath currentPath)
     {
         int length = currentPath.Length;

@@ -29,9 +29,9 @@ namespace Nethermind.JsonRpc.Modules.Proof;
 /// level and the witness would have nowhere to live.
 /// </para>
 /// <see cref="Witness"/> is the geth/reth-compatible execution witness — flat lists of trie-node RLP,
-/// loaded bytecode, accessed keys, and RLP-encoded block headers (the executed-against block header
-/// is always the first entry; any block whose hash was read via <c>BLOCKHASH</c> follows). The witness
-/// is captured even on in-VM failure.
+/// loaded bytecode, accessed keys, and RLP-encoded block headers emitted in ascending block-number
+/// order (any block whose hash was read via <c>BLOCKHASH</c> comes first, and the executed-against
+/// block header is always the last entry). The witness is captured even on in-VM failure.
 /// </remarks>
 public class CallResultWithProof : IDisposable
 {

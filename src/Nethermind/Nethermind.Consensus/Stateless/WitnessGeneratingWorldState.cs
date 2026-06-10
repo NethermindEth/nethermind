@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -56,17 +57,35 @@ public class WitnessGeneratingWorldState(
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
         if (_storageSlots.Count > 0)
         {
-            // One state-trie walk for all touched accounts instead of K independent walks. Storage
-            // tries stay per-account, dispatched via ctx.Storage inside the visitor.
-            MultiAccountProofCollector collector = new(_storageSlots);
+            // One state-trie walk for all touched accounts, then one storage-trie walk per account.
+            // The per-account walk re-walks the state-trie path to its account (deduped downstream)
+            // to reach the storage root.
+            MultiAccountProofCollector stateCollector = new(_storageSlots);
             using (trieStore.PauseRecording())
             {
-                stateReader.RunTreeVisitor(collector, parentHeader);
+                stateReader.RunTreeVisitor(stateCollector, parentHeader);
             }
-            IReadOnlyList<byte[]> collected = collector.Nodes;
-            for (int i = 0; i < collected.Count; i++)
+            foreach (byte[] node in stateCollector.Nodes)
             {
-                stateNodes.Add(collected[i]);
+                stateNodes.Add(node);
+            }
+
+            foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> entry in _storageSlots)
+            {
+                if (entry.Value.Count == 0) continue;
+                AccountProofCollector storageCollector = new(entry.Key.Value, entry.Value);
+                using (trieStore.PauseRecording())
+                {
+                    stateReader.RunTreeVisitor(storageCollector, parentHeader);
+                }
+                (_, IReadOnlyList<byte[]>[] storageProofs) = storageCollector.GetRawResult();
+                foreach (IReadOnlyList<byte[]> slotProof in storageProofs)
+                {
+                    foreach (byte[] node in slotProof)
+                    {
+                        stateNodes.Add(node);
+                    }
+                }
             }
         }
 

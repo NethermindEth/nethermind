@@ -35,11 +35,9 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
         Hash256 currentHash = parentHash;
         BlockHeader parentHeader = inner.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
 
-        // Headers are emitted in ascending block-number order (oldest first and the recorded block's
-        // parent last) so they form a contiguous chain, matching the stateless verifier's expectation.
-        //
-        // Only the parent is captured unless ancestor headers were requested during processing
-        // (e.g. BLOCKHASH reaching further back), tracked by _lowestRequestedHeader.
+        // Headers in ascending block-number order — any BLOCKHASH-touched ancestor first, recorded
+        // block last — so the chain is contiguous and replayable. _lowestRequestedHeader stays at
+        // long.MaxValue unless BLOCKHASH reached further back during processing.
         int count = _lowestRequestedHeader < long.MaxValue
             ? (int)(parentHeader.Number - _lowestRequestedHeader + 1)
             : 1;
