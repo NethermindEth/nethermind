@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -294,6 +295,58 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.DoesNotThrow(() => scope.HintBal(bal));
         }
+    }
+
+    [Test]
+    public async Task Test_StridePrefetcher_WarmsAheadOfStridingReads()
+    {
+        const int slotCount = 256;
+        UInt256 start = 11;
+        UInt256 stride = 7;
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slotCount);
+                UInt256 index = start;
+                for (int i = 0; i < slotCount; i++, index += stride)
+                {
+                    storageA.Set(index, [(byte)(i + 1), (byte)((i >> 8) + 1)]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+
+            // Enough on-pattern reads to engage the prefetcher.
+            UInt256 index = start;
+            for (int i = 0; i < 8; i++, index += stride)
+            {
+                storage.Get(in index);
+            }
+
+            // A far-ahead slot the consumer never read must show up in the pre-block cache.
+            StorageCell farCell = new(TestItem.AddressA, start + (stride * 200));
+            await Eventually.AssertAsync<AssertionException>(() =>
+            {
+                Assert.That(caches.StorageCache.TryGetValue(in farCell, out byte[] value), Is.True);
+                Assert.That(value, Is.EqualTo(new byte[] { 201, 1 }));
+            }, attempts: 200, delayMilliseconds: 10);
+        }
+        // Scope disposal joined the reader threads without hanging.
     }
 
 #nullable enable
