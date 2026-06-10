@@ -58,12 +58,6 @@ on:
         default: "24"
         required: false
 
-# Avoid duplicate live nodes from concurrent triggers. Not cancel-in-progress:
-# these runs spawn/sync nodes for hours and must finish (and reach teardown).
-concurrency:
-  group: rpc-comparison-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   verify_correctness_of_setup:
     name: Verify inputs and resolve node mode
