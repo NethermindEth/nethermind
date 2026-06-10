@@ -28,7 +28,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
             byte[]? blockAccessListRlp = blockAccessLists[i];
             if (blockAccessListRlp is null)
             {
-                rlpStream.Encode(ReadOnlySpan<byte>.Empty);
+                rlpStream.WriteByte(Rlp.EmptyByteArrayByte);
             }
             else
             {

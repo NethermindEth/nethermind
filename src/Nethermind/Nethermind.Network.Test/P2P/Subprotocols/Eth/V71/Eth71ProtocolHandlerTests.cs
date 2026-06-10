@@ -153,12 +153,21 @@ public class Eth71ProtocolHandlerTests
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
         _session.Received(1).DeliverMessage(Arg.Any<BlockAccessListsMessage>());
-        Assert.That(response, Is.Not.Null);
-        Assert.That(response!.RequestId, Is.EqualTo(requestId));
-        Assert.That(response.BlockAccessLists, Has.Count.EqualTo(expectedBlockAccessLists.Length));
-        for (int i = 0; i < expectedBlockAccessLists.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.BlockAccessLists[i], Is.EqualTo(expectedBlockAccessLists[i]));
+            Assert.That(response, Is.Not.Null);
+            if (response is not null)
+            {
+                Assert.That(response.RequestId, Is.EqualTo(requestId));
+                Assert.That(response.BlockAccessLists, Has.Count.EqualTo(expectedBlockAccessLists.Length));
+                if (response.BlockAccessLists.Count == expectedBlockAccessLists.Length)
+                {
+                    for (int i = 0; i < expectedBlockAccessLists.Length; i++)
+                    {
+                        Assert.That(response.BlockAccessLists[i], Is.EqualTo(expectedBlockAccessLists[i]));
+                    }
+                }
+            }
         }
     }
 
@@ -187,11 +196,15 @@ public class Eth71ProtocolHandlerTests
         HandleZeroMessage(response!, Eth71MessageCode.BlockAccessLists);
 
         using IOwnedReadOnlyList<byte[]?> result = await task;
-        Assert.That(result, Has.Count.EqualTo(2));
-        Assert.That(result[0], Is.Not.Null);
-        Assert.That(result[0]!.AsSpan().SequenceEqual(bal1), Is.True);
-        Assert.That(result[1], Is.Not.Null);
-        Assert.That(result[1]!.AsSpan().SequenceEqual(bal2), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(2));
+            if (result.Count == 2)
+            {
+                Assert.That(result[0], Is.EqualTo(bal1));
+                Assert.That(result[1], Is.EqualTo(bal2));
+            }
+        }
         Assert.Throws<ObjectDisposedException>(() => _ = sentRequest!.Hashes[0]);
         response?.Dispose();
     }

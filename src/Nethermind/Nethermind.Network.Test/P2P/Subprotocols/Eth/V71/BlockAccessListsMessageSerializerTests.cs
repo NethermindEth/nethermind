@@ -107,12 +107,19 @@ public class BlockAccessListsMessageSerializerTests
 
     private static void AssertBlockAccessListsMessage(BlockAccessListsMessage actual, BlockAccessListsMessage expected)
     {
-        Assert.That(actual.RequestId, Is.EqualTo(expected.RequestId));
-        Assert.That(actual.BlockAccessLists.Count, Is.EqualTo(expected.BlockAccessLists.Count));
-
-        for (int i = 0; i < expected.BlockAccessLists.Count; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual.BlockAccessLists[i], Is.EqualTo(expected.BlockAccessLists[i]));
+            Assert.That(actual.RequestId, Is.EqualTo(expected.RequestId));
+            Assert.That(actual.BlockAccessLists.Count, Is.EqualTo(expected.BlockAccessLists.Count));
+            if (actual.BlockAccessLists.Count != expected.BlockAccessLists.Count)
+            {
+                return;
+            }
+
+            for (int i = 0; i < expected.BlockAccessLists.Count; i++)
+            {
+                Assert.That(actual.BlockAccessLists[i], Is.EqualTo(expected.BlockAccessLists[i]));
+            }
         }
     }
 }
