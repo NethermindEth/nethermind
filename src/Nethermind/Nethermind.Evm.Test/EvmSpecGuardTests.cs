@@ -50,6 +50,26 @@ public class EvmSpecGuardTests
     [Test]
     public void Osaka_compile_time_spec_matches_runtime_fork() => AssertMatches<OsakaEvmSpec>(Osaka.Instance);
 
+    /// <summary>
+    /// THE engagement guarantee for the specialized dispatch: the spec the MAINNET provider
+    /// serves at the chain tip must fingerprint-match one of the specialized structs —
+    /// otherwise every mainnet frame silently takes the generic table path and the
+    /// specialization is dead weight (the exact failure mode that cost deploy cycles before).
+    /// </summary>
+    [Test]
+    public void Mainnet_tip_spec_selects_a_specialized_dispatch()
+    {
+        IReleaseSpec tipSpec = Specs.MainnetSpecProvider.Instance.GetSpec(
+            new Core.Specs.ForkActivation(long.MaxValue / 2, ulong.MaxValue / 2));
+        int tipFingerprint = EvmSpecFingerprint.Compute(tipSpec);
+
+        Assert.That(
+            tipFingerprint == EvmSpecFingerprint.Compute<OsakaEvmSpec>()
+            || tipFingerprint == EvmSpecFingerprint.Compute<CancunEvmSpec>(),
+            $"the mainnet tip spec ({tipSpec.Name}) matches NO specialized dispatch struct — " +
+            "mainnet would silently run the generic table path");
+    }
+
     private static void AssertMatches<TSpec>(IReleaseSpec runtimeSpec) where TSpec : struct, IEvmSpec
     {
         int expected = EvmSpecFingerprint.Compute(runtimeSpec);
