@@ -5,6 +5,7 @@ using System;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Proof;
 
@@ -57,14 +58,19 @@ public class CallResultWithProof : IDisposable
     /// In-VM failures (revert, out-of-gas, etc.) succeed at the JSON-RPC layer and carry an in-payload
     /// error object plus the witness — exactly the state the verifier needs to re-prove the failure.
     /// </remarks>
-    public static ResultWrapper<CallResultWithProof> FromWitnessResult(SingleCallWitnessResult result)
+    public static ResultWrapper<CallResultWithProof> FromWitnessResult(SingleCallWitnessResult result, long txGasLimit = 0)
     {
         if (result.InputError)
         {
             // SingleCallWitnessCollector populates Witness even on input errors; the envelope-level Fail
-            // path has nowhere to attach it, so dispose now to release its pooled buffers.
+            // path has nowhere to attach it, so dispose now to release its pooled buffers. The message
+            // is wrapped the same way eth_call wraps it ("err: <inner> (supplied gas <gas>)") so a
+            // caller that already handles eth_call's envelope can reuse the parser.
             result.Witness.Dispose();
-            return ResultWrapper<CallResultWithProof>.Fail(result.Error ?? "execution failed", ErrorCodes.ExecutionError);
+            string message = result.Error is null
+                ? "execution failed"
+                : ErrorWrapper.EthCall(result.Error, txGasLimit);
+            return ResultWrapper<CallResultWithProof>.Fail(message, ErrorCodes.ExecutionError);
         }
 
         Error? error =
@@ -81,13 +87,14 @@ public class CallResultWithProof : IDisposable
     }
 
     /// <remarks>The message is built by the shared <see cref="TransactionSubstate.BuildRevertMessage"/>
-    /// so it matches <c>eth_call</c> byte-for-byte; the raw payload is always included as hex in
-    /// <c>data</c>.</remarks>
+    /// so it matches <c>eth_call</c> byte-for-byte. The raw payload is hex-encoded in <c>data</c> —
+    /// empty payloads render as <c>"0x"</c> (matching <c>eth_call</c>), not omitted, so consumers
+    /// can branch on the presence of <c>data</c> without special-casing the empty case.</remarks>
     private static Error BuildRevertError(byte[]? output, string? tracerError) =>
         new()
         {
             Code = ErrorCodes.ExecutionReverted,
             Message = TransactionSubstate.BuildRevertMessage(output, tracerError),
-            Data = output is { Length: > 0 } ? output.ToHexString(true) : null,
+            Data = output is null ? null : output.ToHexString(true),
         };
 }

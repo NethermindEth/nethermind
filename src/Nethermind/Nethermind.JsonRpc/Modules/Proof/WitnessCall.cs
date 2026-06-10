@@ -94,6 +94,6 @@ internal sealed class WitnessCall(
         // likewise mapped (to ResourceNotFound) by JsonRpcService, so no local catch is needed here.
         using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
         SingleCallWitnessResult result = blockchainBridge.GenerateExecutionWitness(callHeader, tx, timeout.Token);
-        return CallResultWithProof.FromWitnessResult(result);
+        return CallResultWithProof.FromWitnessResult(result, tx.GasLimit);
     }
 }

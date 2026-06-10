@@ -763,4 +763,66 @@ public class ProofRpcModuleCallTests
             "0x08c379a0")
             .SetName("Proof_call_revert_error_string_surfaces_decoded_reason");
     }
+
+    /// <summary>
+    /// Copilot review fix: <c>proof_call</c> must include <c>error.data = "0x"</c> on REVERT with an
+    /// empty payload, matching <c>eth_call</c>. Consumers branch on the presence of <c>data</c>;
+    /// silently dropping it for empty payloads would diverge from <c>eth_call</c>'s wire format.
+    /// </summary>
+    [Test]
+    public async Task Proof_call_revert_with_empty_payload_includes_data_0x()
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+
+        // REVERT(0, 0) — empty payload (length = 0, offset = 0).
+        byte[] runtimeCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.REVERT)
+            .Done;
+        Address contractAddress = await DeployContract(blockchain, runtimeCode);
+
+        long blockNumber = blockchain.BlockTree.Head!.Number;
+        using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
+            new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contractAddress, Gas = 200_000 },
+            new BlockParameter(blockNumber));
+        CallResultWithProof result = wrapper.Data!;
+
+        Assert.That(result.Error, Is.Not.Null);
+        Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionReverted));
+        Assert.That(result.Error.Data, Is.Not.Null, "empty REVERT payload must still set data — matches eth_call");
+        Assert.That((string)result.Error.Data!, Is.EqualTo("0x"));
+    }
+
+    /// <summary>
+    /// Copilot review fix: a <c>proof_call</c> request that includes <c>from</c> but omits
+    /// <c>nonce</c> must succeed against the current state nonce, matching <c>eth_call</c>'s
+    /// "ignore caller-supplied nonce" behavior. Without this fix, the EVM's pre-VM validation
+    /// fails with TransactionNonceTooHigh/Low before the call runs, and no witness is returned.
+    /// </summary>
+    [Test]
+    public async Task Proof_call_with_from_but_no_nonce_resolves_nonce_from_state()
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Address contract = await DeploySloadReturningContract(blockchain, 0x42);
+
+        long blockNumber = blockchain.BlockTree.Head!.Number;
+        using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
+            new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
+            {
+                From = TestItem.AddressA, // current state nonce is 0 in the test chain
+                To = contract,
+                Gas = 200_000,
+                // No Nonce set — the collector must resolve it from state.
+            },
+            new BlockParameter(blockNumber));
+        CallResultWithProof result = wrapper.Data!;
+
+        // The SLOAD-returning contract returns 0x42 in the last byte of its 32-byte return.
+        // If the nonce fix regressed, the EVM would reject the call pre-VM with
+        // TransactionNonceTooHigh (or similar) and wrapper.Data would be null.
+        Assert.That(result.Result, Is.Not.Null.And.Not.Empty,
+            "from-but-no-nonce must not be rejected pre-VM");
+        Assert.That(result.Result![^1], Is.EqualTo(0x42));
+    }
 }

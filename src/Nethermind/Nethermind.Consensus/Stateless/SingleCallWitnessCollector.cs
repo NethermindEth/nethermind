@@ -51,6 +51,12 @@ public class SingleCallWitnessCollector(
         // needs the pre-state to re-execute the block's transactions.
         using IDisposable? scope = worldState.BeginScope(blockHeader);
 
+        // Mirror BlockchainBridge.CallAndRestore: ignore the caller-supplied nonce and resolve it
+        // from the scoped state. Without this, a proof_call request that includes `from` but omits
+        // `nonce` fails pre-VM validation (e.g. TransactionNonceTooHigh) before the EVM runs, and
+        // diverges from eth_call which performs the same ignore-nonce step.
+        transaction.Nonce = worldState.GetNonce(transaction.SenderAddress!);
+
         // Even on revert, the witness captures all accessed state and the tracer records the revert
         // payload via MarkAsFailed. WithCancellation aborts a run that outlives the caller's deadline:
         // the EVM throws OperationCanceledException, surfaced by JsonRpcService as a Timeout error.
