@@ -79,10 +79,18 @@ public static partial class IlSegmentCompiler
         if (!hasInRegionBackEdge && totalOps < BoundaryCostFactor * totalBoundaryTraffic)
             return region.Count;
 
+        // v4.1: when stack heights are consistent across every internal edge, the whole
+        // carried window lives in locals (register-resident frames) — EVM-stack traffic
+        // only at dispatch entries and region exits. Otherwise fall back to v4.0
+        // (real-stack canonical at block boundaries).
+        bool registerized = TryPlanFrames(region, out FramePlan plan);
+
         CompiledSegmentInvoke invoke;
         try
         {
-            invoke = EmitRegion(analyzed, region, out List<UInt256> _);
+            invoke = registerized
+                ? EmitRegionRegisterized(analyzed, region, plan)
+                : EmitRegion(analyzed, region, out List<UInt256> _);
         }
         catch (Exception)
         {
@@ -90,10 +98,15 @@ public static partial class IlSegmentCompiler
         }
 
         int entryOrdinal = 0;
-        foreach (RegionBlock regionBlock in region)
+        for (int i = 0; i < region.Count; i++)
         {
+            RegionBlock regionBlock = region[i];
             if (!regionBlock.IsEntry)
                 continue;
+            int entryPops = registerized ? plan.Heights[i] - plan.WindowBottom : regionBlock.Metrics.StackRequired;
+            int maxGrowth = registerized
+                ? Math.Max(0, Math.Max(2, plan.FrameSize) - entryPops)
+                : Math.Max(0, regionBlock.Metrics.StackMaxDelta);
             segmentsByBlockIndex[regionBlock.BlockIndex] = new IlCompiledSegment
             {
                 Invoke = invoke,
@@ -101,8 +114,8 @@ public static partial class IlSegmentCompiler
                 ExitPc = regionBlock.CutPc,
                 OpCount = regionBlock.Ops.Count,
                 StaticGas = regionBlock.Metrics.StaticGas,
-                StackRequired = regionBlock.Metrics.StackRequired,
-                StackMaxGrowth = Math.Max(0, regionBlock.Metrics.StackMaxDelta),
+                StackRequired = entryPops,
+                StackMaxGrowth = maxGrowth,
                 EntryIndex = entryOrdinal,
             };
             entryOrdinal++;
@@ -110,6 +123,336 @@ public static partial class IlSegmentCompiler
         }
 
         return region.Count;
+    }
+
+    private struct FramePlan
+    {
+        public int[] Heights;     // stack height at each block's entry, relative to the head's 0
+        public int WindowBottom;  // deepest stack position the region touches (≤ 0)
+        public int MaxHeight;     // highest stack height reached
+        public int FrameSize;     // MaxHeight - WindowBottom
+    }
+
+    /// <summary>
+    /// Forward-propagates stack heights from the region head across every internal edge.
+    /// Registerization requires: every block reachable from the head, every edge agreeing on
+    /// the target's height (solc-generated code does), and a bounded carried window.
+    /// </summary>
+    private static bool TryPlanFrames(List<RegionBlock> region, out FramePlan plan)
+    {
+        plan = default;
+        int count = region.Count;
+        int[] heights = new int[count];
+        bool[] visited = new bool[count];
+        Queue<int> worklist = new();
+        heights[0] = 0;
+        visited[0] = true;
+        worklist.Enqueue(0);
+
+        while (worklist.Count > 0)
+        {
+            int index = worklist.Dequeue();
+            RegionBlock block = region[index];
+            int exitHeight = heights[index] + block.Metrics.StackFinalDelta;
+
+            // Internal successors: constant-jump target and/or fall-through.
+            if (block.HasConstantJump)
+            {
+                int target = FindRegionBlock(region, block.JumpDestination);
+                if (target >= 0 && !Propagate(target, exitHeight))
+                    return false;
+                if (block.TerminalJump == Instruction.JUMPI
+                    && index + 1 < count && region[index + 1].Block.Start == block.Block.End
+                    && !Propagate(index + 1, exitHeight))
+                {
+                    return false;
+                }
+            }
+            else if (block.IsFullyEmittable
+                && index + 1 < count && region[index + 1].Block.Start == block.Block.End
+                && !Propagate(index + 1, exitHeight))
+            {
+                return false;
+            }
+            // Cuts and external jumps are exits; they impose no internal constraint.
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (!visited[i])
+                return false; // continuation entries unreachable from the head: keep v4.0
+        }
+
+        int windowBottom = 0;
+        int maxHeight = 0;
+        for (int i = 0; i < count; i++)
+        {
+            windowBottom = Math.Min(windowBottom, heights[i] - region[i].Metrics.StackRequired);
+            maxHeight = Math.Max(maxHeight, heights[i] + region[i].Metrics.StackMaxDelta);
+        }
+
+        int frameSize = maxHeight - windowBottom;
+        if (frameSize is <= 0 or > 32)
+            return false;
+
+        plan = new FramePlan { Heights = heights, WindowBottom = windowBottom, MaxHeight = maxHeight, FrameSize = frameSize };
+        return true;
+
+        bool Propagate(int target, int height)
+        {
+            if (visited[target])
+                return heights[target] == height;
+            heights[target] = height;
+            visited[target] = true;
+            worklist.Enqueue(target);
+            return true;
+        }
+    }
+
+    private static int FindRegionBlock(List<RegionBlock> region, int startPc)
+    {
+        for (int i = 0; i < region.Count; i++)
+        {
+            if (region[i].Block.Start == startPc
+                && (region[i].Block.Flags & BasicBlockFlags.StartsWithJumpDest) != 0)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static CompiledSegmentInvoke EmitRegionRegisterized(AnalyzedCode analyzed, List<RegionBlock> region, FramePlan plan)
+    {
+        List<UInt256> constants = [];
+        DynamicMethod method = new(
+            $"IlEvmRegionReg_{region[0].Block.Start}_{region[^1].Block.End}_{region.Count}",
+            typeof(EvmExceptionType),
+            [typeof(SegmentConstants), typeof(VirtualMachine<EthereumGasPolicy>), typeof(EvmStack).MakeByRefType(), typeof(EthereumGasPolicy).MakeByRefType(), typeof(int).MakeByRefType(), typeof(int)],
+            typeof(IlSegmentCompiler).Module,
+            skipVisibility: true);
+        ILGenerator il = method.GetILGenerator();
+
+        LocalBuilder[] frame = new LocalBuilder[plan.FrameSize];
+        for (int i = 0; i < frame.Length; i++)
+            frame[i] = il.DeclareLocal(typeof(UInt256));
+
+        foreach (RegionBlock regionBlock in region)
+            regionBlock.Label = il.DefineLabel();
+
+        // Entry stubs: pop the carried window from the real stack into the frame, then enter
+        // the block. Internal edges branch straight to block labels and never touch the stack.
+        List<Label> entryStubs = [];
+        List<int> entryBlockIndexes = [];
+        for (int i = 0; i < region.Count; i++)
+        {
+            if (region[i].IsEntry)
+            {
+                entryStubs.Add(il.DefineLabel());
+                entryBlockIndexes.Add(i);
+            }
+        }
+        il.Emit(OpCodes.Ldarg_S, (byte)5);
+        il.Emit(OpCodes.Switch, entryStubs.ToArray());
+        il.Emit(OpCodes.Ldc_I4, (int)EvmExceptionType.None);
+        il.Emit(OpCodes.Ret);
+
+        for (int e = 0; e < entryStubs.Count; e++)
+        {
+            int blockIndex = entryBlockIndexes[e];
+            il.MarkLabel(entryStubs[e]);
+            int pops = plan.Heights[blockIndex] - plan.WindowBottom;
+            for (int i = pops - 1; i >= 0; i--)
+            {
+                il.Emit(OpCodes.Ldarg_2);
+                il.Emit(OpCodes.Ldloca, frame[i]);
+                il.Emit(OpCodes.Call, s_popUInt256!);
+                il.Emit(OpCodes.Pop);
+            }
+            il.Emit(OpCodes.Br, region[blockIndex].Label);
+        }
+
+        for (int i = 0; i < region.Count; i++)
+            EmitRegisterizedBlock(il, analyzed, region, i, plan, frame, constants);
+
+        SegmentConstants segmentConstants = new([.. constants]);
+        return (CompiledSegmentInvoke)method.CreateDelegate(typeof(CompiledSegmentInvoke), segmentConstants);
+    }
+
+    private static void EmitRegisterizedBlock(ILGenerator il, AnalyzedCode analyzed, List<RegionBlock> region, int index, FramePlan plan, LocalBuilder[] frame, List<UInt256> constants)
+    {
+        RegionBlock regionBlock = region[index];
+        il.MarkLabel(regionBlock.Label);
+        Label bail = il.DefineLabel();
+
+        // Gas precheck (no charge) — on failure the frame is flushed back and the interpreter
+        // replays the block per-op. Stack prechecks are entry-only: interior depths are
+        // statically guaranteed by the frame plan.
+        bool needsBail = regionBlock.Metrics.StaticGas > 0;
+        if (needsBail)
+        {
+            il.Emit(OpCodes.Ldarg_3);
+            il.Emit(OpCodes.Call, s_gasRemaining!);
+            il.Emit(OpCodes.Ldc_I8, regionBlock.Metrics.StaticGas);
+            il.Emit(OpCodes.Blt, bail);
+        }
+
+        int entryLength = plan.Heights[index] - plan.WindowBottom;
+        List<Operand> symbolicStack = new(plan.FrameSize);
+        for (int k = 0; k < entryLength; k++)
+            symbolicStack.Add(new Operand(OperandKind.Local, frame[k], ConstantIndex: -1));
+
+        long pendingChunkGas = 0;
+        foreach (DecodedOp op in regionBlock.Ops)
+        {
+            if (op.IsHandlerCall)
+            {
+                EmitChargePendingGas(il, ref pendingChunkGas);
+                EmitHandlerCall(il, op, symbolicStack);
+            }
+            else
+            {
+                pendingChunkGas += op.Info.StaticGas;
+                EmitOp(il, op, symbolicStack, constants);
+            }
+        }
+
+        if (regionBlock.HasConstantJump)
+        {
+            pendingChunkGas += GasCostOf.VeryLow;
+            pendingChunkGas += regionBlock.TerminalJump == Instruction.JUMP ? GasCostOf.Mid : GasCostOf.High;
+            EmitChargePendingGas(il, ref pendingChunkGas);
+
+            Operand condition = default;
+            if (regionBlock.TerminalJump == Instruction.JUMPI)
+            {
+                condition = PopSymbolic(symbolicStack);
+                // The alignment below may overwrite frame locals; if the condition lives in
+                // one, it must be read from a private temp after the alignment runs.
+                if (condition.Kind == OperandKind.Local && condition.Local is not null
+                    && Array.IndexOf(frame, condition.Local) >= 0)
+                {
+                    LocalBuilder conditionTemp = il.DeclareLocal(typeof(UInt256));
+                    il.Emit(OpCodes.Ldloc, condition.Local);
+                    il.Emit(OpCodes.Stloc, conditionTemp);
+                    condition = new Operand(OperandKind.Local, conditionTemp, ConstantIndex: -1);
+                }
+            }
+
+            int targetIndex = FindRegionBlock(region, regionBlock.JumpDestination);
+            if (regionBlock.TerminalJump == Instruction.JUMP)
+            {
+                EmitRegisterizedJump(il, analyzed, region, targetIndex, regionBlock.JumpDestination, symbolicStack, frame);
+            }
+            else
+            {
+                Label notTaken = il.DefineLabel();
+                AlignToFrame(il, symbolicStack, frame);
+                EmitOperandAddress(il, condition);
+                il.Emit(OpCodes.Call, s_isZero!);
+                il.Emit(OpCodes.Brtrue, notTaken);
+                EmitRegisterizedJump(il, analyzed, region, targetIndex, regionBlock.JumpDestination, symbolicStack, frame, alreadyAligned: true);
+                il.MarkLabel(notTaken);
+                EmitRegisterizedContinue(il, region, index, regionBlock.Block.End, symbolicStack, frame, alreadyAligned: true);
+            }
+        }
+        else if (regionBlock.IsFullyEmittable)
+        {
+            EmitChargePendingGas(il, ref pendingChunkGas);
+            EmitRegisterizedContinue(il, region, index, regionBlock.Block.End, symbolicStack, frame, alreadyAligned: false);
+        }
+        else
+        {
+            EmitChargePendingGas(il, ref pendingChunkGas);
+            FlushSymbolicStack(il, symbolicStack);
+            EmitExitWithPc(il, regionBlock.CutPc);
+        }
+
+        il.MarkLabel(bail);
+        if (needsBail)
+        {
+            List<Operand> entryFrame = new(entryLength);
+            for (int k = 0; k < entryLength; k++)
+                entryFrame.Add(new Operand(OperandKind.Local, frame[k], ConstantIndex: -1));
+            FlushSymbolicStack(il, entryFrame);
+            EmitExitWithPc(il, regionBlock.Block.Start);
+        }
+    }
+
+    private static void EmitRegisterizedJump(ILGenerator il, AnalyzedCode analyzed, List<RegionBlock> region, int targetIndex, int destination, List<Operand> symbolicStack, LocalBuilder[] frame, bool alreadyAligned = false)
+    {
+        if (targetIndex >= 0)
+        {
+            if (!alreadyAligned)
+                AlignToFrame(il, symbolicStack, frame);
+            il.Emit(OpCodes.Br, region[targetIndex].Label);
+            return;
+        }
+
+        if (analyzed.TryGetBlockStartingAt(destination, out BasicBlock target)
+            && (target.Flags & BasicBlockFlags.StartsWithJumpDest) != 0)
+        {
+            FlushSymbolicStack(il, new List<Operand>(symbolicStack));
+            EmitExitWithPc(il, destination);
+            return;
+        }
+
+        il.Emit(OpCodes.Ldc_I4, (int)EvmExceptionType.InvalidJumpDestination);
+        il.Emit(OpCodes.Ret);
+    }
+
+    private static void EmitRegisterizedContinue(ILGenerator il, List<RegionBlock> region, int index, int fallthroughPc, List<Operand> symbolicStack, LocalBuilder[] frame, bool alreadyAligned)
+    {
+        if (index + 1 < region.Count && region[index + 1].Block.Start == fallthroughPc)
+        {
+            if (!alreadyAligned)
+                AlignToFrame(il, symbolicStack, frame);
+            il.Emit(OpCodes.Br, region[index + 1].Label);
+            return;
+        }
+
+        FlushSymbolicStack(il, new List<Operand>(symbolicStack));
+        EmitExitWithPc(il, fallthroughPc);
+    }
+
+    /// <summary>
+    /// Materializes the symbolic stack into the canonical frame layout (frame[k] = stack
+    /// position k above the window bottom) so the next block can read it positionally.
+    /// Positions already held by the right frame local cost nothing; cross-frame moves are
+    /// routed through temporaries first (parallel-move safety); each copy is a local-to-local
+    /// 32-byte struct copy — no big-endian conversion, no EVM-stack touch.
+    /// </summary>
+    private static void AlignToFrame(ILGenerator il, List<Operand> symbolicStack, LocalBuilder[] frame)
+    {
+        int length = symbolicStack.Count;
+
+        // Phase 1: any source that lives in a frame local destined for a different position
+        // could be overwritten by phase 2 — move those to temporaries first.
+        for (int k = 0; k < length; k++)
+        {
+            Operand operand = symbolicStack[k];
+            if (operand.Kind == OperandKind.Local && operand.Local is not null
+                && !ReferenceEquals(operand.Local, frame[k]) && Array.IndexOf(frame, operand.Local) >= 0)
+            {
+                LocalBuilder temp = il.DeclareLocal(typeof(UInt256));
+                il.Emit(OpCodes.Ldloc, operand.Local);
+                il.Emit(OpCodes.Stloc, temp);
+                symbolicStack[k] = new Operand(OperandKind.Local, temp, ConstantIndex: -1);
+            }
+        }
+
+        // Phase 2: write every mismatched position into its canonical frame local.
+        for (int k = 0; k < length; k++)
+        {
+            Operand operand = symbolicStack[k];
+            if (operand.Kind == OperandKind.Local && ReferenceEquals(operand.Local, frame[k]))
+                continue;
+            EmitOperandAddress(il, operand);
+            il.Emit(OpCodes.Ldobj, typeof(UInt256));
+            il.Emit(OpCodes.Stloc, frame[k]);
+            symbolicStack[k] = new Operand(OperandKind.Local, frame[k], ConstantIndex: -1);
+        }
     }
 
     private sealed class RegionBlock
