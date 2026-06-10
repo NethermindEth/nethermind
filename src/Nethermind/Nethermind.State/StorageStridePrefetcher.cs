@@ -111,6 +111,12 @@ internal sealed class StorageStridePrefetcher(
 
     private void Engage(in UInt256 index)
     {
+        if (_token.IsCancellationRequested)
+        {
+            _broken = true;
+            return;
+        }
+
         _engaged = true;
         _engageIndex = index;
         _readers = new Task[ReaderConcurrency];
