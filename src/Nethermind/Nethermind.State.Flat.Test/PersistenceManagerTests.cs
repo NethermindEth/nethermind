@@ -79,6 +79,7 @@ public class PersistenceManagerTests
     public async Task TearDown()
     {
         await _persistenceManager.DisposeAsync();
+        await _persistedSnapshotCompactor.DisposeAsync();
         _blobs.Dispose();
         _memArena.Dispose();
         try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }

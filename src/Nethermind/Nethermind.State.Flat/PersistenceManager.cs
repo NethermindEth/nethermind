@@ -3,7 +3,6 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -48,140 +47,15 @@ public class PersistenceManager(
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
-    private readonly Channel<ArrayPoolList<StateId>> _compactPersistedJobs = Channel.CreateBounded<ArrayPoolList<StateId>>(16);
-    private readonly Channel<StateId> _boundaryCompactJobs = Channel.CreateBounded<StateId>(16);
-    private readonly CancellationTokenSource _cancelTokenSource = new();
-    private Task? _compactPersistedTask;
-    private Task[]? _boundaryCompactorTasks;
-
-    private const int BoundaryCompactorWorkerCount = 4;
-
     private StateId _currentPersistedStateId = StateId.PreGenesis;
-
-    private Task EnsureCompactorStarted()
-    {
-        _compactPersistedTask ??= RunPersistedCompactor(_cancelTokenSource.Token);
-        if (_boundaryCompactorTasks is null)
-        {
-            Task[] tasks = new Task[BoundaryCompactorWorkerCount];
-            for (int i = 0; i < BoundaryCompactorWorkerCount; i++)
-                tasks[i] = RunBoundaryCompactor(_cancelTokenSource.Token);
-            _boundaryCompactorTasks = tasks;
-        }
-        return _compactPersistedTask;
-    }
 
     private static readonly StringLabel _convertTimeBaseLabel = new("base");
 
-    private async Task RunPersistedCompactor(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await foreach (ArrayPoolList<StateId> batch in _compactPersistedJobs.Reader.ReadAllAsync(cancellationToken))
-            {
-                try
-                {
-                    await ProcessCompactBatch(batch);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error($"Error compacting persisted snapshot batch. {ex}");
-                }
-                finally
-                {
-                    batch.Dispose();
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            while (_compactPersistedJobs.Reader.TryRead(out ArrayPoolList<StateId>? batch))
-                batch.Dispose();
-        }
-    }
-
-    private async Task ProcessCompactBatch(ArrayPoolList<StateId> batch)
-    {
-        if (batch.Count == 0) return;
-
-        using ArrayPoolList<StateId> boundaries = new(batch.Count);
-        SortedDictionary<int, List<StateId>> buckets = [];
-        for (int i = 0; i < batch.Count; i++)
-        {
-            StateId s = batch[i];
-            long b = s.BlockNumber;
-            if (b == 0) continue;
-
-            if (_schedule.IsFullCompactionBoundary(b))
-            {
-                // A CompactSize boundary — its persistable is produced below via
-                // DoCompactPersistable, so it is not bucketed for DoCompactSnapshot.
-                boundaries.Add(s);
-                continue;
-            }
-
-            // Non-boundary: bucket by power-of-2 alignment (always < CompactSize).
-            int compactSize = (int)_schedule.GetHierarchicalCompactSize(b);
-            if (!buckets.TryGetValue(compactSize, out List<StateId>? bucket))
-                buckets[compactSize] = bucket = [];
-            bucket.Add(s);
-        }
-
-        // Ascending bucket order: each sub-CompactSize layer's inputs (the previous layer's
-        // outputs) exist before it runs.
-        foreach (KeyValuePair<int, List<StateId>> kv in buckets)
-            Parallel.ForEach(kv.Value, state => _compactor.DoCompactSnapshot(state));
-
-        // The sub-CompactSize layers are in place — produce each boundary's persistable.
-        foreach (StateId boundary in boundaries)
-            _compactor.DoCompactPersistable(boundary);
-
-        // Hand a boundary to the boundary compactor only when its highest power of two
-        // exceeds CompactSize — i.e. it has a >CompactSize hierarchical-merge window. One
-        // whose highest power of two is exactly CompactSize would just no-op there.
-        foreach (StateId boundary in boundaries)
-        {
-            if (_schedule.IsHierarchicalBoundary(boundary.BlockNumber))
-                await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
-        }
-    }
-
-    private async Task RunBoundaryCompactor(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await foreach (StateId state in _boundaryCompactJobs.Reader.ReadAllAsync(cancellationToken))
-            {
-                try
-                {
-                    // The persistable for this boundary was already produced in
-                    // ProcessCompactBatch; DoCompactSnapshot here only does the
-                    // >CompactSize hierarchical merges.
-                    _compactor.DoCompactSnapshot(state);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error($"Error compacting boundary persisted snapshot {state}. {ex}");
-                }
-            }
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private int _disposed;
-
-    public async ValueTask DisposeAsync()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _cancelTokenSource.Cancel();
-        _compactPersistedJobs.Writer.Complete();
-        _boundaryCompactJobs.Writer.Complete();
-        if (_compactPersistedTask is not null)
-            await _compactPersistedTask;
-        if (_boundaryCompactorTasks is not null)
-            await Task.WhenAll(_boundaryCompactorTasks);
-        _cancelTokenSource.Dispose();
-    }
+    /// <summary>
+    /// Drains the background compaction workers on shutdown by forwarding to the compactor,
+    /// which now owns the compaction queues, worker tasks and their cancellation source.
+    /// </summary>
+    public ValueTask DisposeAsync() => _compactor.DisposeAsync();
 
     public IPersistence.IPersistenceReader LeaseReader() => _persistence.CreateReader();
 
@@ -461,7 +335,6 @@ public class PersistenceManager(
 
                 Parallel.ForEach(
                     allStateIds,
-                    new ParallelOptions { CancellationToken = _cancelTokenSource.Token },
                     state =>
                     {
                         if (_snapshotRepository.TryLeaseState(state, out Snapshot? snap))
@@ -485,8 +358,7 @@ public class PersistenceManager(
                     _snapshotRepository.RemoveAndReleaseKnownState(state);
                 }
 
-                EnsureCompactorStarted();
-                _compactPersistedJobs.Writer.WriteAsync(allStateIds).AsTask().Wait();
+                _compactor.Enqueue(allStateIds);
             }
             finally
             {
@@ -506,9 +378,8 @@ public class PersistenceManager(
                 _repo.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
                 Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
 
-                EnsureCompactorStarted();
                 ArrayPoolList<StateId> single = new(1) { baseSnap.To };
-                _compactPersistedJobs.Writer.WriteAsync(single).AsTask().Wait();
+                _compactor.Enqueue(single);
 
                 _snapshotRepository.RemoveAndReleaseKnownState(baseSnap.To);
             }

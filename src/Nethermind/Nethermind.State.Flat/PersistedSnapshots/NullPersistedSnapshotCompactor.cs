@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
+
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
@@ -18,4 +20,12 @@ public sealed class NullPersistedSnapshotCompactor : IPersistedSnapshotCompactor
     public void DoCompactSnapshot(StateId state) { }
 
     public void DoCompactPersistable(StateId state) { }
+
+    // Owns the batch per the IPersistedSnapshotCompactor.Enqueue contract — dispose it so
+    // callers don't leak even though there is no compaction work to do.
+    public void Enqueue(ArrayPoolList<StateId> batch) => batch.Dispose();
+
+    // Shared singleton: disposal must be a safe no-op so a container or forwarding caller
+    // can dispose it without breaking the shared instance.
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
