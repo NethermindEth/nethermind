@@ -118,16 +118,27 @@ jobs:
           # node_custom_types needs a valid Linode plan id; default when none provided.
           [ -z "$MACHINE_TYPE" ] && MACHINE_TYPE="g6-standard-8"
 
+          # Post-merge, the consensus client drives geth, so it must reach head fast.
+          # Give it a checkpoint-sync URL (else it genesis-syncs for days and geth's
+          # highestBlock stays 0). Flags are passed without '--'; sedge prepends it.
+          case "$NETWORK" in
+            mainnet) CHECKPOINT_URL="https://mainnet.checkpoint.sigp.io" ;;
+            sepolia) CHECKPOINT_URL="https://sepolia.beaconstate.info" ;;
+            holesky) CHECKPOINT_URL="https://holesky.beaconstate.info" ;;
+            hoodi)   CHECKPOINT_URL="https://hoodi.beaconstate.info" ;;
+            *)       CHECKPOINT_URL="" ;;
+          esac
+
           # Fast/minimal-history pruned Geth (snap sync, --gcmode full), declared in the
           # smoke-tests node-set config schema. gh workflow run (vs benc-uk) is used so
           # config_json can be passed as a value without JSON-string escaping.
-          config_json=$(jq -cn --arg net "$NETWORK" --arg cl "$CL_CLIENT" --arg mt "$MACHINE_TYPE" '{
+          config_json=$(jq -cn --arg net "$NETWORK" --arg cl "$CL_CLIENT" --arg mt "$MACHINE_TYPE" --arg cp "$CHECKPOINT_URL" '{
             node_name_prefix: "RpcCmp-geth",
             el: [{client: "geth", image: "ethereum/client-go:stable", alias: "", convert_to_paprika: "false"}],
             el_extra_flags: {geth: ["syncmode=snap", "gcmode=full", "history.transactions=128", "history.state=128"]},
             metrics_collection: false,
             cl: [{client: $cl, image: ""}],
-            cl_extra_flags: {($cl): []},
+            cl_extra_flags: {($cl): (if $cp != "" then ["checkpoint-sync-url=" + $cp] else [] end)},
             networks: [$net],
             branch: ["core"],
             fee_recipient: ["0x0000000000000000000000000000000000000000"],
