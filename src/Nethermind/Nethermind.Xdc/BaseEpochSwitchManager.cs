@@ -25,6 +25,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
     public abstract bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent);
 
     public abstract BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch);
+    public abstract EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end);
 
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header)
     {

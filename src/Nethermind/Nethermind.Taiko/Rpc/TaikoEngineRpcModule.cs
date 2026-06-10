@@ -31,7 +31,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.Taiko.Config;
-using Nethermind.Taiko.ZkGas;
 using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
@@ -123,7 +122,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     /// any resolved batch-lookup block id strictly less than this value is reported as null.
     /// </summary>
     private readonly UInt256? _batchLookupThreshold =
-        ZkGasSchedule.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
+        BatchLookupThresholds.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
             ? new UInt256(t)
             : (UInt256?)null;
 

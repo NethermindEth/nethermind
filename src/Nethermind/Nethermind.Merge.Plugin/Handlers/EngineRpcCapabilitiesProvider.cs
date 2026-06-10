@@ -50,6 +50,13 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         return _combined = combined.ToFrozenDictionary();
     }
 
+    /// <summary>
+    /// Whether the V4 engine API methods (<c>engine_getPayloadV4</c>, <c>engine_newPayloadV4</c>) are exposed.
+    /// Default: L1 condition (post-Pectra execution requests). Plugins may override to add chain-specific triggers
+    /// (e.g. OP Isthmus activation) via subclassing.
+    /// </summary>
+    protected virtual bool IsV4Enabled(IReleaseSpec spec) => spec.RequestsEnabled;
+
     private void EnsureBuilt()
     {
         if (Volatile.Read(ref _jsonRpc) is not null) return;
@@ -62,12 +69,12 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
     /// Builds the JSON-RPC and SSZ-REST tables in one pass. Each pair shares its
     /// <see cref="RpcCapabilityOptions"/> so the fork-gating logic is expressed once.
     /// </summary>
-    private static void Build(IReleaseSpec spec,
+    private void Build(IReleaseSpec spec,
         out Dictionary<string, RpcCapabilityOptions> json,
         out Dictionary<string, RpcCapabilityOptions> ssz)
     {
         bool preCancun = !spec.IsEip4844Enabled;
-        bool v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
+        bool v4 = IsV4Enabled(spec);
 
         Dictionary<string, RpcCapabilityOptions> jsonLocal = [];
         Dictionary<string, RpcCapabilityOptions> sszLocal = [];

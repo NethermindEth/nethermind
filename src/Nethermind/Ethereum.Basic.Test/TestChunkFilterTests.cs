@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Ethereum.Test.Base;
+using Nethermind.Core.Test;
 using NUnit.Framework;
 
 namespace Ethereum.Basic.Test;

@@ -54,13 +54,16 @@ namespace Nethermind.Logging.NLog.Test
             Assert.That(LogManager.Configuration.LoggingRules, Has.Count.EqualTo(1));
 
             LoggingRule rule = LogManager.Configuration.LoggingRules.Single();
-            Assert.That(rule.LoggerNamePattern, Is.EqualTo("*"));
-            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Trace), Is.False);
-            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Debug), Is.False);
-            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Info), Is.False);
-            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Warn), Is.False);
-            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Error), Is.True);
-            Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Fatal), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rule.LoggerNamePattern, Is.EqualTo("*"));
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Trace), Is.False);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Debug), Is.False);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Info), Is.False);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Warn), Is.False);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Error), Is.True);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Fatal), Is.True);
+            }
         }
     }
 }

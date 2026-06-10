@@ -26,10 +26,13 @@ public class ForkScheduleSpecProviderTests
         {
             if (fork.Block is long block)
             {
-                Assert.That(previousTimestamp, Is.Null,
-                    "block-keyed forks must come before any timestamp-keyed fork");
-                Assert.That(block, Is.GreaterThanOrEqualTo(previousBlock),
-                    "block-keyed forks must be declared in ascending block order");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(previousTimestamp, Is.Null,
+                        "block-keyed forks must come before any timestamp-keyed fork");
+                    Assert.That(block, Is.GreaterThanOrEqualTo(previousBlock),
+                        "block-keyed forks must be declared in ascending block order");
+                }
                 previousBlock = block;
             }
             else

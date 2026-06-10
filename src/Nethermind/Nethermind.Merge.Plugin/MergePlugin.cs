@@ -20,6 +20,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
@@ -46,7 +47,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
 
-public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : IConsensusWrapperPlugin
+public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethermindPlugin
 {
     protected INethermindApi _api = null!;
     private ILogger _logger;
@@ -65,7 +66,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     protected virtual bool MergeEnabled => mergeConfig.Enabled &&
                                            chainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
-    public int Priority => PluginPriorities.Merge;
+
+    public bool Enabled => MergeEnabled;
 
     public virtual Task Init(INethermindApi nethermindApi)
     {
@@ -241,6 +243,13 @@ public class MergePluginModule : Module
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
+
+            .AddSingleton<ManualTimestamper>()
+            .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager>(
+                (specProvider, sealEngine, timestamper, blocksConfig, logManager) =>
+                    new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
+            .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
+            .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
 
             .AddModule(new BaseMergePluginModule());
 }
