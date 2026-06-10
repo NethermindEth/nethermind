@@ -393,7 +393,7 @@ public static partial class IlSegmentCompiler
         if (analyzed.TryGetBlockStartingAt(destination, out BasicBlock target)
             && (target.Flags & BasicBlockFlags.StartsWithJumpDest) != 0)
         {
-            FlushSymbolicStack(il, new List<Operand>(symbolicStack));
+            FlushSymbolicStack(il, [.. symbolicStack]);
             EmitExitWithPc(il, destination);
             return;
         }
@@ -412,7 +412,7 @@ public static partial class IlSegmentCompiler
             return;
         }
 
-        FlushSymbolicStack(il, new List<Operand>(symbolicStack));
+        FlushSymbolicStack(il, [.. symbolicStack]);
         EmitExitWithPc(il, fallthroughPc);
     }
 

@@ -1348,6 +1348,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas),
                         ref programCounter,
                         ilSegment.EntryIndex);
+                    IlEvm.SegmentInvocations++; // lossy engagement signal — see the field doc
                     opCodeCount += ilSegment.OpCount;
                     // Embedded handler calls (memory/keccak) charge dynamic gas and may halt —
                     // mirror the interpreter's post-dispatch checks exactly.

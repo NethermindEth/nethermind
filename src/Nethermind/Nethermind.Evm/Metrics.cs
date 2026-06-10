@@ -70,6 +70,10 @@ public class Metrics
     [CounterMetric]
     [Description("Number of executions that found an IL-EVM artifact unusable due to a spec mismatch.")]
     public static long IlEvmSpecMismatches => CodeAnalysis.IlEvm.IlEvm.SpecMismatches;
+
+    [CounterMetric]
+    [Description("Number of IL-EVM compiled segment invocations — the engagement signal.")]
+    public static long IlEvmSegmentInvocations => CodeAnalysis.IlEvm.IlEvm.SegmentInvocations;
     [Description("Number of Code DB cache reads on main processing thread.")]
     public static long MainThreadCodeDbCache => _mainCodeDbCache;
     internal static void IncrementCodeDbCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache : ref _otherCodeDbCache);

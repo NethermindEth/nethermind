@@ -109,6 +109,15 @@ public static class IlEvm
     public static long SpecMismatches;
 
     /// <summary>
+    /// Count of compiled-segment invocations — THE engagement signal: if this is not growing
+    /// on a node with the flag on, IL-EVM is not actually executing, whatever else is green.
+    /// Non-interlocked and shared (lossy; one plain add per segment ≈ one per ~10 fused ops).
+    /// If profiling ever shows this line contended, shard it per-core — do not remove it:
+    /// losing engagement visibility cost us a full deploy-benchmark cycle once already.
+    /// </summary>
+    public static long SegmentInvocations;
+
+    /// <summary>
     /// Per-frame notice: increments the execution counter and compiles exactly once at the
     /// threshold. Compilation is synchronous on the noticing thread — a one-time cost per code
     /// hash, never repeated (failures publish the sentinel).
