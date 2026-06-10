@@ -28,8 +28,8 @@ public static class StatelessExecutor
 
         if (transactions.Length == publicKeys.Length)
         {
-            try
-            {
+            //try
+            //{
                 ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
                 IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
 #if !ZK_EVM
@@ -42,11 +42,11 @@ public static class StatelessExecutor
                 using Witness witness = payload.Witness.ToWitness();
 
                 success = Execute(payload.Block, witness, specProvider);
-            }
-            catch (Exception ex)
-            {
-                Debug.Fail(ex.Message);
-            }
+            //}
+            //catch (Exception ex)
+            //{
+            //    Debug.Fail(ex.Message);
+            //}
         }
 
         StatelessValidationResult result = new()
