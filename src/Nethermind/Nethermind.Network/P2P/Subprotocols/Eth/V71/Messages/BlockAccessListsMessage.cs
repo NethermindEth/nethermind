@@ -10,19 +10,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 /// <summary>
 /// Response to GetBlockAccessLists. Each entry is an already RLP-encoded BAL, or null when the BAL is unavailable.
 /// </summary>
-public class BlockAccessListsMessage : Eth66MessageBase
+public class BlockAccessListsMessage(IOwnedReadOnlyList<byte[]?> blockAccessLists, bool generateRandomRequestId = true)
+    : Eth66MessageBase(generateRandomRequestId)
 {
-    private IOwnedReadOnlyList<byte[]?>? _blockAccessLists;
+    private IOwnedReadOnlyList<byte[]?>? _blockAccessLists = blockAccessLists;
 
     public override int PacketType => Eth71MessageCode.BlockAccessLists;
     public override string Protocol => "eth";
-
-    public BlockAccessListsMessage(IOwnedReadOnlyList<byte[]?> blockAccessLists, bool generateRandomRequestId = true)
-        : base(generateRandomRequestId)
-    {
-        ArgumentNullException.ThrowIfNull(blockAccessLists);
-        _blockAccessLists = blockAccessLists;
-    }
 
     public IOwnedReadOnlyList<byte[]?> BlockAccessLists =>
         _blockAccessLists ?? throw new ObjectDisposedException(nameof(BlockAccessListsMessage));

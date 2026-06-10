@@ -19,7 +19,23 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         GethSyncLimits.MaxBodyFetch, nameof(BlockAccessListsMessage.BlockAccessLists));
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message)
-        => WriteBlockAccessLists(byteBuffer, message.BlockAccessLists);
+    {
+        IOwnedReadOnlyList<byte[]?> blockAccessLists = message.BlockAccessLists;
+        NettyRlpStream rlpStream = new(byteBuffer);
+        rlpStream.StartSequence(GetBlockAccessListsContentLength(blockAccessLists));
+        for (int i = 0; i < blockAccessLists.Count; i++)
+        {
+            byte[]? blockAccessListRlp = blockAccessLists[i];
+            if (blockAccessListRlp is null)
+            {
+                rlpStream.Encode(ReadOnlySpan<byte>.Empty);
+            }
+            else
+            {
+                rlpStream.Write(blockAccessListRlp);
+            }
+        }
+    }
 
     public override BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
     {
@@ -48,37 +64,13 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     }
 
     protected override int GetLengthInternal(BlockAccessListsMessage message) =>
-        GetBlockAccessListsLength(message.BlockAccessLists);
+        Rlp.LengthOfSequence(GetBlockAccessListsContentLength(message.BlockAccessLists));
 
     protected override BlockAccessListsMessage DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId) =>
         new(requestId, DecodeBlockAccessLists(ref ctx));
 
     internal static int GetBlockAccessListEntryLength(byte[]? blockAccessListRlp) =>
         blockAccessListRlp is null ? UnavailableBlockAccessListLength : blockAccessListRlp.Length;
-
-    private static void WriteBlockAccessLists(IByteBuffer byteBuffer, IOwnedReadOnlyList<byte[]?> blockAccessLists)
-    {
-        NettyRlpStream rlpStream = new(byteBuffer);
-        rlpStream.StartSequence(GetBlockAccessListsContentLength(blockAccessLists));
-        for (int i = 0; i < blockAccessLists.Count; i++)
-        {
-            WriteBlockAccessListEntry(rlpStream, blockAccessLists[i]);
-        }
-    }
-
-    private static void WriteBlockAccessListEntry(RlpStream stream, byte[]? blockAccessListRlp)
-    {
-        if (blockAccessListRlp is null)
-        {
-            stream.Encode(ReadOnlySpan<byte>.Empty);
-            return;
-        }
-
-        stream.Write(blockAccessListRlp);
-    }
-
-    private static int GetBlockAccessListsLength(IOwnedReadOnlyList<byte[]?> blockAccessLists) =>
-        Rlp.LengthOfSequence(GetBlockAccessListsContentLength(blockAccessLists));
 
     private static int GetBlockAccessListsContentLength(IOwnedReadOnlyList<byte[]?> blockAccessLists)
     {

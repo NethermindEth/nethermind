@@ -138,6 +138,10 @@ public class Eth71ProtocolHandlerTests
         Hash256[] hashes,
         byte[]?[] expectedBlockAccessLists)
     {
+        BlockAccessListsMessage? response = null;
+        _session.When(s => s.DeliverMessage(Arg.Any<BlockAccessListsMessage>())).Do(call =>
+            response = (BlockAccessListsMessage)call[0]);
+
         for (int i = 0; i < hashes.Length; i++)
         {
             _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(ArrayMemoryManager.From(expectedBlockAccessLists[i]));
@@ -148,8 +152,14 @@ public class Eth71ProtocolHandlerTests
         using GetBlockAccessListsMessage request = new(requestId, hashes.ToPooledList(hashes.Length));
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
-        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
-            MatchesBlockAccessListsMessage(m, requestId, expectedBlockAccessLists)));
+        _session.Received(1).DeliverMessage(Arg.Any<BlockAccessListsMessage>());
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response!.RequestId, Is.EqualTo(requestId));
+        Assert.That(response.BlockAccessLists, Has.Count.EqualTo(expectedBlockAccessLists.Length));
+        for (int i = 0; i < expectedBlockAccessLists.Length; i++)
+        {
+            Assert.That(response.BlockAccessLists[i], Is.EqualTo(expectedBlockAccessLists[i]));
+        }
     }
 
     [TestCaseSource(nameof(BlockAccessListsRequestCases))]
@@ -164,7 +174,8 @@ public class Eth71ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage>())).Do(call =>
         {
             sentRequest = (GetBlockAccessListsMessage)call[0];
-            response = BuildBlockAccessListsMessage(sentRequest.RequestId, bal1, bal2);
+            byte[]?[] blockAccessLists = [bal1, bal2];
+            response = new BlockAccessListsMessage(sentRequest.RequestId, new ArrayPoolList<byte[]?>(blockAccessLists));
         });
 
         HandleIncomingStatusMessage();
@@ -268,30 +279,4 @@ public class Eth71ProtocolHandlerTests
             .SetName("Can_request_and_handle_block_access_lists_via_sync_peer_interface")
     ];
 
-    private static bool MatchesBlockAccessListsMessage(
-        BlockAccessListsMessage message,
-        long requestId,
-        byte[]?[] expectedBlockAccessLists)
-    {
-        if (message.RequestId != requestId || message.BlockAccessLists.Count != expectedBlockAccessLists.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < expectedBlockAccessLists.Length; i++)
-        {
-            if (!SameBytesOrMissing(message.BlockAccessLists[i], expectedBlockAccessLists[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool SameBytesOrMissing(byte[]? actual, byte[]? expected) =>
-        expected is null ? actual is null : actual is not null && actual.AsSpan().SequenceEqual(expected);
-
-    private static BlockAccessListsMessage BuildBlockAccessListsMessage(long requestId, params byte[]?[] blockAccessLists) =>
-        new(requestId, new ArrayPoolList<byte[]?>(blockAccessLists));
 }

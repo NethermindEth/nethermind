@@ -112,12 +112,9 @@ public class BlockAccessListsMessageSerializerTests
 
         for (int i = 0; i < expected.BlockAccessLists.Count; i++)
         {
-            Assert.That(SameBytesOrMissing(actual.BlockAccessLists[i], expected.BlockAccessLists[i]), Is.True);
+            Assert.That(actual.BlockAccessLists[i], Is.EqualTo(expected.BlockAccessLists[i]));
         }
     }
-
-    private static bool SameBytesOrMissing(byte[]? actual, byte[]? expected) =>
-        expected is null ? actual is null : actual is not null && actual.AsSpan().SequenceEqual(expected);
 }
 
 [Parallelizable(ParallelScope.All)]
