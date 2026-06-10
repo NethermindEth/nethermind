@@ -44,9 +44,11 @@ public static class EthCallResultCache
     public static bool TryComputeKey(BlockHeader header, Transaction tx, out ValueHash256 key)
     {
         key = default;
+        // An EMPTY access list is semantically absent (typed-transaction conversion materializes
+        // AccessList.Empty); only a populated one affects gas accounting and stays uncacheable.
         if (header.Hash is null
             || tx.To is null
-            || tx.AccessList is not null
+            || tx.AccessList is { IsEmpty: false }
             || tx.BlobVersionedHashes is not null)
         {
             return false;
