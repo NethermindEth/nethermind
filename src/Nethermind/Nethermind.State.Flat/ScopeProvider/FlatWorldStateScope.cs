@@ -285,20 +285,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
-        CancellationToken token = parallelOptions.CancellationToken;
-        if (_warmReadPool is null)
-        {
-            // No dedicated readers configured -- still warm, just sequentially on the HintBal
-            // Task.Run thread. Some progress before tx execution starts saturating the pool.
-            for (int j = 0; j < idx; j++)
-            {
-                if (token.IsCancellationRequested) break;
-                if (_pausePrewarmer) continue;
-                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-                ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-            }
-            return;
-        }
+        if (_warmReadPool is null) return;
 
         int workers = Math.Min(_warmReadPool.MaxConcurrency, Math.Max(1, idx / 64));
 
@@ -307,7 +294,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        }, token);
+        }, parallelOptions.CancellationToken);
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)

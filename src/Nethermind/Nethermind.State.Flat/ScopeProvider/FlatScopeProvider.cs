@@ -22,11 +22,11 @@ public class FlatScopeProvider(
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
 
-    private readonly Lazy<WarmReadPool?> _warmReadPool = new(() =>
+    private readonly Lazy<WarmReadPool> _warmReadPool = new(() =>
     {
         int configured = configuration.WarmReadConcurrency;
-        int concurrency = configured < 0 ? Math.Min(4 * Environment.ProcessorCount, 64) : configured;
-        return concurrency >= 1 ? new WarmReadPool(concurrency) : null;
+        int concurrency = configured < 0 ? Math.Min(4 * Environment.ProcessorCount, 64) : Math.Max(1, configured);
+        return new WarmReadPool(concurrency);
     });
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
