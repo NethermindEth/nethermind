@@ -29,7 +29,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -139,6 +138,10 @@ public class Eth71ProtocolHandlerTests
         Hash256[] hashes,
         byte[]?[] expectedBlockAccessLists)
     {
+        BlockAccessListsMessage? response = null;
+        _session.When(s => s.DeliverMessage(Arg.Any<BlockAccessListsMessage>())).Do(call =>
+            response = (BlockAccessListsMessage)call[0]);
+
         for (int i = 0; i < hashes.Length; i++)
         {
             _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(ArrayMemoryManager.From(expectedBlockAccessLists[i]));
@@ -149,8 +152,23 @@ public class Eth71ProtocolHandlerTests
         using GetBlockAccessListsMessage request = new(requestId, hashes.ToPooledList(hashes.Length));
         HandleZeroMessage(request, Eth71MessageCode.GetBlockAccessLists);
 
-        _session.Received(1).DeliverMessage(Arg.Is<BlockAccessListsMessage>(m =>
-            MatchesBlockAccessListsMessage(m, requestId, expectedBlockAccessLists)));
+        _session.Received(1).DeliverMessage(Arg.Any<BlockAccessListsMessage>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.Not.Null);
+            if (response is not null)
+            {
+                Assert.That(response.RequestId, Is.EqualTo(requestId));
+                Assert.That(response.BlockAccessLists, Has.Count.EqualTo(expectedBlockAccessLists.Length));
+                if (response.BlockAccessLists.Count == expectedBlockAccessLists.Length)
+                {
+                    for (int i = 0; i < expectedBlockAccessLists.Length; i++)
+                    {
+                        Assert.That(response.BlockAccessLists[i], Is.EqualTo(expectedBlockAccessLists[i]));
+                    }
+                }
+            }
+        }
     }
 
     [TestCaseSource(nameof(BlockAccessListsRequestCases))]
@@ -165,29 +183,36 @@ public class Eth71ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage>())).Do(call =>
         {
             sentRequest = (GetBlockAccessListsMessage)call[0];
-            response = new BlockAccessListsMessage(sentRequest.RequestId, BuildBlockAccessLists(bal1, bal2));
+            byte[]?[] blockAccessLists = [bal1, bal2];
+            response = new BlockAccessListsMessage(sentRequest.RequestId, new ArrayPoolList<byte[]?>(blockAccessLists));
         });
 
         HandleIncomingStatusMessage();
-        Task<IByteArrayList> task = viaSyncPeerInterface
+        Task<IOwnedReadOnlyList<byte[]?>> task = viaSyncPeerInterface
             ? ((ISyncPeer)_handler).GetBlockAccessLists(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None)
             : _handler.GetBlockAccessLists(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         _session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
         HandleZeroMessage(response!, Eth71MessageCode.BlockAccessLists);
 
-        using IByteArrayList result = await task;
-        Assert.That(result.Count, Is.EqualTo(2));
-        Assert.That(result[0].SequenceEqual(bal1), Is.True);
-        Assert.That(result[1].SequenceEqual(bal2), Is.True);
-        Assert.Throws<ObjectDisposedException>(() => _ = sentRequest!.Hashes[0]);
+        using IOwnedReadOnlyList<byte[]?> result = await task;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(2));
+            if (result.Count == 2)
+            {
+                Assert.That(result[0], Is.EqualTo(bal1));
+                Assert.That(result[1], Is.EqualTo(bal2));
+            }
+            Assert.Throws<ObjectDisposedException>(() => _ = sentRequest!.Hashes[0]);
+        }
         response?.Dispose();
     }
 
     [Test]
     public void Should_throw_when_receiving_unrequested_block_access_lists()
     {
-        using BlockAccessListsMessage msg = new(9999, EmptyByteArrayList.Instance);
+        using BlockAccessListsMessage msg = new(9999, IOwnedReadOnlyList<byte[]?>.Empty);
 
         HandleIncomingStatusMessage();
         Assert.Throws<SubprotocolException>(() => HandleZeroMessage(msg, Eth71MessageCode.BlockAccessLists));
@@ -197,7 +222,7 @@ public class Eth71ProtocolHandlerTests
     public async Task Should_return_empty_list_when_requesting_zero_hashes()
     {
         HandleIncomingStatusMessage();
-        IByteArrayList result = await _handler.GetBlockAccessLists(
+        IOwnedReadOnlyList<byte[]?> result = await _handler.GetBlockAccessLists(
             Array.Empty<Hash256>(), CancellationToken.None);
 
         Assert.That(result.Count, Is.EqualTo(0));
@@ -251,12 +276,12 @@ public class Eth71ProtocolHandlerTests
                 2222L,
                 new[] { Keccak.Zero, TestItem.KeccakA },
                 new byte[]?[] { null, null })
-            .SetName("Should_return_empty_BAL_for_unavailable_blocks"),
+            .SetName("Should_return_absent_BAL_for_unavailable_blocks"),
         new TestCaseData(
                 3333L,
                 new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB },
                 new byte[]?[] { [0xc3, 0x01, 0x02, 0x03], null, null })
-            .SetName("Should_return_mixed_available_and_empty_BALs")
+            .SetName("Should_return_mixed_available_and_absent_BALs")
     ];
 
     private static TestCaseData[] BlockAccessListsRequestCases =>
@@ -267,41 +292,4 @@ public class Eth71ProtocolHandlerTests
             .SetName("Can_request_and_handle_block_access_lists_via_sync_peer_interface")
     ];
 
-    private static bool MatchesBlockAccessListsMessage(
-        BlockAccessListsMessage message,
-        long requestId,
-        byte[]?[] expectedBlockAccessLists)
-    {
-        if (message.RequestId != requestId || message.BlockAccessLists.Count != expectedBlockAccessLists.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < expectedBlockAccessLists.Length; i++)
-        {
-            if (!SameBytesOrMissing(message.BlockAccessLists[i], expectedBlockAccessLists[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool SameBytesOrMissing(ReadOnlySpan<byte> actual, byte[]? expected) =>
-        expected is null ? actual.IsEmpty : actual.SequenceEqual(expected);
-
-    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
-    {
-        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
-        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
-        {
-            for (int i = 0; i < blockAccessLists.Length; i++)
-            {
-                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
-            }
-        }
-
-        return new RlpByteArrayList(builder.ToRlpItemList());
-    }
 }
