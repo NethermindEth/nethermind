@@ -251,6 +251,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     exceptionType = EvmExceptionType.InvalidJumpDestination;
                     break;
                 }
+
+                // A fused handler can land one instruction INTO a block (EXTCODESIZE+ISZERO
+                // consumes the block's first op), skipping the BlockStart precharge — the rest
+                // of that block must then meter itself op by op.
+                metered = ops[entryIndex].Kind == StreamOpKind.InBlock;
             }
 
             OpCodeCount += opCodeCount;

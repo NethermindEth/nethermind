@@ -258,12 +258,11 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     [TestCaseSource(nameof(DifferentialCases))]
     public void StreamInterpreter_ComparedToByteCodeLoop_IsObservablyIdentical(byte[] code)
     {
-        TestState.CreateAccount(CalleeAddress, 1000000);
-        TestState.InsertCode(CalleeAddress, s_calleeCode, Spec);
-        TestState.CreateAccount(SolidityExampleAddress, 1000000);
-        TestState.InsertCode(SolidityExampleAddress, Core.Extensions.Bytes.FromHexString(SolidityExampleRuntime), Spec);
-
         ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+
+        // Both runs commit state (storage writes, deployed contracts), so the stream run
+        // gets a freshly built world or it would see the baseline's writes (SSET vs SRESET).
+        Setup();
 
         long framesBefore = StreamInterpreter.FramesExecuted;
         ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
@@ -277,6 +276,11 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
 
     private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream)
     {
+        TestState.CreateAccount(CalleeAddress, 1000000);
+        TestState.InsertCode(CalleeAddress, s_calleeCode, Spec);
+        TestState.CreateAccount(SolidityExampleAddress, 1000000);
+        TestState.InsertCode(SolidityExampleAddress, Core.Extensions.Bytes.FromHexString(SolidityExampleRuntime), Spec);
+
         bool enabledBefore = StreamInterpreter.Enabled;
         StreamInterpreter.Enabled = useStream;
         try
