@@ -107,4 +107,4 @@ compares responses, and notifies on any discrepancy.
 Only Slack is supported for now. Configure via environment variables:
 - `RPC_MONITOR_BOT_TOKEN` + `RPC_MONITOR_CHANNEL_ID` — post messages to a Slack channel via a bot user, uploads responses as files.
 
-Slack notifications are rate-limited to 10 messages per minute to avoid spamming in case of consistent test/node/app failures.
+Slack notifications are rate-limited to avoid spamming in case of consistent test/node/app failures.
