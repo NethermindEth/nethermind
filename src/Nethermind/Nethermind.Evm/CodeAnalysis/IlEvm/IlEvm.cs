@@ -40,6 +40,13 @@ public sealed class IlCompiledCode
     /// <summary>The spec the segments were compiled under; a different spec must not use them.</summary>
     public IReleaseSpec Spec { get; }
 
+    /// <summary>
+    /// The compilation-relevant spec flags, packed. RPC paths wrap specs in fresh per-call
+    /// instances (state overrides), so artifact compatibility is decided by this fingerprint —
+    /// reference equality alone silently disabled IL-EVM for every eth_call on live nodes.
+    /// </summary>
+    public byte SpecFingerprint { get; init; }
+
     public int SegmentCount { get; }
 
     public bool TryGetSegmentStartingAt(int programCounter, out IlCompiledSegment segment)
@@ -97,6 +104,9 @@ public static class IlEvm
     public static long ContractsCompiled;
     public static long SegmentsCompiled;
     public static long ContractCompilationFailures;
+    // Non-interlocked (read for dashboards/diagnostics; lossy is fine): counts executions that
+    // found an artifact but could not use it because the caller's spec fingerprint differs.
+    public static long SpecMismatches;
 
     /// <summary>
     /// Per-frame notice: increments the execution counter and compiles exactly once at the
@@ -139,10 +149,23 @@ public static class IlEvm
     public static IlCompiledCode? GetForExecution(CodeInfo codeInfo, IReleaseSpec spec)
     {
         object? artifact = Volatile.Read(ref codeInfo.IlEvmArtifact);
-        return artifact is IlCompiledCode compiled && ReferenceEquals(compiled.Spec, spec)
-            ? compiled
-            : null;
+        if (artifact is not IlCompiledCode compiled)
+            return null;
+        if (ReferenceEquals(compiled.Spec, spec) || compiled.SpecFingerprint == ComputeSpecFingerprint(spec))
+            return compiled;
+        // Observable on dashboards: artifacts exist but a spec wrapper defeats their reuse.
+        SpecMismatches++;
+        return null;
     }
+
+    /// <summary>Packs exactly the spec flags the compiler's output depends on.</summary>
+    public static byte ComputeSpecFingerprint(IReleaseSpec spec) =>
+        (byte)((spec.ShiftOpcodesEnabled ? 1 : 0)
+            | (spec.IncludePush0Instruction ? 2 : 0)
+            | (spec.IsEip8024Enabled ? 4 : 0)
+            | (spec.UseNetGasMetering ? 8 : 0)
+            | (spec.UseNetGasMeteringWithAStipendFix ? 16 : 0)
+            | (spec.IsEip8037Enabled ? 32 : 0));
 
     private static object Compile(CodeInfo codeInfo, IReleaseSpec spec)
     {
@@ -174,7 +197,10 @@ public static class IlEvm
 
             Interlocked.Increment(ref ContractsCompiled);
             Interlocked.Add(ref SegmentsCompiled, segmentCount);
-            return new IlCompiledCode(analyzed, segments, spec, segmentCount);
+            return new IlCompiledCode(analyzed, segments, spec, segmentCount)
+            {
+                SpecFingerprint = ComputeSpecFingerprint(spec),
+            };
         }
         catch (Exception)
         {

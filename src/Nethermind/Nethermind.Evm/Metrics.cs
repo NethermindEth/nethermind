@@ -54,6 +54,22 @@ public class Metrics
     public static long CodeDbCache => _mainCodeDbCache + _otherCodeDbCache;
     private static long _mainCodeDbCache;
     private static long _otherCodeDbCache;
+
+    [CounterMetric]
+    [Description("Number of contracts compiled by the IL-EVM.")]
+    public static long IlEvmContractsCompiled => CodeAnalysis.IlEvm.IlEvm.ContractsCompiled;
+
+    [CounterMetric]
+    [Description("Number of code segments compiled by the IL-EVM.")]
+    public static long IlEvmSegmentsCompiled => CodeAnalysis.IlEvm.IlEvm.SegmentsCompiled;
+
+    [CounterMetric]
+    [Description("Number of IL-EVM contract compilation failures (interpreter fallback).")]
+    public static long IlEvmCompilationFailures => CodeAnalysis.IlEvm.IlEvm.ContractCompilationFailures;
+
+    [CounterMetric]
+    [Description("Number of executions that found an IL-EVM artifact unusable due to a spec mismatch.")]
+    public static long IlEvmSpecMismatches => CodeAnalysis.IlEvm.IlEvm.SpecMismatches;
     [Description("Number of Code DB cache reads on main processing thread.")]
     public static long MainThreadCodeDbCache => _mainCodeDbCache;
     internal static void IncrementCodeDbCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache : ref _otherCodeDbCache);
