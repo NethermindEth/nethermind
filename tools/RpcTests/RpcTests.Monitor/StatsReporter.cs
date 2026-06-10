@@ -5,8 +5,17 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class StatsReporter(INotifier notifier, TimeSpan period) : IStatsReporter
+internal class StatsReporter(INotifier notifier, TimeSpan reportAt) : IStatsReporter
 {
+    private static TimeSpan DelayUntilNext(TimeSpan timeOfDay)
+    {
+        DateTime now = DateTime.UtcNow;
+        DateTime next = now.Date.Add(timeOfDay);
+        if (now >= next)
+            next = next.AddDays(1);
+        return next - now;
+    }
+
     private static ulong UnixNow() => (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     private static DateTime FromUnix(ulong seconds) => DateTimeOffset.FromUnixTimeSeconds((long)seconds).UtcDateTime;
 
@@ -37,7 +46,7 @@ internal class StatsReporter(INotifier notifier, TimeSpan period) : IStatsReport
             {
                 try
                 {
-                    await Task.Delay(period, ct);
+                    await Task.Delay(DelayUntilNext(reportAt), ct);
                     await notifier.NotifyStatsAsync(GetAndReset());
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

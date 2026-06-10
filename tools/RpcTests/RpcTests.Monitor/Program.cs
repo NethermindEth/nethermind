@@ -44,9 +44,9 @@ Option<bool> devOption = new("--dev")
     DefaultValueFactory = _ => false
 };
 
-Option<TimeSpan?> statsIntervalOption = new("--stats-interval", "-s")
+Option<TimeSpan?> reportAtOption = new("--report-at")
 {
-    Description = "Interval for notifying about execution statistics (e.g. 00:30:00)"
+    Description = "UTC time of day at which to report execution statistics (e.g. 12:00:00)"
 };
 
 RootCommand rootCommand = new("Monitors a running node by periodically executing dynamic RPC tests against a reference node")
@@ -57,7 +57,7 @@ RootCommand rootCommand = new("Monitors a running node by periodically executing
     nameOption,
     parallelismOption,
     devOption,
-    statsIntervalOption
+    reportAtOption
 };
 
 rootCommand.SetAction(async (parseResult, ct) =>
@@ -74,8 +74,8 @@ rootCommand.SetAction(async (parseResult, ct) =>
     using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(1) };
     using INotifier notifier = GetNotifier(name, parseResult.GetRequiredValue(devOption));
 
-    TimeSpan? statsInterval = parseResult.GetValue(statsIntervalOption);
-    IStatsReporter stats = statsInterval is { } interval ? new StatsReporter(notifier, interval) : NullStatsReporter.Instance;
+    TimeSpan? reportAt = parseResult.GetValue(reportAtOption);
+    IStatsReporter stats = reportAt is { } time ? new StatsReporter(notifier, time) : NullStatsReporter.Instance;
     MonitorRunner runner = new(args, notifier, stats, client);
 
     await Task.WhenAll(
