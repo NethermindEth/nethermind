@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
@@ -126,7 +127,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
 {
     // The stream only engages on tip-fork dispatch fingerprints; the base default (Byzantium)
     // would silently compare the bytecode loop against itself.
-    protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
+    protected override ForkActivation Activation => MainnetSpecProvider.OsakaActivation;
 
     private static readonly byte[] s_arithmeticChain = Prepare.EvmCode
         .PushData(7).PushData(5).Op(Instruction.ADD)
@@ -162,6 +163,16 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(s_jumpLoop) { TestName = "JumpLoopWithFusedPush" };
         yield return new TestCaseData(s_storeAndReturn) { TestName = "MemoryBoundaryOpsAndReturn" };
         yield return new TestCaseData(s_stackUnderflow) { TestName = "StackUnderflowFailure" };
+    }
+
+    [Test]
+    public void Activation_WhenFingerprinted_SelectsASpecializedDispatch()
+    {
+        int fingerprint = EvmSpecFingerprint.Compute(SpecProvider.GetSpec(Activation));
+        Assert.That(
+            fingerprint == EvmSpecFingerprint.Compute<OsakaEvmSpec>()
+            || fingerprint == EvmSpecFingerprint.Compute<CancunEvmSpec>(),
+            "the differential fixture must run on a fork where the stream engages");
     }
 
     [TestCaseSource(nameof(DifferentialCases))]
