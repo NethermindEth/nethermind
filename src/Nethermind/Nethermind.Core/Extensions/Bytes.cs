@@ -26,6 +26,7 @@ namespace Nethermind.Core.Extensions
         internal const string ErrMissingPrefix = "hex string without 0x prefix";
         internal const string ErrOddLength = "hex string of odd length";
         internal const string ErrSyntax = "invalid hex string";
+        private const int MaxPaddingLengthToClear = 256;
 
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
@@ -1007,10 +1008,22 @@ namespace Nethermind.Core.Extensions
 
             int oddMod = hexString.Length % 2;
             int actualLength = (chars.Length >> 1) + oddMod;
-            byte[] result = actualLength == length
-                ? GC.AllocateUninitializedArray<byte>(length)
-                : GC.AllocateArray<byte>(length);
-            Span<byte> writeToSpan = result.AsSpan(length - actualLength);
+            int paddingLength = length - actualLength;
+            byte[] result;
+            if (paddingLength >= 0 && paddingLength <= MaxPaddingLengthToClear)
+            {
+                result = GC.AllocateUninitializedArray<byte>(length);
+                if (paddingLength > 0)
+                {
+                    result.AsSpan(0, paddingLength).Clear();
+                }
+            }
+            else
+            {
+                result = GC.AllocateArray<byte>(length);
+            }
+
+            Span<byte> writeToSpan = result.AsSpan(paddingLength);
             FromHexString(chars, writeToSpan, oddMod);
             return result;
         }

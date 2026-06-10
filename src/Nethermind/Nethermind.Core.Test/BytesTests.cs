@@ -70,6 +70,19 @@ namespace Nethermind.Core.Test
             Assert.That(bytes, Is.EqualTo(expected));
         }
 
+        [Test]
+        public void FromHexString_with_length_zero_pads_large_prefix()
+        {
+            byte[] bytes = Bytes.FromHexString("1234", 512);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes, Has.Length.EqualTo(512));
+                Assert.That(bytes[..510], Is.All.Zero);
+                Assert.That(bytes[^2..], Is.EqualTo(new byte[] { 0x12, 0x34 }));
+            }
+        }
+
         [TestCase("", true)]
         [TestCase("0123456789abcdefABCDEF", true)]
         [TestCase("0123456789abcdefABCDEF0123456789abcdef", true)]
