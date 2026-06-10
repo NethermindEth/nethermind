@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
@@ -157,12 +158,69 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         .Op(Instruction.ADD)
         .Done;
 
+    private static readonly byte[] s_nestedCallWithResume = Prepare.EvmCode
+        .Call(CalleeAddress, 50000)
+        .PushData(3).Op(Instruction.MUL)
+        .PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.RETURN)
+        .Done;
+
+    private static readonly byte[] s_createWithInitCode = Prepare.EvmCode
+        .Create(Prepare.EvmCode
+            .PushData(1).PushData(2).Op(Instruction.ADD).Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done, 0)
+        .Op(Instruction.POP)
+        .Op(Instruction.STOP)
+        .Done;
+
+    // PUSH2 0x0007; JUMPI loop counting down — exercises the fused PUSH2+JUMPI handler and
+    // the per-iteration recharge of the jump-target block.
+    private static readonly byte[] s_fusedPush2JumpiLoop =
+    [
+        (byte)Instruction.PUSH1, 200,                  // counter
+        (byte)Instruction.JUMPDEST,                    // pc 2
+        (byte)Instruction.PUSH1, 1,
+        (byte)Instruction.SWAP1,
+        (byte)Instruction.SUB,
+        (byte)Instruction.DUP1,
+        (byte)Instruction.PUSH2, 0x00, 0x02,
+        (byte)Instruction.JUMPI,
+        (byte)Instruction.STOP,
+    ];
+
+    // Code ends inside PUSH2's immediates; the program counter runs past the end of code and
+    // the stream must exit as cleanly as the bytecode loop does.
+    private static readonly byte[] s_truncatedTrailingPush2 =
+    [
+        (byte)Instruction.PUSH1, 1,
+        (byte)Instruction.PUSH2, 0x00,
+    ];
+
+    private static readonly byte[] s_deepStackToTheLimit = BuildDeepStackCode();
+
+    private static byte[] BuildDeepStackCode()
+    {
+        // 1024 pushes fill the stack exactly to the limit; the 1025th must overflow.
+        byte[] code = new byte[1025 + 1];
+        code.AsSpan(0, 1025).Fill((byte)Instruction.PUSH0);
+        code[1025] = (byte)Instruction.STOP;
+        return code;
+    }
+
+    private static Address CalleeAddress => TestItem.AddressC;
+
     public static IEnumerable<TestCaseData> DifferentialCases()
     {
         yield return new TestCaseData(s_arithmeticChain) { TestName = "ArithmeticChain" };
         yield return new TestCaseData(s_jumpLoop) { TestName = "JumpLoopWithFusedPush" };
         yield return new TestCaseData(s_storeAndReturn) { TestName = "MemoryBoundaryOpsAndReturn" };
         yield return new TestCaseData(s_stackUnderflow) { TestName = "StackUnderflowFailure" };
+        yield return new TestCaseData(s_nestedCallWithResume) { TestName = "NestedCallWithResume" };
+        yield return new TestCaseData(s_createWithInitCode) { TestName = "CreateWithInitCode" };
+        yield return new TestCaseData(s_fusedPush2JumpiLoop) { TestName = "FusedPush2JumpiLoop" };
+        yield return new TestCaseData(s_truncatedTrailingPush2) { TestName = "TruncatedTrailingPush2" };
+        yield return new TestCaseData(s_deepStackToTheLimit) { TestName = "DeepStackToTheLimit" };
     }
 
     [Test]
@@ -175,9 +233,18 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             "the differential fixture must run on a fork where the stream engages");
     }
 
+    private static readonly byte[] s_calleeCode = Prepare.EvmCode
+        .PushData(7).PushData(6).Op(Instruction.MUL)
+        .PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.RETURN)
+        .Done;
+
     [TestCaseSource(nameof(DifferentialCases))]
     public void StreamInterpreter_ComparedToByteCodeLoop_IsObservablyIdentical(byte[] code)
     {
+        TestState.CreateAccount(CalleeAddress, 1000000);
+        TestState.InsertCode(CalleeAddress, s_calleeCode, Spec);
+
         ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
 
         long framesBefore = StreamInterpreter.FramesExecuted;
