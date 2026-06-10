@@ -85,7 +85,8 @@ internal sealed class StorageStridePrefetcher(
     {
         if (_broken) return;
 
-        UInt256 delta = index - _lastIndex;
+        bool hasForwardDelta = index > _lastIndex;
+        UInt256 delta = hasForwardDelta ? index - _lastIndex : UInt256.Zero;
         bool onPattern = _runLength > 0 && delta == _stride && !delta.IsZero;
 
         if (onPattern)
@@ -121,7 +122,7 @@ internal sealed class StorageStridePrefetcher(
         // Not engaged: restart the detector from this read.
         _stride = delta;
         _lastIndex = index;
-        _runLength = _runLength == 0 || delta.IsZero ? 1 : 2;
+        _runLength = _runLength == 0 || !hasForwardDelta ? 1 : 2;
         _missRunLength = 0;
     }
 
@@ -168,11 +169,10 @@ internal sealed class StorageStridePrefetcher(
             }
 
             idlePolls = 0;
-            UInt256 offset = (UInt256)(ulong)(k + 1) * _stride;
-            UInt256 index = _engageIndex + offset;
-
             try
             {
+                UInt256 offset = (UInt256)(ulong)(k + 1) * _stride;
+                UInt256 index = _engageIndex + offset;
                 byte[] value = _tree!.Get(in index);
                 // The cancelled token marks the end of the block these parent-state values are
                 // valid for; re-check after the read so a straggler cannot repopulate a cache
