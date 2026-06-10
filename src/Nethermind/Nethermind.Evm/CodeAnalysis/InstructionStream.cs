@@ -121,6 +121,11 @@ public sealed class InstructionStream
             pc += 1 + GetImmediateByteCount(instruction);
         }
 
+        // Entry indexes live in the ushort pc map; BlockStart entries can push the count past
+        // the byte length, so oversized streams fall back to the bytecode loop.
+        if (ops.Count >= InvalidEntry)
+            return null;
+
         pcToEntry[code.Length] = (ushort)ops.Count;
         return new InstructionStream(ops.ToArray(), blockGas.ToArray(), pcToEntry);
     }

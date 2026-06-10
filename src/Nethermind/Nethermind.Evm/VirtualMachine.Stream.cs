@@ -225,10 +225,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     // The handler moved the program counter (taken jump, fused PUSH2+JUMP, or
                     // plain fall-through); recover the entry index from the landing pc, which
-                    // is always an instruction start or one past the end of code.
+                    // is always an instruction start or one past the end of code. A landing
+                    // inside immediate bytes cannot happen while ValidateJump holds — fail
+                    // loudly rather than silently fall off the stream as an empty success.
                     entryIndex = pcToEntry[programCounter];
-                    Debug.Assert(entryIndex != InstructionStream.InvalidEntry,
-                        "jump-class op landed inside an instruction's immediate bytes");
+                    if (entryIndex == InstructionStream.InvalidEntry)
+                    {
+                        exceptionType = EvmExceptionType.InvalidJumpDestination;
+                        break;
+                    }
                 }
                 else
                 {
