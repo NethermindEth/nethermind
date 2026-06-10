@@ -1009,23 +1009,27 @@ namespace Nethermind.Core.Extensions
             int oddMod = hexString.Length % 2;
             int actualLength = (chars.Length >> 1) + oddMod;
             int paddingLength = length - actualLength;
-            byte[] result;
+            byte[] result = AllocateFixedLengthHexResult(length, paddingLength);
+            Span<byte> writeToSpan = result.AsSpan(paddingLength);
+            FromHexString(chars, writeToSpan, oddMod);
+            return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte[] AllocateFixedLengthHexResult(int length, int paddingLength)
+        {
             if (paddingLength >= 0 && paddingLength <= MaxPaddingLengthToClear)
             {
-                result = GC.AllocateUninitializedArray<byte>(length);
+                byte[] result = GC.AllocateUninitializedArray<byte>(length);
                 if (paddingLength > 0)
                 {
                     result.AsSpan(0, paddingLength).Clear();
                 }
-            }
-            else
-            {
-                result = GC.AllocateArray<byte>(length);
+
+                return result;
             }
 
-            Span<byte> writeToSpan = result.AsSpan(paddingLength);
-            FromHexString(chars, writeToSpan, oddMod);
-            return result;
+            return GC.AllocateArray<byte>(length);
         }
 
         private static void FromHexString(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
