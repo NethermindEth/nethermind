@@ -220,49 +220,7 @@ namespace Nethermind.Xdc
 
             if (!IsMyTurn(proposalParent, round, proposalSpec)) return;
 
-            // HighestQC fork block has never been processed — build its state now so we can propose on top of it.
-            // ForceProcessing + DoNotUpdateHead: bypass the TD check and skip head update (only state matters).
-            // XdcBlockTree never reorgs to equal-TD non-self-mined blocks; block producer uses proposalParent directly.
-            if (!_stateReader.HasStateForBlock(proposalParent))
-            {
-                Block? unprocessedParent = _blockTree.FindBlock(proposalParent.Hash!, BlockTreeLookupOptions.None, blockNumber: proposalParent.Number);
-                if (unprocessedParent is null)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Round {round}: HighestQC block #{proposalParent.Number} body not available, skipping proposal.");
-                    return;
-                }
-
-                if (_logger.IsInfo) _logger.Info($"Round {round}: processing HighestQC fork block #{proposalParent.Number} {proposalParent.Hash} before proposing.");
-
-                TaskCompletionSource<ProcessingResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                void OnBlockRemoved(object? s, BlockRemovedEventArgs e)
-                {
-                    if (e.BlockHash == unprocessedParent.Hash)
-                        tcs.TrySetResult(e.ProcessingResult);
-                }
-
-                _processingQueue.BlockRemoved += OnBlockRemoved;
-                try
-                {
-                    await _processingQueue.Enqueue(unprocessedParent, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead);
-                    ProcessingResult result = await tcs.Task.WaitAsync(ct);
-                    if (result != ProcessingResult.Success)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Round {round}: processing HighestQC block #{proposalParent.Number} failed ({result}), skipping proposal.");
-                        return;
-                    }
-                }
-                finally
-                {
-                    _processingQueue.BlockRemoved -= OnBlockRemoved;
-                }
-
-                if (!_stateReader.HasStateForBlock(proposalParent))
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Round {round}: state still unavailable for #{proposalParent.Number} after processing, skipping proposal.");
-                    return;
-                }
-            }
+            if (!await EnsureStateForProposalParent(proposalParent, round, ct)) return;
 
             if (!TryAdvance(ref _highestSelfMinedRound, (long)round)) return;
 
@@ -275,6 +233,52 @@ namespace Nethermind.Xdc
             if (ct.IsCancellationRequested) return;
 
             await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, ct);
+        }
+
+        private async Task<bool> EnsureStateForProposalParent(XdcBlockHeader proposalParent, ulong round, CancellationToken ct)
+        {
+            if (_stateReader.HasStateForBlock(proposalParent)) return true;
+
+            Block? unprocessedParent = _blockTree.FindBlock(proposalParent.Hash!, BlockTreeLookupOptions.None, blockNumber: proposalParent.Number);
+            if (unprocessedParent is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Round {round}: HighestQC block #{proposalParent.Number} body not available, skipping proposal.");
+                return false;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Round {round}: processing HighestQC fork block #{proposalParent.Number} {proposalParent.Hash} before proposing.");
+
+            TaskCompletionSource<ProcessingResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnBlockRemoved(object? s, BlockRemovedEventArgs e)
+            {
+                if (e.BlockHash == unprocessedParent.Hash)
+                    tcs.TrySetResult(e.ProcessingResult);
+            }
+
+            _processingQueue.BlockRemoved += OnBlockRemoved;
+            try
+            {
+                // ForceProcessing bypasses the TD check (fork has equal TD); DoNotUpdateHead keeps head intact — only state is needed.
+                await _processingQueue.Enqueue(unprocessedParent, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead);
+                ProcessingResult result = await tcs.Task.WaitAsync(ct);
+                if (result != ProcessingResult.Success)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Round {round}: processing HighestQC block #{proposalParent.Number} failed ({result}), skipping proposal.");
+                    return false;
+                }
+            }
+            finally
+            {
+                _processingQueue.BlockRemoved -= OnBlockRemoved;
+            }
+
+            if (!_stateReader.HasStateForBlock(proposalParent))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Round {round}: state still unavailable for #{proposalParent.Number} after processing, skipping proposal.");
+                return false;
+            }
+
+            return true;
         }
 
         // ── Block proposal ───────────────────────────────────────────────────────
