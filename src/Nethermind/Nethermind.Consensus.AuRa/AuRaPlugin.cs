@@ -98,11 +98,6 @@ namespace Nethermind.Consensus.AuRa
                 // workers that hand-build their own processor with the worker's traced state.
                 .AddSingleton<ISystemTransactionProcessorFactory<EthereumGasPolicy>, AuRaSystemTransactionProcessorFactory<EthereumGasPolicy>>()
 
-                // RLP codec for AuRa-shaped headers; used by BlockStore/HeaderStore and any DI
-                // consumer of IHeaderDecoder. AuRaBlockHeader hashes itself via IHashResolver,
-                // so encode/decode through this decoder is the only AuRa-aware path remaining.
-                .AddSingleton<IHeaderDecoder, AuRaHeaderDecoder>()
-
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
                 .AddSingleton<IAuRaStepCalculator, AuRaChainSpecEngineParameters, ITimestamper, ILogManager>((param, timestamper, logManager)

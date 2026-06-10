@@ -336,12 +336,24 @@ public partial class BlockProcessor(
 
     /// <summary>
     /// Construct an empty header carrying the same subclass shape as <paramref name="source"/>.
-    /// Default returns a base <see cref="BlockHeader"/>; consensus engines that use a
-    /// <see cref="BlockHeader"/> subclass (e.g. AuRa) override to preserve the subclass and
-    /// copy engine-specific fields (e.g. partial AuRa seal).
+    /// Default returns a base <see cref="BlockHeader"/>; if <paramref name="source"/> carries an
+    /// AuRa seal the handler bridges the subclass + partial seal across without requiring an
+    /// engine-specific override. Consensus engines may still override for additional behaviour.
     /// </summary>
-    protected virtual BlockHeader CloneHeaderShape(BlockHeader source) =>
-        new(source.ParentHash, source.UnclesHash, source.Beneficiary, source.Difficulty, source.Number, source.GasLimit, source.Timestamp, source.ExtraData);
+    protected virtual BlockHeader CloneHeaderShape(BlockHeader source)
+    {
+        BlockHeader cloned = new(source.ParentHash, source.UnclesHash, source.Beneficiary, source.Difficulty, source.Number, source.GasLimit, source.Timestamp, source.ExtraData);
+
+        if (source is IAuRaSealedHeader auraSource && AuRaBlockHeaderHandler.Instance is { } handler)
+        {
+            cloned = handler.SetSeal(cloned, 0, null);
+            IAuRaSealedHeader auraCloned = (IAuRaSealedHeader)cloned;
+            auraCloned.AuRaStep = auraSource.AuRaStep;
+            auraCloned.AuRaSignature = auraSource.AuRaSignature;
+        }
+
+        return cloned;
+    }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
     {

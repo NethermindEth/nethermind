@@ -24,7 +24,7 @@ public class AuRaHeaderDecoderTests
             .WithAura(100000000, auRaSignature)
             .TestObject;
 
-        AuRaHeaderDecoder decoder = new();
+        HeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
         Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
@@ -47,7 +47,7 @@ public class AuRaHeaderDecoderTests
 
         BlockHeader original = Build.A.BlockHeader.WithAura(42, auRaSignature).TestObject;
 
-        AuRaHeaderDecoder decoder = new();
+        HeaderDecoder decoder = new();
         byte[] firstPass = decoder.Encode(original).Bytes;
 
         Rlp.ValueDecoderContext ctx = new(firstPass);
@@ -70,7 +70,7 @@ public class AuRaHeaderDecoderTests
         byte[] auRaSignature = new byte[64];
         BlockHeader header = Build.A.BlockHeader.WithAura(42, auRaSignature).TestObject;
 
-        AuRaHeaderDecoder decoder = new();
+        HeaderDecoder decoder = new();
         byte[] encoded = decoder.Encode(header).Bytes;
         Rlp.ValueDecoderContext ctx = new(encoded);
         ctx.ReadSequenceLength();
