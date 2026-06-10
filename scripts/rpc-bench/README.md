@@ -124,7 +124,9 @@ of `rpc-comparison.yml`, but against the local snapshot-backed node.
 }
 ```
 
-Scope control: `tests` (which methods), `rates`, `duration`.
+Scope control: `tests` (which methods), `rates`, `duration`. Test names use the
+RPC method's camelCase (e.g. `eth_call`, `eth_getBalance`, `eth_getStorageAt`,
+`eth_getBlockByNumber`, `eth_feeHistory`) — `flood ls` prints the full list.
 
 ### `ethcallchaos` — [kamilchodola/EthCallChaos](https://github.com/kamilchodola/EthCallChaos)
 
@@ -141,7 +143,8 @@ duration, then its HTTP API (`/api/stats`, `/api/leaderboard`) is scraped.
   "parallel": 8,           // Rpc:MaxParallelCalls
   "duration": 300,         // seconds of load
   "leaderboard_top": 50,   // rows scraped from /api/leaderboard
-  "api_port": 5000
+  "api_port": 5000,
+  "min_mean_ms": 1         // Validation:MinMeanThresholdMs (tool default 200 keeps the leaderboard empty against a fast local node)
 }
 ```
 

@@ -396,6 +396,7 @@ jobs:
           export ECC_DURATION="$(get '.duration')";           [[ -z "${ECC_DURATION}" ]] && export ECC_DURATION="300"
           export ECC_LEADERBOARD_TOP="$(get '.leaderboard_top')"; [[ -z "${ECC_LEADERBOARD_TOP}" ]] && export ECC_LEADERBOARD_TOP="50"
           export ECC_API_PORT="$(get '.api_port')";           [[ -z "${ECC_API_PORT}" ]] && export ECC_API_PORT="5000"
+          export ECC_MIN_MEAN_MS="$(get '.min_mean_ms')";     [[ -z "${ECC_MIN_MEAN_MS}" ]] && export ECC_MIN_MEAN_MS="1"
           ./scripts/rpc-bench/run-ethcallchaos.sh
 
       - name: Stop node and verify DB integrity
