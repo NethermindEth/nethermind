@@ -35,9 +35,15 @@ public sealed class ReadOnlySnapshotBundle(
     // eth_call on the same block shares this bundle, and tip workloads (e.g. DEX quote
     // simulations) re-read the same slots — including ZERO slots (tick-bitmap scans), which is
     // why misses are memoized too. Past the entry cap the memo stops growing and reads simply
-    // go to the database; no eviction, no contention beyond the dictionary's own.
+    // go to the database; no eviction, no contention beyond the dictionary's own. The cap
+    // check is read-then-add, so concurrent inserters can overshoot it by at most one entry
+    // per racing thread — bounded and irrelevant at this capacity, traded for a lock-free add.
     private const int PersistenceMemoMaxEntries = 1 << 17;
 
+    // Values stored here are SHARED across every caller on this block — both the byte[] slot
+    // values and the Account instances must be treated as immutable after insertion. Before
+    // the memo, each persistence read produced a fresh array; a future caller mutating a
+    // returned array in place would corrupt all subsequent reads of that key on this block.
     private readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, byte[]?> _slotPersistenceMemo = new();
     private readonly ConcurrentDictionary<HashedKey<Address>, Account?> _accountPersistenceMemo = new();
     private int _slotMemoCount;

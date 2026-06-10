@@ -1230,12 +1230,36 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// The method uses an unsafe context and function pointers to invoke opcode implementations directly,
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
+    // Fingerprints of the specialized tip-fork dispatch paths; computed once. Cancun and
+    // Prague share dispatch-relevant flags, so Cancun's instantiation serves both.
+    private static readonly int s_osakaDispatchFingerprint = EvmSpecFingerprint.Compute<OsakaEvmSpec>();
+    private static readonly int s_cancunDispatchFingerprint = EvmSpecFingerprint.Compute<CancunEvmSpec>();
+
     [SkipLocalsInit]
     protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
+    {
+        // Route to a fork-specialized loop when the spec's dispatch flags match a known tip
+        // fork (one fingerprint computation per call frame); anything else — custom chains,
+        // historical forks — runs the generic function-pointer table path, identical to before.
+        int fingerprint = EvmSpecFingerprint.Compute(Spec);
+        if (fingerprint == s_osakaDispatchFingerprint)
+            return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
+        if (fingerprint == s_cancunDispatchFingerprint)
+            return RunByteCodeCore<TTracingInst, TCancelable, CancunEvmSpec>(ref stack, ref gas);
+        return RunByteCodeCore<TTracingInst, TCancelable, GenericEvmSpec>(ref stack, ref gas);
+    }
+
+    [SkipLocalsInit]
+    private CallResult RunByteCodeCore<TTracingInst, TCancelable, TSpec>(
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+        where TSpec : struct, IEvmSpec
     {
         // Reset return data before executing the current frame.
         ReturnData = null;
@@ -1286,8 +1310,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 programCounter++;
                 opCodeCount++;
 
+                if (typeof(TSpec) != typeof(GenericEvmSpec))
+                {
+                    // Fork-specialized dispatch: a full switch with direct call sites the JIT
+                    // can inline and the branch predictor can learn, replacing the megamorphic
+                    // calli below. The JIT folds the typeof comparison, so each instantiation
+                    // carries exactly one of these two dispatch bodies.
+                    exceptionType = DispatchSpecialized<TTracingInst, TSpec>(instruction, ref stack, ref gas, ref programCounter);
+                }
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
-                if (Instruction.POP == instruction)
+                else if (Instruction.POP == instruction)
                 {
                     exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
                 }

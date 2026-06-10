@@ -179,6 +179,36 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void GetSlot_SelfDestruct_DoesNotConsultMemo()
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader);
+
+        // selfDestructStateIdx == 0: the only snapshot carries a self-destruct boundary; the
+        // loop must return null before persistence — and therefore before the memo — is reached.
+        byte[]? result = bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: 0);
+
+        Assert.That(result, Is.Null);
+        reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
+    }
+
+    [Test]
+    public void GetAccount_SnapshotHit_DoesNotPopulateMemo()
+    {
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateIndexedAccount(1);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            MakeSnapshot(c => c.Accounts[new HashedKey<Address>(address)] = account)),
+            reader);
+
+        Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
+        Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
+        reader.DidNotReceive().GetAccount(Arg.Any<Address>());
+    }
+
+    [Test]
     public void GetSlot_SnapshotHit_DoesNotPopulateMemo()
     {
         Address address = TestItem.AddressA;
