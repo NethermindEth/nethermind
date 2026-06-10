@@ -230,7 +230,8 @@ public sealed class KademliaAdapter(
             return await SendPendingPacket(receiver, message, pendingNonceKey, packet, hasSession: true);
         }
 
-        return await SendMessageWithoutSession(receiver, message);
+        pendingNonceKey = EncodeMessageWithoutSession(receiver, message, out byte[] initialPacket);
+        return await SendPendingPacket(receiver, message, pendingNonceKey, initialPacket, hasSession: false);
     }
 
     [SkipLocalsInit]
@@ -257,12 +258,6 @@ public sealed class KademliaAdapter(
         pendingNonceKey = default;
         packet = null;
         return false;
-    }
-
-    private async Task<PendingNonceKey> SendMessageWithoutSession(Node receiver, Discv5Message message)
-    {
-        PendingNonceKey pendingNonceKey = EncodeMessageWithoutSession(receiver, message, out byte[] initialPacket);
-        return await SendPendingPacket(receiver, message, pendingNonceKey, initialPacket, hasSession: false);
     }
 
     [SkipLocalsInit]

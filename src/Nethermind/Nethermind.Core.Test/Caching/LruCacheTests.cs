@@ -251,8 +251,7 @@ namespace Nethermind.Core.Test.Caching
         public void Eviction_callback_is_called_when_capacity_replaces_oldest()
         {
             int evicted = 0;
-            LruCache<int, int> cache = new(2, "test");
-            cache.OnEvict += value => evicted = value;
+            LruCache<int, int> cache = new(2, "test", value => evicted = value);
 
             cache.Set(1, 10);
             cache.Set(2, 20);
@@ -265,8 +264,7 @@ namespace Nethermind.Core.Test.Caching
         public void Eviction_callback_is_called_when_existing_value_is_replaced()
         {
             int evicted = 0;
-            LruCache<int, int> cache = new(2, "test");
-            cache.OnEvict += value => evicted = value;
+            LruCache<int, int> cache = new(2, "test", value => evicted = value);
 
             cache.Set(1, 10);
             cache.Set(1, 11);
@@ -279,8 +277,7 @@ namespace Nethermind.Core.Test.Caching
         public void TryRemove_returns_value_without_calling_eviction_callback()
         {
             int evicted = 0;
-            LruCache<int, int> cache = new(2, "test");
-            cache.OnEvict += value => evicted = value;
+            LruCache<int, int> cache = new(2, "test", value => evicted = value);
             cache.Set(1, 10);
 
             Assert.That(cache.TryRemove(1, out int removed), Is.True);
@@ -320,8 +317,7 @@ namespace Nethermind.Core.Test.Caching
         {
             LruCache<int, int> cache = null!;
             TaskCompletionSource<bool> callbackResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            cache = new LruCache<int, int>(2, "test");
-            cache.OnEvict += _ => callbackResult.SetResult(cache.Contains(1));
+            cache = new LruCache<int, int>(2, "test", _ => callbackResult.SetResult(cache.Contains(1)));
             cache.Set(1, 10);
 
             Task clearTask = Task.Run(cache.Clear);
@@ -339,8 +335,7 @@ namespace Nethermind.Core.Test.Caching
         {
             LruCache<int, int> cache = null!;
             TaskCompletionSource<bool> callbackResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            cache = new LruCache<int, int>(2, "test");
-            cache.OnEvict += _ => callbackResult.SetResult(cache.Contains(1));
+            cache = new LruCache<int, int>(2, "test", _ => callbackResult.SetResult(cache.Contains(1)));
             cache.Set(1, 10);
             if (operation == EvictionOperation.ReplaceOldest)
             {

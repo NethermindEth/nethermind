@@ -62,14 +62,7 @@ public sealed class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
     {
         lock (_lock)
         {
-            if (_count == 0)
-            {
-                return [];
-            }
-
-            Node[] nodes = new Node[_count];
-            Array.Copy(_nodes, nodes, _count);
-            return nodes;
+            return _nodes.AsSpan(0, _count).ToArray();
         }
     }
 }

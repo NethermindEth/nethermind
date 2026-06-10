@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -150,18 +149,17 @@ public class NetworkStorageTests
     }
 
     [Test]
-    public void Discard_batch_drops_pending_nodes()
+    public void Start_batch_discards_pending_nodes_from_stale_batch()
     {
         NetworkStorage storage = new(new SnapshotableMemDb(), LimboLogs.Instance);
         NetworkNode node = new(TestItem.PublicKeyA, "192.1.1.1", 3441, 0L);
 
         storage.StartBatch();
         storage.UpdateNode(node);
-        storage.DiscardBatch();
+        storage.StartBatch();
 
         Assert.That(storage.GetPersistedNodes(), Is.Empty);
 
-        storage.StartBatch();
         storage.UpdateNode(node);
         storage.Commit();
 
@@ -195,52 +193,20 @@ public class NetworkStorageTests
         }
     }
 
-    private sealed class FailingBatchDb : IFullDb
+    private sealed class FailingBatchDb : MemDb
     {
-        private readonly SnapshotableMemDb _inner = new();
-
         public bool ThrowOnNextBatchDispose { get; set; }
 
-        public string Name => _inner.Name;
-
-        public byte[]? this[ReadOnlySpan<byte> key]
-        {
-            get => _inner[key];
-            set => _inner[key] = value;
-        }
-
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _inner[keys];
-
-        public ICollection<byte[]> Keys => _inner.Keys;
-
-        public ICollection<byte[]?> Values => _inner.Values;
-
-        public int Count => _inner.Count;
-
-        public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _inner.GetAll(ordered);
-
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _inner.GetAllKeys(ordered);
-
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _inner.GetAllValues(ordered);
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _inner.Get(key, flags);
-
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _inner.Set(key, value, flags);
-
-        public IWriteBatch StartWriteBatch()
+        public override IWriteBatch StartWriteBatch()
         {
             if (!ThrowOnNextBatchDispose)
             {
-                return _inner.StartWriteBatch();
+                return base.StartWriteBatch();
             }
 
             ThrowOnNextBatchDispose = false;
             return new FailingWriteBatch();
         }
-
-        public void Flush(bool onlyWal = false) => _inner.Flush(onlyWal);
-
-        public void Dispose() => _inner.Dispose();
     }
 
     private sealed class FailingWriteBatch : IWriteBatch

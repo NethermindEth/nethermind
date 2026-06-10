@@ -24,7 +24,6 @@ internal static class TestEnrBuilder
         IPAddress ip = ipAddress ?? IPAddress.Loopback;
         bool isIpv6 = ip.AddressFamily == AddressFamily.InterNetworkV6;
         NodeRecord enr = new();
-        enr.SetEntry(IdEntry.Instance);
         if (isIpv6)
         {
             enr.SetEntry(new Ip6Entry(ip));
@@ -51,9 +50,20 @@ internal static class TestEnrBuilder
         }
         configureExtras?.Invoke(enr);
         enr.EnrSequence = enrSequence;
-        new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+        Sign(enr, privateKey);
         return enr;
     }
+
+    public static NodeRecord BuildSignedWithoutEndpoint(PrivateKey privateKey, ulong enrSequence = 1)
+    {
+        NodeRecord enr = new();
+        enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        enr.EnrSequence = enrSequence;
+        Sign(enr, privateKey);
+        return enr;
+    }
+
+    private static void Sign(NodeRecord enr, PrivateKey privateKey) => new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
 }
 
 internal sealed class TestEth2Entry() : EnrContentEntry<byte[]>([1, 2, 3, 4])

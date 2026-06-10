@@ -37,30 +37,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         Action<ContainerBuilder>? configureDiscv4Services = null)
         : base("discv4", networkConfig, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
     {
-        List<Node> bootNodes = [];
-        NetworkNode[] configuredBootnodes = networkConfig.Bootnodes;
-        if (configuredBootnodes.Length == 0)
-        {
-            if (Logger.IsWarn) Logger.Warn("No bootnodes specified in configuration");
-        }
-
-        for (int i = 0; i < configuredBootnodes.Length; i++)
-        {
-            NetworkNode bootnode = configuredBootnodes[i];
-            if (!bootnode.IsEnode)
-            {
-                if (Logger.IsTrace) Logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");
-                continue;
-            }
-
-            if (bootnode.NodeId is null)
-            {
-                Logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
-                continue;
-            }
-
-            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port));
-        }
+        List<Node> bootNodes = CreateBootNodes(networkConfig.Bootnodes, Logger);
 
         _discv4Services = rootScope.BeginLifetimeScope(
             (builder) =>
@@ -77,6 +54,35 @@ public class DiscoveryApp : KademliaDiscoveryApp
         _discv4Adapter = services.Discv4Adapter;
         _discoveryHandlerFactory = services.NettyDiscoveryHandlerFactory;
         UseKademliaServices(services.NodeSource, services.Kademlia);
+    }
+
+    internal static List<Node> CreateBootNodes(NetworkNode[] configuredBootnodes, ILogger logger)
+    {
+        List<Node> bootNodes = [];
+        if (configuredBootnodes.Length == 0)
+        {
+            if (logger.IsWarn) logger.Warn("No bootnodes specified in configuration");
+        }
+
+        for (int i = 0; i < configuredBootnodes.Length; i++)
+        {
+            NetworkNode bootnode = configuredBootnodes[i];
+            if (!bootnode.IsEnode)
+            {
+                if (logger.IsTrace) logger.Trace($"Ignoring ENR in discovery V4: {bootnode}");
+                continue;
+            }
+
+            if (bootnode.NodeId is null)
+            {
+                logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
+                continue;
+            }
+
+            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.DiscoveryPort));
+        }
+
+        return bootNodes;
     }
 
     /// <summary>

@@ -147,18 +147,18 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
     }
 
-    private BootNodeAddResult AddBootNode(List<Node> bootNodes, PooledSet<Hash256> seen, NetworkNode networkNode)
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NetworkNode networkNode)
     {
         if (networkNode.IsEnr)
         {
             return AddBootNode(bootNodes, seen, networkNode.Enr);
         }
 
-        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Enode.DiscoveryPort);
+        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.DiscoveryPort);
         return AddBootNode(bootNodes, seen, node);
     }
 
-    private BootNodeAddResult AddBootNode(List<Node> bootNodes, PooledSet<Hash256> seen, NodeRecord nodeRecord)
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NodeRecord nodeRecord)
     {
         if (TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node))
         {
@@ -168,7 +168,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         return BootNodeAddResult.Skipped;
     }
 
-    private BootNodeAddResult AddBootNode(List<Node> bootNodes, PooledSet<Hash256> seen, Node node)
+    private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
     {
         if (!seen.Add(node.IdHash))
         {

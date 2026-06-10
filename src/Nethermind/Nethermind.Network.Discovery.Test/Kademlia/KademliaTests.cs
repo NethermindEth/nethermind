@@ -7,7 +7,6 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -214,9 +213,7 @@ public class KademliaTests
         lastRefreshTicks[activePrefix] = 1;
         lastRefreshTicks[stalePrefix] = 2;
 
-        using PooledSet<Hash256> activePrefixes = new(2);
-        activePrefixes.Add(activePrefix);
-        activePrefixes.Add(new("0x3333333333333333333333333333333333333333333333333333333333333333"));
+        HashSet<Hash256> activePrefixes = [activePrefix, new("0x3333333333333333333333333333333333333333333333333333333333333333")];
 
         typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>)
             .GetMethod("PruneLastBucketRefreshTicks", BindingFlags.Instance | BindingFlags.NonPublic)!

@@ -190,14 +190,6 @@ namespace Nethermind.Network
             }
         }
 
-        public void DiscardBatch()
-        {
-            lock (_lock)
-            {
-                DiscardBatchNoLock();
-            }
-        }
-
         private void DiscardBatchNoLock()
         {
             IWriteBatch? currentBatch = _currentBatch;

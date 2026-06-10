@@ -1006,10 +1006,6 @@ namespace Nethermind.Network.Test
             {
             }
 
-            public void DiscardBatch()
-            {
-            }
-
             private bool _pendingChanges;
 
             public int PersistedNodesCount => _nodes.Count;

@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
@@ -184,7 +183,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Enr_In_Common_Storage()
         {
-            NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304);
+            NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
             Node node = new(TestItem.PrivateKeyA.PublicKey, "8.8.8.8", 30304)
             {
                 Enr = enr.EnrString
@@ -221,18 +220,5 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             }
         }
 
-        private static NodeRecord CreateTestEnr(PrivateKey privateKey, IPAddress ipAddress, int tcpPort, int udpPort)
-        {
-            NodeRecord enr = new();
-            enr.SetEntry(IdEntry.Instance);
-            enr.SetEntry(new IpEntry(ipAddress));
-            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-            enr.SetEntry(new TcpEntry(tcpPort));
-            enr.SetEntry(new UdpEntry(udpPort));
-            enr.EnrSequence = 1;
-            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
-
-            return enr;
-        }
     }
 }

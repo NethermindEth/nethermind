@@ -265,24 +265,10 @@ public class WireTests
         TestNodeRecordProvider NodeRecordProvider,
         IPEndPoint Endpoint);
 
-    private sealed class TestNodeRecordProvider : INodeRecordProvider
+    private sealed class TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint) : INodeRecordProvider
     {
-        public TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint)
-        {
-            NodeRecord nodeRecord = new();
-            nodeRecord.SetEntry(IdEntry.Instance);
-            if (includeEndpoint)
-            {
-                nodeRecord.SetEntry(new IpEntry(endpoint.Address));
-                nodeRecord.SetEntry(new TcpEntry(endpoint.Port));
-                nodeRecord.SetEntry(new UdpEntry(endpoint.Port));
-            }
-            nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-            nodeRecord.EnrSequence = 1;
-            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(nodeRecord);
-            Current = nodeRecord;
-        }
-
-        public NodeRecord Current { get; }
+        public NodeRecord Current { get; } = includeEndpoint
+            ? TestEnrBuilder.BuildSigned(privateKey, endpoint.Address, tcpPort: endpoint.Port, udpPort: endpoint.Port)
+            : TestEnrBuilder.BuildSignedWithoutEndpoint(privateKey);
     }
 }

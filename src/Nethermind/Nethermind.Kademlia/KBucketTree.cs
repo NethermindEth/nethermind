@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Collections.Pooled;
 using Nethermind.Logging;
 
 namespace Nethermind.Kademlia;
@@ -177,27 +178,23 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         lock (_lock)
         {
             if (_logger.IsDebug) _logger.Debug($"Getting all nodes at distance {distance}");
-            TNode[] result = ArrayPool<TNode>.Shared.Rent(_k);
+            using PooledList<TNode> result = new(_k);
             (TKadKey Hash, TNode Node)[] bucketEntries = ArrayPool<(TKadKey Hash, TNode Node)>.Shared.Rent(_k);
-            int count = 0;
             try
             {
-                GetAllAtDistanceRecursive(_root, 0, distance, ref result, ref count, bucketEntries);
-                if (_logger.IsDebug) _logger.Debug($"Found {count} nodes at distance {distance}");
+                GetAllAtDistanceRecursive(_root, 0, distance, result, bucketEntries);
+                if (_logger.IsDebug) _logger.Debug($"Found {result.Count} nodes at distance {distance}");
 
-                TNode[] copy = new TNode[count];
-                Array.Copy(result, copy, count);
-                return copy;
+                return result.Span.ToArray();
             }
             finally
             {
                 ArrayPool<(TKadKey Hash, TNode Node)>.Shared.Return(bucketEntries, RuntimeHelpers.IsReferenceOrContainsReferences<(TKadKey Hash, TNode Node)>());
-                ArrayPool<TNode>.Shared.Return(result, RuntimeHelpers.IsReferenceOrContainsReferences<TNode>());
             }
         }
     }
 
-    private void GetAllAtDistanceRecursive(TreeNode node, int depth, int distance, ref TNode[] result, ref int count, (TKadKey Hash, TNode Node)[] bucketEntries)
+    private void GetAllAtDistanceRecursive(TreeNode node, int depth, int distance, PooledList<TNode> result, (TKadKey Hash, TNode Node)[] bucketEntries)
     {
         int targetDepth = _distance.MaxDistance - distance;
         if (node.IsLeaf)
@@ -210,7 +207,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
                     (TKadKey hash, TNode item) = bucketEntries[i];
                     if (_distance.CalculateLogDistance(hash, _currentNodeHash) == distance)
                     {
-                        AddResult(item, ref result, ref count);
+                        result.Add(item);
                     }
                 }
             }
@@ -219,7 +216,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
                 TNode[] items = node.Bucket.GetAll();
                 for (int i = 0; i < items.Length; i++)
                 {
-                    AddResult(items[i], ref result, ref count);
+                    result.Add(items[i]);
                 }
             }
         }
@@ -230,11 +227,11 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
                 bool goRight = _distance.GetBit(_currentNodeHash, depth);
                 if (goRight)
                 {
-                    GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, ref result, ref count, bucketEntries);
+                    GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, result, bucketEntries);
                 }
                 else
                 {
-                    GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, ref result, ref count, bucketEntries);
+                    GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, result, bucketEntries);
                 }
             }
             else if (depth == targetDepth)
@@ -243,32 +240,19 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
                 // Note: We go the opposite direction here, as the same direction would have a distance + 1
                 if (goRight)
                 {
-                    GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, ref result, ref count, bucketEntries);
+                    GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, result, bucketEntries);
                 }
                 else
                 {
-                    GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, ref result, ref count, bucketEntries);
+                    GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, result, bucketEntries);
                 }
             }
             else
             {
-                GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, ref result, ref count, bucketEntries);
-                GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, ref result, ref count, bucketEntries);
+                GetAllAtDistanceRecursive(node.Left!, depth + 1, distance, result, bucketEntries);
+                GetAllAtDistanceRecursive(node.Right!, depth + 1, distance, result, bucketEntries);
             }
         }
-    }
-
-    private static void AddResult(TNode item, ref TNode[] result, ref int count)
-    {
-        if (count == result.Length)
-        {
-            TNode[] expanded = ArrayPool<TNode>.Shared.Rent(Math.Max(1, result.Length * 2));
-            Array.Copy(result, expanded, result.Length);
-            ArrayPool<TNode>.Shared.Return(result, RuntimeHelpers.IsReferenceOrContainsReferences<TNode>());
-            result = expanded;
-        }
-
-        result[count++] = item;
     }
 
     public IEnumerable<(TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket)> IterateBuckets()

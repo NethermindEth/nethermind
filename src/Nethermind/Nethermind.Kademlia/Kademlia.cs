@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using Collections.Pooled;
 using Nethermind.Logging;
 
@@ -157,13 +155,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
         // Refresh stale non-empty buckets one by one. Protocols whose wire lookup target cannot be synthesized from a
         // bucket prefix may return a best-effort random lookup key here; discv4 public keys are one example.
-        int activeBucketPrefixCapacity;
-        lock (_lastBucketRefreshLock)
-        {
-            activeBucketPrefixCapacity = _lastBucketRefreshTicks.Count;
-        }
-
-        using PooledSet<TKadKey> activeBucketPrefixes = new(activeBucketPrefixCapacity);
+        using PooledSet<TKadKey> activeBucketPrefixes = new();
         foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
         {
             activeBucketPrefixes.Add(Prefix);
@@ -200,35 +192,17 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         }
     }
 
-    private void PruneLastBucketRefreshTicks(PooledSet<TKadKey> activeBucketPrefixes)
+    private void PruneLastBucketRefreshTicks(ISet<TKadKey> activeBucketPrefixes)
     {
         lock (_lastBucketRefreshLock)
         {
-            TKadKey[] stalePrefixes = ArrayPool<TKadKey>.Shared.Rent(_lastBucketRefreshTicks.Count);
-            int stalePrefixCount = 0;
-            try
+            // Dictionary.Remove is safe during key enumeration since .NET Core 3.0.
+            foreach (TKadKey prefix in _lastBucketRefreshTicks.Keys)
             {
-                foreach (TKadKey prefix in _lastBucketRefreshTicks.Keys)
+                if (!activeBucketPrefixes.Contains(prefix))
                 {
-                    if (!activeBucketPrefixes.Contains(prefix))
-                    {
-                        stalePrefixes[stalePrefixCount++] = prefix;
-                    }
+                    _lastBucketRefreshTicks.Remove(prefix);
                 }
-
-                if (stalePrefixCount == 0)
-                {
-                    return;
-                }
-
-                for (int i = 0; i < stalePrefixCount; i++)
-                {
-                    _lastBucketRefreshTicks.Remove(stalePrefixes[i]);
-                }
-            }
-            finally
-            {
-                ArrayPool<TKadKey>.Shared.Return(stalePrefixes, RuntimeHelpers.IsReferenceOrContainsReferences<TKadKey>());
             }
         }
     }

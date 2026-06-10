@@ -254,7 +254,6 @@ public class PeerManagerFilteringIntegrationTests
         public void RemoveNode(PublicKey nodeId) => _pendingChanges = true;
         public void StartBatch() { }
         public void Commit() { }
-        public void DiscardBatch() { }
         public bool AnyPendingChange() => _pendingChanges;
     }
 }

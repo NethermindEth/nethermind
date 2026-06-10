@@ -8,9 +8,8 @@ public class KBucket<TNode, TKadKey>(int k)
     where TNode : notnull
     where TKadKey : notnull
 {
-    private readonly int _k = k;
-    private DoubleEndedLru<TKadKey, TNode> _items = new(k);
-    private DoubleEndedLru<TKadKey, TNode> _replacement = new(k);
+    private readonly DoubleEndedLru<TKadKey, TNode> _items = new(k);
+    private readonly DoubleEndedLru<TKadKey, TNode> _replacement = new(k);
 
     public int Count => _items.Count;
 
@@ -25,8 +24,7 @@ public class KBucket<TNode, TKadKey>(int k)
     /// <returns></returns>
     public BucketAddResult TryAddOrRefresh(in TKadKey hash, TNode item, out TNode? toRefresh)
     {
-        TNode? previous = _items.GetByKey(hash);
-        BucketAddResult addResult = _items.AddOrRefresh(hash, item);
+        BucketAddResult addResult = _items.AddOrRefresh(hash, item, out TNode? previous);
         if (addResult == BucketAddResult.Added ||
             (addResult == BucketAddResult.Refreshed && ShouldUpdateCachedArray(previous, item)))
         {
@@ -66,9 +64,9 @@ public class KBucket<TNode, TKadKey>(int k)
 
     public void Clear()
     {
-        _items = new DoubleEndedLru<TKadKey, TNode>(_k);
-        _replacement = new DoubleEndedLru<TKadKey, TNode>(_k);
-        _cachedArray = _items.GetAll();
+        _items.Clear();
+        _replacement.Clear();
+        _cachedArray = [];
     }
 
     public bool ContainsNode(in TKadKey hash) => _items.Contains(hash);
