@@ -9,7 +9,6 @@ using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IlEvm;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis.IlEvm;
