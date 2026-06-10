@@ -101,7 +101,7 @@ static INotifier GetNotifier(string name, bool isDevelopment)
         Environment.GetEnvironmentVariable("RPC_MONITOR_CHANNEL_ID") is { } channelId)
     {
         return new BotSlackNotifier(name, new BotSlackConfig { BotToken = botToken, ChannelId = channelId })
-            .RateLimited(10, TimeSpan.FromMinutes(30));
+            .RateLimited((10, TimeSpan.FromMinutes(30)));
     }
 
     return isDevelopment
