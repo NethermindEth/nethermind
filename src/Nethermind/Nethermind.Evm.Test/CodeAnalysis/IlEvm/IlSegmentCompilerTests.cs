@@ -131,7 +131,7 @@ public class IlSegmentCompilerTests
             (byte)Instruction.STOP,
         ];
         AnalyzedCode analyzedShort = BytecodeAnalyzer.Analyze(shortStackHeavy, Spec);
-        bool compiledShort = IlSegmentCompiler.TryCompile(shortStackHeavy, analyzedShort.Blocks[0], out _);
+        bool compiledShort = IlSegmentCompiler.TryCompile(shortStackHeavy, analyzedShort.Blocks[0], Spec, out _);
         Assert.That(compiledShort, Is.False, "three ops against five boundary conversions is a net loss");
 
         byte[] longChain = new byte[2 + 6 * 3 + 1];
@@ -146,7 +146,7 @@ public class IlSegmentCompilerTests
         }
         longChain[i] = (byte)Instruction.STOP;
         AnalyzedCode analyzedLong = BytecodeAnalyzer.Analyze(longChain, Spec);
-        bool compiledLong = IlSegmentCompiler.TryCompile(longChain, analyzedLong.Blocks[0], out IlCompiledSegment? segment);
+        bool compiledLong = IlSegmentCompiler.TryCompile(longChain, analyzedLong.Blocks[0], Spec, out IlCompiledSegment? segment);
         Assert.That(compiledLong, Is.True, "a 13-op dependence chain with one exit value amortizes its boundary");
         Assert.That(segment!.StackRequired, Is.EqualTo(0), "the chain produces its own operands");
     }
@@ -163,7 +163,7 @@ public class IlSegmentCompilerTests
         ];
 
         AnalyzedCode analyzed = BytecodeAnalyzer.Analyze(code, Spec);
-        bool compiled = IlSegmentCompiler.TryCompile(code, analyzed.Blocks[0], out IlCompiledSegment? segment);
+        bool compiled = IlSegmentCompiler.TryCompile(code, analyzed.Blocks[0], Spec, out IlCompiledSegment? segment);
 
         Assert.That(compiled, Is.True, "precondition: the prefix must compile");
         Assert.That(segment!.StackRequired, Is.EqualTo(2), "ADD reaches two entries deep");
@@ -324,13 +324,13 @@ public class IlSegmentCompilerTests
         byte[] code =
         [
             (byte)Instruction.PUSH1, 0,
-            (byte)Instruction.SLOAD,
+            (byte)Instruction.CALL,
             (byte)Instruction.STOP,
         ];
         AnalyzedCode analyzed = BytecodeAnalyzer.Analyze(code, Spec);
         Assert.That(analyzed.Blocks[1].IsCompilable, Is.False, "precondition: the SLOAD block is interpreter-only");
 
-        bool compiled = IlSegmentCompiler.TryCompile(code, analyzed.Blocks[1], out IlCompiledSegment? segment);
+        bool compiled = IlSegmentCompiler.TryCompile(code, analyzed.Blocks[1], Spec, out IlCompiledSegment? segment);
 
         Assert.That(compiled, Is.False, "interpreter-only blocks must not compile");
         Assert.That(segment, Is.Null, "no segment is produced for a rejected block");
@@ -340,7 +340,7 @@ public class IlSegmentCompilerTests
     {
         AnalyzedCode analyzed = BytecodeAnalyzer.Analyze(code, Spec);
         Assert.That(analyzed.BlockCount, Is.GreaterThan(0), "precondition: the code analyzes into at least one block");
-        bool compiled = IlSegmentCompiler.TryCompile(code, analyzed.Blocks[0], out IlCompiledSegment? segment);
+        bool compiled = IlSegmentCompiler.TryCompile(code, analyzed.Blocks[0], Spec, out IlCompiledSegment? segment);
         Assert.That(compiled, Is.True, "precondition: the first block must compile");
 
         byte[] stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * EvmStack.WordSize];

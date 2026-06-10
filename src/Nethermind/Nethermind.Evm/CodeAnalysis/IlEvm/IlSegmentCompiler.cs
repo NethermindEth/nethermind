@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Nethermind.Core.Specs;
 using System.Reflection.Emit;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
@@ -143,6 +144,20 @@ public static partial class IlSegmentCompiler
     private static readonly HandlerOp? s_mstore8 = HandlerOf(nameof(EvmInstructions.InstructionMStore8), pops: 2, pushes: 0);
     private static readonly HandlerOp? s_keccak256 = HandlerOf(nameof(EvmInstructions.InstructionKeccak256), pops: 2, pushes: 1);
     private static readonly HandlerOp? s_callDataLoad = HandlerOf(nameof(EvmInstructions.InstructionCallDataLoad), pops: 1, pushes: 1);
+    private static readonly HandlerOp? s_sload = HandlerOf(nameof(EvmInstructions.InstructionSLoad), pops: 1, pushes: 1);
+    private static readonly HandlerOp? s_gasOp = HandlerOf(nameof(EvmInstructions.InstructionGas), pops: 0, pushes: 1);
+    // Environment reads close over their nested Op struct exactly as the dispatch table does.
+    private static readonly HandlerOp? s_caller = EnvHandlerOf("InstructionEnvAddress", typeof(EvmInstructions.OpCaller<>));
+    private static readonly HandlerOp? s_address = EnvHandlerOf("InstructionEnvAddress", typeof(EvmInstructions.OpAddress<>));
+    private static readonly HandlerOp? s_callValue = EnvHandlerOf("InstructionEnvUInt256", typeof(EvmInstructions.OpCallValue<>));
+    private static readonly HandlerOp? s_callDataSize = EnvHandlerOf("InstructionEnvUInt32", typeof(EvmInstructions.OpCallDataSize<>));
+    // SSTORE instantiations mirror the dispatch table's spec selection (net metering / stipend
+    // fix / EIP-8037); the artifact is per-spec, so the choice is fixed at compile time.
+    private static readonly HandlerOp? s_sstoreUnmetered = HandlerOf(nameof(EvmInstructions.InstructionSStoreUnmetered), pops: 2, pushes: 0);
+    private static readonly HandlerOp? s_sstoreMeteredOnOn = SStoreMeteredOf(stipendFix: true, eip8037: true);
+    private static readonly HandlerOp? s_sstoreMeteredOnOff = SStoreMeteredOf(stipendFix: true, eip8037: false);
+    private static readonly HandlerOp? s_sstoreMeteredOffOn = SStoreMeteredOf(stipendFix: false, eip8037: true);
+    private static readonly HandlerOp? s_sstoreMeteredOffOff = SStoreMeteredOf(stipendFix: false, eip8037: false);
 
     private static HandlerOp? HandlerOf(string name, int pops, int pushes)
     {
@@ -158,17 +173,65 @@ public static partial class IlSegmentCompiler
         }
     }
 
-    private static HandlerOp? TryGetHandlerOp(Instruction instruction) => instruction switch
+    private static HandlerOp? EnvHandlerOf(string methodName, Type openOpType)
+    {
+        try
+        {
+            MethodInfo? open = typeof(EvmInstructions).GetMethod(methodName);
+            Type closedOp = openOpType.MakeGenericType(typeof(EthereumGasPolicy));
+            MethodInfo? closed = open?.MakeGenericMethod(typeof(EthereumGasPolicy), closedOp, typeof(OffFlag));
+            return closed is null ? null : new HandlerOp(closed, Pops: 0, Pushes: 1);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static HandlerOp? SStoreMeteredOf(bool stipendFix, bool eip8037)
+    {
+        try
+        {
+            MethodInfo? open = typeof(EvmInstructions).GetMethod(nameof(EvmInstructions.InstructionSStoreMetered));
+            MethodInfo? closed = open?.MakeGenericMethod(
+                typeof(EthereumGasPolicy),
+                typeof(OffFlag),
+                stipendFix ? typeof(OnFlag) : typeof(OffFlag),
+                eip8037 ? typeof(OnFlag) : typeof(OffFlag));
+            return closed is null ? null : new HandlerOp(closed, Pops: 2, Pushes: 0);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static HandlerOp? TryGetHandlerOp(Instruction instruction, IReleaseSpec spec) => instruction switch
     {
         Instruction.MLOAD => s_mload,
         Instruction.MSTORE => s_mstore,
         Instruction.MSTORE8 => s_mstore8,
         Instruction.KECCAK256 => s_keccak256,
         Instruction.CALLDATALOAD => s_callDataLoad,
+        Instruction.SLOAD => s_sload,
+        Instruction.GAS => s_gasOp,
+        Instruction.CALLER => s_caller,
+        Instruction.ADDRESS => s_address,
+        Instruction.CALLVALUE => s_callValue,
+        Instruction.CALLDATASIZE => s_callDataSize,
+        Instruction.SSTORE => !spec.UseNetGasMetering
+            ? s_sstoreUnmetered
+            : (spec.UseNetGasMeteringWithAStipendFix, spec.IsEip8037Enabled) switch
+            {
+                (true, true) => s_sstoreMeteredOnOn,
+                (true, false) => s_sstoreMeteredOnOff,
+                (false, true) => s_sstoreMeteredOffOn,
+                (false, false) => s_sstoreMeteredOffOff,
+            },
         _ => null,
     };
 
-    public static bool TryCompile(ReadOnlySpan<byte> code, in BasicBlock block, out IlCompiledSegment? segment)
+    public static bool TryCompile(ReadOnlySpan<byte> code, in BasicBlock block, IReleaseSpec spec, out IlCompiledSegment? segment)
     {
         segment = null;
         if (!block.IsCompilable || s_gasConsume is null || s_popUInt256 is null
@@ -177,7 +240,7 @@ public static partial class IlSegmentCompiler
             return false;
         }
 
-        List<DecodedOp> ops = DecodePrefix(code, in block, out int exitPc, out PrefixMetrics metrics);
+        List<DecodedOp> ops = DecodePrefix(code, in block, spec, out int exitPc, out PrefixMetrics metrics);
         int exitPushes = metrics.StackRequired + metrics.StackFinalDelta;
         int boundaryTraffic = metrics.StackRequired + exitPushes + metrics.HandlerOperandTraffic;
         if (ops.Count < MinimumPrefixOps || ops.Count < BoundaryCostFactor * boundaryTraffic)
@@ -197,7 +260,10 @@ public static partial class IlSegmentCompiler
         return true;
     }
 
-    private readonly record struct DecodedOp(Instruction Instruction, OpInfo Info, UInt256 Constant, bool IsHandlerCall);
+    private readonly record struct DecodedOp(Instruction Instruction, OpInfo Info, UInt256 Constant, HandlerOp? Handler)
+    {
+        public bool IsHandlerCall => Handler is not null;
+    }
 
     private struct PrefixMetrics
     {
@@ -208,7 +274,7 @@ public static partial class IlSegmentCompiler
         public int HandlerOperandTraffic;
     }
 
-    private static List<DecodedOp> DecodePrefix(ReadOnlySpan<byte> code, in BasicBlock block, out int exitPc, out PrefixMetrics metrics)
+    private static List<DecodedOp> DecodePrefix(ReadOnlySpan<byte> code, in BasicBlock block, IReleaseSpec spec, out int exitPc, out PrefixMetrics metrics)
     {
         List<DecodedOp> ops = [];
         metrics = default;
@@ -218,12 +284,12 @@ public static partial class IlSegmentCompiler
         while (pc < block.End)
         {
             Instruction instruction = (Instruction)code[pc];
-            bool isHandlerCall = false;
+            HandlerOp? handlerOp = null;
             if (!IsEmittable(instruction, out OpInfo info))
             {
-                if (TryGetHandlerOp(instruction) is null || !TryGetHandlerOpInfo(instruction, out info))
+                handlerOp = TryGetHandlerOp(instruction, spec);
+                if (handlerOp is null || !TryGetHandlerOpInfo(instruction, out info))
                     break;
-                isHandlerCall = true;
             }
 
             UInt256 constant = default;
@@ -237,14 +303,14 @@ public static partial class IlSegmentCompiler
                 constant = new UInt256(code.Slice(immediateStart, info.ImmediateBytes), isBigEndian: true);
             }
 
-            ops.Add(new DecodedOp(instruction, info, constant, isHandlerCall));
+            ops.Add(new DecodedOp(instruction, info, constant, handlerOp));
             // Handler statics belong to the gas PRECONDITION (the handler itself charges them
             // at execution); only the dynamic part can halt, exactly inside the handler.
             metrics.StaticGas += info.StaticGas;
             metrics.StackRequired = Math.Max(metrics.StackRequired, info.Pops - delta);
             delta += info.Pushes - info.Pops;
             metrics.StackMaxDelta = Math.Max(metrics.StackMaxDelta, delta);
-            if (isHandlerCall)
+            if (handlerOp is not null)
                 metrics.HandlerOperandTraffic += info.Pops + info.Pushes;
 
             pc += 1 + info.ImmediateBytes;
@@ -272,6 +338,23 @@ public static partial class IlSegmentCompiler
                 return true;
             case Instruction.CALLDATALOAD:
                 info = new OpInfo(GasCostOf.VeryLow, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            // SLOAD/SSTORE gas is entirely spec/state-dependent (warm/cold, net metering) and
+            // charged inside the handler — they contribute nothing to the static precondition.
+            case Instruction.SLOAD:
+                info = new OpInfo(StaticGas: 0, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.SSTORE:
+                info = new OpInfo(StaticGas: 0, Pops: 2, Pushes: 0, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            // Environment reads: handlers charge their own Base gas; GAS reads the remaining
+            // gas, which is exact because every pending chunk is flushed before a handler call.
+            case Instruction.GAS:
+            case Instruction.CALLER:
+            case Instruction.ADDRESS:
+            case Instruction.CALLVALUE:
+            case Instruction.CALLDATASIZE:
+                info = new OpInfo(GasCostOf.Base, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
                 return true;
         }
 
@@ -446,7 +529,7 @@ public static partial class IlSegmentCompiler
     /// </summary>
     private static void EmitHandlerCall(ILGenerator il, in DecodedOp op, List<Operand> symbolicStack)
     {
-        HandlerOp handler = TryGetHandlerOp(op.Instruction)!.Value;
+        HandlerOp handler = op.Handler!.Value;
 
         int operandStart = symbolicStack.Count - handler.Pops;
         for (int i = operandStart; i < symbolicStack.Count; i++)

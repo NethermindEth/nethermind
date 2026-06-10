@@ -103,6 +103,22 @@ public static class IlEvmOpcodes
                 info = new OpInfo(GasCostOf.Sha3, Pops: 2, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
                 return true;
 
+            // Storage and environment opcodes execute as embedded handler calls; their gas is
+            // charged inside the handlers (spec/state-dependent for storage).
+            case Instruction.SLOAD:
+                info = new OpInfo(StaticGas: 0, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.SSTORE:
+                info = new OpInfo(StaticGas: 0, Pops: 2, Pushes: 0, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.GAS:
+            case Instruction.CALLER:
+            case Instruction.ADDRESS:
+            case Instruction.CALLVALUE:
+            case Instruction.CALLDATASIZE:
+                info = new OpInfo(GasCostOf.Base, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+
             case Instruction.JUMP:
                 info = new OpInfo(GasCostOf.Mid, Pops: 1, Pushes: 0, ImmediateBytes: 0, OpKind.Jump);
                 return true;

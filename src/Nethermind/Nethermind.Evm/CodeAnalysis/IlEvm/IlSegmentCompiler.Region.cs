@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection.Emit;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
@@ -38,7 +39,7 @@ public static partial class IlSegmentCompiler
     /// segment per externally reachable entry into <paramref name="segmentsByBlockIndex"/>.
     /// Returns the number of consecutive blocks consumed (at least 1), whether compiled or not.
     /// </summary>
-    public static int TryCompileRegion(ReadOnlySpan<byte> code, AnalyzedCode analyzed, int firstBlockIndex, IlCompiledSegment?[] segmentsByBlockIndex, out int segmentCount)
+    public static int TryCompileRegion(ReadOnlySpan<byte> code, AnalyzedCode analyzed, int firstBlockIndex, IReleaseSpec spec, IlCompiledSegment?[] segmentsByBlockIndex, out int segmentCount)
     {
         segmentCount = 0;
         ReadOnlySpan<BasicBlock> blocks = analyzed.Blocks;
@@ -48,20 +49,34 @@ public static partial class IlSegmentCompiler
             return 1;
         }
 
-        List<RegionBlock> region = CollectRegion(code, analyzed, firstBlockIndex);
+        List<RegionBlock> region = CollectRegion(code, analyzed, firstBlockIndex, spec);
         if (region.Count == 0)
             return 1;
 
         int totalOps = 0;
         int totalBoundaryTraffic = 0;
+        bool hasInRegionBackEdge = false;
+        int regionStart = region[0].Block.Start;
         foreach (RegionBlock regionBlock in region)
         {
             totalOps += regionBlock.Ops.Count;
             totalBoundaryTraffic += regionBlock.Metrics.StackRequired
                 + Math.Max(0, regionBlock.Metrics.StackRequired + regionBlock.Metrics.StackFinalDelta)
                 + regionBlock.Metrics.HandlerOperandTraffic;
+            if (regionBlock.HasConstantJump
+                && regionBlock.JumpDestination >= regionStart
+                && regionBlock.JumpDestination <= regionBlock.Block.Start)
+            {
+                hasInRegionBackEdge = true;
+            }
         }
-        if (totalOps < MinimumPrefixOps || totalOps < BoundaryCostFactor * totalBoundaryTraffic)
+
+        // The static ops-vs-boundary gate prices a SINGLE pass. A region with an internal
+        // back-edge is a loop: its body amortizes the boundary over thousands of iterations,
+        // so the single-pass gate must not apply (it was silently rejecting every hot loop).
+        if (totalOps < MinimumPrefixOps)
+            return region.Count;
+        if (!hasInRegionBackEdge && totalOps < BoundaryCostFactor * totalBoundaryTraffic)
             return region.Count;
 
         CompiledSegmentInvoke invoke;
@@ -112,7 +127,7 @@ public static partial class IlSegmentCompiler
         public Label Label;
     }
 
-    private static List<RegionBlock> CollectRegion(ReadOnlySpan<byte> code, AnalyzedCode analyzed, int firstBlockIndex)
+    private static List<RegionBlock> CollectRegion(ReadOnlySpan<byte> code, AnalyzedCode analyzed, int firstBlockIndex, IReleaseSpec spec)
     {
         List<RegionBlock> region = [];
         ReadOnlySpan<BasicBlock> blocks = analyzed.Blocks;
@@ -125,7 +140,7 @@ public static partial class IlSegmentCompiler
             if (region.Count > 0 && region[^1].Block.End != block.Start)
                 break; // non-contiguous (defensive; analyzer blocks tile the code)
 
-            List<DecodedOp> ops = DecodePrefix(code, in block, out int cutPc, out PrefixMetrics metrics);
+            List<DecodedOp> ops = DecodePrefix(code, in block, spec, out int cutPc, out PrefixMetrics metrics);
 
             RegionBlock regionBlock = new()
             {

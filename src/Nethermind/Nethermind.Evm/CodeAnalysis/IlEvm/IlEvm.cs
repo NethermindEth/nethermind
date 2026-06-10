@@ -160,7 +160,7 @@ public static class IlEvm
             {
                 if (analyzed.Blocks[blockIndex].IsCompilable)
                 {
-                    blockIndex += IlSegmentCompiler.TryCompileRegion(code, analyzed, blockIndex, segments, out int regionSegments);
+                    blockIndex += IlSegmentCompiler.TryCompileRegion(code, analyzed, blockIndex, spec, segments, out int regionSegments);
                     segmentCount += regionSegments;
                 }
                 else

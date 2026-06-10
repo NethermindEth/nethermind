@@ -90,7 +90,7 @@ public class BytecodeAnalyzerTests
         byte[] code =
         [
             (byte)Instruction.PUSH1, 0x00,
-            (byte)Instruction.SLOAD,     // pc 2 — not in the v1 subset
+            (byte)Instruction.CALL,      // pc 2 — interpreter-only (calls never compile)
             (byte)Instruction.PUSH1, 0x01,
             (byte)Instruction.ADD,
             (byte)Instruction.STOP,
