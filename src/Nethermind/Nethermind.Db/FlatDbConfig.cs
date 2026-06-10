@@ -20,5 +20,6 @@ public class FlatDbConfig : IFlatDbConfig
     public int MinReorgDepth { get; set; } = 128;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
+    public long CompactionOffset { get; set; } = -1;
     public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
 }
