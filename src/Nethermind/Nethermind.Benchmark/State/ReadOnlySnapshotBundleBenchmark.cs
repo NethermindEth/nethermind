@@ -94,6 +94,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 commitTarget: commitTarget,
                 configuration: config,
                 trieCacheWarmer: new NoopTrieWarmer(),
+                balReaderPool: null,
                 logManager: NullLogManager.Instance);
 
             int addressOffset = totalAccountCount;

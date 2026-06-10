@@ -143,6 +143,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 flatOverrideScope,
                 configuration,
                 trieWarmer,
+                balReaderPool: null,
                 logManager);
         }
     }

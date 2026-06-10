@@ -14,6 +14,7 @@ public class FlatScopeProvider(
     IFlatDbManager flatDbManager,
     IFlatDbConfig configuration,
     ITrieWarmer trieWarmer,
+    BalReaderPool? balReaderPool,
     ResourcePool.Usage usage,
     ILogManager logManager,
     bool isReadOnly)
@@ -38,6 +39,7 @@ public class FlatScopeProvider(
             flatDbManager,
             configuration,
             trieWarmer,
+            balReaderPool,
             logManager,
             isReadOnly: isReadOnly);
     }
