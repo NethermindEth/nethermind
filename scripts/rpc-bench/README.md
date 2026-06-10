@@ -144,7 +144,8 @@ duration, then its HTTP API (`/api/stats`, `/api/leaderboard`) is scraped.
   "duration": 300,         // seconds of load
   "leaderboard_top": 50,   // rows scraped from /api/leaderboard
   "api_port": 5000,
-  "min_mean_ms": 1         // Validation:MinMeanThresholdMs (tool default 200 keeps the leaderboard empty against a fast local node)
+  "min_mean_ms": 1,        // Validation:MinMeanThresholdMs (tool default 200 keeps the leaderboard empty against a fast local node)
+  "max_cv": 10             // Validation:MaxCoefficientOfVariation (tool default 0.3 rejects sub-ms loopback measurements)
 }
 ```
 

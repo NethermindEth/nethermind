@@ -33,11 +33,12 @@ ECC_PARALLEL="${ECC_PARALLEL:-8}"           # -> Rpc__MaxParallelCalls
 ECC_DURATION="${ECC_DURATION:-300}"         # seconds of load
 ECC_API_PORT="${ECC_API_PORT:-5000}"
 ECC_LEADERBOARD_TOP="${ECC_LEADERBOARD_TOP:-50}"
-# The tool's default 'confirmed slow' threshold is 200ms — tuned for hunting
-# pathological cases on remote nodes. Against a fast local snapshot node nothing
-# crosses it and the leaderboard stays empty, so default to 1ms in CI: the
-# slowest validated cases always rank.
+# The tool's default 'confirmed slow' gates (mean > 200ms, cv < 0.3) are tuned
+# for hunting pathological cases on remote nodes; against a fast local snapshot
+# node nothing qualifies and the leaderboard stays empty. CI defaults rank the
+# slowest validated cases regardless: mean > 1ms, cv gate effectively off.
 ECC_MIN_MEAN_MS="${ECC_MIN_MEAN_MS:-1}"
+ECC_MAX_CV="${ECC_MAX_CV:-10}"
 SDK_IMAGE="${SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0}"
 CONTAINER_NAME="${ECC_CONTAINER_NAME:-ethcallchaos-bench}"
 
@@ -94,6 +95,7 @@ docker run -d --name "$CONTAINER_NAME" \
   -e "Rpc__MaxCallsPerSecond=${ECC_RATE}" \
   -e "Rpc__MaxParallelCalls=${ECC_PARALLEL}" \
   -e "Validation__MinMeanThresholdMs=${ECC_MIN_MEAN_MS}" \
+  -e "Validation__MaxCoefficientOfVariation=${ECC_MAX_CV}" \
   -e "ConnectionStrings__Sqlite=Data Source=/work/bench.db" \
   -e "Storage__ConnectionString=Data Source=/work/bench.db" \
   "$SDK_IMAGE" \
