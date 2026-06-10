@@ -155,7 +155,9 @@ public static partial class IlSegmentCompiler
             RegionBlock block = region[index];
             int exitHeight = heights[index] + block.Metrics.StackFinalDelta;
 
-            // Internal successors: constant-jump target and/or fall-through.
+            // Internal successors: constant-jump target and/or fall-through. A frame
+            // terminator (STOP/RETURN/REVERT) has NO fall-through edge — propagating one
+            // would seed the next block with a phantom height and corrupt its entry pops.
             if (block.HasConstantJump)
             {
                 int target = FindRegionBlock(region, block.JumpDestination);
@@ -168,13 +170,13 @@ public static partial class IlSegmentCompiler
                     return false;
                 }
             }
-            else if (block.IsFullyEmittable
+            else if (block.IsFullyEmittable && !block.EndsWithTerminator
                 && index + 1 < count && region[index + 1].Block.Start == block.Block.End
                 && !Propagate(index + 1, exitHeight))
             {
                 return false;
             }
-            // Cuts and external jumps are exits; they impose no internal constraint.
+            // Cuts, external jumps and frame terminators are exits; no internal constraint.
         }
 
         for (int i = 0; i < count; i++)
@@ -357,6 +359,13 @@ public static partial class IlSegmentCompiler
                 EmitRegisterizedContinue(il, region, index, regionBlock.Block.End, symbolicStack, frame, alreadyAligned: true);
             }
         }
+        else if (regionBlock.EndsWithTerminator)
+        {
+            // The terminator handler always returns out of the method (it never yields None);
+            // this point only satisfies the IL stream — it is unreachable.
+            il.Emit(OpCodes.Ldc_I4, (int)EvmExceptionType.None);
+            il.Emit(OpCodes.Ret);
+        }
         else if (regionBlock.IsFullyEmittable)
         {
             EmitChargePendingGas(il, ref pendingChunkGas);
@@ -463,6 +472,7 @@ public static partial class IlSegmentCompiler
         public PrefixMetrics Metrics;
         public int CutPc;
         public bool IsFullyEmittable;          // prefix covers the block up to its end or terminal jump
+        public bool EndsWithTerminator;        // fully emittable AND ends in STOP/RETURN/REVERT: no fall-through edge
         public Instruction TerminalJump;       // JUMP or JUMPI when a constant-destination jump terminates the block
         public bool HasConstantJump;
         public int JumpDestination;
@@ -482,6 +492,11 @@ public static partial class IlSegmentCompiler
                 break;
             if (region.Count > 0 && region[^1].Block.End != block.Start)
                 break; // non-contiguous (defensive; analyzer blocks tile the code)
+            if (region.Count > 0 && region[^1].EndsWithTerminator
+                && (block.Flags & BasicBlockFlags.StartsWithJumpDest) == 0)
+            {
+                break; // code after a frame terminator is reachable only through a JUMPDEST
+            }
 
             List<DecodedOp> ops = DecodePrefix(code, in block, spec, out int cutPc, out PrefixMetrics metrics);
 
@@ -493,6 +508,7 @@ public static partial class IlSegmentCompiler
                 Metrics = metrics,
                 CutPc = cutPc,
                 IsFullyEmittable = cutPc == block.End,
+                EndsWithTerminator = cutPc == block.End && (block.Flags & BasicBlockFlags.EndsWithTerminator) != 0,
             };
 
             // A terminal JUMP/JUMPI directly preceded by its destination PUSH compiles to a
@@ -658,6 +674,12 @@ public static partial class IlSegmentCompiler
                 il.MarkLabel(notTaken);
                 EmitContinueAfterBlock(il, region, index, regionBlock.Block.End);
             }
+        }
+        else if (regionBlock.EndsWithTerminator)
+        {
+            // The terminator handler always returns out of the method; unreachable filler.
+            il.Emit(OpCodes.Ldc_I4, (int)EvmExceptionType.None);
+            il.Emit(OpCodes.Ret);
         }
         else
         {

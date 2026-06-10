@@ -45,7 +45,7 @@ public sealed class IlCompiledCode
     /// instances (state overrides), so artifact compatibility is decided by this fingerprint —
     /// reference equality alone silently disabled IL-EVM for every eth_call on live nodes.
     /// </summary>
-    public byte SpecFingerprint { get; init; }
+    public ushort SpecFingerprint { get; init; }
 
     public int SegmentCount { get; }
 
@@ -168,13 +168,18 @@ public static class IlEvm
     }
 
     /// <summary>Packs exactly the spec flags the compiler's output depends on.</summary>
-    public static byte ComputeSpecFingerprint(IReleaseSpec spec) =>
-        (byte)((spec.ShiftOpcodesEnabled ? 1 : 0)
+    public static ushort ComputeSpecFingerprint(IReleaseSpec spec) =>
+        (ushort)((spec.ShiftOpcodesEnabled ? 1 : 0)
             | (spec.IncludePush0Instruction ? 2 : 0)
             | (spec.IsEip8024Enabled ? 4 : 0)
             | (spec.UseNetGasMetering ? 8 : 0)
             | (spec.UseNetGasMeteringWithAStipendFix ? 16 : 0)
-            | (spec.IsEip8037Enabled ? 32 : 0));
+            | (spec.IsEip8037Enabled ? 32 : 0)
+            | (spec.ChainIdOpcodeEnabled ? 64 : 0)
+            | (spec.BaseFeeEnabled ? 128 : 0)
+            | (spec.SelfBalanceOpcodeEnabled ? 256 : 0)
+            | (spec.ReturnDataOpcodesEnabled ? 512 : 0)
+            | (spec.RevertOpcodeEnabled ? 1024 : 0));
 
     private static object Compile(CodeInfo codeInfo, IReleaseSpec spec)
     {

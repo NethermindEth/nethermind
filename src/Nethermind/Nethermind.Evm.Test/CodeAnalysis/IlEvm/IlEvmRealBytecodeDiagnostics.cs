@@ -34,7 +34,9 @@ public class IlEvmRealBytecodeDiagnostics
         }
 
         byte[] code = Bytes.FromHexString(File.ReadAllText(inputPath).Trim());
-        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(new ForkActivation(long.MaxValue, ulong.MaxValue));
+        // The node's CURRENT mainnet view, not GetSpec(long.MaxValue): future specs enable
+        // EIP-8024, which disables the analyzer entirely and zeroes this report.
+        IReleaseSpec spec = Nethermind.Specs.Forks.Osaka.Instance;
 
         AnalyzedCode analyzed = BytecodeAnalyzer.Analyze(code, spec);
 

@@ -116,7 +116,54 @@ public static class IlEvmOpcodes
             case Instruction.ADDRESS:
             case Instruction.CALLVALUE:
             case Instruction.CALLDATASIZE:
+            case Instruction.GASPRICE:
+            case Instruction.TIMESTAMP:
+            case Instruction.NUMBER:
+            case Instruction.GASLIMIT:
+            case Instruction.COINBASE:
+            case Instruction.PREVRANDAO:
                 info = new OpInfo(GasCostOf.Base, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            case Instruction.CHAINID:
+                if (!spec.ChainIdOpcodeEnabled) break;
+                info = new OpInfo(GasCostOf.Base, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            case Instruction.BASEFEE:
+                if (!spec.BaseFeeEnabled) break;
+                info = new OpInfo(GasCostOf.Base, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            case Instruction.RETURNDATASIZE:
+                if (!spec.ReturnDataOpcodesEnabled) break;
+                info = new OpInfo(GasCostOf.Base, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            case Instruction.SELFBALANCE:
+                if (!spec.SelfBalanceOpcodeEnabled) break;
+                info = new OpInfo(GasCostOf.SelfBalance, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            // BALANCE gas is spec/state-dependent (cold/warm access) and charged inside the
+            // handler, exactly like SLOAD.
+            case Instruction.BALANCE:
+                info = new OpInfo(StaticGas: 0, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.BLOCKHASH:
+                info = new OpInfo(GasCostOf.BlockHash, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            case Instruction.CALLDATACOPY:
+                info = new OpInfo(GasCostOf.VeryLow, Pops: 3, Pushes: 0, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.RETURNDATACOPY:
+                if (!spec.ReturnDataOpcodesEnabled) break;
+                info = new OpInfo(GasCostOf.VeryLow, Pops: 3, Pushes: 0, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+
+            // REVERT executes as an embedded handler call (memory expansion charged inside
+            // the handler): with it in the v1 subset, regions are no longer cut at every
+            // revert stub — the dominant fragmentation on real solc output. RETURN/STOP stay
+            // interpreter-only: their handlers signal completion with None, which the
+            // segment's handler-result check cannot distinguish from "keep going".
+            case Instruction.REVERT:
+                if (!spec.RevertOpcodeEnabled) break;
+                info = new OpInfo(StaticGas: 0, Pops: 2, Pushes: 0, ImmediateBytes: 0, OpKind.Terminator, HasDynamicGas: true);
                 return true;
 
             case Instruction.JUMP:
@@ -158,8 +205,10 @@ public static class IlEvmOpcodes
     }
 
     /// <summary>
-    /// Opcodes that end linear control flow even though they are outside the v1 subset — the
-    /// analyzer must cut blocks after them and treat the following position as a leader.
+    /// Opcodes that end linear control flow regardless of v1 membership — the analyzer must
+    /// cut blocks after them and treat the following position as a leader. RETURN/REVERT are
+    /// listed even though <see cref="TryGetV1"/> also classifies them (spec-permitting):
+    /// leader marking is spec-free, and on pre-Byzantium specs REVERT falls back to this path.
     /// Undefined opcodes also fault, but their blocks are interpreter-only anyway, so block
     /// boundaries around them carry no compilation consequences.
     /// </summary>

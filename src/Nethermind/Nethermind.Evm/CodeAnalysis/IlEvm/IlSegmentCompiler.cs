@@ -151,6 +151,26 @@ public static partial class IlSegmentCompiler
     private static readonly HandlerOp? s_address = EnvHandlerOf("InstructionEnvAddress", typeof(EvmInstructions.OpAddress<>));
     private static readonly HandlerOp? s_callValue = EnvHandlerOf("InstructionEnvUInt256", typeof(EvmInstructions.OpCallValue<>));
     private static readonly HandlerOp? s_callDataSize = EnvHandlerOf("InstructionEnvUInt32", typeof(EvmInstructions.OpCallDataSize<>));
+    private static readonly HandlerOp? s_gasPrice = EnvHandlerOf("InstructionBlkUInt256", typeof(EvmInstructions.OpGasPrice<>));
+    private static readonly HandlerOp? s_coinbase = EnvHandlerOf("InstructionBlkAddress", typeof(EvmInstructions.OpCoinbase<>));
+    private static readonly HandlerOp? s_timestamp = EnvHandlerOf("InstructionBlkUInt64", typeof(EvmInstructions.OpTimestamp<>));
+    private static readonly HandlerOp? s_number = EnvHandlerOf("InstructionBlkUInt64", typeof(EvmInstructions.OpNumber<>));
+    private static readonly HandlerOp? s_gasLimit = EnvHandlerOf("InstructionBlkUInt64", typeof(EvmInstructions.OpGasLimit<>));
+    private static readonly HandlerOp? s_chainId = EnvHandlerOf("InstructionEnv32Bytes", typeof(EvmInstructions.OpChainId<>));
+    private static readonly HandlerOp? s_baseFee = EnvHandlerOf("InstructionBlkUInt256", typeof(EvmInstructions.OpBaseFee<>));
+    private static readonly HandlerOp? s_prevRandao = HandlerOf(nameof(EvmInstructions.InstructionPrevRandao), pops: 0, pushes: 1);
+    private static readonly HandlerOp? s_returnDataSize = HandlerOf(nameof(EvmInstructions.InstructionReturnDataSize), pops: 0, pushes: 1);
+    private static readonly HandlerOp? s_selfBalance = HandlerOf(nameof(EvmInstructions.InstructionSelfBalance), pops: 0, pushes: 1);
+    private static readonly HandlerOp? s_balance = HandlerOf(nameof(EvmInstructions.InstructionBalance), pops: 1, pushes: 1);
+    private static readonly HandlerOp? s_blockHash = HandlerOf(nameof(EvmInstructions.InstructionBlockHash), pops: 1, pushes: 1);
+    private static readonly HandlerOp? s_callDataCopy = HandlerOf(nameof(EvmInstructions.InstructionCallDataCopy), pops: 3, pushes: 0);
+    private static readonly HandlerOp? s_returnDataCopy = HandlerOf(nameof(EvmInstructions.InstructionReturnDataCopy), pops: 3, pushes: 0);
+    // REVERT is generic over the gas policy alone and never returns None (Revert/OutOfGas/
+    // StackUnderflow), so the post-call check in EmitHandlerCall always propagates its result
+    // to the dispatch loop — exactly an interpreted REVERT. Everything emitted after it is
+    // unreachable. RETURN/STOP must NOT be embedded this way: their handlers signal frame
+    // completion by returning None, indistinguishable here from "continue executing".
+    private static readonly HandlerOp? s_revert = FrameHandlerOf(nameof(EvmInstructions.InstructionRevert), pops: 2);
     // SSTORE instantiations mirror the dispatch table's spec selection (net metering / stipend
     // fix / EIP-8037); the artifact is per-spec, so the choice is fixed at compile time.
     private static readonly HandlerOp? s_sstoreUnmetered = HandlerOf(nameof(EvmInstructions.InstructionSStoreUnmetered), pops: 2, pushes: 0);
@@ -181,6 +201,20 @@ public static partial class IlSegmentCompiler
             Type closedOp = openOpType.MakeGenericType(typeof(EthereumGasPolicy));
             MethodInfo? closed = open?.MakeGenericMethod(typeof(EthereumGasPolicy), closedOp, typeof(OffFlag));
             return closed is null ? null : new HandlerOp(closed, Pops: 0, Pushes: 1);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static HandlerOp? FrameHandlerOf(string name, int pops)
+    {
+        try
+        {
+            MethodInfo? open = typeof(EvmInstructions).GetMethod(name);
+            MethodInfo? closed = open?.MakeGenericMethod(typeof(EthereumGasPolicy));
+            return closed is null ? null : new HandlerOp(closed, pops, Pushes: 0);
         }
         catch (Exception)
         {
@@ -219,6 +253,21 @@ public static partial class IlSegmentCompiler
         Instruction.ADDRESS => s_address,
         Instruction.CALLVALUE => s_callValue,
         Instruction.CALLDATASIZE => s_callDataSize,
+        Instruction.GASPRICE => s_gasPrice,
+        Instruction.COINBASE => s_coinbase,
+        Instruction.TIMESTAMP => s_timestamp,
+        Instruction.NUMBER => s_number,
+        Instruction.GASLIMIT => s_gasLimit,
+        Instruction.CHAINID => s_chainId,
+        Instruction.BASEFEE => s_baseFee,
+        Instruction.PREVRANDAO => s_prevRandao,
+        Instruction.RETURNDATASIZE => s_returnDataSize,
+        Instruction.SELFBALANCE => s_selfBalance,
+        Instruction.BALANCE => s_balance,
+        Instruction.BLOCKHASH => s_blockHash,
+        Instruction.CALLDATACOPY => s_callDataCopy,
+        Instruction.RETURNDATACOPY => s_returnDataCopy,
+        Instruction.REVERT => s_revert,
         Instruction.SSTORE => !spec.UseNetGasMetering
             ? s_sstoreUnmetered
             : (spec.UseNetGasMeteringWithAStipendFix, spec.IsEip8037Enabled) switch
@@ -354,7 +403,34 @@ public static partial class IlSegmentCompiler
             case Instruction.ADDRESS:
             case Instruction.CALLVALUE:
             case Instruction.CALLDATASIZE:
+            case Instruction.GASPRICE:
+            case Instruction.COINBASE:
+            case Instruction.TIMESTAMP:
+            case Instruction.NUMBER:
+            case Instruction.GASLIMIT:
+            case Instruction.CHAINID:
+            case Instruction.BASEFEE:
+            case Instruction.PREVRANDAO:
+            case Instruction.RETURNDATASIZE:
                 info = new OpInfo(GasCostOf.Base, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            case Instruction.SELFBALANCE:
+                info = new OpInfo(GasCostOf.SelfBalance, Pops: 0, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            // BALANCE access gas is spec/state-dependent and charged inside the handler.
+            case Instruction.BALANCE:
+                info = new OpInfo(StaticGas: 0, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.BLOCKHASH:
+                info = new OpInfo(GasCostOf.BlockHash, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+            case Instruction.CALLDATACOPY:
+            case Instruction.RETURNDATACOPY:
+                info = new OpInfo(GasCostOf.VeryLow, Pops: 3, Pushes: 0, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            // Frame terminator: memory expansion is charged inside the handler.
+            case Instruction.REVERT:
+                info = new OpInfo(StaticGas: 0, Pops: 2, Pushes: 0, ImmediateBytes: 0, OpKind.Terminator, HasDynamicGas: true);
                 return true;
         }
 
