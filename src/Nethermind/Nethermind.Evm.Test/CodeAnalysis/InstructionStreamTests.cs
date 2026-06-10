@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis;
@@ -123,6 +124,10 @@ public class InstructionStreamTests
 [TestFixture]
 public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
 {
+    // The stream only engages on tip-fork dispatch fingerprints; the base default (Byzantium)
+    // would silently compare the bytecode loop against itself.
+    protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
+
     private static readonly byte[] s_arithmeticChain = Prepare.EvmCode
         .PushData(7).PushData(5).Op(Instruction.ADD)
         .PushData(3).Op(Instruction.MUL)
