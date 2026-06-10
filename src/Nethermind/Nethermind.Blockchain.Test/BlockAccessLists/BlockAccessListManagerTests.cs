@@ -44,6 +44,7 @@ public class BlockAccessListManagerTests
         /// </summary>
         public void IssueHint(Task hint)
         {
+            WorldState.IsInScope.Returns(true);
             WorldState.HintBal(Arg.Any<ReadOnlyBlockAccessList>()).Returns(hint);
 
             IReleaseSpec spec = Substitute.For<IReleaseSpec>();
