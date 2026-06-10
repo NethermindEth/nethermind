@@ -172,6 +172,10 @@ public static partial class EvmInstructions
                 hasCode: !spec.IsEip2780Enabled || vm.WorldState.IsContract(address)))
             goto OutOfGas;
 
+        // EIP-8038 charges an extra warm access for the second DB read EXTCODECOPY performs.
+        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
+            goto OutOfGas;
+
         if (!result.IsZero)
         {
             // Update memory cost if the destination region requires expansion.
@@ -245,6 +249,10 @@ public static partial class EvmInstructions
         // Charge gas for accessing the account's state.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address,
                 hasCode: !spec.IsEip2780Enabled || vm.WorldState.IsContract(address)))
+            goto OutOfGas;
+
+        // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
+        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
         vm.WorldState.AddAccountRead(address);

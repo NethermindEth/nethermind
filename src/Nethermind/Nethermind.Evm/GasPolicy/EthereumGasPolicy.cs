@@ -235,9 +235,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     // EIP-2780 prices a cold touch of a code-less account cheaper than one with code.
+    // EIP-8038 otherwise reprices the cold account-access cost.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static long ColdAccountAccessCost(IReleaseSpec spec, bool hasCode) =>
-        spec.IsEip2780Enabled && !hasCode ? GasCostOf.ColdAccountAccessNoCodeEip2780 : GasCostOf.ColdAccountAccess;
+        spec.IsEip2780Enabled && !hasCode ? GasCostOf.ColdAccountAccessNoCodeEip2780
+        : spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess
+        : GasCostOf.ColdAccountAccess;
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
@@ -254,7 +257,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         if (accessTracker.WarmUp(in storageCell))
-            return UpdateGas(ref gas, GasCostOf.ColdSLoad);
+            return UpdateGas(ref gas, spec.IsEip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad);
         if (storageAccessType == StorageAccessType.SLOAD)
             return UpdateGas(ref gas, GasCostOf.WarmStateRead);
         return true;

@@ -1,0 +1,139 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NUnit.Framework;
+
+namespace Nethermind.Evm.Test;
+
+/// <summary>
+/// EIP-8038: State-access gas cost update. With the EIP active, EXTCODESIZE and EXTCODECOPY pay an
+/// additional WARM_ACCESS for the extra database read they perform.
+/// </summary>
+/// <remarks>
+/// Final repriced values are TBD while the EIP is a Draft, so the cold/warm base costs are placeholders
+/// equal to their current values; the only observable change at placeholder values is the extra
+/// EXT* warm access, asserted here against both the EIP-on and EIP-off baselines.
+/// </remarks>
+[TestFixture(true)]
+[TestFixture(false)]
+public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
+{
+    private readonly ISpecProvider _specProvider =
+        new TestSpecProvider(new OverridableReleaseSpec(Cancun.Instance) { IsEip8038Enabled = eip8038Enabled });
+
+    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
+    protected override ISpecProvider SpecProvider => _specProvider;
+
+    // The EXT* target; a third address that stays cold (Sender=A, Recipient=B, Miner=D).
+    private static readonly Address Target = TestItem.AddressC;
+
+    private long ExtraWarmAccess => eip8038Enabled ? Eip8038Constants.WarmAccess : 0;
+
+    [SetUp]
+    public override void Setup()
+    {
+        base.Setup();
+        // Cold-access cost is independent of whether the target has code (EIP-2780 is off here).
+        TestState.CreateAccount(Target, 1.Ether);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+    }
+
+    protected override TestAllTracerWithOutput CreateTracer()
+    {
+        TestAllTracerWithOutput tracer = base.CreateTracer();
+        tracer.IsTracingAccess = false;
+        return tracer;
+    }
+
+    [Test]
+    public void ExtCodeSize_charges_extra_warm_access()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(Target)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.POP)
+            .STOP()
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        long expected = GasCostOf.Transaction
+                        + GasCostOf.VeryLow            // PUSH20 target
+                        + GasCostOf.ColdAccountAccess  // cold EXTCODESIZE access
+                        + ExtraWarmAccess              // EIP-8038 extra access
+                        + GasCostOf.Base;              // POP
+        AssertGas(result, expected);
+    }
+
+    [Test]
+    public void ExtCodeCopy_charges_extra_warm_access()
+    {
+        // EXTCODECOPY pops address, destOffset, srcOffset, length (address on top); length 0 skips the copy.
+        byte[] code = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .PushData(0)
+            .PushData(Target)
+            .Op(Instruction.EXTCODECOPY)
+            .STOP()
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        long expected = GasCostOf.Transaction
+                        + 4 * GasCostOf.VeryLow        // three PUSH1 0x00 + PUSH20 target
+                        + GasCostOf.ColdAccountAccess  // cold EXTCODECOPY access
+                        + ExtraWarmAccess;             // EIP-8038 extra access
+        AssertGas(result, expected);
+    }
+}
+
+/// <summary>
+/// EIP-8038 raises the transaction access-list entry costs to match the cold-access costs they pre-warm.
+/// </summary>
+public class Eip8038IntrinsicGasTests
+{
+    private static IReleaseSpec Spec(bool eip8038Enabled) =>
+        new OverridableReleaseSpec(Cancun.Instance) { IsEip8038Enabled = eip8038Enabled };
+
+    [TestCase(false, 21000 + GasCostOf.AccessAccountListEntry, TestName = "address entry, EIP-8038 off")]
+    [TestCase(true, 21000 + Eip8038Constants.AccessListAddressCost, TestName = "address entry, EIP-8038 on")]
+    public void Access_list_address_entry_cost(bool eip8038Enabled, long expectedStandard)
+    {
+        AccessList accessList = new AccessList.Builder().AddAddress(TestItem.AddressC).Build();
+        Transaction tx = Build.A.Transaction.SignedAndResolved().WithAccessList(accessList).TestObject;
+
+        EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Spec(eip8038Enabled));
+
+        Assert.That(gas.Standard, Is.EqualTo(expectedStandard));
+    }
+
+    [TestCase(false, 21000 + GasCostOf.AccessAccountListEntry + GasCostOf.AccessStorageListEntry, TestName = "address + key, EIP-8038 off")]
+    [TestCase(true, 21000 + Eip8038Constants.AccessListAddressCost + Eip8038Constants.AccessListStorageKeyCost, TestName = "address + key, EIP-8038 on")]
+    public void Access_list_address_and_storage_key_cost(bool eip8038Enabled, long expectedStandard)
+    {
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(TestItem.AddressC)
+            .AddStorage((UInt256)1)
+            .Build();
+        Transaction tx = Build.A.Transaction.SignedAndResolved().WithAccessList(accessList).TestObject;
+
+        EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Spec(eip8038Enabled));
+
+        Assert.That(gas.Standard, Is.EqualTo(expectedStandard));
+    }
+}

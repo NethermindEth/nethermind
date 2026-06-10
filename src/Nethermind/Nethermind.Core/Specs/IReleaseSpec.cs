@@ -322,6 +322,11 @@ namespace Nethermind.Core.Specs
         bool IsEip8246Enabled { get; }
 
         /// <summary>
+        /// EIP-8038: State-access gas cost update
+        /// </summary>
+        bool IsEip8038Enabled { get; }
+
+        /// <summary>
         /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
         /// </summary>
         bool IsEip8024Enabled { get; }

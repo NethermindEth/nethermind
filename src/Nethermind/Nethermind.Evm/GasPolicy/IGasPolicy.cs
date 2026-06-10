@@ -179,8 +179,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         }
 
         (int addressesCount, int storageKeysCount) = accessList.Count;
-        return addressesCount * GasCostOf.AccessAccountListEntry
-            + storageKeysCount * GasCostOf.AccessStorageListEntry
+        // EIP-8038 realigns access-list entry costs with the cold-access costs they pre-warm.
+        long addressCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry;
+        long storageKeyCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry;
+        return addressesCount * addressCost
+            + storageKeysCount * storageKeyCost
             + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
