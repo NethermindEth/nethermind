@@ -161,8 +161,8 @@ public partial class BlockAccessListManager(
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
 
-        // Kick off BAL read warming. DrainBalReadHint will await this just before the
-        // parallel pre-state apply commits its write batch (which would otherwise cancel it).
+        // DrainBalReadHint awaits this just before the parallel pre-state apply's write batch
+        // would otherwise cancel it.
         if (BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
         {
             _balReadHint = stateProvider.HintBal(suggestedBlock.BlockAccessList);
