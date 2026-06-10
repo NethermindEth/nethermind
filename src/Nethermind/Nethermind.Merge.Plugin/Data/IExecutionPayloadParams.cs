@@ -76,6 +76,17 @@ public class ExecutionPayloadParams(
                 error = "Inclusion list must be set";
                 return ValidationResult.Fail;
             }
+
+            // EIP-7805 MAX_BYTES_PER_INCLUSION_LIST = 8192 on the input side too — defends the
+            // downstream O(N) IL paths (bitmap, hash map, parallel decode) from oversized CL input.
+            long totalBytes = 0;
+            for (int i = 0; i < InclusionListTransactions.Length; i++)
+                totalBytes += InclusionListTransactions[i]?.Length ?? 0;
+            if (totalBytes > Eip7805Constants.MaxBytesPerInclusionList)
+            {
+                error = $"Inclusion list exceeds {Eip7805Constants.MaxBytesPerInclusionList} bytes";
+                return ValidationResult.Fail;
+            }
         }
 
         return ValidationResult.Success;

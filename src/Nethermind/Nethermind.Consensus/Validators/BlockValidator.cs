@@ -153,10 +153,8 @@ public class BlockValidator(
     {
         if (options.ContainsFlag(ProcessingOptions.NoValidation)) return true;
         IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
-        // IL is engine-API only — block RLP wire format doesn't carry it, so P2P-decoded blocks
-        // legitimately reach here with null IL. IsSatisfied treats null as "not applicable".
-        processedBlock.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
-        return InclusionListValidator.IsSatisfied(processedBlock, worldState, spec);
+        // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
+        return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec);
     }
 
     /// <summary>

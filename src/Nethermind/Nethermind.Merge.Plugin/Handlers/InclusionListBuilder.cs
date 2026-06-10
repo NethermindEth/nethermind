@@ -75,8 +75,8 @@ public class InclusionListBuilder(ITxPool txPool)
             size += txBytes.Count;
             result.Add(txBytes);
 
-            // impossible to fit another tx in the inclusion list
-            if (size + Eip7805Constants.MinTransactionSizeBytesUpper > Eip7805Constants.MaxBytesPerInclusionList)
+            // impossible to fit another tx in the inclusion list (32 B is the theoretical floor)
+            if (size + Eip7805Constants.MinTransactionSizeBytesLower > Eip7805Constants.MaxBytesPerInclusionList)
             {
                 break;
             }

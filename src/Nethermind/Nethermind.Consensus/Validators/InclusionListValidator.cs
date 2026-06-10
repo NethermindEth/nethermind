@@ -14,9 +14,11 @@ namespace Nethermind.Consensus.Validators;
 public static class InclusionListValidator
 {
     public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec)
+        => IsSatisfied(block, block.InclusionListTransactions, state, spec);
+
+    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
         if (!spec.InclusionListsEnabled) return true;
-        Transaction[]? il = block.InclusionListTransactions;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
         if (il is null) return true;
 
