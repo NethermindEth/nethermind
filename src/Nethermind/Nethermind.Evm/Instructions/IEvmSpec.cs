@@ -6,20 +6,14 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// The fork spec as a COMPILE-TIME parameter: exactly the boolean flags that decide opcode
-/// availability and handler-variant selection in the dispatch (the same set
+/// The fork spec as a compile-time parameter: exactly the boolean flags that gate opcode
+/// availability and handler-variant selection — the set
 /// <see cref="EvmInstructions.GenerateOpCodes{TGasPolicy, TTracingInst}"/> reads at table-build
-/// time — nothing else belongs here; gas VALUES stay runtime data on <see cref="IReleaseSpec"/>).
-///
-/// Implementations are empty structs whose static members are constants, so a
-/// <c>RunByteCode&lt;..., TSpec&gt;</c> instantiation lets the JIT fold every gate check and
-/// dead-code-eliminate the untaken opcode cases — per-fork specialized dispatch with direct,
-/// inlinable call sites, the same architecture as revm's const-generic SpecId and evmone's
-/// per-revision templates.
-///
-/// Only the forks that matter for tip execution get a struct; any spec whose
-/// <see cref="ComputeFingerprint"/> matches no known struct runs the generic function-pointer
-/// table path — custom chains and historical forks are never wrong, just unspecialized.
+/// time. Gas VALUES stay runtime data on <see cref="IReleaseSpec"/> and must not be added here.
+/// Implementations are empty structs whose static members are constants, so per-TSpec
+/// instantiations let the JIT fold every gate and eliminate untaken cases. A spec matching no
+/// struct's fingerprint runs the generic table path: custom chains and historical forks are
+/// never wrong, only unspecialized.
 /// </summary>
 public interface IEvmSpec
 {
@@ -130,10 +124,7 @@ public readonly struct GenericEvmSpec : IEvmSpec
     public static bool IsEip7708Enabled => false;
 }
 
-/// <summary>
-/// Cancun mainnet flags (also the Shanghai superset axis where noted). Values are LOCKED to
-/// the runtime fork instances by EvmSpecGuardTests — a mismatch there is a build-stopping bug.
-/// </summary>
+/// <summary>Cancun mainnet flags; locked to the runtime fork by EvmSpecGuardTests.</summary>
 public readonly struct CancunEvmSpec : IEvmSpec
 {
     public static bool ShiftOpcodesEnabled => true;

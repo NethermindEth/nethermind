@@ -28,22 +28,15 @@ public sealed class ReadOnlySnapshotBundle(
     public int SnapshotCount => snapshots.Count;
     private bool _isDisposed;
 
-    // Block-scoped read memo over the persistence reader. The reader is an immutable database
-    // snapshot for this bundle's lifetime, so memoizing its answers is sound by construction —
-    // the memo lives and dies with the bundle (one per block, ref-counted), which is also the
-    // natural invalidation boundary: a new head is a new bundle. The win is cross-call: every
-    // eth_call on the same block shares this bundle, and tip workloads (e.g. DEX quote
-    // simulations) re-read the same slots — including ZERO slots (tick-bitmap scans), which is
-    // why misses are memoized too. Past the entry cap the memo stops growing and reads simply
-    // go to the database; no eviction, no contention beyond the dictionary's own. The cap
-    // check is read-then-add, so concurrent inserters can overshoot it by at most one entry
-    // per racing thread — bounded and irrelevant at this capacity, traded for a lock-free add.
+    // Memo over the persistence reader, which is an immutable database snapshot for this
+    // bundle's lifetime; a new head is a new bundle, so invalidation needs no logic. Zero/null
+    // results are memoized deliberately — absent slots are re-read heavily. Past the cap the
+    // memo stops growing (reads go to the database); the read-then-add cap check can overshoot
+    // by one entry per racing thread, accepted for a lock-free add.
     private const int PersistenceMemoMaxEntries = 1 << 17;
 
-    // Values stored here are SHARED across every caller on this block — both the byte[] slot
-    // values and the Account instances must be treated as immutable after insertion. Before
-    // the memo, each persistence read produced a fresh array; a future caller mutating a
-    // returned array in place would corrupt all subsequent reads of that key on this block.
+    // Stored values are shared across every caller on this block: the byte[] slot values and
+    // Account instances must never be mutated after insertion.
     private readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, byte[]?> _slotPersistenceMemo = new();
     private readonly ConcurrentDictionary<HashedKey<Address>, Account?> _accountPersistenceMemo = new();
     private int _slotMemoCount;

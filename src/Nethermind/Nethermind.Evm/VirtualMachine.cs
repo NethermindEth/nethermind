@@ -1245,9 +1245,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        // Route to a fork-specialized loop when the spec's dispatch flags match a known tip
-        // fork (one fingerprint computation per call frame); anything else — custom chains,
-        // historical forks — runs the generic function-pointer table path, identical to before.
+        // Specs whose dispatch flags match a known tip fork run a specialized loop; custom
+        // chains and historical forks keep the generic function-pointer table path.
         int fingerprint = EvmSpecFingerprint.Compute(Spec);
         if (fingerprint == s_osakaDispatchFingerprint)
             return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
@@ -1298,10 +1297,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
 
-                // Cancellation poll, BATCHED: IsCancelled is an interface call, and TCancelable
-                // is active exactly on the latency-critical path (eth_call timeouts) — paying a
-                // virtual dispatch per opcode costs tens of ms on multi-megaop calls. Polling
-                // every 1024 opcodes still aborts a runaway frame within microseconds.
+                // IsCancelled is an interface call; polling it per opcode is measurable on the
+                // cancelable (eth_call) path. Every 1024 opcodes still aborts within microseconds.
                 if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
@@ -1318,13 +1315,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                 if (typeof(TSpec) != typeof(GenericEvmSpec))
                 {
-                    // Fork-specialized dispatch for the HOT opcodes only, inline in the loop so
-                    // the JIT inlines the handlers and the branch predictor learns each direct
-                    // site. Hot-set membership is from measured mainnet opcode frequency; the
-                    // cold rest go through the table exactly as the generic path — a full
-                    // 230-case switch in its own method measured SLOWER than the table (the
-                    // JIT stops inlining and every op pays call+switch+call). Spec-gated hot
-                    // opcodes (SHL/SHR/SAR) check TSpec constants the JIT folds per fork.
+                    // Direct dispatch for the measured-hot opcodes; the rest take the table.
+                    // MUST stay inline in the loop: extracted, the JIT stops inlining the
+                    // handlers and direct dispatch loses to the table's calli. Spec-gated
+                    // cases check TSpec constants the JIT folds per fork.
                     switch (instruction)
                     {
                         case Instruction.ADD:
@@ -1434,12 +1428,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             break;
                     }
 
-                    // Specialized epilogue: only the frame-affecting tail checks each opcode can
-                    // actually trigger. ReturnData is set exclusively by the 0xF0+ family
-                    // (CREATE/CALL kin and RETURN — RETURN's handler returns None and signals
-                    // completion ONLY through ReturnData, so this check is its exit path);
-                    // for the other ~95% of executed opcodes the field load + null check are
-                    // pure per-op tax — at millions of ops per call, a measurable one.
+                    // ReturnData is set only by the 0xF0+ family; RETURN in particular returns
+                    // None and signals completion solely through it, so that check is its exit
+                    // path and must not run for the cheap majority of opcodes.
                     if (TGasPolicy.GetRemainingGas(in gas) < 0)
                     {
                         OpCodeCount += opCodeCount;
