@@ -114,9 +114,12 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
 
-        Assert.That(blockHeader.GasUsed, Is.EqualTo(largeValue));
-        Assert.That(blockHeader.Number, Is.EqualTo(largeValue));
-        Assert.That(blockHeader.GasLimit, Is.EqualTo(largeValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.GasUsed, Is.EqualTo(largeValue));
+            Assert.That(blockHeader.Number, Is.EqualTo(largeValue));
+            Assert.That(blockHeader.GasLimit, Is.EqualTo(largeValue));
+        }
     }
 
     [TestCase(ulong.MaxValue)]
@@ -131,9 +134,12 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        Assert.That(blockHeader.GasUsed, Is.EqualTo(largeValue));
-        Assert.That(blockHeader.Number, Is.EqualTo(largeValue));
-        Assert.That(blockHeader.GasLimit, Is.EqualTo(largeValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.GasUsed, Is.EqualTo(largeValue));
+            Assert.That(blockHeader.Number, Is.EqualTo(largeValue));
+            Assert.That(blockHeader.GasLimit, Is.EqualTo(largeValue));
+        }
     }
 
     [TestCaseSource(nameof(CancunFieldsSource))]
@@ -150,8 +156,11 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        Assert.That(blockHeader.BlobGasUsed, Is.EqualTo(blobGasUsed));
-        Assert.That(blockHeader.ExcessBlobGas, Is.EqualTo(excessBlobGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.BlobGasUsed, Is.EqualTo(blobGasUsed));
+            Assert.That(blockHeader.ExcessBlobGas, Is.EqualTo(excessBlobGas));
+        }
     }
 
     [Test]

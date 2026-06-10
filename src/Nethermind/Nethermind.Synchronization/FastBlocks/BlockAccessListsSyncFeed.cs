@@ -237,11 +237,11 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         {
             BlockInfo? blockInfo = blockInfos[i];
             bool hasAccessListResponse = (batch.Response?.Count ?? 0) > i;
-            ReadOnlySpan<byte> accessListRlp = hasAccessListResponse
+            byte[]? accessListRlp = hasAccessListResponse
                 ? batch.Response![i]
-                : ReadOnlySpan<byte>.Empty;
+                : null;
 
-            if (!accessListRlp.IsEmpty)
+            if (accessListRlp is not null)
             {
                 // last batch
                 if (blockInfo is null)

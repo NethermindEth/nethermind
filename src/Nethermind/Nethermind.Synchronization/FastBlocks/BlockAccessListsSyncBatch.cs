@@ -9,7 +9,7 @@ namespace Nethermind.Synchronization.FastBlocks;
 public class BlockAccessListsSyncBatch(BlockInfo?[] infos) : FastBlocksBatch
 {
     public BlockInfo?[] Infos { get; } = infos;
-    public IByteArrayList? Response { get; set; }
+    public IOwnedReadOnlyList<byte[]?>? Response { get; set; }
 
     public override void Dispose()
     {

@@ -66,11 +66,14 @@ public class AddressTests
         Address addressA = new(Keccak.Compute("a"));
         Address addressA2 = new(Keccak.Compute("a"));
         Address addressB = new(Keccak.Compute("b"));
-        Assert.That(addressA.Equals(addressA2), Is.True);
-        // ReSharper disable once EqualExpressionComparison
-        Assert.That(addressA.Equals(addressA), Is.True);
-        Assert.That(addressA.Equals(addressB), Is.False);
-        Assert.That(addressA.Equals(null), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addressA.Equals(addressA2), Is.True);
+            // ReSharper disable once EqualExpressionComparison
+            Assert.That(addressA.Equals(addressA), Is.True);
+            Assert.That(addressA.Equals(addressB), Is.False);
+            Assert.That(addressA.Equals(null), Is.False);
+        }
     }
 
     [Test]
@@ -79,14 +82,17 @@ public class AddressTests
         Address addressA = new(Keccak.Compute("a"));
         Address addressA2 = new(Keccak.Compute("a"));
         Address addressB = new(Keccak.Compute("b"));
-        Assert.That(addressA == addressA2, Is.True);
-        // ReSharper disable once EqualExpressionComparison
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addressA == addressA2, Is.True);
+            // ReSharper disable once EqualExpressionComparison
 #pragma warning disable CS1718
-        Assert.That(addressA == addressA, Is.True);
+            Assert.That(addressA == addressA, Is.True);
 #pragma warning restore CS1718
-        Assert.That(addressA == addressB, Is.False);
-        Assert.That(addressA is null, Is.False);
-        Assert.That(null == addressA, Is.False);
+            Assert.That(addressA == addressB, Is.False);
+            Assert.That(addressA is null, Is.False);
+            Assert.That(null == addressA, Is.False);
+        }
         Address? address = null;
         Assert.That(address is null, Is.True);
     }
@@ -97,14 +103,17 @@ public class AddressTests
         Address addressA = new(Keccak.Compute("a"));
         Address addressA2 = new(Keccak.Compute("a"));
         Address addressB = new(Keccak.Compute("b"));
-        Assert.That(addressA != addressA2, Is.False);
-        // ReSharper disable once EqualExpressionComparison
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addressA != addressA2, Is.False);
+            // ReSharper disable once EqualExpressionComparison
 #pragma warning disable CS1718
-        Assert.That(addressA != addressA, Is.False);
+            Assert.That(addressA != addressA, Is.False);
 #pragma warning restore CS1718
-        Assert.That(addressA != addressB, Is.True);
-        Assert.That(addressA is not null, Is.True);
-        Assert.That(null != addressA, Is.True);
+            Assert.That(addressA != addressB, Is.True);
+            Assert.That(addressA is not null, Is.True);
+            Assert.That(null != addressA, Is.True);
+        }
         Address? address = null;
         Assert.That(address is not null, Is.False);
     }
@@ -206,8 +215,11 @@ public class AddressTests
     [Test]
     public void Parse_variable_length_too_short()
     {
-        Assert.That(Address.TryParseVariableLength("1", out Address? address), Is.EqualTo(true));
-        Assert.That(address, Is.EqualTo(new Address("0000000000000000000000000000000000000001")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Address.TryParseVariableLength("1", out Address? address), Is.EqualTo(true));
+            Assert.That(address, Is.EqualTo(new Address("0000000000000000000000000000000000000001")));
+        }
     }
 
     [Test]

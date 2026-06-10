@@ -17,7 +17,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -158,10 +157,13 @@ public class BlockAccessListsSyncFeedTests
         _feed.InitializeFeed();
         _feed.Activate();
 
-        Assert.That(_feed.IsFinished, Is.True);
-        Assert.That(await _feed.PrepareRequest(), Is.Null);
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
-        Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.True);
+            Assert.That(await _feed.PrepareRequest(), Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Null);
+        }
     }
 
     [Test]
@@ -225,12 +227,15 @@ public class BlockAccessListsSyncFeedTests
         Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Active));
 
         using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
-
         Assert.That(batch, Is.Not.Null);
-        Assert.That(batch.Prioritized, Is.True);
-        Assert.That(batch.Infos[0], Is.EqualTo(block3Info));
-        Assert.That(batch.Infos[1], Is.EqualTo(block2Info));
-        Assert.That(batch.Infos[2], Is.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.Prioritized, Is.True);
+            Assert.That(batch.Infos[0], Is.EqualTo(block3Info));
+            Assert.That(batch.Infos[1], Is.EqualTo(block2Info));
+            Assert.That(batch.Infos[2], Is.Null);
+        }
     }
 
     [Test]
@@ -293,17 +298,6 @@ public class BlockAccessListsSyncFeedTests
         return syncPeerPool;
     }
 
-    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
-    {
-        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
-        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
-        {
-            for (int i = 0; i < blockAccessLists.Length; i++)
-            {
-                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
-            }
-        }
-
-        return new RlpByteArrayList(builder.ToRlpItemList());
-    }
+    private static IOwnedReadOnlyList<byte[]?> BuildBlockAccessLists(params byte[]?[] blockAccessLists) =>
+        new ArrayPoolList<byte[]?>(blockAccessLists);
 }

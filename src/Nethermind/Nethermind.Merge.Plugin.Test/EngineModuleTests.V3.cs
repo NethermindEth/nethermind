@@ -183,9 +183,17 @@ public partial class EngineModuleTests
         Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
-        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidBlockNumber"));
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "InvalidBlockNumber");
+    }
+
+    private static void AssertInvalidNewPayload(ResultWrapper<PayloadStatusV1> result, string expectedValidationErrorPrefix)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+            Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
+            Assert.That(result.Data.ValidationError, Does.StartWith(expectedValidationErrorPrefix));
+        }
     }
 
     [Test]
@@ -201,9 +209,7 @@ public partial class EngineModuleTests
         Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
-        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "InvalidStateRoot");
     }
 
     [Test]
@@ -221,9 +227,7 @@ public partial class EngineModuleTests
         Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
-        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction 0 is not valid");
     }
 
     [Test]
@@ -237,9 +241,7 @@ public partial class EngineModuleTests
         Hash256?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => h is null ? null : new Hash256(h)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
-        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction 0 is not valid");
     }
 
     [Test]

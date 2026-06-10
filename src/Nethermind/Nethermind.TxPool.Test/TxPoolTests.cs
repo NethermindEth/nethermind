@@ -93,8 +93,11 @@ namespace Nethermind.TxPool.Test
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia); // default is mainnet, we're passing sepolia
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            }
         }
 
         [Test]
@@ -114,8 +117,11 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid)); ;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            }
         }
 
         [Test]
@@ -125,8 +131,11 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, false).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            }
         }
 
         [Test]
@@ -137,9 +146,12 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             AcceptTxResult result1 = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             AcceptTxResult result2 = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            Assert.That(result1, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(result2, Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(result1, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(result2, Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            }
         }
 
         [Test]
@@ -152,8 +164,11 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             tx.SenderAddress = null;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            }
         }
 
         [Test]
@@ -189,8 +204,11 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
             AcceptTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(txPool.GetPendingTransactionsCount(), Is.EqualTo(eip1559Enabled ? 1 : 0));
-            Assert.That(result, Is.EqualTo(eip1559Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(txPool.GetPendingTransactionsCount(), Is.EqualTo(eip1559Enabled ? 1 : 0));
+                Assert.That(result, Is.EqualTo(eip1559Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            }
         }
 
         [Test]
@@ -246,8 +264,11 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.InsufficientFunds));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.InsufficientFunds));
+            }
         }
 
         [Test]
@@ -258,8 +279,11 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             _stateProvider.IncrementNonce(tx.SenderAddress);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.OldNonce));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.OldNonce));
+            }
         }
 
         [Test]
@@ -336,8 +360,11 @@ namespace Nethermind.TxPool.Test
             else
                 EnsureSenderBalance(tx);
             AcceptTxResult result = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Int256Overflow));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Int256Overflow));
+            }
         }
 
         [Test]
@@ -350,8 +377,11 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             _headInfo.BlockGasLimit = Transaction.BaseTxGasCost * 4;
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.GasLimitExceeded));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.GasLimitExceeded));
+            }
         }
 
         [Test]
@@ -364,8 +394,11 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig);
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(result, Is.EqualTo(sizeExceeded ? AcceptTxResult.MaxTxSizeExceeded : AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(sizeExceeded ? 0 : 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(sizeExceeded ? AcceptTxResult.MaxTxSizeExceeded : AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(sizeExceeded ? 0 : 1));
+            }
         }
 
         [Test]
@@ -384,8 +417,11 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -397,8 +433,11 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.GasLimitExceeded));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.GasLimitExceeded));
+            }
         }
 
         [Test]
@@ -415,8 +454,11 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            }
         }
 
         [TestCase(4, 0, nameof(AcceptTxResult.FeeTooLow))]
@@ -615,8 +657,11 @@ namespace Nethermind.TxPool.Test
             }
 
             int numberOfTxsInTxPool = _txPool.GetPendingTransactionsCount();
-            Assert.That(numberOfTxsInTxPool, Is.EqualTo(numberOfTxsPossibleToExecuteBeforeGasExhaustion));
-            Assert.That(_txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce, Is.EqualTo((ulong)(numberOfTxsInTxPool - 1 + numberOfStaleTxsInBucket)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(numberOfTxsInTxPool, Is.EqualTo(numberOfTxsPossibleToExecuteBeforeGasExhaustion));
+                Assert.That(_txPool.GetPendingTransactions()[numberOfTxsInTxPool - 1].Nonce, Is.EqualTo((ulong)(numberOfTxsInTxPool - 1 + numberOfStaleTxsInBucket)));
+            }
         }
 
         [Test]
@@ -717,8 +762,11 @@ namespace Nethermind.TxPool.Test
 
             await RaiseBlockAddedToMainAndWaitForTransactions(5);
 
-            Assert.That(_txPool.GetPendingTransactions().Count(static t => t.GasBottleneck == 0), Is.EqualTo(0));
-            Assert.That(_txPool.GetPendingTransactions().Max(static t => t.GasBottleneck), Is.EqualTo((UInt256)5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactions().Count(static t => t.GasBottleneck == 0), Is.EqualTo(0));
+                Assert.That(_txPool.GetPendingTransactions().Max(static t => t.GasBottleneck), Is.EqualTo((UInt256)5));
+            }
         }
 
         [Test]
@@ -770,8 +818,11 @@ namespace Nethermind.TxPool.Test
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
 
-            Assert.That(_txPool.IsKnown(higherPriorityTx.Hash), Is.True);
-            Assert.That(_txPool.IsKnown(transaction.Hash), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.IsKnown(higherPriorityTx.Hash), Is.True);
+                Assert.That(_txPool.IsKnown(transaction.Hash), Is.False);
+            }
         }
 
         [Test]
@@ -795,8 +846,11 @@ namespace Nethermind.TxPool.Test
                 _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
             }
 
-            Assert.That(_txPool.GetPendingTransactions().Min(static t => t.GasBottleneck), Is.EqualTo((UInt256)2));
-            Assert.That(_txPool.GetPendingTransactions().Max(static t => t.GasBottleneck), Is.EqualTo((UInt256)2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactions().Min(static t => t.GasBottleneck), Is.EqualTo((UInt256)2));
+                Assert.That(_txPool.GetPendingTransactions().Max(static t => t.GasBottleneck), Is.EqualTo((UInt256)2));
+            }
         }
 
         [Test]
@@ -823,9 +877,12 @@ namespace Nethermind.TxPool.Test
             }
 
             await RaiseBlockAddedToMainAndWaitForTransactions(5);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
-            Assert.That(_txPool.GetPendingTransactions().Count(static t => t.GasBottleneck == 0), Is.EqualTo(0));
-            Assert.That(_txPool.GetPendingTransactions().Max(static t => t.GasBottleneck), Is.EqualTo((UInt256)5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+                Assert.That(_txPool.GetPendingTransactions().Count(static t => t.GasBottleneck == 0), Is.EqualTo(0));
+                Assert.That(_txPool.GetPendingTransactions().Max(static t => t.GasBottleneck), Is.EqualTo((UInt256)5));
+            }
         }
 
         [TestCase(false, 1, TestName = "should_broadcast_own_transactions")]
@@ -902,14 +959,20 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(transactionB);
             _txPool.SubmitTx(transactionB, TxHandlingOptions.PersistentBroadcast);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
-            Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+                Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(1));
+            }
 
             Block block = Build.A.Block.WithTransactions(transactionA).TestObject;
             await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -924,8 +987,11 @@ namespace Nethermind.TxPool.Test
                 Transaction[] transactionsForFirstTask = transactions.Where(t => t.Nonce == 8).ToArray();
                 Transaction[] transactionsForSecondTask = transactions.Where(t => t.Nonce == 6).ToArray();
                 Transaction[] transactionsForThirdTask = transactions.Where(t => t.Nonce == 7).ToArray();
-                Assert.That(transactions, Has.Length.EqualTo(transactionsPerPeer * 10));
-                Assert.That(transactionsForFirstTask, Has.Length.EqualTo(transactionsPerPeer));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(transactions, Has.Length.EqualTo(transactionsPerPeer * 10));
+                    Assert.That(transactionsForFirstTask, Has.Length.EqualTo(transactionsPerPeer));
+                }
                 Task firstTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForFirstTask));
                 Task secondTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForSecondTask));
                 Task thirdTask = Task.Run(() => DeleteTransactionsFromPool(transactionsForThirdTask));
@@ -1014,8 +1080,11 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             Transaction[] transactions = AddTransactionsToPool();
             DeleteTransactionsFromPool(transactions);
-            Assert.That(_txPool.GetPendingTransactions(), Is.Empty);
-            Assert.That(_txPool.GetOwnPendingTransactions(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactions(), Is.Empty);
+                Assert.That(_txPool.GetOwnPendingTransactions(), Is.Empty);
+            }
         }
 
         [Test]
@@ -1050,8 +1119,12 @@ namespace Nethermind.TxPool.Test
         {
             Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
             _txPool = CreatePool();
-            Assert.That(_txPool.TryGetPendingTransaction(transaction.Hash, out Transaction retrievedTransaction), Is.False);
-            Assert.That(retrievedTransaction, Is.Null);
+            bool found = _txPool.TryGetPendingTransaction(transaction.Hash, out Transaction retrievedTransaction);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.False);
+                Assert.That(retrievedTransaction, Is.Null);
+            }
         }
 
         [Test]
@@ -1146,8 +1219,11 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(eip2930Enabled ? 1 : 0));
-            Assert.That(result, Is.EqualTo(eip2930Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(eip2930Enabled ? 1 : 0));
+                Assert.That(result, Is.EqualTo(eip2930Enabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            }
         }
 
         [Test]
@@ -1166,8 +1242,11 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo((isSynced || isLocal) ? 1 : 0));
-            Assert.That(result, Is.EqualTo((isSynced || isLocal) ? AcceptTxResult.Accepted : AcceptTxResult.Syncing));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo((isSynced || isLocal) ? 1 : 0));
+                Assert.That(result, Is.EqualTo((isSynced || isLocal) ? AcceptTxResult.Accepted : AcceptTxResult.Syncing));
+            }
         }
 
         [Test]
@@ -1181,8 +1260,11 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            }
         }
 
         [TestCase(0u, 1, TestName = "should_accept_zero_MaxFeePerGas_and_zero_MaxPriorityFee_1559_tx")]
@@ -1250,8 +1332,11 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(oldTx, TxHandlingOptions.PersistentBroadcast);
             _txPool.SubmitTx(newTx, TxHandlingOptions.PersistentBroadcast);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            Assert.That(_txPool.GetPendingTransactions().First(), Is.EqualTo(replaced ? newTx : oldTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.GetPendingTransactions().First(), Is.EqualTo(replaced ? newTx : oldTx));
+            }
         }
 
         [TestCase(0, 0, 0, 0, false)]
@@ -1290,8 +1375,11 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(oldTx, TxHandlingOptions.PersistentBroadcast);
             _txPool.SubmitTx(newTx, TxHandlingOptions.PersistentBroadcast);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            Assert.That(_txPool.GetPendingTransactions().First(), Is.EqualTo(replaced ? newTx : oldTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.GetPendingTransactions().First(), Is.EqualTo(replaced ? newTx : oldTx));
+            }
         }
 
         [TestCase(TxType.Legacy, 0)]
@@ -1332,8 +1420,11 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(oldTx, TxHandlingOptions.PersistentBroadcast);
             _txPool.SubmitTx(newTx, TxHandlingOptions.PersistentBroadcast);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            Assert.That(_txPool.GetPendingTransactions().First(), Is.EqualTo(newTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.GetPendingTransactions().First(), Is.EqualTo(newTx));
+            }
         }
 
         [Test]
@@ -1394,10 +1485,13 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(secondTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingTransactions(), Does.Contain(firstTx));
-            Assert.That(_txPool.GetPendingTransactions(), Does.Contain(secondTx));
-            Assert.That(_txPool.GetOwnPendingTransactions(), Does.Not.Contain(firstTx));
-            Assert.That(_txPool.GetOwnPendingTransactions(), Does.Not.Contain(secondTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactions(), Does.Contain(firstTx));
+                Assert.That(_txPool.GetPendingTransactions(), Does.Contain(secondTx));
+                Assert.That(_txPool.GetOwnPendingTransactions(), Does.Not.Contain(firstTx));
+                Assert.That(_txPool.GetOwnPendingTransactions(), Does.Not.Contain(secondTx));
+            }
 
             // Send cheap transaction => Not included in txPool
             Transaction cheapTx = Build.A.Transaction
@@ -1407,8 +1501,11 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Assert.That(_txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(cheapTx));
-            Assert.That(_txPool.GetOwnPendingTransactions(), Does.Contain(cheapTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(cheapTx));
+                Assert.That(_txPool.GetOwnPendingTransactions(), Does.Contain(cheapTx));
+            }
             peer.Received().SendNewTransaction(cheapTx);
 
             // Send transaction with increased nonce => NonceGap should not appear as previous transaction is broadcasted, should be accepted
@@ -1419,8 +1516,11 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Assert.That(_txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(fourthTx));
-            Assert.That(_txPool.GetOwnPendingTransactions(), Does.Contain(fourthTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(fourthTx));
+                Assert.That(_txPool.GetOwnPendingTransactions(), Does.Contain(fourthTx));
+            }
             peer.Received().SendNewTransaction(fourthTx);
         }
 
@@ -1525,8 +1625,11 @@ namespace Nethermind.TxPool.Test
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txPoolConfig.Size - 1));
-            Assert.That(_txPool.GetPendingTransactionsBySender().Keys.Count, Is.EqualTo(txPoolConfig.Size - 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txPoolConfig.Size - 1));
+                Assert.That(_txPool.GetPendingTransactionsBySender().Keys.Count, Is.EqualTo(txPoolConfig.Size - 1));
+            }
 
             // send 1 cheap tx from sender X
             PrivateKey privateKeyOfAttacker = TestItem.PrivateKeys[txPoolConfig.Size];
@@ -1540,9 +1643,12 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(privateKeyOfAttacker.Address, UInt256.MaxValue);
             AcceptTxResult cheapTxResult = _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast);
 
-            Assert.That(cheapTxResult, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txPoolConfig.Size));
-            Assert.That(_txPool.GetPendingTransactionsBySender().Keys.Count, Is.EqualTo(txPoolConfig.Size));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cheapTxResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txPoolConfig.Size));
+                Assert.That(_txPool.GetPendingTransactionsBySender().Keys.Count, Is.EqualTo(txPoolConfig.Size));
+            }
 
             using ArrayPoolList<Transaction> txs = new(txPoolConfig.Size, txPoolConfig.Size);
             // send (size - 1) standard txs from different senders
@@ -1596,8 +1702,11 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txPoolConfig.Size - 1));
-            Assert.That(_txPool.GetPendingTransactionsBySender().Keys.Count, Is.EqualTo(txPoolConfig.Size - 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txPoolConfig.Size - 1));
+                Assert.That(_txPool.GetPendingTransactionsBySender().Keys.Count, Is.EqualTo(txPoolConfig.Size - 1));
+            }
 
             const int nonceGap = 100;
             // send 1 expensive nonce-gap tx from sender X
@@ -1610,8 +1719,11 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(privateKeyOfAttacker.Address, UInt256.MaxValue);
             Assert.That(_txPool.SubmitTx(nonceGapTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txPoolConfig.Size));
-            Assert.That(_txPool.GetPendingTransactionsBySender().Keys.Count, Is.EqualTo(txPoolConfig.Size));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txPoolConfig.Size));
+                Assert.That(_txPool.GetPendingTransactionsBySender().Keys.Count, Is.EqualTo(txPoolConfig.Size));
+            }
 
             using ArrayPoolList<Transaction> txs2 = new(txPoolConfig.Size, txPoolConfig.Size);
             Parallel.For(0, txPoolConfig.Size, i =>
@@ -1729,10 +1841,13 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             AcceptTxResult result = _txPool.SubmitTx(testTx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(result, Is.EqualTo(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete));
-            Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(expectedResult ? 1 : 0));
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
-            Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(testTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete));
+                Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(expectedResult ? 1 : 0));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+                Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(testTx));
+            }
         }
 
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
@@ -2334,18 +2449,24 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(txsA[1], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(txsB[0], TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txsA.Length + txsB.Length));
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txsA.Length + txsB.Length));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+            }
 
             // adding block A
             Block blockA = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsA).TestObject;
             await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txsB.Length));
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
-            Assert.That(_txPool.TryGetPendingTransaction(txsA[0].Hash!, out _), Is.False);
-            Assert.That(_txPool.TryGetPendingTransaction(txsA[1].Hash!, out _), Is.False);
-            Assert.That(_txPool.TryGetPendingTransaction(txsB[0].Hash!, out _), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txsB.Length));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+                Assert.That(_txPool.TryGetPendingTransaction(txsA[0].Hash!, out _), Is.False);
+                Assert.That(_txPool.TryGetPendingTransaction(txsA[1].Hash!, out _), Is.False);
+                Assert.That(_txPool.TryGetPendingTransaction(txsB[0].Hash!, out _), Is.True);
+            }
 
             // reorganized from block A to block B
             Block blockB = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsB).TestObject;
@@ -2355,13 +2476,16 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.TryGetPendingTransaction(txsB[0].Hash!, out _), Is.False);
 
             // txs from reorganized blockA should be readded to tx pool
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txsA.Length));
-            Assert.That(_txPool.TryGetPendingTransaction(txsA[0].Hash!, out Transaction tx1), Is.True);
-            Assert.That(_txPool.TryGetPendingTransaction(txsA[1].Hash!, out Transaction tx2), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(txsA.Length));
+                Assert.That(_txPool.TryGetPendingTransaction(txsA[0].Hash!, out Transaction tx1), Is.True);
+                Assert.That(_txPool.TryGetPendingTransaction(txsA[1].Hash!, out Transaction tx2), Is.True);
 
-            Assert.That(tx1, Is.EqualTo(txsA[0]).UsingTransactionComparer(nameof(Transaction.PoolIndex)));
+                Assert.That(tx1, Is.EqualTo(txsA[0]).UsingTransactionComparer(nameof(Transaction.PoolIndex)));
 
-            Assert.That(tx2, Is.EqualTo(txsA[1]).UsingTransactionComparer(nameof(Transaction.PoolIndex)));
+                Assert.That(tx2, Is.EqualTo(txsA[1]).UsingTransactionComparer(nameof(Transaction.PoolIndex)));
+            }
         }
 
         [Test]
@@ -2396,9 +2520,12 @@ namespace Nethermind.TxPool.Test
 
             // Snapshot must reflect the updated pool state, not the stale cache
             Transaction[] snapshotAfter = _txPool.GetPendingTransactions();
-            Assert.That(snapshotAfter, Has.Length.EqualTo(1));
-            Assert.That(snapshotAfter, Has.One.Matches<Transaction>(t => t.Hash == txB.Hash));
-            Assert.That(snapshotAfter, Has.None.Matches<Transaction>(t => t.Hash == txA.Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshotAfter, Has.Length.EqualTo(1));
+                Assert.That(snapshotAfter, Has.One.Matches<Transaction>(t => t.Hash == txB.Hash));
+                Assert.That(snapshotAfter, Has.None.Matches<Transaction>(t => t.Hash == txA.Hash));
+            }
         }
 
         [Test]
@@ -2451,9 +2578,12 @@ namespace Nethermind.TxPool.Test
 
                 // After head processing completes, snapshot must be up-to-date
                 Transaction[] snapshot = _txPool.GetPendingTransactions();
-                Assert.That(snapshot, Has.Length.EqualTo(1));
-                Assert.That(snapshot, Has.One.Matches<Transaction>(t => t.Hash == txB.Hash));
-                Assert.That(snapshot, Has.None.Matches<Transaction>(t => t.Hash == txA.Hash));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snapshot, Has.Length.EqualTo(1));
+                    Assert.That(snapshot, Has.One.Matches<Transaction>(t => t.Hash == txB.Hash));
+                    Assert.That(snapshot, Has.None.Matches<Transaction>(t => t.Hash == txA.Hash));
+                }
 
                 // Re-create test state for the next attempt
                 await _txPool.DisposeAsync();
