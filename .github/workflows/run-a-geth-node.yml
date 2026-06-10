@@ -122,7 +122,7 @@ jobs:
           # Give it a checkpoint-sync URL (else it genesis-syncs for days and geth's
           # highestBlock stays 0). Flags are passed without '--'; sedge prepends it.
           case "$NETWORK" in
-            mainnet) CHECKPOINT_URL="https://mainnet.checkpoint.sigp.io" ;;
+            mainnet) CHECKPOINT_URL="https://mainnet-checkpoint-sync.attestant.io" ;;
             sepolia) CHECKPOINT_URL="https://sepolia.beaconstate.info" ;;
             holesky) CHECKPOINT_URL="https://holesky.beaconstate.info" ;;
             hoodi)   CHECKPOINT_URL="https://hoodi.beaconstate.info" ;;
