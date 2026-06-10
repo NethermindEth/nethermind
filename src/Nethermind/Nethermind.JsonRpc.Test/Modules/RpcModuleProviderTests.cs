@@ -59,10 +59,13 @@ public class RpcModuleProviderTests
         SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
         _moduleProvider.Register(pool);
 
-        Assert.That(_moduleProvider.Check("net_VeRsIoN", _context), Is.EqualTo(ModuleResolution.Unknown));
-        Assert.That(_moduleProvider.Check("net_Version", _context), Is.EqualTo(ModuleResolution.Unknown));
-        Assert.That(_moduleProvider.Check("Net_Version", _context), Is.EqualTo(ModuleResolution.Unknown));
-        Assert.That(_moduleProvider.Check("net_version", _context), Is.EqualTo(ModuleResolution.Enabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_moduleProvider.Check("net_VeRsIoN", _context), Is.EqualTo(ModuleResolution.Unknown));
+            Assert.That(_moduleProvider.Check("net_Version", _context), Is.EqualTo(ModuleResolution.Unknown));
+            Assert.That(_moduleProvider.Check("Net_Version", _context), Is.EqualTo(ModuleResolution.Unknown));
+            Assert.That(_moduleProvider.Check("net_version", _context), Is.EqualTo(ModuleResolution.Enabled));
+        }
     }
 
     [TestCase("eth_.*", ModuleResolution.Unknown)]
@@ -98,9 +101,12 @@ public class RpcModuleProviderTests
 
         JsonRpcUrl url = new("http", "127.0.0.1", 8888, RpcEndpoint.Http, false, new[] { "net" });
 
-        Assert.That(_moduleProvider.Check("net_version", JsonRpcContext.Http(url)), Is.EqualTo(ModuleResolution.Enabled));
-        Assert.That(_moduleProvider.Check("proof_call", JsonRpcContext.Http(url)), Is.EqualTo(ModuleResolution.Disabled));
-        Assert.That(_moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http)), Is.EqualTo(ModuleResolution.Enabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_moduleProvider.Check("net_version", JsonRpcContext.Http(url)), Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(_moduleProvider.Check("proof_call", JsonRpcContext.Http(url)), Is.EqualTo(ModuleResolution.Disabled));
+            Assert.That(_moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http)), Is.EqualTo(ModuleResolution.Enabled));
+        }
     }
 
     [Test]
@@ -130,17 +136,18 @@ public class RpcModuleProviderTests
         string nonInternedMethodName = new(methodName.ToCharArray());
         Assert.That(ReferenceEquals(nonInternedMethodName, internedMethodName), Is.False);
 
-        Assert.That(
-            _moduleProvider.Check(internedMethodName, _context, out string? internedModule, out RpcModuleProvider.ResolvedMethodInfo? internedMethod),
-            Is.EqualTo(ModuleResolution.Enabled));
-        Assert.That(
-            _moduleProvider.Check(nonInternedMethodName, _context, out string? nonInternedModule, out RpcModuleProvider.ResolvedMethodInfo? nonInternedMethod),
-            Is.EqualTo(ModuleResolution.Enabled));
+        ModuleResolution internedResolution = _moduleProvider.Check(internedMethodName, _context, out string? internedModule, out RpcModuleProvider.ResolvedMethodInfo? internedMethod);
+        ModuleResolution nonInternedResolution = _moduleProvider.Check(nonInternedMethodName, _context, out string? nonInternedModule, out RpcModuleProvider.ResolvedMethodInfo? nonInternedMethod);
 
-        Assert.That(internedModule, Is.EqualTo(moduleType));
-        Assert.That(nonInternedModule, Is.EqualTo(moduleType));
-        Assert.That(internedMethod, Is.SameAs(nonInternedMethod));
-        Assert.That(internedMethod!.ToString(), Is.EqualTo(methodName));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(internedResolution, Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(nonInternedResolution, Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(internedModule, Is.EqualTo(moduleType));
+            Assert.That(nonInternedModule, Is.EqualTo(moduleType));
+            Assert.That(internedMethod, Is.SameAs(nonInternedMethod));
+            Assert.That(internedMethod!.ToString(), Is.EqualTo(methodName));
+        }
     }
 
     [Test]
@@ -171,14 +178,17 @@ public class RpcModuleProviderTests
         RpcModuleProvider.ResolvedMethodInfo asyncTypedErrorDataMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_async_typed_error_data))!;
         RpcModuleProvider.ResolvedMethodInfo polymorphicMethod = _moduleProvider.Resolve(nameof(DirectInvokerRpcModule.direct_polymorphic))!;
 
-        Assert.That(syncMethod.DirectNoParameterInvoker, Is.Not.Null);
-        Assert.That(asyncMethod.DirectNoParameterInvoker, Is.Not.Null);
-        Assert.That(parameterMethod.DirectNoParameterInvoker, Is.Null);
-        Assert.That(parameterMethod.DirectParameterInvoker, Is.Not.Null);
-        Assert.That(fourParameterMethod.DirectParameterInvoker, Is.Not.Null);
-        Assert.That(requiredValueParameterMethod.DirectParameterInvoker, Is.Null);
-        Assert.That(requiredValueParameterMethod.ExpectedParameters[0].TypeInfo, Is.Not.Null);
-        Assert.That(RpcParameterTypeInfo.Get(typeof(int)), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncMethod.DirectNoParameterInvoker, Is.Not.Null);
+            Assert.That(asyncMethod.DirectNoParameterInvoker, Is.Not.Null);
+            Assert.That(parameterMethod.DirectNoParameterInvoker, Is.Null);
+            Assert.That(parameterMethod.DirectParameterInvoker, Is.Not.Null);
+            Assert.That(fourParameterMethod.DirectParameterInvoker, Is.Not.Null);
+            Assert.That(requiredValueParameterMethod.DirectParameterInvoker, Is.Null);
+            Assert.That(requiredValueParameterMethod.ExpectedParameters[0].TypeInfo, Is.Not.Null);
+            Assert.That(RpcParameterTypeInfo.Get(typeof(int)), Is.Not.Null);
+        }
 
         AssertResultMetadata(syncMethod, typeof(ResultWrapper<string>), typeof(string));
         AssertResultMetadata(asyncMethod, typeof(ResultWrapper<long>), typeof(long), isTaskWrapped: true);
@@ -212,10 +222,13 @@ public class RpcModuleProviderTests
         Task<ResultWrapper<string, string>> asyncTypedErrorResult = (Task<ResultWrapper<string, string>>)asyncTypedErrorResultObject!;
         Assert.That(asyncTypedErrorDataMethod.ReadTaskResult(asyncTypedErrorResult)!.Data, Is.EqualTo("error-data"));
 
-        Assert.That(module.SyncCalls, Is.EqualTo(1));
-        Assert.That(module.AsyncCalls, Is.EqualTo(1));
-        Assert.That(module.ParameterCalls, Is.EqualTo(1));
-        Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(module.SyncCalls, Is.EqualTo(1));
+            Assert.That(module.AsyncCalls, Is.EqualTo(1));
+            Assert.That(module.ParameterCalls, Is.EqualTo(1));
+            Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -314,18 +327,21 @@ public class RpcModuleProviderTests
         bool isTaskWrapped = false,
         bool successPayloadCanHaveDerivedRuntimeType = false)
     {
-        Assert.That(method.IsTaskWrapped, Is.EqualTo(isTaskWrapped));
-        Assert.That(method.ResultWrapperType, Is.EqualTo(resultWrapperType));
-        Assert.That(method.SuccessPayloadType, Is.EqualTo(successPayloadType));
-        Assert.That(method.SuccessPayloadTypeInfo, Is.Not.Null);
-        Assert.That(method.SuccessPayloadCanHaveDerivedRuntimeType, Is.EqualTo(successPayloadCanHaveDerivedRuntimeType));
-        Assert.That(method.ErrorDataPayloadType, Is.EqualTo(errorDataPayloadType));
-        Assert.That(method.ErrorDataPayloadCanHaveDerivedRuntimeType, Is.False);
-        Assert.That((method.TaskResultAccessor is not null), Is.EqualTo(isTaskWrapped));
-
-        if (errorDataPayloadType is not null)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(method.ErrorDataPayloadTypeInfo, Is.Not.Null);
+            Assert.That(method.IsTaskWrapped, Is.EqualTo(isTaskWrapped));
+            Assert.That(method.ResultWrapperType, Is.EqualTo(resultWrapperType));
+            Assert.That(method.SuccessPayloadType, Is.EqualTo(successPayloadType));
+            Assert.That(method.SuccessPayloadTypeInfo, Is.Not.Null);
+            Assert.That(method.SuccessPayloadCanHaveDerivedRuntimeType, Is.EqualTo(successPayloadCanHaveDerivedRuntimeType));
+            Assert.That(method.ErrorDataPayloadType, Is.EqualTo(errorDataPayloadType));
+            Assert.That(method.ErrorDataPayloadCanHaveDerivedRuntimeType, Is.False);
+            Assert.That((method.TaskResultAccessor is not null), Is.EqualTo(isTaskWrapped));
+
+            if (errorDataPayloadType is not null)
+            {
+                Assert.That(method.ErrorDataPayloadTypeInfo, Is.Not.Null);
+            }
         }
     }
 

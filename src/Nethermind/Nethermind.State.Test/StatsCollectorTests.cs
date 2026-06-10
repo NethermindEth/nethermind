@@ -69,20 +69,23 @@ namespace Nethermind.Store.Test
             stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions);
             TrieStats stats = statsCollector.Stats;
 
-            Assert.That(stats.CodeCount, Is.EqualTo(1));
-            Assert.That(stats.MissingCode, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stats.CodeCount, Is.EqualTo(1));
+                Assert.That(stats.MissingCode, Is.EqualTo(1));
 
-            Assert.That(stats.NodesCount, Is.EqualTo(1348));
+                Assert.That(stats.NodesCount, Is.EqualTo(1348));
 
-            Assert.That(stats.StateBranchCount, Is.EqualTo(1));
-            Assert.That(stats.StateExtensionCount, Is.EqualTo(1));
-            Assert.That(stats.AccountCount, Is.EqualTo(2));
+                Assert.That(stats.StateBranchCount, Is.EqualTo(1));
+                Assert.That(stats.StateExtensionCount, Is.EqualTo(1));
+                Assert.That(stats.AccountCount, Is.EqualTo(2));
 
-            Assert.That(stats.StorageCount, Is.EqualTo(1343));
-            Assert.That(stats.StorageBranchCount, Is.EqualTo(337));
-            Assert.That(stats.StorageExtensionCount, Is.EqualTo(12));
-            Assert.That(stats.StorageLeafCount, Is.EqualTo(994));
-            Assert.That(stats.MissingStorage, Is.EqualTo(1));
+                Assert.That(stats.StorageCount, Is.EqualTo(1343));
+                Assert.That(stats.StorageBranchCount, Is.EqualTo(337));
+                Assert.That(stats.StorageExtensionCount, Is.EqualTo(12));
+                Assert.That(stats.StorageLeafCount, Is.EqualTo(994));
+                Assert.That(stats.MissingStorage, Is.EqualTo(1));
+            }
         }
     }
 }

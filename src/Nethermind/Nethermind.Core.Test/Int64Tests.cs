@@ -31,8 +31,11 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexBytes);
             long viaArray = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
             long viaSpan = bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            Assert.That(viaArray, Is.EqualTo(expected));
-            Assert.That(viaSpan, Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(viaArray, Is.EqualTo(expected));
+                Assert.That(viaSpan, Is.EqualTo(expected));
+            }
         }
 
         [Test]
@@ -40,8 +43,11 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString("0102030405060708");
             long expected = unchecked((long)0x0102030405060708UL);
-            Assert.That(bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
-            Assert.That(bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+                Assert.That(bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+            }
         }
 
         [TestCase("01ffffffffffffffff", -1L)]
@@ -49,8 +55,11 @@ namespace Nethermind.Core.Test
         public void ToLongFromBytes_Oversized_inputs_keep_last_8_bytes(string hexBytes, long expected)
         {
             byte[] bytes = Bytes.FromHexString(hexBytes);
-            Assert.That(bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
-            Assert.That(bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+                Assert.That(bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+            }
         }
 
         [Test]

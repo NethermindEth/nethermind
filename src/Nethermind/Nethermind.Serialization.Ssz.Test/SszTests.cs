@@ -191,10 +191,13 @@ namespace Nethermind.Serialization.Ssz.Test
             // so we have 0x0D = 0000_1101
             byte[] data = [0x0D];
             BitArray result = Ssz.DecodeBitlist(data);
-            Assert.That(result.Length, Is.EqualTo(3));
-            Assert.That(result[0], Is.True);
-            Assert.That(result[1], Is.False);
-            Assert.That(result[2], Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Length, Is.EqualTo(3));
+                Assert.That(result[0], Is.True);
+                Assert.That(result[1], Is.False);
+                Assert.That(result[2], Is.True);
+            }
         }
 
         [Test]

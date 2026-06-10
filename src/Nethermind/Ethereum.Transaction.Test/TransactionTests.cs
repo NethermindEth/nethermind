@@ -95,20 +95,23 @@ public class TransactionTests
 
         if (validTest is not null)
         {
-            Assert.That(transaction.Value, Is.EqualTo(validTest.Value), "value");
-            Assert.That(transaction.Data.AsArray(), Is.EqualTo(validTest.Data), "data");
-            Assert.That(transaction.GasLimit, Is.EqualTo(validTest.GasLimit.ToInt64(null)), "gasLimit");
-            Assert.That(transaction.GasPrice, Is.EqualTo(validTest.GasPrice), "gasPrice");
-            Assert.That(transaction.Nonce, Is.EqualTo(validTest.Nonce), "nonce");
-            Assert.That(transaction.To, Is.EqualTo(validTest.To), "to");
-            Assert.That(validator.IsWellFormed(transaction, spec), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(transaction.Value, Is.EqualTo(validTest.Value), "value");
+                Assert.That(transaction.Data.AsArray(), Is.EqualTo(validTest.Data), "data");
+                Assert.That(transaction.GasLimit, Is.EqualTo(validTest.GasLimit.ToInt64(null)), "gasLimit");
+                Assert.That(transaction.GasPrice, Is.EqualTo(validTest.GasPrice), "gasPrice");
+                Assert.That(transaction.Nonce, Is.EqualTo(validTest.Nonce), "nonce");
+                Assert.That(transaction.To, Is.EqualTo(validTest.To), "to");
+                Assert.That(validator.IsWellFormed(transaction, spec), Is.True);
 
-            Signature expectedSignature = new(validTest.R, validTest.S, validTest.V);
-            Assert.That(transaction.Signature, Is.EqualTo(expectedSignature), "signature");
+                Signature expectedSignature = new(validTest.R, validTest.S, validTest.V);
+                Assert.That(transaction.Signature, Is.EqualTo(expectedSignature), "signature");
 
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL);
-            bool verified = ecdsa.Verify(validTest.Sender, transaction);
-            Assert.That(verified, Is.True);
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? BlockchainIds.Mainnet : 0UL);
+                bool verified = ecdsa.Verify(validTest.Sender, transaction);
+                Assert.That(verified, Is.True);
+            }
         }
         else
         {

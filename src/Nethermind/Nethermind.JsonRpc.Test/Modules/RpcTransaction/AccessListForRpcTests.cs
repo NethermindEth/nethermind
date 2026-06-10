@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -16,105 +15,71 @@ public class AccessListForRpcTests
 {
     private readonly EthereumJsonSerializer _serializer = new();
 
-    [Test]
-    public void Single_address_with_no_storage()
-    {
-        Address address = TestItem.AddressA;
-        AccessList accessList = new AccessList.Builder()
-            .AddAddress(address)
-            .Build();
-
-        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
-        string serialized = _serializer.Serialize(forRpc);
-
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]""")).Using(JToken.EqualityComparer));
-    }
+    private const string AddressAJson = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
+    private const string Slot1 = "0x0000000000000000000000000000000000000000000000000000000000000001";
+    private const string Slot2 = "0x0000000000000000000000000000000000000000000000000000000000000002";
+    private const string Slot3 = "0x0000000000000000000000000000000000000000000000000000000000000003";
 
     [Test]
-    public void Single_address_with_multiple_storage_keys()
-    {
-        Address address = TestItem.AddressA;
-        UInt256 storageKey1 = (UInt256)1;
-        UInt256 storageKey2 = (UInt256)2;
-        UInt256 storageKey3 = (UInt256)3;
-
-        AccessList accessList = new AccessList.Builder()
-            .AddAddress(address)
-            .AddStorage(storageKey1)
-            .AddStorage(storageKey2)
-            .AddStorage(storageKey3)
-            .Build();
-
-        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
-        string serialized = _serializer.Serialize(forRpc);
-
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003"]}]""")).Using(JToken.EqualityComparer));
-    }
+    public void Single_address_with_no_storage() =>
+        AssertSerializedAccessList(
+            new AccessList.Builder()
+                .AddAddress(TestItem.AddressA)
+                .Build(),
+            $$"""[{"address":"{{AddressAJson}}","storageKeys":[]}]""");
 
     [Test]
-    public void Single_address_with_duplicated_storage_keys()
-    {
-        Address address = TestItem.AddressA;
-        UInt256 storageKey1 = (UInt256)1;
-        UInt256 storageKey2 = (UInt256)2;
-        UInt256 storageKey3 = (UInt256)3;
-
-        AccessList accessList = new AccessList.Builder()
-            .AddAddress(address)
-            .AddStorage(storageKey1)
-            .AddStorage(storageKey2)
-            .AddStorage(storageKey3)
-            .AddStorage(storageKey1)
-            .Build();
-
-        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
-        string serialized = _serializer.Serialize(forRpc);
-
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003","0x0000000000000000000000000000000000000000000000000000000000000001"]}]""")).Using(JToken.EqualityComparer));
-    }
+    public void Single_address_with_multiple_storage_keys() =>
+        AssertSerializedAccessList(
+            new AccessList.Builder()
+                .AddAddress(TestItem.AddressA)
+                .AddStorage((UInt256)1)
+                .AddStorage((UInt256)2)
+                .AddStorage((UInt256)3)
+                .Build(),
+            $$"""[{"address":"{{AddressAJson}}","storageKeys":["{{Slot1}}","{{Slot2}}","{{Slot3}}"]}]""");
 
     [Test]
-    public void Duplicated_address_with_multiple_storage_keys()
-    {
-        Address address = TestItem.AddressA;
-        UInt256 storageKey1 = (UInt256)1;
-        UInt256 storageKey2 = (UInt256)2;
-        UInt256 storageKey3 = (UInt256)3;
-
-        AccessList accessList = new AccessList.Builder()
-            .AddAddress(address)
-            .AddStorage(storageKey1)
-            .AddStorage(storageKey2)
-            .AddAddress(address)
-            .AddStorage(storageKey3)
-            .Build();
-
-        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
-        string serialized = _serializer.Serialize(forRpc);
-
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000003"]}]""")).Using(JToken.EqualityComparer));
-    }
+    public void Single_address_with_duplicated_storage_keys() =>
+        AssertSerializedAccessList(
+            new AccessList.Builder()
+                .AddAddress(TestItem.AddressA)
+                .AddStorage((UInt256)1)
+                .AddStorage((UInt256)2)
+                .AddStorage((UInt256)3)
+                .AddStorage((UInt256)1)
+                .Build(),
+            $$"""[{"address":"{{AddressAJson}}","storageKeys":["{{Slot1}}","{{Slot2}}","{{Slot3}}","{{Slot1}}"]}]""");
 
     [Test]
-    public void Duplicated_address_with_duplicated_storage_keys()
+    public void Duplicated_address_with_multiple_storage_keys() =>
+        AssertSerializedAccessList(
+            new AccessList.Builder()
+                .AddAddress(TestItem.AddressA)
+                .AddStorage((UInt256)1)
+                .AddStorage((UInt256)2)
+                .AddAddress(TestItem.AddressA)
+                .AddStorage((UInt256)3)
+                .Build(),
+            $$"""[{"address":"{{AddressAJson}}","storageKeys":["{{Slot1}}","{{Slot2}}"]},{"address":"{{AddressAJson}}","storageKeys":["{{Slot3}}"]}]""");
+
+    [Test]
+    public void Duplicated_address_with_duplicated_storage_keys() =>
+        AssertSerializedAccessList(
+            new AccessList.Builder()
+                .AddAddress(TestItem.AddressA)
+                .AddStorage((UInt256)1)
+                .AddStorage((UInt256)2)
+                .AddAddress(TestItem.AddressA)
+                .AddStorage((UInt256)1)
+                .AddStorage((UInt256)3)
+                .Build(),
+            $$"""[{"address":"{{AddressAJson}}","storageKeys":["{{Slot1}}","{{Slot2}}"]},{"address":"{{AddressAJson}}","storageKeys":["{{Slot1}}","{{Slot3}}"]}]""");
+
+    private void AssertSerializedAccessList(AccessList accessList, string expectedJson)
     {
-        Address address = TestItem.AddressA;
-        UInt256 storageKey1 = (UInt256)1;
-        UInt256 storageKey2 = (UInt256)2;
-        UInt256 storageKey3 = (UInt256)3;
-
-        AccessList accessList = new AccessList.Builder()
-            .AddAddress(address)
-            .AddStorage(storageKey1)
-            .AddStorage(storageKey2)
-            .AddAddress(address)
-            .AddStorage(storageKey1)
-            .AddStorage(storageKey3)
-            .Build();
-
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
-
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000003"]}]""")).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedJson)).Using(JToken.EqualityComparer));
     }
 }
