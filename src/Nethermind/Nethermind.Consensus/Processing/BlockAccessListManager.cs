@@ -53,7 +53,7 @@ public partial class BlockAccessListManager(
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
-    private Task? _balReadHint;
+    private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
@@ -118,8 +118,9 @@ public partial class BlockAccessListManager(
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
-        // The tracked hint must always belong to the block being processed.
-        _balReadHint = null;
+        // Any stale warmup from a prior block belongs to a prior state root and must not bleed
+        // through; re-issued below if BAL warming applies to this block.
+        _balWarmupTask = null;
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -161,23 +162,21 @@ public partial class BlockAccessListManager(
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
 
-        // DrainBalReadHint awaits this just before the parallel pre-state apply's write batch
-        // would otherwise cancel it.
         if (BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
         {
-            _balReadHint = stateProvider.HintBal(suggestedBlock.BlockAccessList);
+            _balWarmupTask = stateProvider.HintBal(suggestedBlock.BlockAccessList);
         }
     }
 
-    public void DrainBalReadHint()
+    public void WaitForBalWarmup()
     {
-        Task? balReadHint = _balReadHint;
-        if (balReadHint is null) return;
-        _balReadHint = null;
+        Task? task = _balWarmupTask;
+        if (task is null) return;
+        _balWarmupTask = null;
 
         try
         {
-            balReadHint.GetAwaiter().GetResult();
+            task.GetAwaiter().GetResult();
         }
         catch (OperationCanceledException)
         {
@@ -185,7 +184,7 @@ public partial class BlockAccessListManager(
         }
         catch (Exception ex)
         {
-            // Warming is best-effort: a faulted hint only means fewer pre-block cache hits and
+            // Warming is best-effort: a faulted task only means fewer pre-block cache hits and
             // must never fail the block. Log so a slow block can be correlated with the failure.
             if (_logger.IsDebug) _logger.Debug($"BAL read warming faulted: {ex}");
         }

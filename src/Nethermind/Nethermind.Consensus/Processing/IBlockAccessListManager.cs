@@ -23,11 +23,6 @@ public interface IBlockAccessListManager
     /// PrepareForProcessing.</summary>
     bool ForceConstructGeneratedBlockAccessList { get; set; }
 
-    /// <summary>
-    /// Prepares per-block state and, when <see cref="BatchReadEnabled"/> is true and the
-    /// block carries a <see cref="Block.BlockAccessList"/>, kicks off the BAL read-warming
-    /// task; <see cref="DrainBalReadHint"/> awaits it later in the parallel executor.
-    /// </summary>
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
 
     /// <summary>
@@ -35,11 +30,10 @@ public interface IBlockAccessListManager
     /// (if any) completes, then forgets it.
     /// </summary>
     /// <remarks>
-    /// Used by the parallel-validation executor to let warming finish before the pre-state
-    /// apply's write batch would cancel it. Warming is best-effort: cancellation is expected
-    /// and faults must never fail the block — they only mean fewer pre-block cache hits.
+    /// Warming is best-effort: cancellation is expected and faults must never fail the block
+    /// — they only mean fewer pre-block cache hits.
     /// </remarks>
-    void DrainBalReadHint();
+    void WaitForBalWarmup();
 
     void Setup(Block block);
     void SpendGas(long gas);

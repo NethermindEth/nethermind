@@ -64,7 +64,7 @@ public class BlockAccessListManagerTests
     [TestCase(HintState.AlreadyCompleted)]
     [TestCase(HintState.Canceled)]
     [TestCase(HintState.Faulted)]
-    public void DrainBalReadHint_completes_without_throwing_for_non_pending_hint(HintState state)
+    public void WaitForBalWarmup_completes_without_throwing_for_non_pending_hint(HintState state)
     {
         Harness h = new();
         if (state != HintState.NeverIssued)
@@ -78,19 +78,19 @@ public class BlockAccessListManagerTests
             });
         }
 
-        Task drain = Task.Run(h.Manager.DrainBalReadHint);
+        Task drain = Task.Run(h.Manager.WaitForBalWarmup);
         Assert.That(drain.Wait(DrainTimeout), Is.True);
         Assert.That(drain.Exception, Is.Null);
     }
 
     [Test]
-    public void DrainBalReadHint_blocks_until_pending_hint_completes()
+    public void WaitForBalWarmup_blocks_until_pending_hint_completes()
     {
         Harness h = new();
         TaskCompletionSource hint = new(TaskCreationOptions.RunContinuationsAsynchronously);
         h.IssueHint(hint.Task);
 
-        Task drain = Task.Run(h.Manager.DrainBalReadHint);
+        Task drain = Task.Run(h.Manager.WaitForBalWarmup);
 
         Assert.That(drain.Wait(TimeSpan.FromMilliseconds(50)), Is.False);
         hint.SetResult();
@@ -108,7 +108,7 @@ public class BlockAccessListManagerTests
         // unsignaled. If PrepareForProcessing didn't drop it, drain would block on `stale`.
         h.IssueHint(Task.CompletedTask);
 
-        Task drain = Task.Run(h.Manager.DrainBalReadHint);
+        Task drain = Task.Run(h.Manager.WaitForBalWarmup);
         Assert.That(drain.Wait(DrainTimeout), Is.True, "a stale hint from the previous block must not be awaited");
     }
 }

@@ -1274,7 +1274,7 @@ public class BlockProcessorTests
         {
         }
 
-        public void DrainBalReadHint()
+        public void WaitForBalWarmup()
         {
         }
 

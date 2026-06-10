@@ -25,7 +25,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options) { }
-    public void DrainBalReadHint() { }
+    public void WaitForBalWarmup() { }
     public void Setup(Block block) { }
     public void SpendGas(long gas) { }
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }

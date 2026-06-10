@@ -149,16 +149,11 @@ public partial class BlockProcessor
                             {
                                 if (i == 0)
                                 {
-                                    // ApplyStateChanges commits a write batch, which cancels the read-warming
-                                    // task BlockProcessor started. Drain that task BEFORE the apply: the state
-                                    // still serves the pre-block values the tx workers read; warming post-apply
-                                    // values would poison the shared cache.
-                                    state.balManager.DrainBalReadHint();
+                                    // Must finish warming BEFORE ApplyStateChanges' write batch cancels it.
+                                    state.balManager.WaitForBalWarmup();
 
-                                    // ApplyStateChanges mutates the shared stateProvider so runs inside
-                                    // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                                    // workers read from BAL-backed world states, not stateProvider, so
-                                    // neither races with this write.
+                                    // Slot 0 (not Task.Run) so the write to stateProvider stays inside the
+                                    // parallel loop; tx workers read BAL-backed world states, not this one.
                                     BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                     return state;
                                 }
