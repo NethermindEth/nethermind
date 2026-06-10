@@ -26,7 +26,8 @@ public static class BytecodeAnalyzer
         if (code.Length == 0)
             return AnalyzedCode.Empty;
 
-        // EIP-8024 introduces non-PUSH immediates (DUPN/SWAPN/EXCHANGE); the scanner assumes
+        // The IsEip8024Enabled spec flag (see IReleaseSpec; gates DUPN/SWAPN/EXCHANGE in
+        // EvmInstructions.GenerateOpCodes) introduces non-PUSH immediates. The scanner assumes
         // only PUSH carries immediates, so analysis is disabled on such specs until supported.
         if (spec.IsEip8024Enabled)
             return AnalyzedCode.Empty;

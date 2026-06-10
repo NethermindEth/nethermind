@@ -24,6 +24,14 @@ public readonly record struct OpInfo(long StaticGas, int Pops, int Pushes, int I
 /// constants the interpreter handlers consume, so there is a single source of truth.
 /// Anything not in this table is interpreter-only in v1.
 /// </summary>
+/// <remarks>
+/// "v1" here is the ANALYZER's block-cut classification, a superset of what the segment
+/// compiler can emit: MLOAD/MSTORE/MSTORE8 (and JUMP/JUMPI) are v1 so blocks aren't cut at
+/// them, but <see cref="IlSegmentCompiler"/> stops its emittable prefix there and the
+/// interpreter executes them. That is also why a "compilable" block's
+/// <see cref="BasicBlock.StaticGas"/> must never be billed by a segment — the compiler
+/// recomputes its own prefix gas in its PrefixMetrics and charges only that.
+/// </remarks>
 public static class IlEvmOpcodes
 {
     /// <summary>

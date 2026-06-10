@@ -52,6 +52,9 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         }
 
         StorageCell cell = new(address, in slot);
+        // AssociativeCache is thread-safe by design (lock-free seqlock reads, set-local write
+        // gates — see its class docs) and is shared by every reader of this persistence.
+        // Set() only ever stores non-null values, so the null check is purely defensive.
         if (cache.TryGet(in cell, out CachedSlot? cached) && cached is not null)
         {
             Metrics.FlatStorageReadCacheHits++;

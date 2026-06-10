@@ -66,21 +66,35 @@ public static class IlEvm
     /// <summary>Marks code analyzed with nothing worth compiling, so it is never re-analyzed.</summary>
     private static readonly object s_nothingToCompile = new();
 
-    public static bool Enabled = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM") == "1";
+    // Volatile: set at startup from the environment, but tests (and any future admin-RPC
+    // toggle) write them at runtime from another thread than the executing EVM threads.
+    public static volatile bool Enabled = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM") == "1";
 
-    public static int CompileThreshold = ParseThreshold();
+    public static volatile int CompileThreshold = ParseThreshold();
 
     // Observability: proves compiled code actually executed (test gates, Grafana). The
-    // execution counter is deliberately not interlocked — a lossy count is fine for both.
+    // execution counter is deliberately not interlocked — a lossy count is acceptable there
+    // (64-bit process assumed; on 32-bit a long increment could tear). Compilation counters
+    // are interlocked since they are written rarely and read as exact values.
     public static long ContractsCompiled;
     public static long SegmentsCompiled;
     public static long SegmentExecutions;
+    public static long ContractCompilationFailures;
 
     /// <summary>
     /// Per-frame notice: increments the execution counter and compiles exactly once at the
     /// threshold. Compilation is synchronous on the noticing thread — a one-time cost per code
     /// hash, never repeated (failures publish the sentinel).
     /// </summary>
+    /// <remarks>
+    /// Compilation is once per CodeInfo lifetime, deliberately: after a hard fork the artifact
+    /// remains the old spec's, <see cref="GetForExecution"/> rejects it on the reference
+    /// compare, and the contract simply interprets until the CodeInfo is evicted or the node
+    /// restarts. Correctness is unaffected; only the speedup lapses. Do NOT "fix" this by
+    /// clearing <see cref="CodeInfo.IlEvmArtifact"/> on mismatch — concurrent clear/publish
+    /// would race; a proper fix is a per-spec artifact slot, which is not worth it until forks
+    /// during uptime matter for this experimental feature.
+    /// </remarks>
     public static void NoticeExecution(CodeInfo codeInfo, IReleaseSpec spec)
     {
         if (Volatile.Read(ref codeInfo.IlEvmArtifact) is not null)
@@ -132,7 +146,10 @@ public static class IlEvm
         catch (Exception)
         {
             // A compiler defect must never take down execution — the interpreter is always
-            // correct; mark the code as not compilable and move on.
+            // correct; mark the code as not compilable and move on. The failure counter makes
+            // a systematically broken compiler visible on dashboards (this static class has no
+            // logger; a non-zero ContractCompilationFailures is the observable signal).
+            Interlocked.Increment(ref ContractCompilationFailures);
             return s_nothingToCompile;
         }
     }

@@ -22,6 +22,11 @@ namespace Nethermind.State
         // default pool holds, so the per-cell StackList<int> registries spill to fresh allocations
         // (a top-5 allocation in live-node profiling). Raise the cap so big calls reuse pooled
         // registries instead of allocating new ones.
+        //
+        // Memory bound: a pooled StackList<int> holds a small int[] (typically 16 entries), so a
+        // full pool is on the order of ~16k × ~100B ≈ 1.5-2 MB — negligible against the win.
+        // SetMaxPooledCount is process-global by design; this type is the only caller for
+        // StackList<int> and owns the sizing decision for the whole process.
         private const int StorageRegistryCellCapacity = 16384;
 
         static PartialStorageProviderBase() => StaticPool<StackList<int>>.SetMaxPooledCount(StorageRegistryCellCapacity);

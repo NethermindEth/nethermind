@@ -109,9 +109,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     // ReturnDataBuffer" without allocating a per-call byte[] copy (the ToArray it replaces was a
     // top CPU + allocation hotspot in profiling). It is non-null (so the loop's `ReturnData is not
     // null` stop/route checks still fire) and is neither byte[] nor VmState (so result handling
-    // falls through to the ReturnDataBuffer path). The bytes live in a reusable per-VM buffer;
-    // every consumer that *retains* the payload (CREATE code deposit, top-level tx output) copies
-    // it, so overwriting the buffer on the next RETURN/REVERT is safe.
+    // falls through to the ReturnDataBuffer path). The bytes live in a reusable per-VM buffer,
+    // which is INVALIDATED by the next RETURN/REVERT on this VM. Consumer audit (must be kept
+    // current when adding consumers):
+    //   - retains the payload → MUST copy: PrepareTopLevelSubstate (Output.ToArray()),
+    //     TryChargeAndDepositCode (code.ToArray()).
+    //   - reads it before any further bytecode runs → may reference: HandleRegularReturn's
+    //     ReturnDataBuffer assignment and the previousCallOutput span, both fully consumed
+    //     (written into VM memory) before the parent frame executes another opcode.
     internal static readonly object ReturnDataInBuffer = new();
     private byte[] _returnDataReuseBuffer = [];
 
@@ -1339,6 +1344,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                     exceptionType = ilSegment.Invoke(ref stack, ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas), ref programCounter);
                     opCodeCount += ilSegment.OpCount;
+                    // Deliberately not interlocked — see the IlEvm.SegmentExecutions field doc.
                     IlEvm.SegmentExecutions++;
                     continue;
                 }

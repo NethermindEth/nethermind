@@ -74,7 +74,10 @@ public static class IlSegmentCompiler
     /// <summary>Head may grow to MaxStackSize - RegisterLength; one more and the interpreter's push fails.</summary>
     public const int UsableStackSlots = EvmStack.MaxStackSize - EvmStack.RegisterLength;
 
-    private static readonly MethodInfo? s_gasConsume = typeof(EthereumGasPolicy).GetMethod(nameof(EthereumGasPolicy.Consume), [typeof(EthereumGasPolicy).MakeByRefType(), typeof(long)]);
+    // RequireVoid is load-bearing: the emitted IL performs no Pop after this call, so a non-void
+    // return would silently unbalance the evaluation stack (DynamicMethods skip verification).
+    // If the signature ever changes, the field becomes null and TryCompile turns itself off.
+    private static readonly MethodInfo? s_gasConsume = RequireVoid(typeof(EthereumGasPolicy).GetMethod(nameof(EthereumGasPolicy.Consume), [typeof(EthereumGasPolicy).MakeByRefType(), typeof(long)]));
     private static readonly MethodInfo? s_popUInt256 = typeof(EvmStack).GetMethod(nameof(EvmStack.PopUInt256), [typeof(UInt256).MakeByRefType()]);
     private static readonly MethodInfo? s_pushUInt256 = typeof(EvmStack).GetMethod(nameof(EvmStack.PushUInt256))?.MakeGenericMethod(typeof(OffFlag));
     private static readonly FieldInfo? s_constantsValues = typeof(SegmentConstants).GetField(SegmentConstants.ValuesFieldName, BindingFlags.NonPublic | BindingFlags.Instance);
@@ -263,8 +266,10 @@ public static class IlSegmentCompiler
     private static CompiledSegmentInvoke Emit(List<DecodedOp> ops, in BasicBlock block, int exitPc, in PrefixMetrics metrics)
     {
         List<UInt256> constants = [];
+        // The op count in the name reduces cross-contract collisions in profiler/stack traces
+        // (names are cosmetic — DynamicMethods are identified by handle, not name).
         DynamicMethod method = new(
-            $"IlEvmSegment_{block.Start}_{exitPc}",
+            $"IlEvmSegment_{block.Start}_{exitPc}_{ops.Count}",
             typeof(EvmExceptionType),
             [typeof(SegmentConstants), typeof(EvmStack).MakeByRefType(), typeof(EthereumGasPolicy).MakeByRefType(), typeof(int).MakeByRefType()],
             typeof(IlSegmentCompiler).Module,
@@ -537,6 +542,8 @@ public static class IlSegmentCompiler
     private static MethodInfo? OperationOf(Type opStruct) => opStruct.GetMethod("Operation");
 
     private static MethodInfo? IntrinsicOf(string name) => typeof(IlEvmIntrinsics).GetMethod(name);
+
+    private static MethodInfo? RequireVoid(MethodInfo? method) => method?.ReturnType == typeof(void) ? method : null;
 
     private static MethodInfo? BinaryOperator(string name) =>
         typeof(UInt256).GetMethod(name, [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()])
