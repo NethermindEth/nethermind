@@ -12,7 +12,7 @@ internal class ErrorReporter(INotifier notifier, IStatsReporter stats)
     public void Report(string error)
     {
         stats.RecordError();
-        Console.WriteLine(error);
+        Console.Error.WriteLine(error);
         _ = notifier.NotifyErrorAsync(error);
     }
 }

@@ -25,7 +25,7 @@ internal static class TestLoader
         {
             try
             {
-                string fullPath = Path.Combine(_testDir.Name, path);
+                string fullPath = Path.Combine(_testDir.FullName, path);
                 JsonArray tests = JsonNode.Parse(File.ReadAllText(fullPath))!.AsArray();
                 int testIndex = 0;
 

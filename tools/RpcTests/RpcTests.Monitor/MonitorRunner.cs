@@ -59,7 +59,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
         // send mismatch notifications
         ActionBlock<TestFailure?> notifyBlock = new(
             info => info is not null ? notifier.NotifyFailureAsync(info, ct) : Task.CompletedTask,
-            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1 }
+            new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 1, BoundedCapacity = 50 }
         );
 
         headBuffer.LinkTo(filterBlock, propagate);
