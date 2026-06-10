@@ -36,6 +36,8 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
     public int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
 
+    private SnapshotGraphWalker Walker => new(this, _persisted);
+
     /// <summary>
     /// Tip used as the seed for backward walks over the snapshot graph
     /// (see <see cref="PersistenceManager"/>'s persist-finding paths).
@@ -78,48 +80,13 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
             {
                 (StateId current, bool currentPersisted, int parentIdx) = queue.Dequeue();
 
-                // Expand up to 4 edges from `current`, in-RAM-tier-first / widest-first:
-                //   0: in-memory compacted   — widest in-RAM hop, no disk read
-                //   1: in-memory base        — narrow in-RAM hop, no disk read
-                //   2: persisted compacted   — >CompactSize merges and the CompactSize persistable
-                //   3: persisted base        — sub-CompactSize, narrowest persisted hop
-                // Persisted snapshots only chain back to other persisted snapshots by
-                // construction, so once on a persisted edge the in-memory edges (0, 1)
-                // are guaranteed misses — gated below by the edgeIsInMemory check. The
-                // in-mem-base-before-persisted-base order matters: edge 3 winning would
-                // lock the rest of the BFS into the persisted tier (line 90), barring
-                // any wider in-mem compacted skip-pointer that might exist downstream.
-                for (int e = 0; e < 4; e++)
+                // The cursor's in-mem-base-before-persisted-base priority matters here: a
+                // persisted-base win would lock the rest of the BFS into the persisted tier
+                // (via the enqueue below), barring any wider in-mem compacted skip-pointer
+                // that might exist downstream.
+                SnapshotGraphWalker.ParentCursor edges = Walker.EnumerateParents(current, currentPersisted, includePersisted: true);
+                while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId from, out bool edgePersisted))
                 {
-                    bool edgeIsInMemory = e < 2;
-                    if (currentPersisted && edgeIsInMemory) continue;
-
-                    IDisposable? snapshot;
-                    StateId from;
-
-                    switch (e)
-                    {
-                        case 0: // in-memory compacted
-                            if (!TryLeaseCompactedState(current, out Snapshot? sc)) continue;
-                            snapshot = sc; from = sc.From;
-                            break;
-                        case 1: // in-memory base
-                            if (!TryLeaseState(current, out Snapshot? sb)) continue;
-                            snapshot = sb; from = sb.From;
-                            break;
-                        case 2: // persisted compacted (>CompactSize merges + the persistable)
-                            if (!_persisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pc)) continue;
-                            snapshot = pc; from = pc.From;
-                            break;
-                        case 3: // persisted base (sub-CompactSize)
-                            if (!_persisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pb)) continue;
-                            snapshot = pb; from = pb.From;
-                            break;
-                        default: continue;
-                    }
-
-                    bool edgePersisted = !edgeIsInMemory;
-
                     if (from.BlockNumber < targetState.BlockNumber)
                     {
                         // In-memory snapshots are persistence-granular; overshoot means unusable edge.
@@ -237,19 +204,11 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
             {
                 (StateId current, int parentIndex) = queue.Dequeue();
 
-                for (int edge = 0; edge < 2; edge++)
+                SnapshotGraphWalker.ParentCursor edges = Walker.EnumerateParents(current, fromPersistedEdge: false, includePersisted: false);
+                while (edges.TryLeaseNext(out IDisposable? leased, out StateId from, out _))
                 {
-                    Snapshot? snapshot;
-                    if (edge == 0)
-                    {
-                        if (!TryLeaseCompactedState(current, out snapshot)) continue;
-                    }
-                    else
-                    {
-                        if (!TryLeaseState(current, out snapshot)) continue;
-                    }
-
-                    StateId from = snapshot.From;
+                    // In-memory-only expansion — the lease is always a Snapshot.
+                    Snapshot snapshot = (Snapshot)leased;
 
                     if (from.BlockNumber < minBlockNumber || !seen.Add(from))
                     {
@@ -526,9 +485,8 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
 
     /// <remarks>
     /// Walks parent (<c>From</c>) edges from <paramref name="from"/> toward <paramref name="target"/>
-    /// across both tiers, mirroring <see cref="AssembleSnapshots"/>'s 4-edge expansion: in-memory
-    /// compacted/base then persisted compacted/base, with the "once persisted, stay persisted" gate.
-    /// Each lease is read for its <c>From</c> then disposed immediately. Crossing into the persisted
+    /// across both tiers via the same <see cref="SnapshotGraphWalker.ParentCursor"/> expansion as
+    /// <see cref="AssembleSnapshots"/>. Each lease is read for its <c>From</c> then disposed immediately. Crossing into the persisted
     /// tier is required so a canonical in-memory state whose ancestry descends through a converted
     /// snapshot is not mistaken for an orphan.
     /// </remarks>
@@ -546,40 +504,15 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
         {
             (StateId current, bool currentPersisted) = stack.Pop();
 
-            for (int edge = 0; edge < 4; edge++)
+            SnapshotGraphWalker.ParentCursor edges = Walker.EnumerateParents(current, currentPersisted, includePersisted: true);
+            while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId parent, out bool edgePersisted))
             {
-                bool edgeInMemory = edge < 2;
-                // Persisted snapshots only chain back to persisted ones, so once on a persisted
-                // edge the in-memory edges are guaranteed misses — skip them.
-                if (currentPersisted && edgeInMemory) continue;
-
-                IDisposable? snapshot;
-                StateId parent;
-                switch (edge)
-                {
-                    case 0:
-                        if (!TryLeaseCompactedState(current, out Snapshot? sc)) continue;
-                        snapshot = sc; parent = sc.From;
-                        break;
-                    case 1:
-                        if (!TryLeaseState(current, out Snapshot? sb)) continue;
-                        snapshot = sb; parent = sb.From;
-                        break;
-                    case 2:
-                        if (!_persisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pc)) continue;
-                        snapshot = pc; parent = pc.From;
-                        break;
-                    default:
-                        if (!_persisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pb)) continue;
-                        snapshot = pb; parent = pb.From;
-                        break;
-                }
                 snapshot.Dispose();
 
                 if (parent == target) return true;
                 if (parent.BlockNumber > target.BlockNumber && seen.Add(parent))
                 {
-                    stack.Push((parent, !edgeInMemory));
+                    stack.Push((parent, edgePersisted));
                 }
             }
         }
