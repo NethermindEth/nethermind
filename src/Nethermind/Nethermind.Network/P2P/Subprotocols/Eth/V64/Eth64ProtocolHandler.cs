@@ -11,6 +11,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
 {
@@ -27,9 +28,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V64
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        ITxProfilingDb? txProfilingDb = null)
         : Eth63ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, logManager, transactionsGossipPolicy)
+            gossipPolicy, logManager, transactionsGossipPolicy, txProfilingDb)
     {
         protected readonly IForkInfo _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
 

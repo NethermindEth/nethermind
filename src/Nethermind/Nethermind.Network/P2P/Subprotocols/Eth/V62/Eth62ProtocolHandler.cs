@@ -21,6 +21,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
@@ -45,8 +46,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            ITxProfilingDb? txProfilingDb = null)
+            : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager, txProfilingDb)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -294,6 +296,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            TxProfilingDb.RecordTx(TxProfilingEvents.TxReceivedFromPeer, tx, peer: PeerId, protocol: Name, direction: "in");
+            TxProfilingDb.RecordTx(TxProfilingEvents.TxSubmitResult, tx, peer: PeerId, protocol: Name, direction: "in", result: accepted);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
 

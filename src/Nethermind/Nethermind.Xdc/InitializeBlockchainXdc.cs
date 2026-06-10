@@ -6,6 +6,7 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 using Nethermind.Xdc.TxPool;
 using System.Collections.Generic;
 
@@ -29,7 +30,8 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 _txGossipPolicy,
                 new SignTransactionFilter(snapshotManager, _api.BlockTree, _api.SpecProvider),
                 _api.HeadTxValidator,
-                true
+                true,
+                _api.Context.Resolve<ITxProfilingDb>()
             );
 
         _api.DisposeStack.Push(txPool);

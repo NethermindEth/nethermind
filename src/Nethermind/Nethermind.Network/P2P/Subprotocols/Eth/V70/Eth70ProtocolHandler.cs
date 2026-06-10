@@ -23,6 +23,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V70;
 
@@ -48,9 +49,10 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
         ISpecProvider specProvider,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        ITxProfilingDb? txProfilingDb = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
+            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, txProfilingDb)
     {
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(this);

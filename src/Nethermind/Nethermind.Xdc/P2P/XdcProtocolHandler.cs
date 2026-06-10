@@ -15,6 +15,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 using Nethermind.Xdc.Types;
 using System;
 
@@ -33,7 +34,8 @@ internal class XdcProtocolHandler(
     ITxPool txPool,
     IGossipPolicy gossipPolicy,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth63ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy), IStaticProtocolInfo
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    ITxProfilingDb? txProfilingDb = null) : Eth63ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy, txProfilingDb), IStaticProtocolInfo
 {
     private AssociativeKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
     private AssociativeKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);

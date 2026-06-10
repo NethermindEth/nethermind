@@ -17,6 +17,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -38,8 +39,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
-        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        ITxProfilingDb? txProfilingDb = null)
+        : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, txProfilingDb),
           IMessageHandler<PooledTransactionRequestMessage>
     {
         public override string Name => "eth65";
@@ -89,7 +91,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        protected virtual void Handle(NewPooledTransactionHashesMessage msg) => RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
+        protected virtual void Handle(NewPooledTransactionHashesMessage msg)
+        {
+            RecordHashAnnouncement(msg.Hashes.AsSpan());
+            RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
+        }
 
         protected void AddNotifiedTransactions(ReadOnlySpan<Hash256> hashes)
         {
@@ -132,8 +138,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     }
 
                     txsToSend.Add(tx);
+                    TxProfilingDb.RecordTx(TxProfilingEvents.TxRequestServed, tx, peer: PeerId, protocol: Name, direction: "out");
                     packetSizeLeft -= txSize;
                     TxPool.Metrics.PendingTransactionsSent++;
+                }
+                else
+                {
+                    TxProfilingDb.RecordHash(TxProfilingEvents.TxRequestSkipped, hash, peer: PeerId, protocol: Name, direction: "out", reason: "NotInTxPool");
                 }
             }
 
@@ -163,6 +174,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 if (tx.Hash is not null)
                 {
                     hashes.Add(tx.Hash);
+                    TxProfilingDb.RecordHash(TxProfilingEvents.TxHashAnnouncedToPeer, tx.Hash, peer: PeerId, protocol: Name, direction: "out");
                     TxPool.Metrics.PendingTransactionsHashesSent++;
                 }
             }
@@ -195,6 +207,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             if (newTxHashes.Count <= MaxNumberOfTxsInOneMsg)
             {
+                RecordRequestedHashes(newTxHashes.AsSpan());
                 Send(TMessage.New(newTxHashes));
             }
             else
@@ -208,6 +221,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         ArrayPoolList<Hash256> hashesToRequest = new(end - start);
                         hashesToRequest.AddRange(newTxHashes.AsSpan()[start..end]);
 
+                        RecordRequestedHashes(hashesToRequest.AsSpan());
                         Send(TMessage.New(hashesToRequest));
                     }
                 }
@@ -235,9 +249,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         discoveredTxHashesAndSizes.Add(hash);
                     }
                 }
+                else
+                {
+                    TxProfilingDb.RecordHash(TxProfilingEvents.TxHashIgnoredKnown, hash, peer: PeerId, protocol: Name, direction: "in", reason: nameof(AcceptTxResult.AlreadyKnown));
+                }
             }
 
             return discoveredTxHashesAndSizes;
+        }
+
+        protected void RecordHashAnnouncement(ReadOnlySpan<Hash256> hashes)
+        {
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                TxProfilingDb.RecordHash(TxProfilingEvents.TxHashAnnounced, hashes[i], peer: PeerId, protocol: Name, direction: "in");
+            }
+        }
+
+        protected void RecordRequestedHashes(ReadOnlySpan<Hash256> hashes)
+        {
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                TxProfilingDb.RecordHash(TxProfilingEvents.TxRequested, hashes[i], peer: PeerId, protocol: Name, direction: "out");
+            }
         }
 
         public virtual void HandleMessage(PooledTransactionRequestMessage message)

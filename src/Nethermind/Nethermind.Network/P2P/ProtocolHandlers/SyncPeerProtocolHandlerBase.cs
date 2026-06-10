@@ -23,6 +23,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
@@ -46,9 +47,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
         public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:a}|{Session?.Direction,4}]";
+        protected string PeerId => Session.RemoteNodeId?.ToString() ?? Session.SessionId.ToString("N");
 
         protected Hash256 _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
+        protected readonly ITxProfilingDb TxProfilingDb;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
@@ -61,10 +64,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
-            ILogManager logManager) : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
+            ILogManager logManager,
+            ITxProfilingDb? txProfilingDb = null) : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
+            TxProfilingDb = txProfilingDb ?? NullTxProfilingDb.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
         }
@@ -197,6 +202,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (!tx.SupportsBlobs) //additional protection from sending full tx with blob
             {
+                TxProfilingDb.RecordTx(TxProfilingEvents.TxSentToPeer, tx, peer: PeerId, protocol: Name, direction: "out");
                 SendMessage(new ArrayPoolList<Transaction>(1) { tx });
             }
         }
@@ -233,6 +239,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (tx.Hash is not null && !tx.SupportsBlobs) //additional protection from sending full tx with blob
                 {
                     txsToSend.Add(tx);
+                    TxProfilingDb.RecordTx(TxProfilingEvents.TxSentToPeer, tx, peer: PeerId, protocol: Name, direction: "out");
                     packetSizeLeft -= txSize;
                     TxPool.Metrics.PendingTransactionsSent++;
                 }

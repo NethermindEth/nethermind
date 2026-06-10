@@ -19,6 +19,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,8 +47,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             IGossipPolicy gossipPolicy,
             IForkInfo forkInfo,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            ITxProfilingDb? txProfilingDb = null)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, txProfilingDb)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
@@ -163,7 +165,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
 
-        protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
+        protected override void Handle(NewPooledTransactionHashesMessage message)
+        {
+            RecordHashAnnouncement(message.Hashes.AsSpan());
+            RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
+        }
 
 
         protected override async Task<IOwnedReadOnlyList<BlockHeader>> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)

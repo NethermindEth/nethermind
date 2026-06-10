@@ -19,6 +19,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -38,9 +39,10 @@ public class Eth68ProtocolHandler(ISession session,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    ITxProfilingDb? txProfilingDb = null
     )
-    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
+    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, txProfilingDb), IStaticProtocolInfo
 {
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
@@ -99,6 +101,7 @@ public class Eth68ProtocolHandler(ISession session,
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
         AddNotifiedTransactions(message.Hashes.AsSpan());
+        RecordHashAnnouncement(message.Hashes.AsSpan(), message.Sizes.AsSpan(), message.Types.AsSpan());
 
         long startTime = Logger.IsTrace ? Stopwatch.GetTimestamp() : 0;
 
@@ -140,10 +143,22 @@ public class Eth68ProtocolHandler(ISession session,
             long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
 
             if (txSize > maxTxSize)
+            {
+                TxProfilingDb.RecordHash(
+                    TxProfilingEvents.TxRequestSkipped,
+                    hash,
+                    peer: PeerId,
+                    protocol: Name,
+                    direction: "out",
+                    reason: "AnnouncedSizeTooLarge",
+                    txType,
+                    txSize);
                 continue;
+            }
 
             if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
             {
+                RecordRequestedHashes(hashesToRequest.AsSpan());
                 Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
                 hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
                 packetSizeLeft = TransactionsMessage.MaxPacketSize;
@@ -156,10 +171,23 @@ public class Eth68ProtocolHandler(ISession session,
                 packetSizeLeft -= txSize;
                 toRequestCount++;
             }
+            else
+            {
+                TxProfilingDb.RecordHash(
+                    TxProfilingEvents.TxRequestSkipped,
+                    hash,
+                    peer: PeerId,
+                    protocol: Name,
+                    direction: "out",
+                    reason: "BlobSupportDisabled",
+                    txType,
+                    txSize);
+            }
         }
 
         if (hashesToRequest.Count is not 0)
         {
+            RecordRequestedHashes(hashesToRequest.AsSpan());
             Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
         }
         else
@@ -181,6 +209,10 @@ public class Eth68ProtocolHandler(ISession session,
                     discoveredTxHashesAndSizes.Add(i);
                 }
             }
+            else
+            {
+                TxProfilingDb.RecordHash(TxProfilingEvents.TxHashIgnoredKnown, hash, peer: PeerId, protocol: Name, direction: "in", reason: nameof(AcceptTxResult.AlreadyKnown));
+            }
         }
 
         return discoveredTxHashesAndSizes;
@@ -199,6 +231,7 @@ public class Eth68ProtocolHandler(ISession session,
                 new ArrayPoolList<int>(1) { tx.GetLength() },
                 new ArrayPoolList<Hash256>(1) { tx.Hash }
             );
+            TxProfilingDb.RecordHash(TxProfilingEvents.TxHashAnnouncedToPeer, tx.Hash, peer: PeerId, protocol: Name, direction: "out", txType: tx.Type, txSize: tx.GetLength());
         }
     }
 
@@ -227,8 +260,10 @@ public class Eth68ProtocolHandler(ISession session,
             if (tx.Hash is not null)
             {
                 types.Add((byte)tx.Type);
-                sizes.Add(tx.GetLength());
+                int txSize = tx.GetLength();
+                sizes.Add(txSize);
                 hashes.Add(tx.Hash);
+                TxProfilingDb.RecordHash(TxProfilingEvents.TxHashAnnouncedToPeer, tx.Hash, peer: PeerId, protocol: Name, direction: "out", txType: tx.Type, txSize: txSize);
                 TxPool.Metrics.PendingTransactionsHashesSent++;
             }
         }
@@ -260,6 +295,7 @@ public class Eth68ProtocolHandler(ISession session,
         {
             if (!ValidateSizeAndType(transactionsSpan[i]))
             {
+                TxProfilingDb.RecordTx(TxProfilingEvents.TxSubmitResult, transactionsSpan[i], peer: PeerId, protocol: Name, direction: "in", reason: "InvalidAnnouncedShape", result: AcceptTxResult.Invalid);
                 transactions.Dispose();
                 throw new SubprotocolException("invalid pooled tx type or size");
             }
@@ -270,4 +306,19 @@ public class Eth68ProtocolHandler(ISession session,
 
     private bool ValidateSizeAndType(Transaction? tx)
         => tx is not null && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type));
+
+    private void RecordHashAnnouncement(ReadOnlySpan<Hash256> hashes, ReadOnlySpan<int> sizes, ReadOnlySpan<byte> types)
+    {
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            TxProfilingDb.RecordHash(
+                TxProfilingEvents.TxHashAnnounced,
+                hashes[i],
+                peer: PeerId,
+                protocol: Name,
+                direction: "in",
+                txType: (TxType)types[i],
+                txSize: sizes[i]);
+        }
+    }
 }

@@ -22,6 +22,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 
@@ -40,9 +41,10 @@ public class Eth69ProtocolHandler(
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    ITxProfilingDb? txProfilingDb = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
+        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, txProfilingDb), ISyncPeer, IStaticProtocolInfo
 {
     public override string Name => "eth69";
 

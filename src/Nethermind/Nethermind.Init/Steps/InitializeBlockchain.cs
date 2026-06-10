@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -18,6 +19,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
@@ -106,7 +108,8 @@ namespace Nethermind.Init.Steps
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
                 null,
-                _api.HeadTxValidator
+                _api.HeadTxValidator,
+                txProfilingDb: _api.Context.Resolve<ITxProfilingDb>()
             );
 
             _api.DisposeStack.Push(txPool);

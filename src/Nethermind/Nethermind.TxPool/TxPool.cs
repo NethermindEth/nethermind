@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
+using Nethermind.TxPool.Profiling;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -56,6 +57,7 @@ namespace Nethermind.TxPool
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly ITxValidator? _headTxValidator;
+        private readonly ITxProfilingDb _txProfilingDb;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
 
@@ -110,7 +112,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            ITxProfilingDb? txProfilingDb = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -118,13 +121,18 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
             _headTxValidator = headTxValidator;
+            _txProfilingDb = txProfilingDb ?? NullTxProfilingDb.Instance;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
-            _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(logManager, requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10, token: _cts.Token);
+            _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(
+                logManager,
+                requestingCacheSize: MemoryAllowance.TxHashCacheSize / 10,
+                token: _cts.Token,
+                txProfilingDb: _txProfilingDb);
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
 
@@ -443,7 +451,7 @@ namespace Nethermind.TxPool
 
         private bool RemoveIncludedTransaction(Transaction tx)
         {
-            bool removed = RemoveTransaction(tx.Hash);
+            bool removed = RemoveTransaction(tx.Hash, "IncludedInBlock");
             _broadcaster.EnsureStopBroadcastUpToNonce(tx.SenderAddress!, tx.Nonce);
             return removed;
         }
@@ -500,14 +508,14 @@ namespace Nethermind.TxPool
                 Transaction[] pendingTxs = _transactions.GetSnapshot();
                 foreach (Transaction tx in pendingTxs)
                 {
-                    RemoveTransaction(tx.Hash);
+                    RemoveTransaction(tx.Hash, "ResetTxPoolState");
                 }
 
                 // Clear blob transactions too
                 Transaction[] pendingBlobTxs = _blobTransactions.GetSnapshot();
                 foreach (Transaction tx in pendingBlobTxs)
                 {
-                    RemoveTransaction(tx.Hash);
+                    RemoveTransaction(tx.Hash, "ResetTxPoolState");
                 }
 
                 // Update metrics after removal
@@ -535,6 +543,7 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
+                _txProfilingDb.RecordTx(TxProfilingEvents.TxPoolSubmitResult, tx, reason: nameof(AcceptTxResult.Syncing), result: AcceptTxResult.Syncing);
                 return AcceptTxResult.Syncing;
             }
 
@@ -589,6 +598,7 @@ namespace Nethermind.TxPool
                 _retryCache.Received(tx.Hash!);
             }
 
+            _txProfilingDb.RecordTx(TxProfilingEvents.TxPoolSubmitResult, tx, result: accepted);
             return accepted;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -619,10 +629,43 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
-            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash) ?
-                AnnounceResult.Delayed :
-                _retryCache.Announced(hash, retryHandler);
+        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler)
+        {
+            string? delayedReason = null;
+            AnnounceResult result;
+            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+            {
+                delayedReason = nameof(AcceptTxResult.Syncing);
+                result = AnnounceResult.Delayed;
+            }
+            else if (_hashCache.Get(hash))
+            {
+                delayedReason = nameof(AcceptTxResult.AlreadyKnown);
+                result = AnnounceResult.Delayed;
+            }
+            else
+            {
+                result = _retryCache.Announced(hash, retryHandler);
+                if (result == AnnounceResult.Delayed)
+                {
+                    delayedReason = "WaitingForFirstAnnouncer";
+                }
+            }
+
+            if (result == AnnounceResult.Delayed)
+            {
+                _txProfilingDb.RecordHash(
+                    TxProfilingEvents.TxRequestPostponed,
+                    hash,
+                    peer: GetPeerId(retryHandler),
+                    reason: delayedReason);
+            }
+
+            return result;
+        }
+
+        private static string? GetPeerId(IMessageHandler<PooledTransactionRequestMessage> retryHandler)
+            => retryHandler is ITxPoolPeer peer ? peer.Id.ToString() : retryHandler.ToString();
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
@@ -696,6 +739,7 @@ namespace Nethermind.TxPool
             {
                 RemovePendingDelegations(removed);
                 EvictedPending?.Invoke(this, new TxEventArgs(removed));
+                _txProfilingDb.RecordTx(TxProfilingEvents.TxPoolEvicted, removed, reason: "ReplacedByHigherPriorityTransaction");
                 // transaction which was on last position in sorted TxPool and was deleted to give
                 // a place for a newly added tx (with higher priority) is now removed from hashCache
                 // to give it opportunity to come back to TxPool in the future, when fees drops
@@ -891,7 +935,9 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool RemoveTransaction(Hash256? hash)
+        public bool RemoveTransaction(Hash256? hash) => RemoveTransaction(hash, null);
+
+        private bool RemoveTransaction(Hash256? hash, string? reason)
         {
             if (hash is null)
             {
@@ -907,6 +953,7 @@ namespace Nethermind.TxPool
             }
 
             RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+            _txProfilingDb.RecordTx(TxProfilingEvents.TxPoolRemoved, transaction, reason: reason);
 
             RemovePendingDelegations(transaction);
 
@@ -1166,4 +1213,3 @@ Db usage:
         private static void DisposeBlockAccountChanges(Block block) => block.DisposeAccountChanges();
     }
 }
-

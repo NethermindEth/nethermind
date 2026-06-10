@@ -22,6 +22,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V71;
 
@@ -50,9 +51,10 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
         ISpecProvider specProvider,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        ITxProfilingDb? txProfilingDb = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) =>
+            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, txProfilingDb) =>
         _balRequests = new MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>(this);
 
     public override string Name => "eth71";

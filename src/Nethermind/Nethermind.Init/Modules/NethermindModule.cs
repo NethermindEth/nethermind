@@ -25,6 +25,7 @@ using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 using Testably.Abstractions;
 
 namespace Nethermind.Init.Modules;
@@ -84,6 +85,12 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<ITimestamper>(_ => Timestamper.Default)
             .AddSingleton<ITimerFactory>(_ => TimerFactory.Default)
             .AddSingleton<IFileSystem>(_ => new RealFileSystem())
+            .AddSingleton<ITxProfilingDb>((ctx) =>
+            {
+                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                ILogManager resolvedLogManager = ctx.Resolve<ILogManager>();
+                return new TxProfilingJsonDb(System.IO.Path.Combine(initConfig.BaseDbPath, "tx-profiling", "transactions.jsonl"), resolvedLogManager);
+            })
             .AddKeyedSingleton<IDriveInfo[]>(nameof(IInitConfig.BaseDbPath), (ctx) =>
             {
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();

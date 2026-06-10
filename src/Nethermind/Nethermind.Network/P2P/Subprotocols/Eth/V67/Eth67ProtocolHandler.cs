@@ -11,6 +11,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V67;
 
@@ -27,9 +28,10 @@ public class Eth67ProtocolHandler(
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+    ITxProfilingDb? txProfilingDb = null)
     : Eth66ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
+        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, txProfilingDb), IStaticProtocolInfo
 {
     public override string Name => "eth67";
 

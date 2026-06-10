@@ -19,6 +19,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Profiling;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -36,8 +37,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            ITxProfilingDb? txProfilingDb = null)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy, txProfilingDb)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(this);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);

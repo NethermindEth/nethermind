@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
+using Nethermind.TxPool.Profiling;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -30,12 +31,21 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private int _expiringQueueCounter = 0;
     private readonly AssociativeKeyCache<TResourceId> _requestingResources;
     private readonly ILogger _logger;
+    private readonly ITxProfilingDb _txProfilingDb;
 
     internal int ResourcesInRetryQueue => _expiringQueueCounter;
 
-    public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, int expiringQueueLimit = 10000, int maxRetryRequests = 8, CancellationToken token = default)
+    public RetryCache(
+        ILogManager logManager,
+        int timeoutMs = 2500,
+        int requestingCacheSize = 1024,
+        int expiringQueueLimit = 10000,
+        int maxRetryRequests = 8,
+        CancellationToken token = default,
+        ITxProfilingDb? txProfilingDb = null)
     {
         _logger = logManager.GetClassLogger(typeof(RetryCache<,>));
+        _txProfilingDb = txProfilingDb ?? NullTxProfilingDb.Instance;
 
         _timeoutMs = timeoutMs;
         _token = token;
@@ -170,6 +180,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _retryRequests.Clear();
     }
 
+    private static string? GetPeerId(IMessageHandler<TMessage> retryHandler)
+        => retryHandler is ITxPoolPeer peer ? peer.Id.ToString() : retryHandler.ToString();
+
     public async ValueTask DisposeAsync()
     {
         try
@@ -197,6 +210,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             try
             {
+                cache._txProfilingDb.RecordResource(TxProfilingEvents.TxRequestRetried, resourceId.ToString()!, peer: GetPeerId(retryHandler));
                 retryHandler.HandleMessage(TMessage.New(resourceId));
             }
             catch (Exception ex)

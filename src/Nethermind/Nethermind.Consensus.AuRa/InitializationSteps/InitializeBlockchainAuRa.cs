@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Config;
@@ -16,6 +17,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
+using Nethermind.TxPool.Profiling;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
@@ -110,7 +112,8 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             _txGossipPolicy,
             new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider),
             api.HeadTxValidator,
-            txPriorityContract is not null || localDataSource is not null);
+            txPriorityContract is not null || localDataSource is not null,
+            api.Context.Resolve<ITxProfilingDb>());
     }
 
     private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
