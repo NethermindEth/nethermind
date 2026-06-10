@@ -13,7 +13,8 @@ namespace Nethermind.Evm;
 /// Implementations are empty structs whose static members are constants, so per-TSpec
 /// instantiations let the JIT fold every gate and eliminate untaken cases. A spec matching no
 /// struct's fingerprint runs the generic table path: custom chains and historical forks are
-/// never wrong, only unspecialized.
+/// never wrong, only unspecialized. This is the complete fingerprint set — the dispatch switch
+/// reads only a subset, but identity requires comparing all of it.
 /// </summary>
 public interface IEvmSpec
 {
@@ -42,56 +43,106 @@ public interface IEvmSpec
 
 public static class EvmSpecFingerprint
 {
+    // The bit layout — the ONLY place flag positions are assigned. Both packers below and the
+    // guard test's FlagNames must follow this order; add new flags at the end only.
+    private const int ShiftBit = 0;
+    private const int ClzBit = 1;
+    private const int ReturnDataBit = 2;
+    private const int ExtCodeHashBit = 3;
+    private const int ChainIdBit = 4;
+    private const int SelfBalanceBit = 5;
+    private const int BaseFeeBit = 6;
+    private const int Eip4844Bit = 7;
+    private const int Eip7843Bit = 8;
+    private const int TransientStorageBit = 9;
+    private const int MCopyBit = 10;
+    private const int Push0Bit = 11;
+    private const int Eip8024Bit = 12;
+    private const int DelegateCallBit = 13;
+    private const int Create2Bit = 14;
+    private const int StaticCallBit = 15;
+    private const int RevertBit = 16;
+    private const int NetGasMeteringBit = 17;
+    private const int NetGasStipendFixBit = 18;
+    private const int Eip8037Bit = 19;
+    private const int Eip7708Bit = 20;
+
+    /// <summary>Flag names ordered by bit position, for diagnostics (see EvmSpecGuardTests).</summary>
+    public static readonly string[] FlagNames =
+    [
+        nameof(IEvmSpec.ShiftOpcodesEnabled),
+        nameof(IEvmSpec.CLZEnabled),
+        nameof(IEvmSpec.ReturnDataOpcodesEnabled),
+        nameof(IEvmSpec.ExtCodeHashOpcodeEnabled),
+        nameof(IEvmSpec.ChainIdOpcodeEnabled),
+        nameof(IEvmSpec.SelfBalanceOpcodeEnabled),
+        nameof(IEvmSpec.BaseFeeEnabled),
+        nameof(IEvmSpec.IsEip4844Enabled),
+        nameof(IEvmSpec.IsEip7843Enabled),
+        nameof(IEvmSpec.TransientStorageEnabled),
+        nameof(IEvmSpec.MCopyIncluded),
+        nameof(IEvmSpec.IncludePush0Instruction),
+        nameof(IEvmSpec.IsEip8024Enabled),
+        nameof(IEvmSpec.DelegateCallEnabled),
+        nameof(IEvmSpec.Create2OpcodeEnabled),
+        nameof(IEvmSpec.StaticCallEnabled),
+        nameof(IEvmSpec.RevertOpcodeEnabled),
+        nameof(IEvmSpec.UseNetGasMetering),
+        nameof(IEvmSpec.UseNetGasMeteringWithAStipendFix),
+        nameof(IEvmSpec.IsEip8037Enabled),
+        nameof(IEvmSpec.IsEip7708Enabled),
+    ];
+
     /// <summary>
     /// Packs the <see cref="IEvmSpec"/>-relevant flags of a runtime spec; the dispatcher uses
     /// this to select a specialized instantiation, or the generic table path on no match.
     /// </summary>
     public static int Compute(IReleaseSpec spec) =>
-        (spec.ShiftOpcodesEnabled ? 1 << 0 : 0)
-        | (spec.CLZEnabled ? 1 << 1 : 0)
-        | (spec.ReturnDataOpcodesEnabled ? 1 << 2 : 0)
-        | (spec.ExtCodeHashOpcodeEnabled ? 1 << 3 : 0)
-        | (spec.ChainIdOpcodeEnabled ? 1 << 4 : 0)
-        | (spec.SelfBalanceOpcodeEnabled ? 1 << 5 : 0)
-        | (spec.BaseFeeEnabled ? 1 << 6 : 0)
-        | (spec.IsEip4844Enabled ? 1 << 7 : 0)
-        | (spec.IsEip7843Enabled ? 1 << 8 : 0)
-        | (spec.TransientStorageEnabled ? 1 << 9 : 0)
-        | (spec.MCopyIncluded ? 1 << 10 : 0)
-        | (spec.IncludePush0Instruction ? 1 << 11 : 0)
-        | (spec.IsEip8024Enabled ? 1 << 12 : 0)
-        | (spec.DelegateCallEnabled ? 1 << 13 : 0)
-        | (spec.Create2OpcodeEnabled ? 1 << 14 : 0)
-        | (spec.StaticCallEnabled ? 1 << 15 : 0)
-        | (spec.RevertOpcodeEnabled ? 1 << 16 : 0)
-        | (spec.UseNetGasMetering ? 1 << 17 : 0)
-        | (spec.UseNetGasMeteringWithAStipendFix ? 1 << 18 : 0)
-        | (spec.IsEip8037Enabled ? 1 << 19 : 0)
-        | (spec.IsEip7708Enabled ? 1 << 20 : 0);
+        (spec.ShiftOpcodesEnabled ? 1 << ShiftBit : 0)
+        | (spec.CLZEnabled ? 1 << ClzBit : 0)
+        | (spec.ReturnDataOpcodesEnabled ? 1 << ReturnDataBit : 0)
+        | (spec.ExtCodeHashOpcodeEnabled ? 1 << ExtCodeHashBit : 0)
+        | (spec.ChainIdOpcodeEnabled ? 1 << ChainIdBit : 0)
+        | (spec.SelfBalanceOpcodeEnabled ? 1 << SelfBalanceBit : 0)
+        | (spec.BaseFeeEnabled ? 1 << BaseFeeBit : 0)
+        | (spec.IsEip4844Enabled ? 1 << Eip4844Bit : 0)
+        | (spec.IsEip7843Enabled ? 1 << Eip7843Bit : 0)
+        | (spec.TransientStorageEnabled ? 1 << TransientStorageBit : 0)
+        | (spec.MCopyIncluded ? 1 << MCopyBit : 0)
+        | (spec.IncludePush0Instruction ? 1 << Push0Bit : 0)
+        | (spec.IsEip8024Enabled ? 1 << Eip8024Bit : 0)
+        | (spec.DelegateCallEnabled ? 1 << DelegateCallBit : 0)
+        | (spec.Create2OpcodeEnabled ? 1 << Create2Bit : 0)
+        | (spec.StaticCallEnabled ? 1 << StaticCallBit : 0)
+        | (spec.RevertOpcodeEnabled ? 1 << RevertBit : 0)
+        | (spec.UseNetGasMetering ? 1 << NetGasMeteringBit : 0)
+        | (spec.UseNetGasMeteringWithAStipendFix ? 1 << NetGasStipendFixBit : 0)
+        | (spec.IsEip8037Enabled ? 1 << Eip8037Bit : 0)
+        | (spec.IsEip7708Enabled ? 1 << Eip7708Bit : 0);
 
-    /// <summary>Same packing for a compile-time spec, for the guard test and dispatcher table.</summary>
+    /// <summary>Same packing for a compile-time spec, for the dispatcher and the guard test.</summary>
     public static int Compute<TSpec>() where TSpec : struct, IEvmSpec =>
-        (TSpec.ShiftOpcodesEnabled ? 1 << 0 : 0)
-        | (TSpec.CLZEnabled ? 1 << 1 : 0)
-        | (TSpec.ReturnDataOpcodesEnabled ? 1 << 2 : 0)
-        | (TSpec.ExtCodeHashOpcodeEnabled ? 1 << 3 : 0)
-        | (TSpec.ChainIdOpcodeEnabled ? 1 << 4 : 0)
-        | (TSpec.SelfBalanceOpcodeEnabled ? 1 << 5 : 0)
-        | (TSpec.BaseFeeEnabled ? 1 << 6 : 0)
-        | (TSpec.IsEip4844Enabled ? 1 << 7 : 0)
-        | (TSpec.IsEip7843Enabled ? 1 << 8 : 0)
-        | (TSpec.TransientStorageEnabled ? 1 << 9 : 0)
-        | (TSpec.MCopyIncluded ? 1 << 10 : 0)
-        | (TSpec.IncludePush0Instruction ? 1 << 11 : 0)
-        | (TSpec.IsEip8024Enabled ? 1 << 12 : 0)
-        | (TSpec.DelegateCallEnabled ? 1 << 13 : 0)
-        | (TSpec.Create2OpcodeEnabled ? 1 << 14 : 0)
-        | (TSpec.StaticCallEnabled ? 1 << 15 : 0)
-        | (TSpec.RevertOpcodeEnabled ? 1 << 16 : 0)
-        | (TSpec.UseNetGasMetering ? 1 << 17 : 0)
-        | (TSpec.UseNetGasMeteringWithAStipendFix ? 1 << 18 : 0)
-        | (TSpec.IsEip8037Enabled ? 1 << 19 : 0)
-        | (TSpec.IsEip7708Enabled ? 1 << 20 : 0);
+        (TSpec.ShiftOpcodesEnabled ? 1 << ShiftBit : 0)
+        | (TSpec.CLZEnabled ? 1 << ClzBit : 0)
+        | (TSpec.ReturnDataOpcodesEnabled ? 1 << ReturnDataBit : 0)
+        | (TSpec.ExtCodeHashOpcodeEnabled ? 1 << ExtCodeHashBit : 0)
+        | (TSpec.ChainIdOpcodeEnabled ? 1 << ChainIdBit : 0)
+        | (TSpec.SelfBalanceOpcodeEnabled ? 1 << SelfBalanceBit : 0)
+        | (TSpec.BaseFeeEnabled ? 1 << BaseFeeBit : 0)
+        | (TSpec.IsEip4844Enabled ? 1 << Eip4844Bit : 0)
+        | (TSpec.IsEip7843Enabled ? 1 << Eip7843Bit : 0)
+        | (TSpec.TransientStorageEnabled ? 1 << TransientStorageBit : 0)
+        | (TSpec.MCopyIncluded ? 1 << MCopyBit : 0)
+        | (TSpec.IncludePush0Instruction ? 1 << Push0Bit : 0)
+        | (TSpec.IsEip8024Enabled ? 1 << Eip8024Bit : 0)
+        | (TSpec.DelegateCallEnabled ? 1 << DelegateCallBit : 0)
+        | (TSpec.Create2OpcodeEnabled ? 1 << Create2Bit : 0)
+        | (TSpec.StaticCallEnabled ? 1 << StaticCallBit : 0)
+        | (TSpec.RevertOpcodeEnabled ? 1 << RevertBit : 0)
+        | (TSpec.UseNetGasMetering ? 1 << NetGasMeteringBit : 0)
+        | (TSpec.UseNetGasMeteringWithAStipendFix ? 1 << NetGasStipendFixBit : 0)
+        | (TSpec.IsEip8037Enabled ? 1 << Eip8037Bit : 0)
+        | (TSpec.IsEip7708Enabled ? 1 << Eip7708Bit : 0);
 }
 
 /// <summary>

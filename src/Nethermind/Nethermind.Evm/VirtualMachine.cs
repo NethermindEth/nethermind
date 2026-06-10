@@ -1428,22 +1428,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             break;
                     }
 
-                    // ReturnData is set only by the 0xF0+ family; RETURN in particular returns
-                    // None and signals completion solely through it, so that check is its exit
-                    // path and must not run for the cheap majority of opcodes.
-                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
-                    {
-                        OpCodeCount += opCodeCount;
-                        goto OutOfGas;
-                    }
-                    TGasPolicy.OnAfterInstructionTrace(in gas);
-                    if (exceptionType != EvmExceptionType.None)
-                        break;
-                    if (TTracingInst.IsActive)
-                        EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-                    if (instruction >= Instruction.CREATE && ReturnData is not null)
-                        break;
-                    continue;
                 }
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 else if (Instruction.POP == instruction)
@@ -1478,8 +1462,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
                 // If return data has been set, exit the loop to process the returned value.
-                if (ReturnData is not null)
+                // Only the 0xF0+ family sets it (RETURN returns None and signals completion
+                // solely through it), so the specialized path skips the field load for the
+                // cheap majority — the typeof comparison is a JIT constant and folds away.
+                if ((typeof(TSpec) == typeof(GenericEvmSpec) || instruction >= Instruction.CREATE)
+                    && ReturnData is not null)
+                {
                     break;
+                }
             }
 
             OpCodeCount += opCodeCount;

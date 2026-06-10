@@ -16,39 +16,14 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class EvmSpecGuardTests
 {
-    private static readonly string[] s_flagNames =
-    [
-        nameof(IEvmSpec.ShiftOpcodesEnabled),
-        nameof(IEvmSpec.CLZEnabled),
-        nameof(IEvmSpec.ReturnDataOpcodesEnabled),
-        nameof(IEvmSpec.ExtCodeHashOpcodeEnabled),
-        nameof(IEvmSpec.ChainIdOpcodeEnabled),
-        nameof(IEvmSpec.SelfBalanceOpcodeEnabled),
-        nameof(IEvmSpec.BaseFeeEnabled),
-        nameof(IEvmSpec.IsEip4844Enabled),
-        nameof(IEvmSpec.IsEip7843Enabled),
-        nameof(IEvmSpec.TransientStorageEnabled),
-        nameof(IEvmSpec.MCopyIncluded),
-        nameof(IEvmSpec.IncludePush0Instruction),
-        nameof(IEvmSpec.IsEip8024Enabled),
-        nameof(IEvmSpec.DelegateCallEnabled),
-        nameof(IEvmSpec.Create2OpcodeEnabled),
-        nameof(IEvmSpec.StaticCallEnabled),
-        nameof(IEvmSpec.RevertOpcodeEnabled),
-        nameof(IEvmSpec.UseNetGasMetering),
-        nameof(IEvmSpec.UseNetGasMeteringWithAStipendFix),
-        nameof(IEvmSpec.IsEip8037Enabled),
-        nameof(IEvmSpec.IsEip7708Enabled),
-    ];
+    [Test]
+    public void CancunEvmSpec_ComparedToRuntimeFork_MatchesFlagByFlag() => AssertMatches<CancunEvmSpec>(Cancun.Instance);
 
     [Test]
-    public void Cancun_compile_time_spec_matches_runtime_fork() => AssertMatches<CancunEvmSpec>(Cancun.Instance);
+    public void PragueEvmSpec_ComparedToRuntimeFork_MatchesFlagByFlag() => AssertMatches<PragueEvmSpec>(Prague.Instance);
 
     [Test]
-    public void Prague_compile_time_spec_matches_runtime_fork() => AssertMatches<PragueEvmSpec>(Prague.Instance);
-
-    [Test]
-    public void Osaka_compile_time_spec_matches_runtime_fork() => AssertMatches<OsakaEvmSpec>(Osaka.Instance);
+    public void OsakaEvmSpec_ComparedToRuntimeFork_MatchesFlagByFlag() => AssertMatches<OsakaEvmSpec>(Osaka.Instance);
 
     /// <summary>
     /// THE engagement guarantee for the specialized dispatch: the spec the MAINNET provider
@@ -57,7 +32,7 @@ public class EvmSpecGuardTests
     /// specialization is dead weight (the exact failure mode that cost deploy cycles before).
     /// </summary>
     [Test]
-    public void Mainnet_tip_spec_selects_a_specialized_dispatch()
+    public void MainnetTipSpec_WhenFingerprinted_SelectsASpecializedDispatch()
     {
         IReleaseSpec tipSpec = Specs.MainnetSpecProvider.Instance.GetSpec(
             new Core.Specs.ForkActivation(long.MaxValue / 2, ulong.MaxValue / 2));
@@ -79,10 +54,10 @@ public class EvmSpecGuardTests
 
         int diff = expected ^ actual;
         List<string> wrong = [];
-        for (int i = 0; i < s_flagNames.Length; i++)
+        for (int i = 0; i < EvmSpecFingerprint.FlagNames.Length; i++)
         {
             if ((diff & (1 << i)) != 0)
-                wrong.Add(s_flagNames[i]);
+                wrong.Add(EvmSpecFingerprint.FlagNames[i]);
         }
 
         Assert.Fail($"{typeof(TSpec).Name} diverges from the runtime fork on: {string.Join(", ", wrong)} " +
