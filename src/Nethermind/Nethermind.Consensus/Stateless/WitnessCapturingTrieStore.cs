@@ -86,6 +86,6 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
             store._recording = false;
         }
 
-        public void Dispose() => _store._recording = true;
+        public readonly void Dispose() => _store._recording = true;
     }
 }

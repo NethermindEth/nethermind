@@ -57,9 +57,15 @@ public class WitnessGeneratingWorldState(
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
         if (_storageSlots.Count > 0)
         {
-            // One state-trie walk for all touched accounts, then one storage-trie walk per account.
-            // The per-account walk re-walks the state-trie path to its account (deduped downstream)
-            // to reach the storage root.
+            // State-trie capture: one MultiAccountProofCollector walk captures the state-trie nodes
+            // along the path to every touched account in a single pass. Each per-account
+            // AccountProofCollector walk below then re-traverses the state-trie path to reach the
+            // account leaf and capture its storage root — so the total state-trie traversal count
+            // is 1 (capture) + N (per-account re-walks). The dedup in the downstream PooledSet
+            // means the *output* is the same as a single-pass walk; the saving is in avoiding N
+            // separate capture passes (and N×state-trie-node RLP encodings) for shared-path nodes.
+            // TODO: teach AccountProofCollector to take the storage root from a previously-visited
+            // account node so the state-trie path can be walked exactly once.
             MultiAccountProofCollector stateCollector = new(_storageSlots);
             using (trieStore.PauseRecording())
             {
@@ -251,6 +257,14 @@ public class WitnessGeneratingWorldState(
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         RecordEmptySlots(address);
+        // Both the codeHash and the code bytes are available here. A CREATE/CREATE2 inside the
+        // proof_call that deploys a contract without a subsequent CALL to it would otherwise leave
+        // the witness without that contract's bytecode — the verifier reconstructs the account's
+        // codeHash from the state proof, looks it up in witness.Codes, and finds nothing.
+        // Skip the genesis path: the genesis block's contracts are referenced from chain spec,
+        // not from the state proof, and the runtime code is already in the chain's code DB.
+        if (!isGenesis && code.Length > 0)
+            _bytecodes.TryAdd(codeHash, code.ToArray());
         return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 

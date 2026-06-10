@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Stateless;
@@ -18,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -211,6 +213,149 @@ public class ProofRpcModuleCallTests
     }
 
     // OOG must still return a witness — the deliberate divergence from eth_call, which would fail the RPC.
+    /// <summary>
+    /// Regression guard for the deleted <c>Debug_witness_includes_trie_nodes_for_storage_set_without_prior_read_then_reverted</c>:
+    /// when a slot is written (via SSTORE → WorldState.Set) and then reverted (via REVERT → WorldState.Restore),
+    /// the cached write is discarded and the trie is never traversed during the call. The witness must
+    /// still include the storage trie nodes for the slot — <see cref="WitnessGeneratingWorldState.GetWitness"/>
+    /// re-walks touched keys via <c>MultiAccountProofCollector</c> + per-account <c>AccountProofCollector</c> to
+    /// capture them. A cross-client (geth) verifier cannot reconstruct the slot without these nodes.
+    /// </summary>
+    [Test]
+    public async Task Proof_call_includes_trie_nodes_for_storage_sstore_then_reverted()
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+
+        // Runtime: SSTORE(0, 0xEE) then REVERT with empty data. The slot is written then reverted
+        // in the same call — the trie is never traversed during the call. The only way the witness
+        // covers slot 0's storage trie is via the post-execution re-walk of touched keys in
+        // WitnessGeneratingWorldState.GetWitness.
+        byte[] runtimeCode = Prepare.EvmCode
+            .PushData(0xEE)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.REVERT)
+            .Done;
+        // Init: SSTORE(0, 0xEE) so slot 0 is committed to the trie at deploy time. This gives the
+        // parent state a real storage trie node for slot 0 that the post-execution re-walk must
+        // find and re-capture; without it, the parent state has no slot 0 storage node and the
+        // "expected storage proof" baseline would be empty.
+        byte[] initCode = Prepare.EvmCode
+            .PushData(0xEE)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .ForInitOf(runtimeCode)
+            .Done;
+
+        UInt256 nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, nonce);
+        Transaction deployTx = Build.A.Transaction
+            .WithNonce(nonce)
+            .WithCode(initCode)
+            .WithGasLimit(500_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await blockchain.AddBlock(deployTx);
+
+        long blockNumber = blockchain.BlockTree.Head!.Number;
+        BlockHeader sourceHeader = blockchain.BlockTree.FindHeader(blockNumber)!;
+
+        using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
+            new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
+            {
+                To = contractAddress,
+                Gas = 200_000,
+            },
+            new BlockParameter(blockNumber));
+        CallResultWithProof result = wrapper.Data!;
+
+        // REVERT surfaces an in-payload error but the witness is still returned.
+        Assert.That(result.Result, Is.Null, "REVERT must null out the success-path Result");
+        Assert.That(result.Error, Is.Not.Null);
+        Assert.That(result.Error!.Code, Is.EqualTo(ErrorCodes.ExecutionReverted));
+        Assert.That(result.Witness.State, Is.Not.Empty,
+            "the witness must include storage trie nodes for the SSTORE'd-then-reverted slot");
+
+        // Compute the expected storage proof by walking the parent state's storage trie directly.
+        AccountProofCollector expectedCollector = new(contractAddress, [UInt256.Zero]);
+        blockchain.StateReader.RunTreeVisitor(expectedCollector, sourceHeader);
+        AccountProof expectedProof = expectedCollector.BuildResult();
+        byte[][] expectedStorageProofNodes = expectedProof.StorageProofs!
+            .SelectMany(sp => sp.Proof!)
+            .ToArray();
+        Assert.That(expectedStorageProofNodes, Is.Not.Empty,
+            "the contract should have a non-empty storage proof for slot 0 in the parent state");
+
+        // The witness must contain every expected storage trie node by hash. If the
+        // MultiAccountProofCollector / per-account AccountProofCollector re-walk were dropped, this
+        // would fail because the SSTORE was reverted (the trie was never traversed during the call)
+        // and only the re-walk could have captured these nodes.
+        HashSet<Hash256> witnessNodeHashes = result.Witness.State
+            .Select(Keccak.Compute)
+            .ToHashSet();
+        foreach (byte[] expectedNode in expectedStorageProofNodes)
+        {
+            Assert.That(witnessNodeHashes, Does.Contain(Keccak.Compute(expectedNode)),
+                "witness must include the storage trie node even though the slot was SSTORE'd then reverted");
+        }
+    }
+
+    /// <summary>
+    /// Regression guard for the deleted <c>Debug_executionWitnessCall_without_gas_field_still_records_full_witness</c>:
+    /// the <c>gas</c> field is documented as optional in the call request, and callers reasonably assume
+    /// the witness is recorded the same whether or not they pass gas explicitly. If that symmetry breaks
+    /// again, a caller who omits gas gets a near-empty witness that silently succeeds but fails
+    /// stateless re-execution downstream. Seen in the wild with surge-raiko's L1STATICCALL preflight.
+    /// </summary>
+    [Test]
+    public async Task Proof_call_with_and_without_gas_field_produces_same_witness_shape()
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        await CreateTransferTx(blockchain);
+        Address contractAddress = await DeploySloadReturningContract(blockchain, 0x55);
+
+        long blockNumber = blockchain.BlockTree.Head!.Number;
+
+        // With gas explicitly passed — the control case.
+        using ResultWrapper<CallResultWithProof> withGas = blockchain.ProofRpcModule.proof_call(
+            new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
+            {
+                To = contractAddress,
+                Gas = 200_000,
+            },
+            new BlockParameter(blockNumber));
+
+        // Without gas — what most call sites end up sending. `{to}` is the natural shape for a view
+        // call, and callers don't want to have to know the block's gas limit.
+        using ResultWrapper<CallResultWithProof> withoutGas = blockchain.ProofRpcModule.proof_call(
+            new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
+            {
+                To = contractAddress,
+            },
+            new BlockParameter(blockNumber));
+
+        Assert.That(withGas.Data, Is.Not.Null);
+        Assert.That(withoutGas.Data, Is.Not.Null);
+        Assert.That(withoutGas.Data!.Error, Is.Null,
+            "omitting gas must not be treated as an error");
+        Assert.That(withoutGas.Data.Result, Is.Not.Null.And.Not.Empty,
+            "omitting gas must still execute the call to completion");
+
+        // The two paths must produce witnesses of the same shape.
+        Assert.That(withoutGas.Data.Witness.State, Is.Not.Empty,
+            "omitting gas must not empty the state node set");
+        Assert.That(withoutGas.Data.Witness.Codes, Is.Not.Empty,
+            "omitting gas must still capture called-contract bytecode");
+        Assert.That(withoutGas.Data.Witness.State.Count, Is.EqualTo(withGas.Data.Witness.State.Count),
+            "state-node count should match between with-gas and without-gas calls");
+        Assert.That(withoutGas.Data.Witness.Codes.Count, Is.EqualTo(withGas.Data.Witness.Codes.Count),
+            "code count should match between with-gas and without-gas calls");
+        Assert.That(withoutGas.Data.Witness.Keys.Count, Is.EqualTo(withGas.Data.Witness.Keys.Count),
+            "key count should match between with-gas and without-gas calls");
+    }
+
     [Test]
     public async Task Proof_call_returns_witness_and_error_on_out_of_gas()
     {
@@ -490,6 +635,54 @@ public class ProofRpcModuleCallTests
             BlockHeader laterHdr = _headerDecoder.Decode(ref laterStream)!;
             Assert.That(laterHdr.Number, Is.EqualTo(laterBlock), $"round {round}: header at later-block call");
         }
+    }
+
+    /// <summary>
+    /// Pool isolation under concurrent load: many proof_call requests fired in parallel against
+    /// the same factory must each return a correct, non-shared witness. Exercises the
+    /// <c>Interlocked.Exchange</c> on <c>RentedScope._disposed</c> and the soft-cap counter
+    /// in <see cref="WitnessGeneratingBlockProcessingEnvFactory"/> — a regression that races two
+    /// concurrent renters on the same pooled entry would surface here as a torn witness (wrong
+    /// state root, missing trie nodes, or wrong executed-against header).
+    /// </summary>
+    [Test]
+    public async Task Proof_call_concurrent_requests_get_isolated_witnesses()
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Address contract = await DeploySloadReturningContract(blockchain, 0xBB);
+        long deployBlock = blockchain.BlockTree.Head!.Number;
+
+        await CreateTransferTx(blockchain);
+        await CreateTransferTx(blockchain);
+        long laterBlock = blockchain.BlockTree.Head!.Number;
+
+        // Interleave same-block and cross-block requests; a torn-witness regression would surface
+        // as either an exception in one of the tasks or an assertion failure below.
+        int requestCount = Environment.ProcessorCount * 2;
+        Task<(long block, byte result)>[] tasks = new Task<(long, byte)>[requestCount];
+        for (int i = 0; i < requestCount; i++)
+        {
+            long block = (i & 1) == 0 ? deployBlock : laterBlock;
+            tasks[i] = Task.Run(async () =>
+            {
+                using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
+                    new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contract, Gas = 200_000 },
+                    new BlockParameter(block));
+                CallResultWithProof result = wrapper.Data!;
+                Assert.That(result.Result, Is.Not.Null.And.Not.Empty, $"task {i}: result");
+                Assert.That(result.Result![^1], Is.EqualTo(0xBB), $"task {i}: storage value");
+
+                // Header must match the requested block — a scope leak between two concurrent
+                // rents would manifest as a mismatched block number here.
+                Rlp.ValueDecoderContext stream = new(result.Witness.Headers[^1]);
+                BlockHeader hdr = _headerDecoder.Decode(ref stream)!;
+                Assert.That(hdr.Number, Is.EqualTo(block), $"task {i}: header number");
+                return (block, result.Result[^1]);
+            });
+        }
+
+        (long, byte)[] all = await Task.WhenAll(tasks);
+        Assert.That(all.Length, Is.EqualTo(requestCount));
     }
 
     private static async Task<Address> DeploySloadReturningContract(TestRpcBlockchain blockchain, byte markerValue)

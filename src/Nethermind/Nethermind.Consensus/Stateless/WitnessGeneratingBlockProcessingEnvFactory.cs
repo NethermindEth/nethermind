@@ -55,6 +55,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     public IWitnessGeneratingBlockProcessingEnvScope CreateScope()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         if (_pool.TryPop(out PooledEntry? entry))
         {
             Interlocked.Decrement(ref _poolCount);
