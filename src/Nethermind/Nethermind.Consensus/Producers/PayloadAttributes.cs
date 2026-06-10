@@ -28,9 +28,7 @@ public class PayloadAttributes
 
     public ulong? SlotNumber { get; set; }
 
-    public ulong? TargetGasLimit { get; set; }
-
-    public virtual long? GetGasLimit() => (long?)TargetGasLimit;
+    public virtual long? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);
 
@@ -54,11 +52,6 @@ public class PayloadAttributes
         if (SlotNumber is not null)
         {
             sb.Append($", {nameof(SlotNumber)}: {SlotNumber}");
-        }
-
-        if (TargetGasLimit is not null)
-        {
-            sb.Append($", {nameof(TargetGasLimit)}: {TargetGasLimit}");
         }
 
         sb.Append('}');
@@ -91,7 +84,7 @@ public class PayloadAttributes
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
         + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
-        + (TargetGasLimit is null ? 0 : sizeof(ulong)); // target gas limit
+        ;
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -133,12 +126,6 @@ public class PayloadAttributes
         if (SlotNumber is not null)
         {
             BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), SlotNumber.Value);
-            position += sizeof(ulong);
-        }
-
-        if (TargetGasLimit is not null)
-        {
-            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), TargetGasLimit.Value);
             position += sizeof(ulong);
         }
 
@@ -240,7 +227,6 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V2 when Withdrawals is null => $"{nameof(Withdrawals)} must be provided",
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
-            >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
             _ => null
         };
     }
@@ -253,7 +239,6 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { TargetGasLimit: not null } => PayloadAttributesVersions.V4,
             { SlotNumber: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
             { Withdrawals: not null } => PayloadAttributesVersions.V2,

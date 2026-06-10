@@ -20,7 +20,6 @@ public class PayloadAttributesValidateTests
         Withdrawals = [],
         ParentBeaconBlockRoot = Keccak.Zero,
         SlotNumber = null,
-        TargetGasLimit = null,
     };
 
     private static ISpecProvider MakeSpecProvider(bool isAmsterdam)
@@ -53,26 +52,11 @@ public class PayloadAttributesValidateTests
     }
 
     [Test]
-    public void Validate_reports_missing_SlotNumber_when_only_TargetGasLimit_present()
-    {
-        ISpecProvider sp = MakeSpecProvider(isAmsterdam: true);
-        PayloadAttributes attrs = ValidV3Attributes();
-        attrs.TargetGasLimit = 30_000_000UL;
-
-        PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion: PayloadAttributesVersions.V4, out string error);
-
-        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
-        Assert.That(error, Does.Contain(nameof(PayloadAttributes.SlotNumber)),
-            "SlotNumber is the first unset V4 field checked after TargetGasLimit is present.");
-    }
-
-    [Test]
     public void Validate_succeeds_for_complete_V4_attributes_on_Amsterdam_timestamp()
     {
         ISpecProvider sp = MakeSpecProvider(isAmsterdam: true);
         PayloadAttributes attrs = ValidV3Attributes();
         attrs.SlotNumber = 42UL;
-        attrs.TargetGasLimit = 30_000_000UL;
 
         PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion: PayloadAttributesVersions.V4, out string error);
 
@@ -86,7 +70,6 @@ public class PayloadAttributesValidateTests
         ISpecProvider sp = MakeSpecProvider(isAmsterdam: false);
         PayloadAttributes attrs = ValidV3Attributes();
         attrs.SlotNumber = 42UL;
-        attrs.TargetGasLimit = 30_000_000UL;
 
         PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion: PayloadAttributesVersions.V3, out string error);
 
@@ -94,17 +77,14 @@ public class PayloadAttributesValidateTests
         Assert.That(error, Is.Not.Null);
     }
 
-    [TestCase(false, false, PayloadAttributesVersions.V1)]
-    [TestCase(true, false, PayloadAttributesVersions.V4)]
-    [TestCase(false, true, PayloadAttributesVersions.V4)]
-    [TestCase(true, true, PayloadAttributesVersions.V4)]
+    [TestCase(false, PayloadAttributesVersions.V1)]
+    [TestCase(true, PayloadAttributesVersions.V4)]
     public void GetVersion_infers_correct_version_from_present_fields(
-        bool hasTargetGasLimit, bool hasSlotNumber, int expectedVersion)
+        bool hasSlotNumber, int expectedVersion)
     {
         PayloadAttributes attrs = new()
         {
             Timestamp = 1_000UL,
-            TargetGasLimit = hasTargetGasLimit ? 30_000_000UL : null,
             SlotNumber = hasSlotNumber ? 1UL : null,
         };
 

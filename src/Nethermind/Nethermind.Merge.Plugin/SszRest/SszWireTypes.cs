@@ -81,7 +81,6 @@ public partial struct PayloadAttributesWire
     [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
-    public ulong TargetGasLimit { get; set; }
 }
 
 [SszContainer]
