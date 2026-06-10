@@ -23,32 +23,22 @@ public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
-    PersistedSnapshotList persistedSnapshots,
-    ArrayPoolList<PersistedSnapshotBloom> persistedBlooms)
+    PersistedSnapshotStack persistedSnapshots)
     : RefCountingDisposable
 {
     public int SnapshotCount => persistedSnapshots.Count + snapshots.Count;
     private bool _isDisposed;
 
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
-    private static readonly StringLabel _readAccountPersistedLabel = new("account_persisted_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
     private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
     private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
-    private static readonly StringLabel _readStoragePersistedLabel = new("storage_persisted_snapshot");
     private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
     private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
     private static readonly StringLabel _readStateNodeSnapshotLabel = new("state_node_snapshot");
     private static readonly StringLabel _readStorageNodeSnapshotLabel = new("storage_node_snapshot");
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
-    private static readonly StringLabel _readStateRlpPersistedLabel = new("state_rlp_persisted_snapshot");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
-    private static readonly StringLabel _readStorageRlpPersistedLabel = new("storage_rlp_persisted_snapshot");
-
-    private static readonly StringLabel _skipAccountLabel = new("account");
-    private static readonly StringLabel _skipSlotLabel = new("slot");
-    private static readonly StringLabel _skipStateRlpLabel = new("state_rlp");
-    private static readonly StringLabel _skipStorageRlpLabel = new("storage_rlp");
 
     public Account? GetAccount(Address address) => GetAccount(address, address);
 
@@ -66,24 +56,8 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        // Check persisted snapshots (newest-first). PersistedSnapshot's per-address column
-        // is keyed by raw Address; the bloom seed also derives from raw Address bytes, so
-        // no Keccak round-trip is needed here.
-        long psw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        if (persistedSnapshots.Count > 0)
-        {
-            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
-            for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
-            {
-                if (!persistedBlooms[i].Bloom.MightContain(addrBloomKey)) continue;
-                if (persistedSnapshots[i].TryGetAccount(address, out Account? acc))
-                {
-                    if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - psw, _readAccountPersistedLabel);
-                    return acc;
-                }
-            }
-        }
-        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - psw, _skipAccountLabel);
+        if (persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
+            return persistedAccount;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         Account? account = persistenceReader.GetAccount(address);
@@ -108,19 +82,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return persistedSnapshots.Count + i;
         }
 
-        if (persistedSnapshots.Count > 0)
-        {
-            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
-            for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
-            {
-                if (!persistedBlooms[i].Bloom.MightContain(addrBloomKey)) continue;
-                bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(address);
-                if (flag.HasValue)
-                    return i;
-            }
-        }
-
-        return -1;
+        return persistedSnapshots.TryGetSelfDestruct(address, out int snapshotIdx) ? snapshotIdx : -1;
     }
 
     public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
@@ -147,34 +109,8 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        long psw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        // Bloom checks both the address-key and the per-slot key before paying for a
-        // column seek into the persisted snapshot. PersistedSnapshot's per-address column
-        // is keyed by raw Address; the bloom seed derives from raw Address bytes directly.
-        if (persistedSnapshots.Count > 0)
-        {
-            ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
-            ulong slotBloomKey = PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, in index);
-            for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
-            {
-                PersistedSnapshotBloom bloom = persistedBlooms[i];
-                if (bloom.Bloom.MightContain(addrBloomKey) && bloom.Bloom.MightContain(slotBloomKey))
-                {
-                    SlotValue slotValue = default;
-                    if (persistedSnapshots[i].TryGetSlot(address, in index, ref slotValue))
-                    {
-                        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistedLabel);
-                        return slotValue.ToEvmBytes();
-                    }
-                }
-
-                if (i <= selfDestructStateIdx)
-                {
-                    return null;
-                }
-            }
-        }
-        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - psw, _skipSlotLabel);
+        if (persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out byte[]? persistedSlot))
+            return persistedSlot;
 
         SlotValue outSlotValue = new();
 
@@ -247,21 +183,11 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        ulong statePathBloomKey = PersistedSnapshotBloomBuilder.StatePathKey(in path);
-        for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
-        {
-            if (!persistedBlooms[i].Bloom.MightContain(statePathBloomKey)) continue;
-            if (persistedSnapshots[i].TryLoadStateNodeRlp(in path, out byte[]? rlp))
-            {
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpPersistedLabel);
-                return rlp;
-            }
-        }
-        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStateRlpLabel);
+        if (persistedSnapshots.TryLoadStateRlp(in path, out byte[]? persistedRlp))
+            return persistedRlp;
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
 
@@ -272,24 +198,11 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        // Caller already provides the address-hash; convert to the struct ValueHash256
-        // (no alloc) so the read path stays Hash256-free below.
-        ValueHash256 addressHash = address.ValueHash256;
-        ulong storageBloomKey = PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path);
-        for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
-        {
-            if (!persistedBlooms[i].Bloom.MightContain(storageBloomKey)) continue;
-            if (persistedSnapshots[i].TryLoadStorageNodeRlp(in addressHash, in path, out byte[]? rlp))
-            {
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);
-                return rlp;
-            }
-        }
-        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStorageRlpLabel);
+        if (persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp))
+            return persistedRlp;
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
@@ -309,11 +222,6 @@ public sealed class ReadOnlySnapshotBundle(
 
         snapshots.Dispose();
         persistedSnapshots.Dispose();
-        for (int i = 0; i < persistedBlooms.Count; i++)
-            persistedBlooms[i].Dispose();
-        persistedBlooms.Dispose();
-
-        // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();
     }
 }

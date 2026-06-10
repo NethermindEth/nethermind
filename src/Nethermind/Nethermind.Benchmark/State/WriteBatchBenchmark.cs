@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -68,7 +67,7 @@ public class WriteBatchBenchmark
 
             ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-                PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
+                PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
                 readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -151,7 +150,7 @@ public class WriteBatchBenchmark
 
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
+            PersistedSnapshotStack.Empty());
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
             readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);

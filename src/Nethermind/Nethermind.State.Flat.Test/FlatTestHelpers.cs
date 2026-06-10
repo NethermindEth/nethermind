@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
@@ -36,7 +35,7 @@ internal static class FlatTestHelpers
     /// </summary>
     public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, Action<SnapshotContent>? populate = null) =>
         new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
-            recordDetailedMetrics: false, PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
+            recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 }
 
 /// <summary>

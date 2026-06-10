@@ -88,8 +88,7 @@ public class FlatWorldStateScopeProviderTests
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
-                .WithParameter(TypedParameter.From(PersistedSnapshotList.Empty()))
-                .WithParameter(TypedParameter.From(new ArrayPoolList<PersistedSnapshotBloom>(0)))
+                .WithParameter(TypedParameter.From(PersistedSnapshotStack.Empty()))
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();

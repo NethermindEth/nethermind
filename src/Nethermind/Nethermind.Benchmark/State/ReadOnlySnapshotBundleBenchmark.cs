@@ -84,7 +84,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
             ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-                PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
+                PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
                 readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -166,7 +166,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
         _bundle = new ReadOnlySnapshotBundle(
             finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
+            PersistedSnapshotStack.Empty());
 
         // --- Hit arrays ---
         _hitAccounts = new Address[ArraySize];

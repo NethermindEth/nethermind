@@ -261,7 +261,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics));
         }
 
         long sw = 0;
@@ -338,7 +338,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 persistedBlooms.Add(_persistedBloomManager.LeaseOrSentinel(persisted.From, persisted.To));
             }
 
-            ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted, persistedBlooms);
+            ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
+                new PersistedSnapshotStack(assembled.Persisted, persistedBlooms, _enableDetailedMetrics));
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))

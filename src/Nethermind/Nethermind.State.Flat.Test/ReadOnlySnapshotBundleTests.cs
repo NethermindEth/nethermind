@@ -29,7 +29,7 @@ public class ReadOnlySnapshotBundleTests
 
     private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false) =>
         new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics,
-            PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
+            PersistedSnapshotStack.Empty(recordDetailedMetrics));
 
     [TestCase(true)]
     [TestCase(false)]
