@@ -17,7 +17,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -299,17 +298,6 @@ public class BlockAccessListsSyncFeedTests
         return syncPeerPool;
     }
 
-    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
-    {
-        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
-        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
-        {
-            for (int i = 0; i < blockAccessLists.Length; i++)
-            {
-                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
-            }
-        }
-
-        return new RlpByteArrayList(builder.ToRlpItemList());
-    }
+    private static IOwnedReadOnlyList<byte[]?> BuildBlockAccessLists(params byte[]?[] blockAccessLists) =>
+        new ArrayPoolList<byte[]?>(blockAccessLists);
 }
