@@ -200,6 +200,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             try
             {
+                // Same-sender sequencing is a replay-fidelity heuristic, not a correctness need:
+                // warmup skips validation and the pre-block caches only serve first-in-block
+                // (parent) values, so replaying each tx from parent state warms the right entries.
+                // When grouping would leave most workers idle (single-sender bursts), use
+                // per-tx parallelism instead.
+                if (senderGroups.Count <= Math.Max(1, parallelOptions.MaxDegreeOfParallelism / 4)
+                    && block.Transactions.Length > senderGroups.Count)
+                {
+                    WarmupTransactionsPerTx(blockState, parallelOptions);
+                    return;
+                }
+
                 // Convert to array for parallel iteration
                 using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
 
@@ -252,6 +264,33 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _logger.DebugError("Error pre-warming transactions", ex);
         }
     }
+
+    private static void WarmupTransactionsPerTx(BlockState blockState, ParallelOptions parallelOptions)
+        => ParallelUnbalancedWork.For(
+            0,
+            blockState.Block.Transactions.Length,
+            parallelOptions,
+            (blockState, parallelOptions.CancellationToken),
+            static (i, tupleState) =>
+            {
+                (BlockState blockState, CancellationToken token) = tupleState;
+                if (token.IsCancellationRequested) return tupleState;
+
+                IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
+                try
+                {
+                    using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                    BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
+                    scope.TransactionProcessor.SetBlockExecutionContext(context);
+                    WarmupSingleTransaction(scope, blockState.Block.Transactions[i], i, blockState);
+                }
+                finally
+                {
+                    blockState.PreWarmer._envPool.Return(env);
+                }
+
+                return tupleState;
+            });
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
