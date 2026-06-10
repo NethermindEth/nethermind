@@ -18,17 +18,17 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// <see cref="TaskCreationOptions.LongRunning"/> tasks so the ~64 OS thread create/joins
 /// each block don't recur at mainnet cadence.
 ///
-/// One <see cref="Drain"/> call at a time -- concurrent callers serialize via an interlocked
+/// One <see cref="Run"/> call at a time -- concurrent callers serialize via an interlocked
 /// sentinel.
 /// </remarks>
-public sealed class BalReaderPool : IDisposable
+public sealed class WarmReadPool : IDisposable
 {
     public int MaxConcurrency { get; }
 
     private readonly Thread[] _threads;
     private readonly SemaphoreSlim _workAvailable;
     private Batch? _current;
-    private int _drainInFlight;
+    private int _runInFlight;
     private volatile bool _disposed;
 
     private sealed class Batch
@@ -41,7 +41,7 @@ public sealed class BalReaderPool : IDisposable
         public Exception? FirstException;
     }
 
-    public BalReaderPool(int maxConcurrency)
+    public WarmReadPool(int maxConcurrency)
     {
         if (maxConcurrency < 1) throw new ArgumentOutOfRangeException(nameof(maxConcurrency));
 
@@ -50,7 +50,7 @@ public sealed class BalReaderPool : IDisposable
         _workAvailable = new SemaphoreSlim(0);
         for (int i = 0; i < maxConcurrency; i++)
         {
-            Thread t = new(WorkerLoop) { IsBackground = true, Name = $"BalReader-{i}" };
+            Thread t = new(WorkerLoop) { IsBackground = true, Name = $"WarmRead-{i}" };
             _threads[i] = t;
             t.Start();
         }
@@ -62,7 +62,7 @@ public sealed class BalReaderPool : IDisposable
     /// Blocks until every job has been claimed. Cancellation stops new claims but in-flight
     /// jobs run to completion. The first worker exception is rethrown after the batch joins.
     /// </summary>
-    public void Drain(int jobCount, int workers, Action<int> work, CancellationToken token)
+    public void Run(int jobCount, int workers, Action<int> work, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(work);
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -70,7 +70,7 @@ public sealed class BalReaderPool : IDisposable
 
         int activeWorkers = Math.Clamp(workers, 1, MaxConcurrency);
 
-        while (Interlocked.CompareExchange(ref _drainInFlight, 1, 0) != 0)
+        while (Interlocked.CompareExchange(ref _runInFlight, 1, 0) != 0)
         {
             Thread.Yield();
         }
@@ -94,7 +94,7 @@ public sealed class BalReaderPool : IDisposable
         {
             _current = null;
             batch.Done.Dispose();
-            Volatile.Write(ref _drainInFlight, 0);
+            Volatile.Write(ref _runInFlight, 0);
         }
     }
 

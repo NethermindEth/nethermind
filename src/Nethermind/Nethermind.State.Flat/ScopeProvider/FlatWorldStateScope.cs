@@ -24,7 +24,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
-    private readonly BalReaderPool? _balReaderPool;
+    private readonly WarmReadPool? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
 
@@ -54,7 +54,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
-        BalReaderPool? balReaderPool = null,
+        WarmReadPool? warmReadPool = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
@@ -80,7 +80,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         };
 
         _configuration = configuration;
-        _balReaderPool = balReaderPool;
+        _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
 
@@ -261,8 +261,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
-        if (_balReaderPool is null) return;
-
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -287,15 +285,29 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
-        // No point waking more readers than ~64-job slices of work.
-        int workers = Math.Min(_balReaderPool.MaxConcurrency, Math.Max(1, idx / 64));
+        CancellationToken token = parallelOptions.CancellationToken;
+        if (_warmReadPool is null)
+        {
+            // No dedicated readers configured -- still warm, just sequentially on the HintBal
+            // Task.Run thread. Some progress before tx execution starts saturating the pool.
+            for (int j = 0; j < idx; j++)
+            {
+                if (token.IsCancellationRequested) break;
+                if (_pausePrewarmer) continue;
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+            }
+            return;
+        }
 
-        _balReaderPool.Drain(idx, workers, j =>
+        int workers = Math.Min(_warmReadPool.MaxConcurrency, Math.Max(1, idx / 64));
+
+        _warmReadPool.Run(idx, workers, j =>
         {
             if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        }, parallelOptions.CancellationToken);
+        }, token);
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)

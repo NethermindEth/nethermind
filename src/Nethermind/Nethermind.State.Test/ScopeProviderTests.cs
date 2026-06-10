@@ -224,12 +224,10 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [Test]
-    public void Test_HintBalWithSink_LargeReadSet_MatchesIndividualReads()
+    [TestCase(10)]
+    [TestCase(1500)]
+    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
     {
-        // Large enough to route through the dedicated-reader pump instead of the pooled Parallel.For.
-        const int slotCount = 1500;
-
         using Context ctx = new(useFlat);
 
         Hash256 stateRoot;
