@@ -5,7 +5,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Matching;
 using Nethermind.Runner.JsonRpc;
 using NUnit.Framework;
@@ -18,62 +17,30 @@ public class LocalPortMatcherPolicyTests
 {
     private static readonly IReadOnlySet<int> HealthPorts = new HashSet<int> { 8545 };
 
-    [TestCase(8545, true, TestName = "Keeps candidate when local port is allowed")]
-    [TestCase(8551, false, TestName = "Invalidates candidate on a non-allowed port (issue #11166)")]
-    [TestCase(0, false, TestName = "Invalidates candidate on port 0 (no local endpoint, fail-closed)")]
-    public async Task ApplyAsync_LocalPort_DeterminesCandidateValidity(int localPort, bool expectedValid)
+    [TestCase(true, 8545, "127.0.0.1:8545", true, TestName = "Keeps candidate on an allowed local port")]
+    [TestCase(true, 8545, "nethermind.example.com", true, TestName = "Keeps candidate when a proxy rewrites the Host header")]
+    [TestCase(true, 8551, "127.0.0.1:8551", false, TestName = "Invalidates candidate on a non-allowed port (issue #11166)")]
+    [TestCase(true, 0, "127.0.0.1", false, TestName = "Invalidates candidate on port 0 (no local endpoint, fail-closed)")]
+    [TestCase(false, 8551, "127.0.0.1:8551", true, TestName = "Leaves candidate without metadata untouched")]
+    public async Task ApplyAsync_DeterminesCandidateValidity(bool hasMetadata, int localPort, string host, bool expectedValid)
     {
-        CandidateSet candidates = BuildCandidates(new LocalPortMetadata(HealthPorts));
+        Endpoint[] endpoints = [BuildEndpoint(hasMetadata ? new LocalPortMetadata(HealthPorts) : null)];
+        CandidateSet candidates = new(endpoints, [[]], [0]);
+        DefaultHttpContext context = new()
+        {
+            Connection = { LocalPort = localPort },
+            Request = { Host = new HostString(host) }
+        };
 
-        await new LocalPortMatcherPolicy().ApplyAsync(BuildContext(localPort), candidates);
+        await new LocalPortMatcherPolicy().ApplyAsync(context, candidates);
 
         Assert.That(candidates.IsValidCandidate(0), Is.EqualTo(expectedValid));
     }
 
-    [Test]
-    public async Task ApplyAsync_RewrittenHostHeader_KeepsCandidate()
-    {
-        CandidateSet candidates = BuildCandidates(new LocalPortMetadata(HealthPorts));
-        HttpContext context = BuildContext(localPort: 8545);
-        context.Request.Host = new HostString("example.com"); // proxied host carries no :8545
-
-        await new LocalPortMatcherPolicy().ApplyAsync(context, candidates);
-
-        Assert.That(candidates.IsValidCandidate(0), Is.True);
-    }
-
-    [Test]
-    public async Task ApplyAsync_EndpointWithoutMetadata_KeepsCandidate()
-    {
-        CandidateSet candidates = BuildCandidates(metadata: null);
-
-        await new LocalPortMatcherPolicy().ApplyAsync(BuildContext(localPort: 1234), candidates);
-
-        Assert.That(candidates.IsValidCandidate(0), Is.True);
-    }
-
     [TestCase(true, ExpectedResult = true, TestName = "Applies when an endpoint carries the metadata")]
     [TestCase(false, ExpectedResult = false, TestName = "Does not apply without the metadata")]
-    public bool AppliesToEndpoints_Metadata_DeterminesApplicability(bool withMetadata)
-    {
-        Endpoint endpoint = BuildEndpoint(withMetadata ? new LocalPortMetadata(HealthPorts) : null);
-        return new LocalPortMatcherPolicy().AppliesToEndpoints([endpoint]);
-    }
-
-    private static HttpContext BuildContext(int localPort)
-    {
-        DefaultHttpContext context = new();
-        context.Connection.LocalPort = localPort;
-        return context;
-    }
-
-    private static CandidateSet BuildCandidates(LocalPortMetadata? metadata)
-    {
-        Endpoint[] endpoints = [BuildEndpoint(metadata)];
-        RouteValueDictionary[] values = [[]];
-        int[] scores = [0];
-        return new CandidateSet(endpoints, values, scores);
-    }
+    public bool AppliesToEndpoints_DependsOnMetadataPresence(bool withMetadata) =>
+        new LocalPortMatcherPolicy().AppliesToEndpoints([BuildEndpoint(withMetadata ? new LocalPortMetadata(HealthPorts) : null)]);
 
     private static Endpoint BuildEndpoint(LocalPortMetadata? metadata) =>
         new(requestDelegate: null,
