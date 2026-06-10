@@ -83,7 +83,7 @@ public sealed class ReadOnlySnapshotBundle(
                 }
             }
         }
-        Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - psw, _skipAccountLabel);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - psw, _skipAccountLabel);
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         Account? account = persistenceReader.GetAccount(address);
@@ -147,7 +147,7 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        long psw = Stopwatch.GetTimestamp();
+        long psw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         // Bloom checks both the address-key and the per-slot key before paying for a
         // column seek into the persisted snapshot. PersistedSnapshot's per-address column
         // is keyed by raw Address; the bloom seed derives from raw Address bytes directly.
@@ -174,7 +174,7 @@ public sealed class ReadOnlySnapshotBundle(
                 }
             }
         }
-        Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - psw, _skipSlotLabel);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - psw, _skipSlotLabel);
 
         SlotValue outSlotValue = new();
 
@@ -258,7 +258,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return rlp;
             }
         }
-        Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStateRlpLabel);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStateRlpLabel);
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -286,7 +286,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return rlp;
             }
         }
-        Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStorageRlpLabel);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStorageRlpLabel);
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
