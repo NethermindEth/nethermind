@@ -48,6 +48,31 @@ public class StorageStridePrefetcherTests
     }
 
     [Test]
+    public void OnRead_EngagesForLowSlotStrides()
+    {
+        using CancellationTokenSource cts = new();
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageStridePrefetcher prefetcher = new(
+            () => EmptyStorageTree.Instance,
+            cache,
+            TestItem.AddressA,
+            cts.Token);
+
+        UInt256 index = 1;
+        UInt256 stride = 1;
+        for (int i = 0; i < 12; i++, index += stride)
+        {
+            prefetcher.OnRead(in index);
+        }
+
+        StorageCell farCell = new(TestItem.AddressA, 64);
+        Assert.That(SpinWait.SpinUntil(() => cache.TryGetValue(in farCell, out _), 1000), Is.True);
+
+        cts.Cancel();
+        Assert.DoesNotThrow(() => prefetcher.Dispose());
+    }
+
+    [Test]
     public void Dispose_DoesNotThrowWhenLookaheadOverflowsUInt256()
     {
         using CancellationTokenSource cts = new();

@@ -40,12 +40,8 @@ internal sealed class StorageStridePrefetcher(
     /// <summary>On-pattern reads required before readers start.</summary>
     private const int EngageRunLength = 8;
 
-    /// <summary>
-    /// Minimum slot index for engagement. System contracts and hand-written layouts use
-    /// single-digit slots and short scans where prefetching adds nothing; real bulk data
-    /// (arrays, mappings) lives at keccak-derived indices far above this.
-    /// </summary>
-    private static readonly UInt256 MinEngageIndex = uint.MaxValue;
+    /// <summary>Minimum slot index for engagement; slot zero is often a loop cursor.</summary>
+    private static readonly UInt256 MinEngageIndex = UInt256.Zero;
 
     /// <summary>Consecutive off-pattern reads before the pattern is declared broken. Tolerates
     /// interleaved unrelated reads (counters, config slots) within a striding scan.</summary>
