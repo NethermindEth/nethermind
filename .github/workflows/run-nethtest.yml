@@ -44,6 +44,18 @@ env:
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
+  # Single fixture source: the next-fork (BAL) release of ethereum/execution-specs.
+  # It contains fixtures for all forks (Frontier..Amsterdam), so a separate
+  # execution-spec-tests "current spec" run adds no extra coverage.
+  EEST_REPOSITORY: ethereum/execution-specs
+  EEST_VERSION: latest-bal
+  EEST_ARCHIVE: fixtures_bal.tar.gz
+  WORKERS: '4'
+  # ubuntu-latest runners have 16 GB of RAM. The runner ships with server GC
+  # (throughput-oriented, collects lazily), which previously ballooned past the
+  # runner limit on the full fixture set. Workstation GC keeps the heap tight;
+  # the fixture set is additionally split across jobs with --chunk.
+  DOTNET_gcServer: '0'
 
 defaults:
   run:
@@ -105,33 +117,52 @@ jobs:
           fi
 
   nethtest:
-    name: nethtest ${{ matrix.test_setup }} on ${{ matrix.runner }} --${{ inputs.test_type || 'engineTest' }}
+    name: nethtest ${{ matrix.test_setup }} ${{ matrix.chunk }} --${{ inputs.test_type || 'engineTest' }}
     needs: approval-state
     if: needs.approval-state.outputs.should_run == 'true'
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
+        # Mirrors the Ethereum.Blockchain.Pyspec.Test config matrix:
+        # - sequential       = default pyspec chunks (ParallelExecution/BatchRead forced off)
+        # - flat_sequential  = same under the flat state layout (TEST_USE_FLAT equivalent)
+        # - flat_parallel / flat_batchread / flat_parallelfull = the Amsterdam BAL
+        #   parallel-execution / batch-read prewarm variants, scoped to the Amsterdam
+        #   fixture subtree because the toggles are no-ops on pre-BAL forks.
+        # The full fixture set is split into interleaved file chunks (--chunk NofM)
+        # so each job fits within ubuntu-latest memory.
         include:
-          - test_setup: current_spec
-            runner: ubuntu-latest-16-cores
-            eest_repository: ethereum/execution-spec-tests
-            eest_version: latest
-            eest_archive: fixtures_stable.tar.gz
-            workers: '8'
-          - test_setup: new_spec
-            runner: ubuntu-gigachad
-            eest_repository: ethereum/execution-specs
-            eest_version: latest-bal
-            eest_archive: fixtures_bal.tar.gz
-            workers: '8'
+          - { test_setup: sequential, chunk: 1of8, scope: full, flatdb: '', parallel: 'false', batchread: 'false' }
+          - { test_setup: sequential, chunk: 2of8, scope: full, flatdb: '', parallel: 'false', batchread: 'false' }
+          - { test_setup: sequential, chunk: 3of8, scope: full, flatdb: '', parallel: 'false', batchread: 'false' }
+          - { test_setup: sequential, chunk: 4of8, scope: full, flatdb: '', parallel: 'false', batchread: 'false' }
+          - { test_setup: sequential, chunk: 5of8, scope: full, flatdb: '', parallel: 'false', batchread: 'false' }
+          - { test_setup: sequential, chunk: 6of8, scope: full, flatdb: '', parallel: 'false', batchread: 'false' }
+          - { test_setup: sequential, chunk: 7of8, scope: full, flatdb: '', parallel: 'false', batchread: 'false' }
+          - { test_setup: sequential, chunk: 8of8, scope: full, flatdb: '', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_sequential, chunk: 1of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_sequential, chunk: 2of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_sequential, chunk: 3of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_sequential, chunk: 4of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_sequential, chunk: 5of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_sequential, chunk: 6of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_sequential, chunk: 7of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_sequential, chunk: 8of8, scope: full, flatdb: '1', parallel: 'false', batchread: 'false' }
+          - { test_setup: flat_parallel, chunk: 1of2, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false' }
+          - { test_setup: flat_parallel, chunk: 2of2, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'false' }
+          - { test_setup: flat_batchread, chunk: 1of2, scope: amsterdam, flatdb: '1', parallel: 'false', batchread: 'true' }
+          - { test_setup: flat_batchread, chunk: 2of2, scope: amsterdam, flatdb: '1', parallel: 'false', batchread: 'true' }
+          - { test_setup: flat_parallelfull, chunk: 1of2, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true' }
+          - { test_setup: flat_parallelfull, chunk: 2of2, scope: amsterdam, flatdb: '1', parallel: 'true', batchread: 'true' }
     env:
       TEST_SETUP: ${{ matrix.test_setup }}
-      EEST_REPOSITORY: ${{ matrix.eest_repository }}
-      EEST_VERSION: ${{ matrix.eest_version }}
-      EEST_ARCHIVE: ${{ matrix.eest_archive }}
-      WORKERS: ${{ matrix.workers }}
+      CHUNK: ${{ matrix.chunk }}
+      SCOPE: ${{ matrix.scope }}
+      FLATDB: ${{ matrix.flatdb }}
+      PARALLEL: ${{ matrix.parallel }}
+      BATCHREAD: ${{ matrix.batchread }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -177,7 +208,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/eest-fixtures
-          key: eest-${{ matrix.eest_repository }}-${{ steps.eest_release.outputs.version }}-${{ matrix.eest_archive }}
+          key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ env.EEST_ARCHIVE }}
 
       - name: Download EEST fixtures
         env:
@@ -221,6 +252,17 @@ jobs:
             exit 1
           fi
 
+          if [ "$SCOPE" = "amsterdam" ]; then
+            # Newer releases prefix fork dirs with "for_"; older ones don't.
+            SCOPED_DIR="$(find "$FIXTURE_DIR" -maxdepth 1 -type d \( -name 'for_amsterdam' -o -name 'amsterdam' \) | head -1)"
+            if [ -z "$SCOPED_DIR" ]; then
+              echo "::error::Could not find Amsterdam fixture subdirectory in $FIXTURE_DIR"
+              find "$FIXTURE_DIR" -maxdepth 1 -type d | head -30
+              exit 1
+            fi
+            FIXTURE_DIR="$SCOPED_DIR"
+          fi
+
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
           echo "Found fixture directory: $FIXTURE_DIR"
           echo "Fixture count: $(find "$FIXTURE_DIR" -name '*.json' | wc -l) JSON files"
@@ -234,6 +276,17 @@ jobs:
           FILTER_ARG=""
           if [ -n "$FILTER" ]; then
             FILTER_ARG="--filter $FILTER"
+          fi
+
+          SETUP_ARGS="--chunk $CHUNK"
+          if [ "$FLATDB" = "1" ]; then
+            SETUP_ARGS="$SETUP_ARGS --flatdb"
+          fi
+          if [ -n "$PARALLEL" ]; then
+            SETUP_ARGS="$SETUP_ARGS --parallelExecution $PARALLEL"
+          fi
+          if [ -n "$BATCHREAD" ]; then
+            SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
           fi
 
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
@@ -286,13 +339,15 @@ jobs:
               echo "|--------|-------|"
               echo "| Test setup | \`$TEST_SETUP\` |"
               echo "| Test type | \`--$TEST_TYPE\` |"
+              echo "| Chunk | \`$CHUNK\` |"
+              echo "| Scope | \`$SCOPE\` |"
+              echo "| Setup args | \`$SETUP_ARGS\` |"
               echo "| EEST repository | \`$EEST_REPOSITORY\` |"
               echo "| EEST version | \`$RESOLVED_EEST_VERSION\` |"
               if [ "$EEST_VERSION" != "$RESOLVED_EEST_VERSION" ]; then
                 echo "| EEST version input | \`$EEST_VERSION\` |"
               fi
               echo "| EEST archive | \`$EEST_ARCHIVE\` |"
-              echo "| Runner | \`${{ matrix.runner }}\` |"
               echo "| Workers | $WORKERS |"
               echo "| Total | $TOTAL |"
               echo "| Passed | **$PASSED** |"
@@ -351,7 +406,7 @@ jobs:
               echo "# 2. Build and run"
               echo "cd src/Nethermind"
               echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false"
-              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers '$WORKERS' --neverTrace${FILTER_CMD}"
+              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers '$WORKERS' --neverTrace ${SETUP_ARGS}${FILTER_CMD}"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
 
@@ -472,6 +527,7 @@ jobs:
             --jsonout \
             --workers "$WORKERS" \
             --neverTrace \
+            $SETUP_ARGS \
             $FILTER_ARG \
             > "$RESULTS_FILE" \
             2> >(tee "$STDERR_FILE" >&2) &
@@ -518,7 +574,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: nethtest-results-${{ matrix.test_setup }}-${{ matrix.runner }}-${{ env.TEST_TYPE }}
+          name: nethtest-results-${{ matrix.test_setup }}-${{ matrix.chunk }}-${{ env.TEST_TYPE }}
           path: |
             ${{ runner.temp }}/nethtest-results.json
             ${{ runner.temp }}/nethtest-stderr.log
