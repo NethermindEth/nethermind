@@ -53,10 +53,12 @@ log "Installing flood from $FLOOD_REPO..."
 if command -v uv >/dev/null 2>&1; then
   # Pin Python 3.10: flood's 2023-era pins (checkthechain -> pyarrow 12.0.1)
   # only have prebuilt wheels up to cp311; newer interpreters force source
-  # builds that fail. No explicit package name: uv infers it from the git
-  # source and exposes the `flood` entry point regardless of the dist name.
-  uv tool install --force --python 3.10 "$FLOOD_REPO" \
-    || uv tool install --force --python 3.11 "$FLOOD_REPO"
+  # builds that fail. lxml-html-clean restores the lxml.html.clean module that
+  # lxml 5.x split out (flood's results pipeline imports it via unpinned deps).
+  # No explicit package name: uv infers it from the git source and exposes the
+  # `flood` entry point regardless of the dist name.
+  uv tool install --force --python 3.10 --with lxml-html-clean "$FLOOD_REPO" \
+    || uv tool install --force --python 3.11 --with lxml-html-clean "$FLOOD_REPO"
   uv_bin="$(uv tool dir --bin)"
   export PATH="$uv_bin:$PATH"
 else
@@ -116,17 +118,27 @@ summary="$OUT_DIR/flood-summary.md"
   echo '```'
 } > "$summary"
 
+missing=0
 for t in "${test_list[@]}"; do
   od="$OUT_DIR/$t"
-  [[ -d "$od" ]] || continue
   {
     echo "=== $t ==="
-    # 'flood print' renders the stored results as text; 'flood report' would
-    # generate notebook/HTML files instead.
-    flood print "$od" 2>&1 || true
+    if [[ -f "$od/results.json" ]]; then
+      # 'flood print' renders the stored results as text; 'flood report' would
+      # generate notebook/HTML files instead.
+      flood print "$od" 2>&1 || true
+    else
+      echo "NO RESULTS — flood did not write $od/results.json (see ${t}.log)"
+      missing=$((missing + 1))
+    fi
     echo
   } >> "$summary"
 done
 echo '```' >> "$summary"
 
 log "flood summary written to $summary"
+if (( missing == ${#test_list[@]} )); then
+  die "flood produced no results for any test — failing the benchmark step"
+elif (( missing > 0 )); then
+  log "::warning::flood produced no results for ${missing} of ${#test_list[@]} tests"
+fi
