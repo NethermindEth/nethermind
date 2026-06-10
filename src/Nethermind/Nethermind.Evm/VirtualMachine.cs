@@ -1306,9 +1306,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                 }
 
-                // GetRemainingGas returns ulong; the previous < 0 check here was dead code.
-                // Gas exhaustion is signalled by opcodes returning EvmExceptionType.OutOfGas
-                // (via TGasPolicy.UpdateGas returning false), caught by the exceptionType check below.
+                if (TGasPolicy.IsOutOfGas(in gas))
+                {
+                    exceptionType = EvmExceptionType.OutOfGas;
+                }
 
                 // Call gas policy hook after instruction execution.
                 TGasPolicy.OnAfterInstructionTrace(in gas);

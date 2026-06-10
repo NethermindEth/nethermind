@@ -83,7 +83,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
     public override async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId, string? customWithdrawalContractAddress)
         => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, customWithdrawalContractAddress);
 
-    [TestCase("0xff020d96d1b4a772fbaae047f094eced81b15ccb1ed9b538c90ab75f4f39742d", "0xac3989a5349b5efc7f2f6847e76c4d6d4c5fcbf54939c80b05b57142ae1236fb", "0xa666ed23428011d2a577df5a065c19861495f61e8d5d4c6298fbe2d34c211059", false, false)]
+    [TestCase("0x14d7d22cfaa851f3b79a790d6f961f0cc4da2e714cd15b16bce8468f25152911", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16", false, false)]
     public override async Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline)
         => await NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
 
@@ -98,10 +98,10 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
     public override Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? customWithdrawalContractAddress)
         => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, customWithdrawalContractAddress);
 
-    [TestCase("0xf23d9e6ccefd3f1223c05cff771c8e733040202871992257c8257cb629d95ee2", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.IncorrectChange)]
-    [TestCase("0x1b5f2d1e50a4c6322dff93847871a743b6d11c8e7b5218cc9547fe377709561f", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.MissingChange)]
-    [TestCase("0xe4a4bcd80d82527450d8ced83aa14aa0851d52618fa491bd4218d31c7257f00d", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.SurplusChange)]
-    [TestCase("0x4d85109195f43e0c29ba4d0a403081948fe0e29d0aa57379fc61fe4cea2820ac", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.SurplusReads)]
+    [TestCase("0x5ab84199bdbe0d5806de6bffbbd52cf31ede2248f842395aa9a850a45ad9f4db", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.IncorrectChange)]
+    [TestCase("0x56f188e232e95462ad7235ca53b336f5f73cc208992d307033210c085ea6f959", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.MissingChange)]
+    [TestCase("0x1625b8215c5d6ab493105efb8cc20b7409d4957ca46d98996c6cc01e50b69ab3", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.SurplusChange)]
+    [TestCase("0x91e03d0f1b756f6577cab73c9f910f9b18fbe45ac27bb346ada0fa912a71dac8", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.SurplusReads)]
     public override Task NewPayloadV5_rejects_invalid_BAL_early(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline, BalErrorKind errorKind) =>
         NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, GetExpectedBalError(errorKind), errorKind, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
 

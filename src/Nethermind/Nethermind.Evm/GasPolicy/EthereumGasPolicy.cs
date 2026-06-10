@@ -32,6 +32,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public ulong StateGasSpillReclassified;
     /// <summary>Spill consumed by state refunds and excluded from block regular gas.</summary>
     public ulong StateGasSpillRefunded;
+    /// <summary>Indicates that execution encountered an out of gas condition.</summary>
+    public bool OutOfGas;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromULong(ulong value) => new() { Value = value };
@@ -102,7 +104,18 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Consume(ref EthereumGasPolicy gas, ulong cost) => gas.Value -= cost;
+    public static void Consume(ref EthereumGasPolicy gas, ulong cost)
+    {
+        if (gas.Value < cost)
+        {
+            gas.Value = 0;
+            gas.OutOfGas = true;
+        }
+        else
+        {
+            gas.Value -= cost;
+        }
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeStateGas(ref EthereumGasPolicy gas, ulong stateGasCost)
@@ -191,7 +204,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         childGas.StateGasSpill > childGas.StateGasSpillRefunded ? childGas.StateGasSpill - childGas.StateGasSpillRefunded : 0UL;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void SetOutOfGas(ref EthereumGasPolicy gas) => gas.Value = 0;
+    public static bool IsOutOfGas(in EthereumGasPolicy gas) => gas.OutOfGas;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SetOutOfGas(ref EthereumGasPolicy gas)
+    {
+        gas.Value = 0;
+        gas.OutOfGas = true;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeAccountAccessGasWithDelegation(ref EthereumGasPolicy gas,
@@ -280,7 +300,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ulong gasCost)
     {
         if (GetRemainingGas(in gas) < gasCost)
+        {
+            gas.Value = 0;
+            gas.OutOfGas = true;
             return false;
+        }
 
         Consume(ref gas, gasCost);
         return true;

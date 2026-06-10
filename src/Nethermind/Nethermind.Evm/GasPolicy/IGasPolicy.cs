@@ -57,6 +57,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // Code-deposit-failure path: undo prior Refund's state-gas merge and apply halt restoration.
     static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas) { }
 
+    static abstract bool IsOutOfGas(in TSelf gas);
+
     static abstract void SetOutOfGas(ref TSelf gasState);
 
     static abstract bool ConsumeAccountAccessGasWithDelegation(ref TSelf gas,

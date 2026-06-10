@@ -385,9 +385,9 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
         IReleaseSpec releaseSpec = Berlin.Instance;
         Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo((ulong)RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1ul));
-        Assert.That(tracer.GasSpent, Is.EqualTo(54788ul));
         ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(75489ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(54764ul));
+        Assert.That(estimate, Is.EqualTo(75465ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -413,7 +413,7 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
         BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
-        _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
+        TransactionResult initResult = _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -424,9 +424,9 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
         Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(24080ul));
-        Assert.That(tracer.GasSpent, Is.EqualTo(35300ul));
         ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(54297ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(54224ul));
+        Assert.That(estimate, Is.EqualTo(54225ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -474,9 +474,9 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
         Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(2300ul));
-        Assert.That(tracer.GasSpent, Is.EqualTo(85981ul));
         ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(88281ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(87968ul));
+        Assert.That(estimate, Is.EqualTo(87969ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -515,9 +515,9 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
         Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo((ulong)RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend));
-        Assert.That(tracer.GasSpent, Is.EqualTo(87753ul));
         ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(108454ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(87429ul));
+        Assert.That(estimate, Is.EqualTo(108130ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);
@@ -555,9 +555,9 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
         Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
         Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(1ul));
-        Assert.That(tracer.GasSpent, Is.EqualTo(54284ul));
         ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(54284ul));
+        Assert.That(tracer.GasSpent, Is.EqualTo(54224ul));
+        Assert.That(estimate, Is.EqualTo(54224ul));
         Assert.That(err, Is.Null);
 
         ConfirmEnoughEstimate(tx, block, estimate);

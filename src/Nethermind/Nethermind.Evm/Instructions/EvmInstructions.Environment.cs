@@ -670,7 +670,7 @@ public static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.Base);
 
         // If gas falls below zero after cost deduction, signal out-of-gas error.
-        if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
+        if (TGasPolicy.IsOutOfGas(in gas)) goto OutOfGas;
 
         // Push the remaining gas (as unsigned 64-bit) onto the stack.
         return stack.PushUInt64<TTracingInst>(TGasPolicy.GetRemainingGas(in gas));
