@@ -82,4 +82,21 @@ public class Eip2780VmTests : VirtualMachineTestsBase
 
         Assert.That(withValueOp - noValueOp, Is.EqualTo(GasCostOf.CallValueSelfEip2780));
     }
+
+    [Test]
+    public void Delegated_recipient_charges_delegation_target_cold_touch_once()
+    {
+        // A delegated recipient pays COLD_ACCOUNT_COST_CODE for itself and its delegation target.
+        // The EVM only warms (does not gas-charge) the target for the top-level frame, so the total
+        // exceeds a plain-contract recipient by exactly one cold-code touch, not two (no double-charge).
+        Address target = TestItem.AddressC;
+        TestState.CreateAccount(target, 1.Ether);
+        TestState.InsertCode(target, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        byte[] delegated = [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
+
+        long delegatedGas = GasSpent(delegated);
+        long plainContractGas = GasSpent(Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Assert.That(delegatedGas - plainContractGas, Is.EqualTo(GasCostOf.ColdAccountAccess));
+    }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -572,7 +573,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // precompiles are warm at tx start and charged zero.
         if (!senderIsRecipient && !isPrecompile)
         {
-            cost += RecipientTouchCost(tx, spec, worldState, to);
+            cost += RecipientTouchCost(spec, worldState, to, AccessListAddresses(tx));
             // The new-account surcharge already covers the recipient leaf write.
             if (hasValue && !recipientDead)
                 cost += GasCostOf.StateUpdateEip2780;
@@ -581,38 +582,28 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return cost;
     }
 
-    private static long RecipientTouchCost(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider worldState, Address to)
+    private static long RecipientTouchCost(IReleaseSpec spec, IReadOnlyStateProvider worldState, Address to, IReadOnlySet<Address>? accessList)
     {
-        long cost = InAccessList(tx, to)
+        long cost = accessList?.Contains(to) == true
             ? GasCostOf.WarmStateRead
             : worldState.IsContract(to) ? GasCostOf.ColdAccountAccess : GasCostOf.ColdAccountAccessNoCodeEip2780;
 
         // EIP-7702: a delegated recipient also touches its delegation target (always carries code).
-        if (spec.IsEip7702Enabled && TryGetDelegationTarget(worldState, to, out Address target))
-            cost += InAccessList(tx, target) ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
+        // The EVM warms (does not gas-charge) this target for the top-level frame, so this is the sole charge.
+        if (spec.IsEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
+            cost += accessList?.Contains(target) == true ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess;
 
         return cost;
     }
 
-    private static bool InAccessList(Transaction tx, Address address)
+    private static IReadOnlySet<Address>? AccessListAddresses(Transaction tx)
     {
-        if (tx.AccessList is null) return false;
-        foreach ((Address entry, _) in tx.AccessList)
+        if (tx.AccessList is null) return null;
+        HashSet<Address> set = [];
+        foreach ((Address address, _) in tx.AccessList)
         {
-            if (entry == address) return true;
+            set.Add(address);
         }
-        return false;
-    }
-
-    private static bool TryGetDelegationTarget(IReadOnlyStateProvider worldState, Address to, out Address target)
-    {
-        byte[]? code = worldState.GetCode(to);
-        if (code is not null && Eip7702Constants.IsDelegatedCode(code))
-        {
-            target = new Address(code[Eip7702Constants.DelegationHeader.Length..]);
-            return true;
-        }
-        target = null!;
-        return false;
+        return set;
     }
 }
