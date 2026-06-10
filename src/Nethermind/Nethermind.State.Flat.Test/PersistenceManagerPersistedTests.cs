@@ -39,13 +39,13 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
         _ = new PersistedSnapshotCompactor(
             repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
-            LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+            LimboLogs.Instance,
             minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2);
 
@@ -67,13 +67,13 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
         _ = new PersistedSnapshotCompactor(
             repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
-            LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+            LimboLogs.Instance,
             minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2);
 
@@ -108,7 +108,7 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         SnapshotRepository snapRepo = new(repo, LimboLogs.Instance);
@@ -149,7 +149,7 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         SnapshotRepository snapRepo = new(repo, LimboLogs.Instance);

@@ -56,7 +56,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             // CompactSize=4 → minCompactSize for the large-tier compactor is 8. n is a power of 2
@@ -65,7 +65,7 @@ public class PersistedSnapshotCompactorTests
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -145,14 +145,14 @@ public class PersistedSnapshotCompactorTests
             // stay below the 512 MiB dedicated-arena threshold, so each must fit a shared file.
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -213,14 +213,13 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotBloomFilterManager bloomManager = new();
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), bloomManager, LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, bloomManager,
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: 2, maxCompactSize: 2);
 
             Hash256 addrHash256 = Keccak.Compute(TestItem.AddressA.Bytes);
@@ -252,11 +251,9 @@ public class PersistedSnapshotCompactorTests
             Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
-                using PersistedSnapshotBloom bloomLease = bloomManager.LeaseOrSentinel(s2);
-                Assert.That(bloomLease, Is.Not.SameAs(PersistedSnapshotBloom.AlwaysTrue),
-                    "Compacted snapshot must have a real bloom — test requires shared bloomManager so bloomCapacity > 0");
-
-                BloomFilter bloom = bloomLease.Bloom;
+                BloomFilter bloom = compacted!.Bloom;
+                Assert.That(bloom.Count, Is.GreaterThan(0),
+                    "Compacted snapshot must have a real bloom — the merge populates it from both sources");
                 ValueHash256 addrHash = ValueKeccak.Compute(TestItem.AddressA.Bytes);
                 ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(TestItem.AddressA);
 
@@ -300,13 +297,13 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: 2, maxCompactSize: 2);
 
             // Source 0: accountCount addresses with varying slot counts so inner-HSST
@@ -387,14 +384,14 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -693,7 +690,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             // minCompactSize == maxCompactSize == 2 — only a size-2 compaction is attempted, so
@@ -701,7 +698,7 @@ public class PersistedSnapshotCompactorTests
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: 2,
                 maxCompactSize: 2);
 
@@ -772,7 +769,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             // CompactSize=1 makes every block a boundary; block 8 → window [0, 8].
@@ -780,7 +777,7 @@ public class PersistedSnapshotCompactorTests
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -836,14 +833,14 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: config.CompactSize * 2,
                 maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -934,7 +931,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             // Every 7th address gets storage (so the streaming path also fires) and the
@@ -1009,13 +1006,13 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: 2, maxCompactSize: 2);
 
             // Both sources touch every address with a different balance — collision on
@@ -1094,14 +1091,14 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 64, MinCompactSize = 2 };
             PersistedSnapshotCompactor compactor = new(
                 repo, smallArena, config,
                 ScheduleHelper.CreateWithOffset(config, 3),
-                Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: 2,
                 maxCompactSize: 32);
 

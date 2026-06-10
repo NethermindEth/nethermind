@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
@@ -51,7 +52,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -84,7 +85,7 @@ public class PersistedSnapshotRepositoryTests
         // dedicated-arena threshold, so it must fit within a single shared arena file.
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 4 * 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         const int slotCount = 256 * 1024;
@@ -111,7 +112,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -151,7 +152,7 @@ public class PersistedSnapshotRepositoryTests
         // Session 1: persist a snapshot
         using (ArenaManager smallArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedSnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance))
+        using (PersistedSnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
             Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
@@ -161,7 +162,7 @@ public class PersistedSnapshotRepositoryTests
         // Session 2: reload from disk
         using (ArenaManager smallArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedSnapshotRepository repo = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance))
+        using (PersistedSnapshotRepository repo = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(1));
@@ -175,7 +176,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -236,7 +237,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -265,7 +266,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId[] states = new StateId[chainLength + 1];
@@ -291,7 +292,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         Assert.That(repo.LastRegisteredState, Is.Null);
@@ -321,7 +322,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         // Empty repo: nothing to seed from.
@@ -356,7 +357,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId from = new(0, Keccak.EmptyTreeHash);
@@ -371,7 +372,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         // Plant a real base whose From matches `from` so we'd otherwise have a hit.
@@ -393,15 +394,14 @@ public class PersistedSnapshotRepositoryTests
         // contract — so the result is null.
         using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 4 * 1024 * 1024);
-        PersistedSnapshotBloomFilterManager blooms = new();
-        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), blooms, LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         const int n = 8;
         IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
         PersistedSnapshotCompactor compactor = new(
             repo, arena, config, ScheduleHelper.CreateWithOffset(config, 0),
-            Nethermind.Logging.LimboLogs.Instance, blooms,
+            Nethermind.Logging.LimboLogs.Instance,
             minCompactSize: config.CompactSize * 2,
             maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
@@ -442,7 +442,7 @@ public class PersistedSnapshotRepositoryTests
         // file count stays bounded under steady state.
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId prev = new(0, Keccak.EmptyTreeHash);
@@ -467,7 +467,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "base"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -496,7 +496,7 @@ public class PersistedSnapshotRepositoryTests
     {
         using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "base"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager(), LimboLogs.Instance);
+        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
 
         StateId[] ids = new StateId[4];
@@ -517,15 +517,12 @@ public class PersistedSnapshotRepositoryTests
 
     /// <summary>
     /// Regression for the ReconstructBloom pass inside LoadFromCatalog: after a restart,
-    /// the bloom manager's slots must be filled from the WIDEST snapshot covering each
-    /// state (a compacted/persistable bloom wins over a per-base bloom in its range),
-    /// and every slot inside a compacted snapshot's range must resolve to the SAME bloom
-    /// instance via LeaseOrSentinel. Mirrors the manager end-state runtime would produce
-    /// after a long-running session's compactions, without building one bloom per loaded
-    /// snapshot the way the pre-fix LoadFromCatalog did.
+    /// every loaded snapshot must carry its own real bloom (built from its on-disk image),
+    /// not the AlwaysTrue placeholder it was constructed with. The persistable covering
+    /// (0, 4] holds every address written across the four bases; each base holds its own.
     /// </summary>
     [Test]
-    public void LoadFromCatalog_ReconstructsBloom_FromWidestCoveringSnapshot()
+    public void LoadFromCatalog_ReconstructsBloom_PerSnapshot()
     {
         StateId[] ids = new StateId[5];
         ids[0] = new(0, Keccak.EmptyTreeHash);
@@ -538,8 +535,7 @@ public class PersistedSnapshotRepositoryTests
         // Session 1: 4 bases + a CompactSize=4 persistable covering all 4 of them.
         using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
         using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
-        using (PersistedSnapshotBloomFilterManager bloomMgr1 = new())
-        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), bloomMgr1, LimboLogs.Instance))
+        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
             for (int i = 1; i <= 4; i++)
@@ -550,48 +546,50 @@ public class PersistedSnapshotRepositoryTests
             PersistedSnapshotCompactor compactor = new(
                 repo, arena1, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, bloomMgr1,
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
             compactor.DoCompactPersistable(ids[4]);  // persistable at To=4 covering (0, 4]
         }
 
         // Session 2: reload. LoadFromCatalog now auto-calls ReconstructBloom.
-        using PersistedSnapshotBloomFilterManager bloomMgr2 = new();
         using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
-        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), bloomMgr2, LimboLogs.Instance);
+        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance);
         repo2.LoadFromCatalog();
 
         // With the v7 (To, depth)-keyed catalog the base at ids[4] survives alongside the
         // persistable at the same To — both buckets must lease independently.
-        Assert.That(repo2.TryLeaseSnapshotTo(ids[4], out PersistedSnapshot? baseAt4), Is.True,
-            "base at the persistable's To must round-trip under v7");
-        baseAt4!.Dispose();
         Assert.That(repo2.TryLeasePersistableCompactedSnapshotTo(ids[4], out PersistedSnapshot? persistableAt4), Is.True);
-        persistableAt4!.Dispose();
+        using (persistableAt4)
+        {
+            // The persistable's bloom is built from its own merged HSST — it covers (0, 4]
+            // and therefore holds every address written across the four bases.
+            BloomFilter persistableBloom = persistableAt4!.Bloom;
+            Assert.That(persistableBloom.Count, Is.GreaterThan(0),
+                "ReconstructBloom must have built a real bloom for the persistable");
+            Assert.That(persistableAt4.From.BlockNumber, Is.EqualTo(0));
+            Assert.That(persistableAt4.To.BlockNumber, Is.EqualTo(4));
+            for (int i = 1; i <= 4; i++)
+            {
+                ulong key = PersistedSnapshotBloomBuilder.AddressKey(TestItem.Addresses[i - 1]);
+                Assert.That(persistableBloom.MightContain(key), Is.True,
+                    $"AddressKey for base {i} must be in the persistable's merged bloom");
+            }
+        }
 
-        // Every slot in (0, 4] must resolve to the SAME bloom instance — the persistable's
-        // merged bloom, which the range walk in Register spread across the slot dict.
-        using PersistedSnapshotBloom b1 = bloomMgr2.LeaseOrSentinel(ids[1]);
-        using PersistedSnapshotBloom b2 = bloomMgr2.LeaseOrSentinel(ids[2]);
-        using PersistedSnapshotBloom b3 = bloomMgr2.LeaseOrSentinel(ids[3]);
-        using PersistedSnapshotBloom b4 = bloomMgr2.LeaseOrSentinel(ids[4]);
-
-        Assert.That(b1, Is.Not.SameAs(PersistedSnapshotBloom.AlwaysTrue),
-            "ReconstructBloom must have built a real bloom for every covered slot");
-        Assert.That(b1, Is.SameAs(b2), "slots in compacted range share the same bloom instance");
-        Assert.That(b2, Is.SameAs(b3));
-        Assert.That(b3, Is.SameAs(b4));
-        Assert.That(b1.From.BlockNumber, Is.EqualTo(0));
-        Assert.That(b1.To.BlockNumber, Is.EqualTo(4));
-
-        // Every address written across the 4 bases must be present in the merged bloom —
-        // it was built from the persistable's HSST, not from any one base.
+        // Each base also carries its own real bloom built from its single address.
         for (int i = 1; i <= 4; i++)
         {
-            ulong key = PersistedSnapshotBloomBuilder.AddressKey(TestItem.Addresses[i - 1]);
-            Assert.That(b1.Bloom.MightContain(key), Is.True,
-                $"AddressKey for base {i} must be in the persistable's merged bloom");
+            Assert.That(repo2.TryLeaseSnapshotTo(ids[i], out PersistedSnapshot? baseAt), Is.True,
+                $"base at ids[{i}] must round-trip under v7");
+            using (baseAt)
+            {
+                Assert.That(baseAt!.Bloom.Count, Is.GreaterThan(0),
+                    $"ReconstructBloom must have built a real bloom for base {i}");
+                ulong key = PersistedSnapshotBloomBuilder.AddressKey(TestItem.Addresses[i - 1]);
+                Assert.That(baseAt.Bloom.MightContain(key), Is.True,
+                    $"base {i}'s own address must be in its bloom");
+            }
         }
     }
 
@@ -614,8 +612,7 @@ public class PersistedSnapshotRepositoryTests
 
         using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
         using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
-        using (PersistedSnapshotBloomFilterManager bloomMgr1 = new())
-        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), bloomMgr1, LimboLogs.Instance))
+        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
             for (int i = 1; i <= 4; i++)
@@ -626,17 +623,16 @@ public class PersistedSnapshotRepositoryTests
             PersistedSnapshotCompactor compactor = new(
                 repo, arena1, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, bloomMgr1,
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
             compactor.DoCompactPersistable(ids[4]);
 
             Assert.That(repo.SnapshotCount, Is.EqualTo(5), "session 1 must hold 4 bases + 1 persistable");
         }
 
-        using PersistedSnapshotBloomFilterManager bloomMgr2 = new();
         using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
-        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), bloomMgr2, LimboLogs.Instance);
+        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance);
         repo2.LoadFromCatalog();
 
         Assert.That(repo2.SnapshotCount, Is.EqualTo(5),
@@ -657,8 +653,8 @@ public class PersistedSnapshotRepositoryTests
     /// partitions, reload in session 2, and verify the parallel construction + serial
     /// sorted-set rebuild preserves: snapshot count, per-bucket leasability, ordered-id
     /// invariants (the From/To chain reachable via <c>TryGetSnapshotFrom</c>), and the
-    /// ReconstructBloom end-state (every slot in a compacted range resolves to the same
-    /// bloom). Stays below <c>ParallelLoadThreshold</c> so the progress logger is bypassed —
+    /// ReconstructBloom end-state (every loaded snapshot carries its own real bloom).
+    /// Stays below <c>ParallelLoadThreshold</c> so the progress logger is bypassed —
     /// that codepath is a one-line gate we trust by inspection.
     /// </summary>
     [Test]
@@ -675,8 +671,7 @@ public class PersistedSnapshotRepositoryTests
 
         using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
         using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
-        using (PersistedSnapshotBloomFilterManager bloomMgr1 = new())
-        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), bloomMgr1, LimboLogs.Instance))
+        using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             repo.LoadFromCatalog();
             for (int i = 1; i <= N; i++)
@@ -690,16 +685,15 @@ public class PersistedSnapshotRepositoryTests
             PersistedSnapshotCompactor compactor = new(
                 repo, arena1, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance, bloomMgr1,
+                Nethermind.Logging.LimboLogs.Instance,
                 minCompactSize: 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
             compactor.DoCompactPersistable(ids[8]);
             compactor.DoCompactPersistable(ids[16]);
         }
 
-        using PersistedSnapshotBloomFilterManager bloomMgr2 = new();
         using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
-        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), bloomMgr2, LimboLogs.Instance);
+        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance);
         repo2.LoadFromCatalog();
 
         // All N bases + 2 persistables survive.
@@ -723,11 +717,13 @@ public class PersistedSnapshotRepositoryTests
             hop!.Dispose();
         }
 
-        // Bloom end-state: every slot in (0, 8] resolves to the SAME bloom (the persistable
-        // at ids[8]'s merged bloom propagated by Register's chain walk).
-        using PersistedSnapshotBloom bloomAt1 = bloomMgr2.LeaseOrSentinel(ids[1]);
-        using PersistedSnapshotBloom bloomAt8 = bloomMgr2.LeaseOrSentinel(ids[8]);
-        Assert.That(bloomAt1, Is.Not.SameAs(PersistedSnapshotBloom.AlwaysTrue));
-        Assert.That(bloomAt1, Is.SameAs(bloomAt8), "slots covered by the same persistable share a bloom");
+        // Bloom end-state: ReconstructBloom builds a real per-snapshot bloom for the base at
+        // ids[1] and for the persistable covering (0, 8].
+        Assert.That(repo2.TryLeaseSnapshotTo(ids[1], out PersistedSnapshot? baseAt1), Is.True);
+        using (baseAt1)
+            Assert.That(baseAt1!.Bloom.Count, Is.GreaterThan(0), "base ids[1] must have a real bloom");
+        Assert.That(repo2.TryLeasePersistableCompactedSnapshotTo(ids[8], out PersistedSnapshot? persistableAt8), Is.True);
+        using (persistableAt8)
+            Assert.That(persistableAt8!.Bloom.Count, Is.GreaterThan(0), "persistable at ids[8] must have a real bloom");
     }
 }

@@ -4,25 +4,26 @@
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
 /// The persisted-snapshot half of a <see cref="ReadOnlySnapshotBundle"/>: a stack of
-/// <see cref="PersistedSnapshot"/>s probed newest-first, each gated by the
-/// <see cref="PersistedSnapshotBloom"/> leased for it before any disk read is paid.
+/// <see cref="PersistedSnapshot"/>s probed newest-first, each gated by its own
+/// <see cref="PersistedSnapshot.Bloom"/> before any disk read is paid.
 /// </summary>
 /// <remarks>
-/// Owns both the snapshot list and the parallel bloom list (one leased bloom per snapshot,
-/// same index) — <see cref="Dispose"/> releases them in lock-step. Also owns the detailed
-/// metrics recorded around the probe loops: each <c>*_persisted_snapshot</c> hit label and
-/// the per-key-kind skip-time observations.
+/// Owns the snapshot list — <see cref="Dispose"/> releases it (each snapshot disposes its own
+/// bloom). Also owns the detailed metrics recorded around the probe loops: each
+/// <c>*_persisted_snapshot</c> hit label and the per-key-kind skip-time observations.
 /// </remarks>
-public sealed class PersistedSnapshotStack : IDisposable
+public sealed class PersistedSnapshotStack(
+    PersistedSnapshotList snapshots,
+    bool recordDetailedMetrics) : IDisposable
 {
     private static readonly StringLabel _readAccountPersistedLabel = new("account_persisted_snapshot");
     private static readonly StringLabel _readStoragePersistedLabel = new("storage_persisted_snapshot");
@@ -34,23 +35,11 @@ public sealed class PersistedSnapshotStack : IDisposable
     private static readonly StringLabel _skipStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _skipStorageRlpLabel = new("storage_rlp");
 
-    private readonly PersistedSnapshotList _snapshots;
-    private readonly ArrayPoolList<PersistedSnapshotBloom> _blooms;
-    private readonly bool _recordDetailedMetrics;
-
-    public PersistedSnapshotStack(
-        PersistedSnapshotList snapshots,
-        ArrayPoolList<PersistedSnapshotBloom> blooms,
-        bool recordDetailedMetrics)
-    {
-        Debug.Assert(snapshots.Count == blooms.Count, "One leased bloom per persisted snapshot");
-        _snapshots = snapshots;
-        _blooms = blooms;
-        _recordDetailedMetrics = recordDetailedMetrics;
-    }
+    private readonly PersistedSnapshotList _snapshots = snapshots;
+    private readonly bool _recordDetailedMetrics = recordDetailedMetrics;
 
     public static PersistedSnapshotStack Empty(bool recordDetailedMetrics = false) =>
-        new(PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0), recordDetailedMetrics);
+        new(PersistedSnapshotList.Empty(), recordDetailedMetrics);
 
     public int Count => _snapshots.Count;
 
@@ -70,7 +59,7 @@ public sealed class PersistedSnapshotStack : IDisposable
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
             for (int i = _snapshots.Count - 1; i >= 0; i--)
             {
-                if (!_blooms[i].Bloom.MightContain(addrBloomKey)) continue;
+                if (!_snapshots[i].Bloom.MightContain(addrBloomKey)) continue;
                 if (_snapshots[i].TryGetAccount(address, out account))
                 {
                     if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - psw, _readAccountPersistedLabel);
@@ -95,7 +84,7 @@ public sealed class PersistedSnapshotStack : IDisposable
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
             for (int i = _snapshots.Count - 1; i >= 0; i--)
             {
-                if (!_blooms[i].Bloom.MightContain(addrBloomKey)) continue;
+                if (!_snapshots[i].Bloom.MightContain(addrBloomKey)) continue;
                 bool? flag = _snapshots[i].TryGetSelfDestructFlag(address);
                 if (flag.HasValue)
                 {
@@ -133,8 +122,8 @@ public sealed class PersistedSnapshotStack : IDisposable
             ulong slotBloomKey = PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, in index);
             for (int i = _snapshots.Count - 1; i >= 0; i--)
             {
-                PersistedSnapshotBloom bloom = _blooms[i];
-                if (bloom.Bloom.MightContain(addrBloomKey) && bloom.Bloom.MightContain(slotBloomKey))
+                BloomFilter bloom = _snapshots[i].Bloom;
+                if (bloom.MightContain(addrBloomKey) && bloom.MightContain(slotBloomKey))
                 {
                     SlotValue slotValue = default;
                     if (_snapshots[i].TryGetSlot(address, in index, ref slotValue))
@@ -167,7 +156,7 @@ public sealed class PersistedSnapshotStack : IDisposable
         ulong statePathBloomKey = PersistedSnapshotBloomBuilder.StatePathKey(in path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (!_blooms[i].Bloom.MightContain(statePathBloomKey)) continue;
+            if (!_snapshots[i].Bloom.MightContain(statePathBloomKey)) continue;
             if (_snapshots[i].TryLoadStateNodeRlp(in path, out rlp))
             {
                 if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpPersistedLabel);
@@ -193,7 +182,7 @@ public sealed class PersistedSnapshotStack : IDisposable
         ulong storageBloomKey = PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (!_blooms[i].Bloom.MightContain(storageBloomKey)) continue;
+            if (!_snapshots[i].Bloom.MightContain(storageBloomKey)) continue;
             if (_snapshots[i].TryLoadStorageNodeRlp(in addressHash, in path, out rlp))
             {
                 if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);
@@ -206,11 +195,5 @@ public sealed class PersistedSnapshotStack : IDisposable
         return false;
     }
 
-    public void Dispose()
-    {
-        _snapshots.Dispose();
-        for (int i = 0; i < _blooms.Count; i++)
-            _blooms[i].Dispose();
-        _blooms.Dispose();
-    }
+    public void Dispose() => _snapshots.Dispose();
 }

@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Hsst.BTree;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 
@@ -107,6 +108,28 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public StateId From { get; }
     public StateId To { get; }
 
+    // The unified bloom gating reads of this snapshot — covers address / slot / self-destruct
+    // keys plus state-trie and storage-trie paths in one filter. Owned by this snapshot: the
+    // lease that keeps the snapshot alive keeps its bloom alive, and CleanUp disposes it.
+    // Defaults to the AlwaysTrue sentinel (no filtering, never a false negative) for snapshots
+    // created before their real bloom is available — base/compacted snapshots get their filter
+    // at convert / merge time, and reload populates it via SetBloom once every snapshot is in
+    // place. The query path probes Bloom.MightContain before paying for any disk read.
+    private BloomFilter _bloom;
+    public BloomFilter Bloom => _bloom;
+
+    /// <summary>
+    /// Swap in the unified bloom for this snapshot, disposing whatever filter it carried
+    /// before. Used by the reload path, which constructs every snapshot first (with the
+    /// AlwaysTrue placeholder) and only then rebuilds the real blooms.
+    /// </summary>
+    public void SetBloom(BloomFilter bloom)
+    {
+        BloomFilter previous = Interlocked.Exchange(ref _bloom, bloom);
+        Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, bloom.DataBytes - previous.DataBytes);
+        previous.Dispose();
+    }
+
     /// <summary>
     /// The contiguous trie-RLP region this snapshot occupies in its blob arena. Non-empty
     /// only for base snapshots (which write all their RLPs through one
@@ -141,14 +164,20 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// leases back on construction failure. This ctor just bumps the metadata reservation
     /// lease and stashes the manager ref for later id → file resolution.
     /// </summary>
+    /// <param name="bloom">The unified bloom this snapshot takes ownership of, disposed with
+    /// the snapshot. <c>null</c> installs the AlwaysTrue sentinel — correct (no false
+    /// negatives) but unfiltered — for callers that populate the real bloom later via
+    /// <see cref="SetBloom"/>.</param>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        BlobArenaManager blobManager, BlobRange blobRange = default)
+        BlobArenaManager blobManager, BlobRange blobRange = default, BloomFilter? bloom = null)
     {
         From = from;
         To = to;
         BlobRange = blobRange;
         _reservation = reservation;
         _blobManager = blobManager;
+        _bloom = bloom ?? BloomFilter.AlwaysTrue();
+        Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, _bloom.DataBytes);
         _reservation.AcquireLease();
 
         // Walk the on-disk ref_ids stream once and lease each referenced blob arena file.
@@ -213,6 +242,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 _blobManager.GetFile(e.Current).Dispose();
                 released++;
             }
+            Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, -_bloom.DataBytes);
+            _bloom.Dispose();
             _reservation.Dispose();
             throw;
         }
@@ -672,6 +703,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 _blobManager.TryResetOrphanedFrontier(file);
         }
         _reservation.Dispose();
+
+        Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, -_bloom.DataBytes);
+        _bloom.Dispose();
 
         Interlocked.Decrement(ref Metrics._activePersistedSnapshotCount);
     }

@@ -72,11 +72,9 @@ internal static class PersistedSnapshotUtils
         File.WriteAllText(filename, JsonSerializer.Serialize(dump));
     }
 
-    internal static void ValidatePersistedSnapshot(Snapshot snapshot, PersistedSnapshot persisted, PersistedSnapshotBloomFilterManager bloomManager, bool dumpWhenFailed = true)
+    internal static void ValidatePersistedSnapshot(Snapshot snapshot, PersistedSnapshot persisted, bool dumpWhenFailed = true)
     {
         string filename = $"broken.{snapshot.From.BlockNumber}.{snapshot.To.BlockNumber}.json";
-
-        using PersistedSnapshotBloom bloom = bloomManager.LeaseOrSentinel(persisted.To);
 
         try
         {

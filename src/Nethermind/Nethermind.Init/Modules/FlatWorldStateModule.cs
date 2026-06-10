@@ -54,9 +54,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
-                ctx.Resolve<IPersistedSnapshotRepository>(),
-                ctx.Resolve<PersistedSnapshotBloomFilterManager>()))
-            .AddSingleton<PersistedSnapshotBloomFilterManager>()
+                ctx.Resolve<IPersistedSnapshotRepository>()))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
@@ -107,7 +105,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     ctx.Resolve<ArenaManager>(),
                     ctx.Resolve<BlobArenaManager>(),
                     catalogDb, cfg,
-                    ctx.Resolve<PersistedSnapshotBloomFilterManager>(),
                     ctx.Resolve<ILogManager>());
                 repo.LoadFromCatalog();
                 return repo;
@@ -123,7 +120,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     cfg,
                     ctx.Resolve<ICompactionSchedule>(),
                     ctx.Resolve<ILogManager>(),
-                    ctx.Resolve<PersistedSnapshotBloomFilterManager>(),
                     minCompactSize: cfg.MinCompactSize,
                     maxCompactSize: cfg.PersistedSnapshotMaxCompactSize);
             })

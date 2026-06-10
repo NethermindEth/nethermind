@@ -29,7 +29,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
     private readonly IPersistedSnapshotRepository _persistedRepo;
-    private readonly PersistedSnapshotBloomFilterManager _persistedBloomManager;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -73,8 +72,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IBlocksConfig blocksConfig,
         ILogManager logManager,
         bool enableDetailedMetrics,
-        IPersistedSnapshotRepository persistedSnapshotRepository,
-        PersistedSnapshotBloomFilterManager persistedBloomManager)
+        IPersistedSnapshotRepository persistedSnapshotRepository)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
@@ -82,7 +80,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _resourcePool = resourcePool;
         _persistenceManager = persistenceManager;
         _persistedRepo = persistedSnapshotRepository;
-        _persistedBloomManager = persistedBloomManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
@@ -325,21 +322,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             Metrics.SnapshotBundleBlockNumberDepth.Observe(inMemoryDepth, _depthInMemoryLabel);
             Metrics.SnapshotBundleBlockNumberDepth.Observe(persistedDepth, _depthPersistedLabel);
 
-            // Lease blooms parallel to assembled.Persisted; fall back to AlwaysTrue on miss.
-            // One shared bloom manager covers both tiers — see FlatWorldStateModule. A
-            // per-tier split here would let a stale narrow bloom in one tier under-cover
-            // a wider compacted snapshot leased from the other tier (silent false
-            // negatives on bundle reads). Pass both bounds so a registration race that
-            // left a narrower bloom at the To slot is rejected in favour of AlwaysTrue.
-            ArrayPoolList<PersistedSnapshotBloom> persistedBlooms = new(assembled.Persisted.Count);
-            for (int i = 0; i < assembled.Persisted.Count; i++)
-            {
-                PersistedSnapshot persisted = assembled.Persisted[i];
-                persistedBlooms.Add(_persistedBloomManager.LeaseOrSentinel(persisted.From, persisted.To));
-            }
-
+            // Each assembled snapshot carries its own unified bloom (set at convert / merge
+            // time, rebuilt on reload). The stack gates each snapshot's reads on that bloom —
+            // which covers exactly the snapshot's range — so no separate (From, To) join is
+            // needed, and a snapshot whose bloom is not yet populated carries the AlwaysTrue
+            // sentinel (no false negatives).
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
-                new PersistedSnapshotStack(assembled.Persisted, persistedBlooms, _enableDetailedMetrics));
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))

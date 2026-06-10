@@ -182,7 +182,7 @@ public class PersistedSnapshotTests
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
-        Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, new PersistedSnapshotBloomFilterManager()));
+        Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted));
     }
 
     [Test]

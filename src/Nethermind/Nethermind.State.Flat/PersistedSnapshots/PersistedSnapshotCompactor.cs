@@ -31,7 +31,6 @@ public class PersistedSnapshotCompactor(
     IFlatDbConfig config,
     ICompactionSchedule schedule,
     ILogManager logManager,
-    PersistedSnapshotBloomFilterManager bloomManager,
     int minCompactSize,
     int maxCompactSize) : IPersistedSnapshotCompactor
 {
@@ -269,8 +268,10 @@ public class PersistedSnapshotCompactor(
                 views[i] = sessionArr[i].GetView();
 
                 estimatedSize += snapshots[i].Size;
-                using PersistedSnapshotBloom srcBloom = bloomManager.LeaseOrSentinel(snapshots[i].To);
-                bloomCapacity += srcBloom.BloomCount;
+                // Each source carries its own bloom; sum their key counts to size the merge.
+                // The AlwaysTrue placeholder reports Count == 0, so a not-yet-built source just
+                // contributes nothing — same as the old manager's sentinel did.
+                bloomCapacity += snapshots[i].Bloom.Count;
             }
 
             if (estimatedSize > _maxCompactedSourceBytes)

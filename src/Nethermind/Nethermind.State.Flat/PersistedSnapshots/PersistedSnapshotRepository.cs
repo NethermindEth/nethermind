@@ -33,7 +33,6 @@ public sealed class PersistedSnapshotRepository(
     BlobArenaManager blobArenaManager,
     IDb catalogDb,
     IFlatDbConfig config,
-    PersistedSnapshotBloomFilterManager bloomManager,
     ILogManager logManager) : IPersistedSnapshotRepository
 {
     // Below this many catalog entries / bloom picks we skip the progress logger and
@@ -73,9 +72,6 @@ public sealed class PersistedSnapshotRepository(
     private long _baseSnapshotCount;
     private long _compactedSnapshotCount;
     private long _persistableSnapshotCount;
-    // Owned by the DI container, not this repo —
-    // see <see cref="Dispose"/> which does NOT dispose the manager.
-    private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
     private readonly Lock _catalogLock = new();
     // One block-ordered StateId set per bucket + the registration tip — all guarded by
     // `_catalogLock`. Lookups (TryLeaseSnapshotTo, TryLeaseCompactedSnapshotTo,
@@ -227,10 +223,9 @@ public sealed class PersistedSnapshotRepository(
         // reservation lease before rethrowing — no repository-side cleanup needed.
         PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, entry.BlobRange);
 
-        // Bloom is intentionally NOT built here — the bloom subsystem starts empty after
-        // LoadFromCatalog. Callers must invoke ReconstructBloom() before queries to get
-        // bloom filtering. Until then, LeaseOrSentinel returns the AlwaysTrue sentinel —
-        // correct (no false negatives) but unfiltered.
+        // Bloom is intentionally NOT built here — each snapshot is constructed with the
+        // AlwaysTrue placeholder (correct, but unfiltered). LoadFromCatalog's ReconstructBloom
+        // pass replaces it with the snapshot's real bloom once every snapshot is in place.
         switch (entry.Kind)
         {
             case SnapshotKind.Compacted:
@@ -316,10 +311,9 @@ public sealed class PersistedSnapshotRepository(
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, blobRange, SnapshotKind.Base));
 
-            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, blobRange);
-            RegisterBlooms(persisted, bloom);
+            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, blobRange, bloom);
             if (_validatePersistedSnapshot)
-                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
+                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
             _baseSnapshots[snapshot.To] = persisted;
             Interlocked.Add(ref _baseSnapshotMemoryBytes, persisted.Size);
             Interlocked.Increment(ref _baseSnapshotCount);
@@ -354,8 +348,7 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, BlobRange.None,
                 isPersistable ? SnapshotKind.Persistable : SnapshotKind.Compacted));
 
-            snapshot = new PersistedSnapshot(from, to, reservation, _blobs);
-            RegisterBlooms(snapshot, bloom);
+            snapshot = new PersistedSnapshot(from, to, reservation, _blobs, bloom: bloom);
 
             if (isPersistable)
             {
@@ -591,8 +584,6 @@ public sealed class PersistedSnapshotRepository(
                     && !_persistableStateIds.Contains(tip))
                     _lastRegisteredState = ComputeLastRegisteredLocked();
             }
-
-            _bloomManager.PruneBefore(blockNumber);
         }
     }
 
@@ -707,9 +698,6 @@ public sealed class PersistedSnapshotRepository(
                 && !_persistableStateIds.Contains(tip))
                 _lastRegisteredState = ComputeLastRegisteredLocked();
 
-            // The bloom slot for `toState` is left in place: it self-prunes via PruneBefore once
-            // the block falls below the persisted frontier, and a stale slot only yields a
-            // correctness-safe false positive (the follow-up TryLease* miss).
             return removed;
         }
     }
@@ -717,85 +705,44 @@ public sealed class PersistedSnapshotRepository(
     public bool HasBaseSnapshot(in StateId stateId) => _baseSnapshots.ContainsKey(stateId);
 
     /// <summary>
-    /// Register the supplied bloom with the bloom manager. Pure handoff — the caller
-    /// is responsible for producing the filter (either built from the on-disk image
-    /// via <see cref="PersistedSnapshotBloomBuilder"/>, populated inline by the writer /
-    /// merger, or a <see cref="BloomFilter.AlwaysTrue"/> sentinel when the bloom feature
-    /// is off).
-    /// </summary>
-    private void RegisterBlooms(PersistedSnapshot snapshot, BloomFilter bloom) =>
-        _bloomManager.Register(new PersistedSnapshotBloom(snapshot.From, snapshot.To, bloom));
-
-    /// <summary>
-    /// Build and register blooms for every loaded snapshot, matching the manager's
-    /// end-state after a long-running session's compactions: blocks covered by a
-    /// compacted/persistable snapshot use that snapshot's merged bloom; blocks not
-    /// covered by any compaction use a per-base bloom.
+    /// Build and attach the unified bloom for every loaded snapshot across all three buckets,
+    /// replacing the AlwaysTrue placeholder each was constructed with. After this pass every
+    /// snapshot that can be assembled into a bundle — base, compacted, or persistable —
+    /// carries the precise bloom built from its own on-disk image, so reads through it are
+    /// filtered. Each bloom is sized exactly to its source's key count.
     /// </summary>
     /// <remarks>
-    /// Three phases: (A) walk the union of every bucket's <c>To</c> ids newest→oldest,
-    /// simulating <see cref="PersistedSnapshotBloomFilterManager.Register"/>'s chain
-    /// walk locally so we know exactly which slots each pick would fill — that lets us
-    /// skip subsequent <c>To</c>s already covered by a wider pick. (B) reverse the
-    /// collected picks so the bigger snapshots (older <c>To</c>s, where persistables
-    /// and hierarchical merges accumulate) sit at the front of the parallel queue —
-    /// LPT-style scheduling minimises wallclock when work sizes vary. (C) parallel
-    /// bloom-build + register; <c>_blooms</c> is a <see cref="ConcurrentDictionary{TKey, TValue}"/>
-    /// and Register's chain walk is CAS-based, and the picks have disjoint slot ranges
-    /// by construction.
+    /// Snapshots are built widest-first (largest <c>To - From</c> range) so the heaviest
+    /// bloom-builds enter the parallel queue first — LPT-style scheduling that minimises
+    /// wallclock when work sizes vary. The build is read-only and independent per snapshot,
+    /// so it parallelises freely; <see cref="PersistedSnapshot.SetBloom"/> is the only mutation
+    /// and touches just the snapshot it is called on.
     /// Invoked from <see cref="LoadFromCatalog"/>; caller holds <c>_catalogLock</c>.
     /// </remarks>
     private void ReconstructBloom()
     {
         if (!BloomEnabled) return;
 
-        // Snapshot the base StateId graph once so the parentLookup closure (shared by
-        // both the local skip simulation and Register inside the parallel section) is a
-        // cheap dict probe. Bases are usually contiguous by block number, but RemoveStatesUntil
-        // can leave gaps — missing predecessor blocks are surfaced as a default StateId,
-        // which Register treats as "anchor the chain here" via its own boundary check.
-        Dictionary<long, StateId> parentByBlock = new(_baseStateIds.Count);
-        foreach (StateId id in _baseStateIds) parentByBlock[id.BlockNumber] = id;
-        Func<long, StateId> parentLookup = block =>
-            parentByBlock.TryGetValue(block, out StateId id) ? id : default;
+        // The catalog is keyed by (To, depth), so a base, a compacted, and a persistable can
+        // all coexist at the same To across the three buckets — each is an independently
+        // assemblable snapshot and gets its own bloom.
+        List<PersistedSnapshot> snapshots = [];
+        foreach (ConcurrentDictionary<StateId, PersistedSnapshot> bucket in
+                 (ReadOnlySpan<ConcurrentDictionary<StateId, PersistedSnapshot>>)
+                 [_baseSnapshots, _compactedSnapshots, _persistableCompactedSnapshots])
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in bucket)
+                snapshots.Add(kv.Value);
 
-        // Phase A — serial collect.
-        // The catalog is keyed by (To, depth), so a persistable / compacted entry at the
-        // same To as a base round-trips independently. Walk the union of every bucket's
-        // To id to ensure no slot is missed. coveredSlots mirrors Register's actual fill
-        // set, so we don't redundantly pick a snapshot whose slot a wider pick already
-        // owns.
-        SortedSet<StateId> allTos = [.. _baseStateIds, .. _compactedStateIds, .. _persistableStateIds];
-        HashSet<StateId> coveredSlots = new(allTos.Count);
-        List<PersistedSnapshot> picks = [];
+        // Widest-first so the big merges (slowest to scan) lead the parallel queue.
+        snapshots.Sort(static (a, b) =>
+            (b.To.BlockNumber - b.From.BlockNumber).CompareTo(a.To.BlockNumber - a.From.BlockNumber));
 
-        foreach (StateId to in allTos.Reverse())
-        {
-            if (coveredSlots.Contains(to)) continue;
-
-            PersistedSnapshot? snap = PickWidest(
-                _baseSnapshots.TryGetValue(to, out PersistedSnapshot? b) ? b : null,
-                _compactedSnapshots.TryGetValue(to, out PersistedSnapshot? c) ? c : null,
-                _persistableCompactedSnapshots.TryGetValue(to, out PersistedSnapshot? p) ? p : null);
-            if (snap is null) continue;
-
-            picks.Add(snap);
-            SimulateRegisterFill(snap, parentLookup, coveredSlots);
-        }
-
-        // Phase B — reverse for LPT scheduling. Phase A produces newest→oldest; the
-        // older end holds the wider (and thus slower-to-build) persistables and
-        // hierarchical merges. Putting them first in the parallel queue stops a
-        // single big bloom-build from dominating the tail.
-        picks.Reverse();
-
-        // Phase C — parallel bloom-build + Register.
         ProgressLogger? bloomLog = null;
         Timer? heartbeat = null;
-        if (picks.Count > ParallelLoadThreshold && _logger.IsInfo)
+        if (snapshots.Count > ParallelLoadThreshold && _logger.IsInfo)
         {
             bloomLog = new ProgressLogger("Persisted snapshot bloom rebuild", _logManager);
-            bloomLog.Reset(0, picks.Count);
+            bloomLog.Reset(0, snapshots.Count);
             heartbeat = new Timer(ProgressLogIntervalMs);
             heartbeat.Elapsed += (_, _) => bloomLog.LogProgress();
             heartbeat.Start();
@@ -804,10 +751,9 @@ public sealed class PersistedSnapshotRepository(
         try
         {
             long built = 0;
-            Parallel.ForEach(picks, snap =>
+            Parallel.ForEach(snapshots, snap =>
             {
-                BloomFilter bloom = BuildBloomFor(snap);
-                _bloomManager.Register(new PersistedSnapshotBloom(snap.From, snap.To, bloom), parentLookup);
+                snap.SetBloom(BuildBloomFor(snap));
                 if (bloomLog is not null) bloomLog.Update(Interlocked.Increment(ref built));
             });
             bloomLog?.LogProgress();
@@ -818,50 +764,10 @@ public sealed class PersistedSnapshotRepository(
         }
     }
 
-    // Mirror PersistedSnapshotBloomFilterManager.Register's chain walk for the
-    // ReconstructBloom path: start at snap.To, step back via parentLookup, mark each
-    // visited StateId as covered. Terminates on the same `cur.BlockNumber > fromBlock`
-    // boundary Register uses, so the covered set matches the slots Register will actually
-    // fill (including the early exit when parentLookup returns default(StateId) past a
-    // pruned gap).
-    private static void SimulateRegisterFill(
-        PersistedSnapshot snap, Func<long, StateId> parentLookup, HashSet<StateId> coveredSlots)
-    {
-        long fromBlock = snap.From.BlockNumber;
-        StateId cur = snap.To;
-        while (cur.BlockNumber > fromBlock)
-        {
-            coveredSlots.Add(cur);
-            cur = cur.BlockNumber - 1 > fromBlock
-                ? parentLookup(cur.BlockNumber - 1)
-                : snap.From;
-        }
-    }
-
     private BloomFilter BuildBloomFor(PersistedSnapshot snap)
     {
         using WholeReadSession session = snap.BeginWholeReadSession();
         return PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey);
-    }
-
-    // Pick the snapshot with the largest (To - From) range across the three buckets.
-    // After a reload, only one of the three is non-null at a given <c>To</c> (the
-    // catalog overwrites at that key); during a running session there can be a base
-    // alongside a compacted / persistable at the same <c>To</c>. The compacted bucket
-    // can hold either sub-CompactSize sub-merges or hierarchical (>CompactSize) merges,
-    // so the widest is decided by range, not by bucket precedence.
-    private static PersistedSnapshot? PickWidest(
-        PersistedSnapshot? baseSnap, PersistedSnapshot? compacted, PersistedSnapshot? persistable)
-    {
-        PersistedSnapshot? best = null;
-        long bestRange = -1;
-        foreach (PersistedSnapshot? cand in (ReadOnlySpan<PersistedSnapshot?>)[baseSnap, compacted, persistable])
-        {
-            if (cand is null) continue;
-            long range = cand.To.BlockNumber - cand.From.BlockNumber;
-            if (range > bestRange) { best = cand; bestRange = range; }
-        }
-        return best;
     }
 
     public void Dispose()
@@ -907,7 +813,6 @@ public sealed class PersistedSnapshotRepository(
             // Orphans / unreferenced files (no PersistOnShutdown caller) get deleted.
             _arena.Dispose();
             _blobs.Dispose();
-            // _bloomManager is shared across tiers; owned and disposed by the DI container.
         }
     }
 }

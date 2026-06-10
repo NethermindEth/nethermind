@@ -166,12 +166,10 @@ public class ReadOnlySnapshotBundlePersistedTests
         reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
-    private static PersistedSnapshotStack AlwaysTrueStack(PersistedSnapshotList list)
-    {
-        ArrayPoolList<PersistedSnapshotBloom> blooms = new(list.Count);
-        for (int i = 0; i < list.Count; i++) blooms.Add(PersistedSnapshotBloom.AlwaysTrue);
-        return new PersistedSnapshotStack(list, blooms, recordDetailedMetrics: false);
-    }
+    // Each test snapshot is constructed without a bloom, so it carries the AlwaysTrue
+    // placeholder — the stack probes every snapshot unfiltered, which is what these tests want.
+    private static PersistedSnapshotStack AlwaysTrueStack(PersistedSnapshotList list) =>
+        new(list, recordDetailedMetrics: false);
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
         TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data);
