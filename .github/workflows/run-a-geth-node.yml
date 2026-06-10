@@ -128,7 +128,7 @@ jobs:
           config_json=$(jq -cn --arg net "$NETWORK" --arg cl "$CL_CLIENT" --arg mt "$MACHINE_TYPE" --arg cp "$CHECKPOINT_URL" '{
             node_name_prefix: "RpcCmp-geth",
             el: [{client: "geth", image: "ethereum/client-go:stable", alias: "", convert_to_paprika: "false"}],
-            el_extra_flags: {geth: ["syncmode=snap", "gcmode=full", "history.transactions=128", "history.state=128"]},
+            el_extra_flags: {geth: ["syncmode=snap", "gcmode=full", "history.transactions=128", "history.state=128" , "history.chain=postprague", "cache=8192", "cache.snapshot=20" , "cache.snapshot=20"]},
             metrics_collection: false,
             cl: [{client: $cl, image: ""}],
             cl_extra_flags: {($cl): (if $cp != "" then ["checkpoint-sync-url=" + $cp] else [] end)},
