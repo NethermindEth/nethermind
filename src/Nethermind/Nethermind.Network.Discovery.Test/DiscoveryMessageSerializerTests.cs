@@ -56,18 +56,22 @@ public class DiscoveryMessageSerializerTests
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
 
-        Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
-        Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
-        Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
-
-        Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(message.FarAddress));
-        Assert.That(deserializedMessage.DestinationAddress, Is.EqualTo(message.DestinationAddress));
-        Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(message.SourceAddress));
-        Assert.That(deserializedMessage.Version, Is.EqualTo(message.Version));
-
         byte[] expectedPingMdc =
             Bytes.FromHexString("0xf8c61953f3b94a91aefe611e61dd74fe26aa5c969d9f29b7e063e6169171a772");
-        Assert.That(expectedPingMdc, Is.Not.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
+            Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
+            Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
+
+            Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(message.FarAddress));
+            Assert.That(deserializedMessage.DestinationAddress, Is.EqualTo(message.DestinationAddress));
+            Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(message.SourceAddress));
+            Assert.That(deserializedMessage.Version, Is.EqualTo(message.Version));
+
+            Assert.That(expectedPingMdc, Is.Not.Null);
+        }
     }
 
     [Test]
@@ -95,11 +99,14 @@ public class DiscoveryMessageSerializerTests
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(data);
 
-        Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
-        Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
-        Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
+            Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
+            Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
 
-        Assert.That(deserializedMessage.PingMdc, Is.EqualTo(message.PingMdc));
+            Assert.That(deserializedMessage.PingMdc, Is.EqualTo(message.PingMdc));
+        }
     }
 
     [Test]
@@ -143,9 +150,12 @@ public class DiscoveryMessageSerializerTests
 
         using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
         EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
-        Assert.That(deserialized.NodeRecord.EnrSequence, Is.EqualTo(msg.NodeRecord.EnrSequence));
-        Assert.That(deserialized.RequestKeccak, Is.EqualTo(msg.RequestKeccak));
-        Assert.That(deserialized.NodeRecord.Signature, Is.EqualTo(msg.NodeRecord.Signature));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.NodeRecord.EnrSequence, Is.EqualTo(msg.NodeRecord.EnrSequence));
+            Assert.That(deserialized.RequestKeccak, Is.EqualTo(msg.RequestKeccak));
+            Assert.That(deserialized.NodeRecord.Signature, Is.EqualTo(msg.NodeRecord.Signature));
+        }
     }
 
     [Test]
@@ -194,11 +204,14 @@ public class DiscoveryMessageSerializerTests
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         FindNodeMsg deserializedMessage = _messageSerializationService.Deserialize<FindNodeMsg>(data);
 
-        Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
-        Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
-        Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
+            Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
+            Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
 
-        Assert.That(deserializedMessage.SearchedNodeId, Is.EqualTo(message.SearchedNodeId));
+            Assert.That(deserializedMessage.SearchedNodeId, Is.EqualTo(message.SearchedNodeId));
+        }
     }
 
     [Test]
@@ -232,16 +245,19 @@ public class DiscoveryMessageSerializerTests
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
         NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);
 
-        Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
-        Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
-        Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
-
-        for (int i = 0; i < message.Nodes.Count; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(deserializedMessage.Nodes[i].Host, Is.EqualTo(message.Nodes[i].Host));
-            Assert.That(deserializedMessage.Nodes[i].Port, Is.EqualTo(message.Nodes[i].Port));
-            Assert.That(deserializedMessage.Nodes[i].IdHash, Is.EqualTo(message.Nodes[i].IdHash));
-            Assert.That(deserializedMessage.Nodes[i], Is.EqualTo(message.Nodes[i]));
+            Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
+            Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
+            Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
+
+            for (int i = 0; i < message.Nodes.Count; i++)
+            {
+                Assert.That(deserializedMessage.Nodes[i].Host, Is.EqualTo(message.Nodes[i].Host));
+                Assert.That(deserializedMessage.Nodes[i].Port, Is.EqualTo(message.Nodes[i].Port));
+                Assert.That(deserializedMessage.Nodes[i].IdHash, Is.EqualTo(message.Nodes[i].IdHash));
+                Assert.That(deserializedMessage.Nodes[i], Is.EqualTo(message.Nodes[i]));
+            }
         }
     }
 

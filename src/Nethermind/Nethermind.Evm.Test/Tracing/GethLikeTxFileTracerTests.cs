@@ -16,9 +16,12 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     {
         GethLikeTxFileTracer tracer = new(static e => { }, GethTraceOptions.Default);
 
-        Assert.That(tracer.IsTracingMemory, Is.True);
-        Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
-        Assert.That(tracer.IsTracingRefunds, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingMemory, Is.True);
+            Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(tracer.IsTracingRefunds, Is.True);
+        }
     }
 
     [Test]
@@ -36,15 +39,18 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
         List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
-        Assert.That(entries[0].MemorySize, Is.EqualTo(0));
-        Assert.That(entries[1].MemorySize, Is.EqualTo(0));
-        Assert.That(entries[2].MemorySize, Is.EqualTo(0));
-        Assert.That(entries[3].MemorySize, Is.EqualTo(32));
-        Assert.That(entries[4].MemorySize, Is.EqualTo(32));
-        Assert.That(entries[5].MemorySize, Is.EqualTo(32));
-        Assert.That(entries[6].MemorySize, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0].MemorySize, Is.EqualTo(0));
+            Assert.That(entries[1].MemorySize, Is.EqualTo(0));
+            Assert.That(entries[2].MemorySize, Is.EqualTo(0));
+            Assert.That(entries[3].MemorySize, Is.EqualTo(32));
+            Assert.That(entries[4].MemorySize, Is.EqualTo(32));
+            Assert.That(entries[5].MemorySize, Is.EqualTo(32));
+            Assert.That(entries[6].MemorySize, Is.EqualTo(64));
 
-        Assert.That(entries.All(e => e.Memory is null), Is.True);
+            Assert.That(entries.All(e => e.Memory is null), Is.True);
+        }
     }
 
     [Test]
@@ -53,13 +59,16 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
         List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
 
-        Assert.That(entries[0].Memory.Length, Is.EqualTo(0));
-        Assert.That(entries[1].Memory.Length, Is.EqualTo(0));
-        Assert.That(entries[2].Memory.Length, Is.EqualTo(0));
-        Assert.That(entries[3].Memory.Length, Is.EqualTo(1));
-        Assert.That(entries[4].Memory.Length, Is.EqualTo(1));
-        Assert.That(entries[5].Memory.Length, Is.EqualTo(1));
-        Assert.That(entries[6].Memory.Length, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0].Memory.Length, Is.EqualTo(0));
+            Assert.That(entries[1].Memory.Length, Is.EqualTo(0));
+            Assert.That(entries[2].Memory.Length, Is.EqualTo(0));
+            Assert.That(entries[3].Memory.Length, Is.EqualTo(1));
+            Assert.That(entries[4].Memory.Length, Is.EqualTo(1));
+            Assert.That(entries[5].Memory.Length, Is.EqualTo(1));
+            Assert.That(entries[6].Memory.Length, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -68,13 +77,16 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
         List<GethTxFileTraceEntry> entries = [];
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
-        Assert.That(entries[0].Stack.Length, Is.EqualTo(0));
-        Assert.That(entries[1].Stack.Length, Is.EqualTo(1));
-        Assert.That(entries[2].Stack.Length, Is.EqualTo(2));
-        Assert.That(entries[3].Stack.Length, Is.EqualTo(0));
-        Assert.That(entries[4].Stack.Length, Is.EqualTo(1));
-        Assert.That(entries[5].Stack.Length, Is.EqualTo(2));
-        Assert.That(entries[6].Stack.Length, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0].Stack.Length, Is.EqualTo(0));
+            Assert.That(entries[1].Stack.Length, Is.EqualTo(1));
+            Assert.That(entries[2].Stack.Length, Is.EqualTo(2));
+            Assert.That(entries[3].Stack.Length, Is.EqualTo(0));
+            Assert.That(entries[4].Stack.Length, Is.EqualTo(1));
+            Assert.That(entries[5].Stack.Length, Is.EqualTo(2));
+            Assert.That(entries[6].Stack.Length, Is.EqualTo(0));
+        }
     }
 
     [Test]

@@ -32,9 +32,12 @@ public class DatabasePurgerTests
     {
         DatabasePurger.Purge(_tempDir, preserveNetwork: true, _logger);
 
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.True, "peers should be preserved");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryNodes)), Is.True, "discoveryNodes should be preserved");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryV5Nodes)), Is.True, "discoveryV5Nodes should be preserved");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.True, "peers should be preserved");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryNodes)), Is.True, "discoveryNodes should be preserved");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryV5Nodes)), Is.True, "discoveryV5Nodes should be preserved");
+        }
     }
 
     [Test]
@@ -42,18 +45,21 @@ public class DatabasePurgerTests
     {
         DatabasePurger.Purge(_tempDir, preserveNetwork: true, _logger);
 
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.State)), Is.False, "state should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Blocks)), Is.False, "blocks should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Headers)), Is.False, "headers should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Receipts)), Is.False, "receipts should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockInfos)), Is.False, "blockInfos should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockNumbers)), Is.False, "blockNumbers should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockAccessLists)), Is.False, "blockAccessLists should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Metadata)), Is.False, "metadata should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Flat)), Is.False, "flat should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Code)), Is.False, "code should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BadBlocks)), Is.False, "badBlocks should be deleted");
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlobTransactions)), Is.False, "blobTransactions should be deleted");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.State)), Is.False, "state should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Blocks)), Is.False, "blocks should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Headers)), Is.False, "headers should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Receipts)), Is.False, "receipts should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockInfos)), Is.False, "blockInfos should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockNumbers)), Is.False, "blockNumbers should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlockAccessLists)), Is.False, "blockAccessLists should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Metadata)), Is.False, "metadata should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Flat)), Is.False, "flat should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.Code)), Is.False, "code should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BadBlocks)), Is.False, "badBlocks should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.BlobTransactions)), Is.False, "blobTransactions should be deleted");
+        }
     }
 
     [Test]
@@ -80,8 +86,11 @@ public class DatabasePurgerTests
     {
         DatabasePurger.Purge(_tempDir, preserveNetwork: false, _logger);
 
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.False);
-        Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryNodes)), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.False);
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryNodes)), Is.False);
+        }
     }
 
     [Test]
