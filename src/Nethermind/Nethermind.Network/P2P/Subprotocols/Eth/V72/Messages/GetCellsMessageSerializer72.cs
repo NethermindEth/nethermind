@@ -6,13 +6,12 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsMessage72>
 {
-    private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<GetCellsMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(GetCellsMessage72.Hashes));
+    private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<GetCellsMessage72>(Eth72ProtocolHandler.MaxCellsResponseHashes, nameof(GetCellsMessage72.Hashes));
 
     public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message)
     {
@@ -48,11 +47,7 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         int payloadSequenceLength = ctx.ReadSequenceLength();
         int payloadCheckPosition = ctx.Position + payloadSequenceLength;
         using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
-        byte[] cellMask = ctx.DecodeByteArraySpan().ToArray();
-        if (cellMask.Length != BlobCellMask.FixedByteLength)
-        {
-            throw new RlpException($"Invalid cell mask length in {nameof(GetCellsMessage72)}: expected {BlobCellMask.FixedByteLength}, got {cellMask.Length}.");
-        }
+        byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
 
         ctx.Check(payloadCheckPosition);
         ctx.Check(checkPosition);

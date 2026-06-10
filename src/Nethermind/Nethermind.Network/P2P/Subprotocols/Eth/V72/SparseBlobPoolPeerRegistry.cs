@@ -72,11 +72,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
 
     public void AddPeer(ISparseBlobPoolPeer peer) => _peers[peer.Id] = peer;
 
-    public void RemovePeer(PublicKey peerId) => _peers.TryRemove(peerId, out _);
+    public void RemovePeer(PublicKey peerId)
+    {
+        _peers.TryRemove(peerId, out _);
+        foreach (KeyValuePair<ValueHash256, TrackedSparseBlobTx> transaction in _transactions)
+        {
+            TrackedSparseBlobTx state = transaction.Value;
+            lock (state.Lock)
+            {
+                state.Announcements.Remove(peerId);
+            }
+        }
+    }
 
     public void RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask)
     {
-        if (announcementMask.IsEmpty)
+        if (announcementMask.IsEmpty || !IsActivePeer(peer))
         {
             return;
         }
@@ -89,6 +100,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         TrackedSparseBlobTx state = GetOrAdd(hash);
         lock (state.Lock)
         {
+            if (!IsActivePeer(peer))
+            {
+                return;
+            }
+
             state.Announcements[peer.Id] = announcementMask;
         }
 
@@ -171,9 +187,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         int count = 0;
         lock (state.Lock)
         {
-            foreach (BlobCellMask mask in state.Announcements.Values)
+            foreach (KeyValuePair<PublicKey, BlobCellMask> announcement in state.Announcements)
             {
-                if (mask.IsFull)
+                if (announcement.Value.IsFull && IsActivePeer(announcement.Key))
                 {
                     count++;
                 }
@@ -347,15 +363,29 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
             state.Submitting = true;
         }
 
-        if (!TryAttachCells(hash, transaction, cells.Value, out string? error))
+        if (!TryAttachCells(hash, transaction, cells.Value, out string? error, out SparseBlobAttachFailureSource failureSource))
         {
-            DisconnectPeer(cells.Value.SourcePeerId, DisconnectReason.BreachOfProtocol, error ?? "invalid sparse blob cells");
+            PublicKey retryFallbackPeerId = cells.Value.SourcePeerId;
+            if (failureSource != SparseBlobAttachFailureSource.Ambiguous)
+            {
+                retryFallbackPeerId = GetBadPeerId(transactionPeer, cells.Value.SourcePeerId, failureSource);
+                DisconnectPeer(retryFallbackPeerId, DisconnectReason.BreachOfProtocol, error ?? "invalid sparse blob cells");
+                RemovePeer(retryFallbackPeerId);
+            }
+
             lock (state.Lock)
             {
                 state.Cells = null;
+                if (failureSource == SparseBlobAttachFailureSource.Transaction)
+                {
+                    state.Transaction = null;
+                    state.TransactionPeer = null;
+                }
+
                 state.Submitting = false;
             }
 
+            TryRequestCells(hash, cells.Value.CellMask, retryFallbackPeerId);
             return null;
         }
 
@@ -511,9 +541,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         {
             state.SaturationCheckScheduled = false;
 
-            foreach (BlobCellMask mask in state.Announcements.Values)
+            foreach (KeyValuePair<PublicKey, BlobCellMask> announcement in state.Announcements)
             {
-                if (mask.IsFull)
+                if (announcement.Value.IsFull && IsActivePeer(announcement.Key))
                 {
                     providers++;
                     hasFullProvider = true;
@@ -576,14 +606,26 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             && wrapper.GetAvailableCellMask().IsFull;
 
+    private bool IsActivePeer(ISparseBlobPoolPeer peer)
+        => _peers.TryGetValue(peer.Id, out ISparseBlobPoolPeer? registeredPeer)
+            && ReferenceEquals(registeredPeer, peer)
+            && !peer.IsClosing;
+
+    private bool IsActivePeer(PublicKey peerId)
+        => _peers.TryGetValue(peerId, out ISparseBlobPoolPeer? peer)
+            && !peer.IsClosing;
+
     private BlobCellMask GetMissingAnnouncedMask(Hash256 hash, TrackedSparseBlobTx state)
     {
         BlobCellMask announcedMask = BlobCellMask.Empty;
         lock (state.Lock)
         {
-            foreach (BlobCellMask mask in state.Announcements.Values)
+            foreach (KeyValuePair<PublicKey, BlobCellMask> announcement in state.Announcements)
             {
-                announcedMask |= mask;
+                if (IsActivePeer(announcement.Key))
+                {
+                    announcedMask |= announcement.Value;
+                }
             }
         }
 
@@ -612,14 +654,21 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         }
     }
 
-    private static bool TryAttachCells(Hash256 hash, Transaction tx, PendingCellsBuffer pending, out string? error)
+    private static bool TryAttachCells(
+        Hash256 hash,
+        Transaction tx,
+        PendingCellsBuffer pending,
+        out string? error,
+        out SparseBlobAttachFailureSource failureSource)
     {
         error = null;
+        failureSource = SparseBlobAttachFailureSource.Cells;
         if (tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
             || tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper
             || pending.CellMask.IsEmpty)
         {
             error = $"Wrong sparse blob transaction form for {hash}.";
+            failureSource = SparseBlobAttachFailureSource.Transaction;
             return false;
         }
 
@@ -685,6 +734,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         if (!BlobCellsHelper.ValidateCells(sparseWrapper))
         {
             error = $"Invalid sparse blob cell proofs for {hash}.";
+            failureSource = SparseBlobAttachFailureSource.Ambiguous;
             return false;
         }
 
@@ -692,6 +742,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         tx.ClearLengthCache();
         return true;
     }
+
+    private static PublicKey GetBadPeerId(
+        ISparseBlobPoolPeer? transactionPeer,
+        PublicKey cellsPeerId,
+        SparseBlobAttachFailureSource failureSource)
+        => failureSource == SparseBlobAttachFailureSource.Transaction && transactionPeer is not null
+            ? transactionPeer.Id
+            : cellsPeerId;
 
     private void TrimTrackedTransactions()
     {
@@ -714,6 +772,13 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
     }
 
     private readonly record struct PendingCellsBuffer(BlobCellMask CellMask, byte[][] Cells, PublicKey SourcePeerId);
+
+    private enum SparseBlobAttachFailureSource
+    {
+        Cells,
+        Transaction,
+        Ambiguous
+    }
 
     private sealed class TrackedSparseBlobTx(DateTimeOffset notBefore)
     {

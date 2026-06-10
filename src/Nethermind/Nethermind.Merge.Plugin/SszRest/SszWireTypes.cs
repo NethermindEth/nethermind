@@ -79,6 +79,7 @@ public partial struct PayloadAttributesWire
     [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
+    public ulong TargetGasLimit { get; set; }
 }
 
 [SszContainer]
@@ -107,6 +108,14 @@ public partial struct ForkchoiceUpdatedRequestWire
 {
     public ForkchoiceStateWire ForkchoiceState { get; set; }
     [SszList(1)] public PayloadAttributesWire[]? PayloadAttributes { get; set; }
+}
+
+[SszContainer]
+public partial struct ForkchoiceUpdatedV4RequestWire
+{
+    public ForkchoiceStateWire ForkchoiceState { get; set; }
+    [SszList(1)] public PayloadAttributesWire[]? PayloadAttributes { get; set; }
+    [SszList(1)] public SszBytes16[]? CustodyColumns { get; set; }
 }
 
 [SszContainer]

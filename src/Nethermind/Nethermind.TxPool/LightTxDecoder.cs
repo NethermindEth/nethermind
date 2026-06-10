@@ -24,7 +24,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(tx.GetLength())
                + Rlp.LengthOf(sizeof(byte))
-               + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0);
+               + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
+               + Rlp.LengthOf(GetSparseBlobNetworkSize(tx));
 
     public static byte[] Encode(Transaction tx)
     {
@@ -44,6 +45,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.GetLength());
         rlpStream.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
         EncodeAvailableCellMask(tx, rlpStream);
+        rlpStream.Encode(GetSparseBlobNetworkSize(tx));
 
         return rlpStream.Data.ToArray()!;
     }
@@ -67,7 +69,10 @@ public class LightTxDecoder : TxDecoder<Transaction>
             proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 2) >= 1 ? (ProofVersion)ctx.ReadByte() : default,
             blobCellMask: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
                 ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan())
-                : default);
+                : default,
+            sparseBlobNetworkSize: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
+                ? ctx.DecodePositiveInt()
+                : 0);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, RlpStream rlpStream)
@@ -81,4 +86,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
         tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             ? wrapper.GetAvailableCellMask()
             : BlobCellMask.Empty;
+
+    private static int GetSparseBlobNetworkSize(Transaction tx) =>
+        tx is LightTransaction lightTx && lightTx.GetSparseBlobNetworkSize() > 0
+            ? lightTx.GetSparseBlobNetworkSize()
+            : tx.TryCalculateSparseBlobNetworkSize() ?? tx.GetLength();
 }

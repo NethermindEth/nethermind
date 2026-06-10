@@ -25,6 +25,7 @@ class SszType
         new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
         new() { Namespace = "Nethermind.Serialization.Ssz", Name = "SszBytes32", Kind = Kind.Basic, StaticLength = 32 },
         FixedRefBytes("Nethermind.Serialization.Ssz", "SszBytes8", 8),
+        FixedRefBytes("Nethermind.Serialization.Ssz", "SszBytes16", 16),
         FixedRefBytes("Nethermind.Serialization.Ssz", "SszKzgCommitment", 48),
         BytesRef("Nethermind.Core.Crypto", "Hash256", 32),
         BytesRef("Nethermind.Core", "Address", 20),

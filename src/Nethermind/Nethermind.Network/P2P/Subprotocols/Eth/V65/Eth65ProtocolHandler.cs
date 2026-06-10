@@ -122,7 +122,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                if (_txPool.TryGetPendingTransaction(hash, out Transaction tx))
+                if (_txPool.TryGetPendingTransaction(hash, out Transaction tx) && CanServePooledTransaction(tx))
                 {
                     int txSize = tx.GetLength();
 
@@ -139,6 +139,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             return Task.FromResult(new PooledTransactionsMessage(txsToSend));
         }
+
+        protected virtual bool CanServePooledTransaction(Transaction tx) => true;
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {

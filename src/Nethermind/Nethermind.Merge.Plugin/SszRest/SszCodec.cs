@@ -288,7 +288,8 @@ public static class SszCodec
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
             withdrawals: pa.Withdrawals.ToDomain(),
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
-            slotNumber: pa.SlotNumber);
+            slotNumber: pa.SlotNumber,
+            targetGasLimit: pa.TargetGasLimit <= long.MaxValue ? (long)pa.TargetGasLimit : 0);
 
     private static PayloadAttributes BuildPayloadAttributes(
         ulong timestamp,
@@ -296,14 +297,17 @@ public static class SszCodec
         Address suggestedFeeRecipient,
         Withdrawal[]? withdrawals = null,
         Hash256? parentBeaconBlockRoot = null,
-        ulong? slotNumber = null) => new()
-        {
-            Timestamp = timestamp,
-            PrevRandao = prevRandao,
-            SuggestedFeeRecipient = suggestedFeeRecipient,
-            Withdrawals = withdrawals,
-            ParentBeaconBlockRoot = parentBeaconBlockRoot,
-            SlotNumber = slotNumber
-        };
+        ulong? slotNumber = null,
+        long? targetGasLimit = null)
+    {
+        PayloadAttributes payloadAttributes = targetGasLimit is null ? new PayloadAttributes() : new PayloadAttributesV4 { TargetGasLimit = targetGasLimit };
+        payloadAttributes.Timestamp = timestamp;
+        payloadAttributes.PrevRandao = prevRandao;
+        payloadAttributes.SuggestedFeeRecipient = suggestedFeeRecipient;
+        payloadAttributes.Withdrawals = withdrawals;
+        payloadAttributes.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        payloadAttributes.SlotNumber = slotNumber;
+        return payloadAttributes;
+    }
 
 }

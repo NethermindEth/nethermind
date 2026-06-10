@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -100,6 +102,50 @@ public class Eth72MessageSerializerTests
     }
 
     [Test]
+    public void CellsMessageSerializer_should_reject_oversized_cell_groups_before_accepting_message()
+    {
+        CellsMessageSerializer72 serializer = new();
+        byte[][] cells = new byte[BlobCellMask.CellCount * Eip7594Constants.MaxBlobsPerTx + 1][];
+        Array.Fill(cells, []);
+        using CellsMessage72 message = new([Hash256.Zero], [cells], BlobCellMask.Full.ToBytes());
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpLimitException>());
+    }
+
+    [Test]
+    public void CellsMessageSerializer_should_reject_more_than_response_hash_limit()
+    {
+        CellsMessageSerializer72 serializer = new();
+        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsResponseHashes + 1];
+        Array.Fill(hashes, Hash256.Zero);
+        byte[][][] cells = new byte[hashes.Length][][];
+        Array.Fill(cells, [[]]);
+        using CellsMessage72 message = new(hashes, cells, BlobCellMask.FromIndices([1]).ToBytes());
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpLimitException>());
+    }
+
+    [Test]
+    public void GetCellsMessageSerializer_should_reject_more_than_response_hash_limit()
+    {
+        GetCellsMessageSerializer72 serializer = new();
+        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsResponseHashes + 1];
+        Array.Fill(hashes, Hash256.Zero);
+        using GetCellsMessage72 message = new(hashes, BlobCellMask.FromIndices([1]).ToBytes());
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpLimitException>());
+    }
+
+    [Test]
     public void NewPooledTransactionHashesMessageSerializer_should_reject_invalid_non_empty_cell_mask_length()
     {
         NewPooledTransactionHashesMessageSerializer72 serializer = new();
@@ -107,6 +153,68 @@ public class Eth72MessageSerializerTests
 
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void NewPooledTransactionHashesMessageSerializer_should_reject_oversized_cell_mask_before_copying()
+    {
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+        byte[] cellMask = new byte[BlobCellMask.FixedByteLength + 1];
+        using NewPooledTransactionHashesMessage72 message = new([1], [1], [Hash256.Zero], cellMask);
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpLimitException>());
+    }
+
+    [TestCase(0UL)]
+    [TestCase(2_147_483_648UL)]
+    public void NewPooledTransactionHashesMessageSerializer_should_reject_non_positive_or_overflowed_sizes(ulong size)
+    {
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        RlpStream rlpStream = new NettyRlpStream(buffer);
+        byte[] types = [1];
+        int sizesLength = Rlp.LengthOf(size);
+        int hashesLength = Rlp.LengthOf(Hash256.Zero);
+        int totalSize = Rlp.LengthOf(types)
+            + Rlp.LengthOfSequence(sizesLength)
+            + Rlp.LengthOfSequence(hashesLength)
+            + Rlp.LengthOf(BlobCellMask.Full.ToBytes());
+        rlpStream.StartSequence(totalSize);
+        rlpStream.Encode(types);
+        rlpStream.StartSequence(sizesLength);
+        rlpStream.Encode(size);
+        rlpStream.StartSequence(hashesLength);
+        rlpStream.Encode(Hash256.Zero);
+        rlpStream.Encode(BlobCellMask.Full.ToBytes());
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void NewPooledTransactionHashesMessageSerializer_should_reject_missing_cell_mask()
+    {
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        RlpStream rlpStream = new NettyRlpStream(buffer);
+        byte[] types = [1];
+        int sizesLength = Rlp.LengthOf(1);
+        int hashesLength = Rlp.LengthOf(Hash256.Zero);
+        int totalSize = Rlp.LengthOf(types)
+            + Rlp.LengthOfSequence(sizesLength)
+            + Rlp.LengthOfSequence(hashesLength);
+        rlpStream.StartSequence(totalSize);
+        rlpStream.Encode(types);
+        rlpStream.StartSequence(sizesLength);
+        rlpStream.Encode(1);
+        rlpStream.StartSequence(hashesLength);
+        rlpStream.Encode(Hash256.Zero);
 
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
     }

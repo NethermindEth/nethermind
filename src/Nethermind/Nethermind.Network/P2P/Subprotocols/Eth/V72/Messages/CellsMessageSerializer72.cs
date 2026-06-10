@@ -7,14 +7,14 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage72>
 {
     private const int MaxCellsPerTransaction = BlobCellMask.CellCount * Eip7594Constants.MaxBlobsPerTx;
-    private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<CellsMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(CellsMessage72.Hashes));
+    private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<CellsMessage72>(Eth72ProtocolHandler.MaxCellsResponseHashes, nameof(CellsMessage72.Hashes));
+    private static readonly RlpLimit CellsPerTransactionRlpLimit = RlpLimit.For<CellsMessage72>(MaxCellsPerTransaction, nameof(CellsMessage72.Cells));
 
     public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message)
     {
@@ -60,34 +60,24 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
 
         int cellsSequenceLength = ctx.ReadSequenceLength();
+        if (cellsSequenceLength > Eth72ProtocolHandler.MinCellsResponseBytes)
+        {
+            throw new RlpLimitException($"Too much cell data in {nameof(CellsMessage72)}: {cellsSequenceLength}.");
+        }
+
         int cellsEnd = ctx.Position + cellsSequenceLength;
         List<byte[][]> cellsByTx = new(hashes.Count);
         while (ctx.Position < cellsEnd)
         {
-            if (cellsByTx.Count >= hashes.Count)
+            if (cellsByTx.Count >= Eth72ProtocolHandler.MaxCellsResponseHashes)
             {
-                throw new RlpLimitException($"Too many cell groups in {nameof(CellsMessage72)}: more than {hashes.Count}.");
+                throw new RlpLimitException($"Too many cell groups in {nameof(CellsMessage72)}: more than {Eth72ProtocolHandler.MaxCellsResponseHashes}.");
             }
 
-            byte[][] cells = ctx.DecodeByteArrays();
-            if (cells.Length > MaxCellsPerTransaction)
-            {
-                throw new RlpLimitException($"Too many cells in {nameof(CellsMessage72)} group: {cells.Length}, max {MaxCellsPerTransaction}.");
-            }
-
-            cellsByTx.Add(cells);
+            cellsByTx.Add(ctx.DecodeByteArrays(CellsPerTransactionRlpLimit));
         }
 
-        byte[] cellMask = ctx.DecodeByteArraySpan().ToArray();
-        if (cellMask.Length != BlobCellMask.FixedByteLength)
-        {
-            throw new RlpException($"Invalid cell mask length in {nameof(CellsMessage72)}: expected {BlobCellMask.FixedByteLength}, got {cellMask.Length}.");
-        }
-
-        if (cellsByTx.Count != hashes.Count)
-        {
-            throw new RlpException($"Wrong format of {nameof(CellsMessage72)} message. Hashes count: {hashes.Count} Cells count: {cellsByTx.Count}.");
-        }
+        byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
 
         ctx.Check(payloadCheckPosition);
         ctx.Check(checkPosition);

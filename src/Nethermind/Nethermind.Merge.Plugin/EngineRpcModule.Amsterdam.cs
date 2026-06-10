@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
@@ -26,7 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.NewPayload.V5);
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, byte[]? custodyColumns = null)
+    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributesV4? payloadAttributes = null, byte[]? custodyColumns = null)
     {
         BlobCellMask? custodyMask = null;
         if (custodyColumns is not null)
@@ -39,13 +40,19 @@ public partial class EngineRpcModule : IEngineRpcModule
             custodyMask = parsedMask;
         }
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
-        if (result.Result == Result.Success && custodyMask is BlobCellMask mask)
+        if (custodyMask is BlobCellMask mask)
         {
-            _blobCustodyTracker.Update(mask);
+            try
+            {
+                _blobCustodyTracker.Update(mask);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to update blob custody columns: {ex.Message}");
+            }
         }
 
-        return result;
+        return await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
     }
 
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes)

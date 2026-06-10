@@ -21,7 +21,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -238,8 +237,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         if (_logger.IsInfo) _logger.Info("Adding eth/71 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
 
-        IChainHeadSpecProvider chainHeadSpecProvider = _api.Context.Resolve<IChainHeadSpecProvider>();
-        if (_txPoolConfig.BlobsSupport.IsEnabled() && chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7594Enabled)
+        if (_txPoolConfig.BlobsSupport.IsEnabled())
         {
             if (_logger.IsInfo) _logger.Info("Adding eth/72 capability");
             _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 72));

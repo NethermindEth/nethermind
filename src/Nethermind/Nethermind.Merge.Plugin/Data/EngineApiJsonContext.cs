@@ -22,6 +22,7 @@ namespace Nethermind.Merge.Plugin.Data;
 [JsonSerializable(typeof(ForkchoiceStateV1))]
 [JsonSerializable(typeof(ForkchoiceUpdatedV1Result))]
 [JsonSerializable(typeof(PayloadAttributes))]
+[JsonSerializable(typeof(PayloadAttributesV4))]
 [JsonSerializable(typeof(BlobAndProofV1))]
 [JsonSerializable(typeof(BlobAndProofV2))]
 [JsonSerializable(typeof(BlobCellsAndProofsV1))]

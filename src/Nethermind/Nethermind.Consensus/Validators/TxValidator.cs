@@ -310,7 +310,8 @@ public sealed class MempoolBlobTxValidator : ITxValidator
 
             return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
                 transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
-                hasProofMaterial && !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
+                !hasProofMaterial ? TxErrorMessages.InvalidTransactionForm :
+                !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
         }
     }

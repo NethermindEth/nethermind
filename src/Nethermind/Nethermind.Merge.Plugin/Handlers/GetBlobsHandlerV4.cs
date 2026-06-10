@@ -2,24 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
-using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofsV1?>?>
+public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo ethSyncingInfo) : IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofsV1?>?>
 {
     private const int MaxRequest = 128;
 
+    private static readonly Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>> NotAvailable = Task.FromResult(ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>.Success(null));
+
     public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>> HandleAsync(GetBlobsHandlerV4Request request)
     {
+        if (request.BlobVersionedHashes is null)
+        {
+            return ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>.Fail("Blob versioned hashes are required.", ErrorCodes.InvalidParams);
+        }
+
         if (request.BlobVersionedHashes.Length > MaxRequest)
         {
             string error = $"The number of requested blobs must not exceed {MaxRequest}";
             return ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>.Fail(error, MergeErrorCodes.TooLargeRequest);
+        }
+
+        Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
+        if (ethSyncingInfo.IsSyncing())
+        {
+            Metrics.GetBlobsRequestsFailureTotal++;
+            return NotAvailable;
         }
 
         int requestedCellCount = request.CellMask.Count;
@@ -55,7 +70,6 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
             result[i] = new BlobCellsAndProofsV1(cells, proofs);
         }
 
-        Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
         if (allBlobsAvailable)
         {
             Metrics.GetBlobsRequestsSuccessTotal++;

@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Serialization.Ssz;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test.SszRest;
@@ -495,7 +496,9 @@ public class SszCodecTests
     {
         ulong expectedSlot = 0xAABBCCDD_11223344UL;
 
-        ForkchoiceUpdatedRequestWire wire = new()
+        byte[] expectedCustodyColumns = BlobCellMask.FromIndices([1, 7, 127]).ToBytes();
+
+        ForkchoiceUpdatedV4RequestWire wire = new()
         {
             ForkchoiceState = new ForkchoiceStateWire
             {
@@ -514,12 +517,13 @@ public class SszCodecTests
                     ParentBeaconBlockRoot = TestItem.KeccakE,
                     SlotNumber = expectedSlot,
                 }
-            ]
+            ],
+            CustodyColumns = [SszBytes16.FromSpan(expectedCustodyColumns)]
         };
 
-        byte[] encoded = ForkchoiceUpdatedRequestWire.Encode(wire);
+        byte[] encoded = ForkchoiceUpdatedV4RequestWire.Encode(wire);
 
-        ForkchoiceUpdatedRequestWire.Decode(encoded, out ForkchoiceUpdatedRequestWire decoded);
+        ForkchoiceUpdatedV4RequestWire.Decode(encoded, out ForkchoiceUpdatedV4RequestWire decoded);
         ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(decoded.ForkchoiceState);
         PayloadAttributes? attrs = decoded.PayloadAttributes is { Length: > 0 } a
             ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
@@ -529,6 +533,8 @@ public class SszCodecTests
         Assert.That(attrs!.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakE), "parent_beacon_block_root must round-trip in V4 as a fixed Bytes32");
         Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot), "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
         Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
+        Assert.That(decoded.CustodyColumns, Has.Length.EqualTo(1));
+        Assert.That(decoded.CustodyColumns![0].AsSpan().SequenceEqual(expectedCustodyColumns), Is.True);
     }
 
     [Test]

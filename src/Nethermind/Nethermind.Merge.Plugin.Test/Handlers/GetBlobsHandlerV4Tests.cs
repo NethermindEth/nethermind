@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -44,7 +45,7 @@ public class GetBlobsHandlerV4Tests
         Metrics.GetBlobsRequestsSuccessTotal = 0;
         Metrics.GetBlobsRequestsFailureTotal = 0;
 
-        GetBlobsHandlerV4 handler = new(Substitute.For<ITxPool>());
+        GetBlobsHandlerV4 handler = CreateHandler(Substitute.For<ITxPool>());
         BlobCellMask requestedMask = BlobCellMask.FromIndices([0]);
         GetBlobsHandlerV4Request request = new([null!, [1]], requestedMask);
 
@@ -58,5 +59,38 @@ public class GetBlobsHandlerV4Tests
             Assert.That(Metrics.GetBlobsRequestsSuccessTotal, Is.Zero);
             Assert.That(Metrics.GetBlobsRequestsFailureTotal, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public async Task HandleAsync_should_return_top_level_null_when_node_is_syncing()
+    {
+        Metrics.GetBlobsRequestsTotal = 0;
+        Metrics.GetBlobsRequestsSuccessTotal = 0;
+        Metrics.GetBlobsRequestsFailureTotal = 0;
+
+        IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
+        syncingInfo.IsSyncing().Returns(true);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        GetBlobsHandlerV4 handler = new(txPool, syncingInfo);
+        GetBlobsHandlerV4Request request = new([[0]], BlobCellMask.FromIndices([0]));
+
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await handler.HandleAsync(request);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Null);
+            Assert.That(Metrics.GetBlobsRequestsTotal, Is.EqualTo(1));
+            Assert.That(Metrics.GetBlobsRequestsSuccessTotal, Is.Zero);
+            Assert.That(Metrics.GetBlobsRequestsFailureTotal, Is.EqualTo(1));
+            txPool.DidNotReceiveWithAnyArgs().TryGetBlobCellsAndProofsV1(default!, default, out _, out _, out _);
+        }
+    }
+
+    private static GetBlobsHandlerV4 CreateHandler(ITxPool txPool)
+    {
+        IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
+        syncingInfo.IsSyncing().Returns(false);
+        return new GetBlobsHandlerV4(txPool, syncingInfo);
     }
 }

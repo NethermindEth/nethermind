@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Nethermind.Facade.Eth;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
@@ -29,6 +30,7 @@ using System;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Autofac;
+using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -43,7 +45,7 @@ public partial class EngineModuleTests
         SurplusReads,
     }
 
-    [TestCase("0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63", "0x14c38ed94cf91d5323eb3aaa7ff6c64c4c059a0a898658fcbc37f9723c25e6b3", "0x8a792f3d13211724decede460a451cdac669b5aaae37a01c2110d9f3114bc8a2", "0xfe420b1626a1f16d")]
+    [TestCase("0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63", "0x14c38ed94cf91d5323eb3aaa7ff6c64c4c059a0a898658fcbc37f9723c25e6b3", "0x8a792f3d13211724decede460a451cdac669b5aaae37a01c2110d9f3114bc8a2", "0x2dc87ccb57a65b07")]
     public virtual async Task Should_process_block_as_expected_V6(
         string latestValidHash,
         string blockHash,
@@ -73,6 +75,7 @@ public partial class EngineModuleTests
             withdrawals,
             parentBeaconBLockRoot = Keccak.Zero,
             slotNumber = slotNumber.ToHexString(true),
+            targetGasLimit = ((ulong)chain.BlockTree.Head!.GasLimit).ToHexString(true),
         };
         object?[] parameters = [chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)];
 
@@ -361,14 +364,15 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
 
         Block genesis = chain.BlockFinder.FindGenesisBlock()!;
-        PayloadAttributes payloadAttributes = new()
+        PayloadAttributesV4 payloadAttributes = new()
         {
             Timestamp = timestamp,
             PrevRandao = genesis.Header.Random!,
             SuggestedFeeRecipient = Address.Zero,
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = [],
-            SlotNumber = 1
+            SlotNumber = 1,
+            TargetGasLimit = genesis.GasLimit
         };
 
         Transaction tx = Build.A.Transaction
@@ -469,10 +473,13 @@ public partial class EngineModuleTests
     public async Task GetBlobsV4_should_return_requested_cells_and_positional_nulls()
     {
         const int numberOfBlobs = 3;
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: Amsterdam.Instance,
+            mergeConfig: new MergeConfig()
+            {
+                NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
+            },
+            configurer: ConfigureBlobPoolAvailable);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -515,10 +522,13 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV4_should_return_null_entries_for_unavailable_cells()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
-        });
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: Amsterdam.Instance,
+            mergeConfig: new MergeConfig()
+            {
+                NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromDays(1).TotalMilliseconds
+            },
+            configurer: ConfigureBlobPoolAvailable);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -584,6 +594,28 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task GetBlobsV4_should_reject_null_blob_versioned_hashes()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await rpcModule.engine_getBlobsV4(null!, BlobCellMask.FromIndices([0]).ToBytes());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
+    private static void ConfigureBlobPoolAvailable(ContainerBuilder builder)
+    {
+        IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
+        syncingInfo.IsSyncing().Returns(false);
+        builder.AddSingleton(syncingInfo);
+    }
+
+    [Test]
     public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
@@ -597,6 +629,25 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(custodyMask));
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV4_should_update_blob_custody_tracker_even_when_forkchoice_fails()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        IBlobCustodyTracker blobCustodyTracker = chain.Container.Resolve<IBlobCustodyTracker>();
+
+        BlobCellMask custodyMask = BlobCellMask.FromIndices([2, 7]);
+        ForkchoiceStateV1 forkchoiceState = new(chain.BlockTree.HeadHash, TestItem.KeccakF, chain.BlockTree.HeadHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes: null, custodyColumns: custodyMask.ToBytes());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidForkchoiceState));
             Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(custodyMask));
         }
     }
@@ -672,14 +723,15 @@ public partial class EngineModuleTests
         Transaction[] txs = BuildTransactions(chain, chain.BlockTree.Head!.Hash!, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 0);
         chain.AddTransactions(txs);
 
-        PayloadAttributes payloadAttributes = new()
+        PayloadAttributesV4 payloadAttributes = new()
         {
             Timestamp = chain.BlockTree.Head!.Timestamp + 1,
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = [],
             ParentBeaconBlockRoot = TestItem.KeccakE,
-            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1
+            SlotNumber = chain.BlockTree.Head!.SlotNumber + 1,
+            TargetGasLimit = chain.BlockTree.Head!.GasLimit
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
@@ -1011,14 +1063,15 @@ public partial class EngineModuleTests
         chain.TxPool.SubmitTx(tx3, TxHandlingOptions.None);
 
         Hash256 parentHash = chain.BlockTree.HeadHash;
-        PayloadAttributes payloadAttributes = new()
+        PayloadAttributesV4 payloadAttributes = new()
         {
             Timestamp = timestamp,
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = TestItem.AddressE,
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = [withdrawal],
-            SlotNumber = slotNumber
+            SlotNumber = slotNumber,
+            TargetGasLimit = chain.BlockTree.Head!.GasLimit
         };
 
         ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);

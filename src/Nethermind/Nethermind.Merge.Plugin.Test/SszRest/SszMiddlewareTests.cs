@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
+using Nethermind.Serialization.Ssz;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -76,7 +77,7 @@ public class SszMiddlewareTests
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV1, ForkchoiceUpdatedV1RequestWire>(_engineModule),
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>(_engineModule),
             new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule),
+            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedV4RequestWire>(_engineModule),
 
             new GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
@@ -207,10 +208,10 @@ public class SszMiddlewareTests
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
         _engineModule.engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
-        _engineModule.engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
+        _engineModule.engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributesV4?>(), Arg.Any<byte[]?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
-        byte[] body = BuildForkchoiceRequest();
+        byte[] body = version == 4 ? BuildForkchoiceV4Request() : BuildForkchoiceRequest();
         DefaultHttpContext ctx = MakePostContext(path, body);
 
         await _middleware.InvokeAsync(ctx);
@@ -224,7 +225,29 @@ public class SszMiddlewareTests
         await _engineModule.Received(v1Calls).engine_forkchoiceUpdatedV1(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
         await _engineModule.Received(v2Calls).engine_forkchoiceUpdatedV2(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
         await _engineModule.Received(v3Calls).engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
-        await _engineModule.Received(v4Calls).engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
+        await _engineModule.Received(v4Calls).engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributesV4?>(), Arg.Any<byte[]?>());
+    }
+
+    [Test]
+    public async Task Forkchoice_v4_passes_custody_columns()
+    {
+        ForkchoiceUpdatedV1Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+        };
+        _engineModule.engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributesV4?>(), Arg.Any<byte[]?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+
+        byte[] custodyColumns = BlobCellMask.FromIndices([0, 3, 127]).ToBytes();
+        DefaultHttpContext ctx = MakePostContext("/engine/v4/forkchoice", BuildForkchoiceV4Request(custodyColumns));
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_forkchoiceUpdatedV4(
+            Arg.Any<ForkchoiceStateV1>(),
+            Arg.Any<PayloadAttributesV4?>(),
+            Arg.Is<byte[]>(actual => BytesEqual(actual, custodyColumns)));
     }
 
     [Test]
@@ -569,6 +592,21 @@ public class SszMiddlewareTests
         BitConverter.TryWriteBytes(body.AsSpan(96, 4), (uint)100);
         return body;
     }
+
+    private static byte[] BuildForkchoiceV4Request(byte[]? custodyColumns = null) =>
+        ForkchoiceUpdatedV4RequestWire.Encode(new ForkchoiceUpdatedV4RequestWire
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = Keccak.Zero,
+            },
+            PayloadAttributes = [],
+            CustodyColumns = custodyColumns is null ? [] : [SszBytes16.FromSpan(custodyColumns)],
+        });
+
+    private static bool BytesEqual(byte[] actual, byte[] expected) => actual.AsSpan().SequenceEqual(expected);
 
     private static byte[] BuildHashListRequest(byte[][] hashes)
     {
