@@ -25,6 +25,8 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -65,6 +67,7 @@ namespace Nethermind.Consensus.AuRa
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
             builder
+                .Intercept<ChainSpec>(AuRaChainSpecLoader.ProcessChainSpec)
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
@@ -90,6 +93,15 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IMainProcessingModule, AuraMainProcessingModule>()
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
+
+                // Replaces the default in every TransactionProcessor — including BAL parallel-pool
+                // workers that hand-build their own processor with the worker's traced state.
+                .AddSingleton<ISystemTransactionProcessorFactory<EthereumGasPolicy>, AuRaSystemTransactionProcessorFactory<EthereumGasPolicy>>()
+
+                // RLP codec for AuRa-shaped headers; used by BlockStore/HeaderStore and any DI
+                // consumer of IHeaderDecoder. AuRaBlockHeader hashes itself via IHashResolver,
+                // so encode/decode through this decoder is the only AuRa-aware path remaining.
+                .AddSingleton<IHeaderDecoder, AuRaHeaderDecoder>()
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()

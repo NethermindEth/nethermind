@@ -24,7 +24,7 @@ public class AuRaHeaderDecoderTests
             .WithAura(100000000, auRaSignature)
             .TestObject;
 
-        HeaderDecoder decoder = new();
+        AuRaHeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
         Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
@@ -47,7 +47,7 @@ public class AuRaHeaderDecoderTests
 
         BlockHeader original = Build.A.BlockHeader.WithAura(42, auRaSignature).TestObject;
 
-        HeaderDecoder decoder = new();
+        AuRaHeaderDecoder decoder = new();
         byte[] firstPass = decoder.Encode(original).Bytes;
 
         Rlp.ValueDecoderContext ctx = new(firstPass);
@@ -70,7 +70,7 @@ public class AuRaHeaderDecoderTests
         byte[] auRaSignature = new byte[64];
         BlockHeader header = Build.A.BlockHeader.WithAura(42, auRaSignature).TestObject;
 
-        HeaderDecoder decoder = new();
+        AuRaHeaderDecoder decoder = new();
         byte[] encoded = decoder.Encode(header).Bytes;
         Rlp.ValueDecoderContext ctx = new(encoded);
         ctx.ReadSequenceLength();
@@ -92,48 +92,45 @@ public class AuRaHeaderDecoderTests
     /// (stamps step) and <c>AuRaSealer.SealBlock</c> (stamps signature) the header passes
     /// through <c>BlockProcessor.PrepareBlockForProcessing</c>. That rebuild used to gate on
     /// TryGetSeal (which requires both step + signature), so a step-only header was demoted
-    /// to plain <c>BlockHeader</c> and AuRaSealer then threw. <see cref="IAuRaBlockHeaderHandler.CopySeal"/>
-    /// must preserve the partial seal in both directions.
+    /// to plain <c>BlockHeader</c> and AuRaSealer then threw.
+    /// <see cref="AuRaSealedHeaderExtensions.CopyAuRaSeal"/> must preserve the partial seal.
     /// </summary>
     [Test]
-    public void CopySeal_preserves_step_only_AuRa_header()
+    public void CopyAuRaSeal_preserves_step_only_AuRa_header()
     {
-        IAuRaBlockHeaderHandler handler = AuRaBlockHeaderHandler.Instance!;
-        AuRaBlockHeader src = (AuRaBlockHeader)handler.UpgradeToAuRa(Build.A.BlockHeader.TestObject);
-        src.AuRaStep = 123;
-        src.AuRaSignature = null;
-        AuRaBlockHeader dst = (AuRaBlockHeader)handler.UpgradeToAuRa(Build.A.BlockHeader.TestObject);
+        AuRaBlockHeader src = (AuRaBlockHeader)Build.A.BlockHeader.WithAura(123, null).TestObject;
+        AuRaBlockHeader dst = (AuRaBlockHeader)Build.A.BlockHeader.WithAura(0, []).TestObject;
+        dst.AuRaStep = null;
+        dst.AuRaSignature = null;
 
-        handler.CopySeal(src, dst);
+        AuRaSealedHeaderExtensions.CopyAuRaSeal(src, dst);
 
         Assert.That(dst.AuRaStep, Is.EqualTo(123L), "step copied");
         Assert.That(dst.AuRaSignature, Is.Null, "null signature preserved");
     }
 
     [Test]
-    public void CopySeal_noop_when_either_header_is_not_AuRa()
+    public void CopyAuRaSeal_noop_when_either_header_is_not_AuRa()
     {
-        IAuRaBlockHeaderHandler handler = AuRaBlockHeaderHandler.Instance!;
         BlockHeader plain = Build.A.BlockHeader.TestObject;
-        AuRaBlockHeader aura = (AuRaBlockHeader)handler.UpgradeToAuRa(Build.A.BlockHeader.TestObject);
-        aura.AuRaStep = 7;
-        aura.AuRaSignature = new byte[64];
+        AuRaBlockHeader aura = (AuRaBlockHeader)Build.A.BlockHeader.WithAura(7, new byte[64]).TestObject;
 
         // plain → aura: nothing to copy from, dst step/sig must stay as initialized.
-        AuRaBlockHeader dstFromPlain = (AuRaBlockHeader)handler.UpgradeToAuRa(Build.A.BlockHeader.TestObject);
-        handler.CopySeal(plain, dstFromPlain);
+        AuRaBlockHeader dstFromPlain = (AuRaBlockHeader)Build.A.BlockHeader.WithAura(0, []).TestObject;
+        dstFromPlain.AuRaStep = null;
+        dstFromPlain.AuRaSignature = null;
+        AuRaSealedHeaderExtensions.CopyAuRaSeal(plain, dstFromPlain);
         Assert.That(dstFromPlain.AuRaStep, Is.Null, "no copy from non-AuRa source");
 
         // aura → plain: dst can't hold seal, must remain plain BlockHeader (no throw).
         BlockHeader dstPlain = Build.A.BlockHeader.TestObject;
-        Assert.DoesNotThrow(() => handler.CopySeal(aura, dstPlain));
+        Assert.DoesNotThrow(() => AuRaSealedHeaderExtensions.CopyAuRaSeal(aura, dstPlain));
     }
 
     [Test]
     public void IsAuRa_distinguishes_subclass_from_base_BlockHeader()
     {
-        IAuRaBlockHeaderHandler handler = AuRaBlockHeaderHandler.Instance!;
-        Assert.That(handler.IsAuRa(Build.A.BlockHeader.TestObject), Is.False);
-        Assert.That(handler.IsAuRa(handler.UpgradeToAuRa(Build.A.BlockHeader.TestObject)), Is.True);
+        Assert.That(Build.A.BlockHeader.TestObject.IsAuRa(), Is.False);
+        Assert.That(Build.A.BlockHeader.WithAura(0, []).TestObject.IsAuRa(), Is.True);
     }
 }

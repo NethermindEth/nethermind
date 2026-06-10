@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa
                 return block;
             }
 
-            AuRaBlockHeader upgraded = (AuRaBlockHeader)AuRaBlockHeaderHandler.Instance!.UpgradeToAuRa(block.Header);
+            AuRaBlockHeader upgraded = UpgradeHeaderToAuRa(block.Header);
             upgraded.AuRaStep = _auRaStepCalculator.CurrentStep;
             return (BlockToProduce)block.WithReplacedHeader(upgraded);
         }
@@ -94,6 +94,40 @@ namespace Nethermind.Consensus.AuRa
             // if (block.Number < EmptyStepsTransition)
             _reportingValidator.TryReportSkipped(block.Header, parent);
             return base.SealBlock(block, parent, token);
+        }
+
+        /// <summary>
+        /// Identity-preserving upgrade: returns the same instance when already AuRa, otherwise
+        /// clones a base <see cref="BlockHeader"/> into an <see cref="AuRaBlockHeader"/>. Used by
+        /// <c>PrepareBlock</c> to stamp the step before the sealer produces the signature.
+        /// </summary>
+        private static AuRaBlockHeader UpgradeHeaderToAuRa(BlockHeader header)
+        {
+            if (header is AuRaBlockHeader aura) return aura;
+
+            return new AuRaBlockHeader(header.ParentHash, header.UnclesHash, header.Beneficiary,
+                header.Difficulty, header.Number, header.GasLimit, header.Timestamp, header.ExtraData)
+            {
+                Author = header.Author,
+                StateRoot = header.StateRoot,
+                TxRoot = header.TxRoot,
+                ReceiptsRoot = header.ReceiptsRoot,
+                Bloom = header.Bloom,
+                GasUsed = header.GasUsed,
+                MixHash = header.MixHash,
+                Nonce = header.Nonce,
+                Hash = header.Hash,
+                TotalDifficulty = header.TotalDifficulty,
+                BaseFeePerGas = header.BaseFeePerGas,
+                WithdrawalsRoot = header.WithdrawalsRoot,
+                ParentBeaconBlockRoot = header.ParentBeaconBlockRoot,
+                RequestsHash = header.RequestsHash,
+                BlockAccessListHash = header.BlockAccessListHash,
+                BlobGasUsed = header.BlobGasUsed,
+                ExcessBlobGas = header.ExcessBlobGas,
+                SlotNumber = header.SlotNumber,
+                IsPostMerge = header.IsPostMerge,
+            };
         }
     }
 }

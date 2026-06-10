@@ -13,7 +13,7 @@ namespace Nethermind.Serialization.Rlp
     public interface IBlockHeaderDecoder<T> : IRlpDecoder<T> where T : BlockHeader { }
 
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
-    public sealed class HeaderDecoder() : RlpDecoder<BlockHeader>, IHeaderDecoder
+    public class HeaderDecoder() : RlpDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
 
@@ -44,65 +44,15 @@ namespace Nethermind.Serialization.Rlp
             ulong timestamp = decoderContext.DecodeULong();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
-            // Seal section: 32-byte item ⇒ Ethash (mixHash + nonce); otherwise AuRa (step + signature)
-            // produced via the plugin-registered handler so the AuRaBlockHeader subclass stays in the plugin.
-            // A null MixHash also encodes as an empty RLP item (length 0) — without an AuRa handler we
-            // tolerate that shape by discarding the seal bytes and producing a base BlockHeader.
-            bool isAuRaShape = decoderContext.PeekPrefixAndContentLength().ContentLength != Hash256.Size;
-            IAuRaBlockHeaderHandler? auraHandler = AuRaBlockHeaderHandler.Instance;
-            BlockHeader blockHeader;
-            if (isAuRaShape && auraHandler is not null)
-            {
-                long step = (long)decoderContext.DecodeUInt256();
-                byte[]? auRaSignature = decoderContext.DecodeByteArray();
+            BlockHeader blockHeader = CreateHeader(parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData!);
+            blockHeader.StateRoot = stateRoot;
+            blockHeader.TxRoot = transactionsRoot;
+            blockHeader.ReceiptsRoot = receiptsRoot;
+            blockHeader.Bloom = bloom;
+            blockHeader.GasUsed = gasUsed;
+            blockHeader.Hash = Keccak.Compute(headerRlp);
 
-                blockHeader = auraHandler.CreateBlockHeader(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData!);
-                auraHandler.SetSeal(blockHeader, step, auRaSignature);
-                blockHeader.StateRoot = stateRoot;
-                blockHeader.TxRoot = transactionsRoot;
-                blockHeader.ReceiptsRoot = receiptsRoot;
-                blockHeader.Bloom = bloom;
-                blockHeader.GasUsed = gasUsed;
-                blockHeader.Hash = Keccak.Compute(headerRlp);
-            }
-            else
-            {
-                Hash256? mixHash;
-                ulong nonce;
-                if (isAuRaShape)
-                {
-                    // AuRa-shape without a handler: skip both items and leave MixHash/Nonce at defaults.
-                    // This is the tolerant fallback for headers whose null MixHash was encoded as empty RLP.
-                    decoderContext.SkipItem();
-                    decoderContext.SkipItem();
-                    mixHash = null;
-                    nonce = 0;
-                }
-                else
-                {
-                    mixHash = decoderContext.DecodeKeccak();
-                    nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
-                }
-                blockHeader = new BlockHeader(
-                    parentHash,
-                    unclesHash,
-                    beneficiary,
-                    difficulty,
-                    number,
-                    gasLimit,
-                    timestamp,
-                    extraData)
-                {
-                    StateRoot = stateRoot,
-                    TxRoot = transactionsRoot,
-                    ReceiptsRoot = receiptsRoot,
-                    Bloom = bloom,
-                    GasUsed = gasUsed,
-                    Hash = Keccak.Compute(headerRlp),
-                    MixHash = mixHash,
-                    Nonce = nonce,
-                };
-            }
+            DecodeSeal(ref decoderContext, blockHeader);
 
             if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
@@ -119,6 +69,26 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return blockHeader;
+        }
+
+        /// <summary>
+        /// Construct the typed <see cref="BlockHeader"/> for decoding. Subclasses (e.g. AuRa)
+        /// override to produce their subclass; <see cref="DecodeSeal"/> then fills in the
+        /// engine-specific seal fields.
+        /// </summary>
+        protected virtual BlockHeader CreateHeader(
+            Hash256? parentHash, Hash256? unclesHash, Address? beneficiary,
+            in UInt256 difficulty, long number, long gasLimit, ulong timestamp, byte[] extraData)
+            => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+
+        /// <summary>
+        /// Decode the seal section (mixHash + nonce for Ethereum, step + signature for AuRa) onto
+        /// <paramref name="header"/>. Default reads the Ethash shape; subclasses override.
+        /// </summary>
+        protected virtual void DecodeSeal(ref Rlp.ValueDecoderContext decoderContext, BlockHeader header)
+        {
+            header.MixHash = decoderContext.DecodeKeccak();
+            header.Nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
         }
 
         public override void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -147,16 +117,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                if (AuRaBlockHeaderHandler.TryGetSeal(header, out long step, out byte[]? auRaSignature))
-                {
-                    rlpStream.Encode(step);
-                    rlpStream.Encode(auRaSignature);
-                }
-                else
-                {
-                    rlpStream.Encode(header.MixHash);
-                    rlpStream.Encode(header.Nonce, NonceLength);
-                }
+                EncodeSeal(rlpStream, header);
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
@@ -184,6 +145,15 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) rlpStream.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
+        /// <summary>
+        /// Encode the seal section. Default writes mixHash + nonce; subclasses (e.g. AuRa) override.
+        /// </summary>
+        protected virtual void EncodeSeal(RlpStream rlpStream, BlockHeader header)
+        {
+            rlpStream.Encode(header.MixHash);
+            rlpStream.Encode(header.Nonce, NonceLength);
+        }
+
         public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -197,7 +167,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(rlpStream.Data.ToArray());
         }
 
-        private static int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
+        protected int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -222,16 +192,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                if (AuRaBlockHeaderHandler.TryGetSeal(item, out long step, out byte[]? auRaSignature))
-                {
-                    contentLength += Rlp.LengthOf(step);
-                    contentLength += Rlp.LengthOf(auRaSignature);
-                }
-                else
-                {
-                    contentLength += Rlp.LengthOf(item.MixHash);
-                    contentLength += Rlp.LengthOfNonce(item.Nonce);
-                }
+                contentLength += GetSealContentLength(item);
             }
 
 
@@ -261,6 +222,12 @@ namespace Nethermind.Serialization.Rlp
 
             return contentLength;
         }
+
+        /// <summary>
+        /// RLP byte cost of the seal section. Default returns the Ethash mixHash + nonce cost.
+        /// </summary>
+        protected virtual int GetSealContentLength(BlockHeader header)
+            => Rlp.LengthOf(header.MixHash) + Rlp.LengthOfNonce(header.Nonce);
 
         public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
             => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

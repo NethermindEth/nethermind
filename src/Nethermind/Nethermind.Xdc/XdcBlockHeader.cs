@@ -90,10 +90,10 @@ public class XdcBlockHeader(
 
     public bool IsSelfMined { get; } = isSelfMined;
 
-    public virtual ValueHash256 CalculateHash()
+    public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
         KeccakRlpStream rlpStream = new();
-        _headerDecoder.Encode(rlpStream, this);
+        _headerDecoder.Encode(rlpStream, this, behaviors);
         return rlpStream.GetHash();
     }
 

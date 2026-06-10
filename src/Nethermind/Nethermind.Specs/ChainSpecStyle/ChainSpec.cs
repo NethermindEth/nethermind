@@ -82,5 +82,15 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong? OsakaTimestamp { get; set; }
         public ulong? AmsterdamTimestamp { get; set; }
+
+        /// <summary>
+        /// Raw AuRa genesis seal data parsed from <c>genesis.seal.authorityRound</c>. Null when the
+        /// chainspec is not AuRa-shaped at genesis. Applied to <see cref="Genesis"/> by the AuRa
+        /// plugin's ChainSpec interceptor — core doesn't act on it.
+        /// </summary>
+        public GenesisAuRaSeal? GenesisAuRaSeal { get; set; }
     }
+
+    /// <summary>Raw AuRa genesis seal data: <c>step</c> + <c>signature</c>.</summary>
+    public sealed record GenesisAuRaSeal(long Step, byte[] Signature);
 }

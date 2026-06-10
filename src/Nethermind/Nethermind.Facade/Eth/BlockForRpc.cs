@@ -25,7 +25,7 @@ public class BlockForRpc
     [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
     {
-        bool isAuRaBlock = AuRaBlockHeaderHandler.TryGetSeal(block.Header, out long auRaStep, out byte[]? auRaSignature);
+        bool isAuRaBlock = block.Header.TryGetAuRaSeal(out long auRaStep, out byte[]? auRaSignature);
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;

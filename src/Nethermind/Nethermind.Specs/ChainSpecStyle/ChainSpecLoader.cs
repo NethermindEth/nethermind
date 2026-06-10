@@ -356,16 +356,14 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
         chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
 
-        // AuRa-shape is determined purely by the presence of an explicit genesis signature in JSON.
-        // Wire-format invariant from master: no signature in JSON ⇒ header encoded with mixHash+nonce,
-        // even if the engine is authorityRound or the step is present. Inferring AuRa otherwise would
-        // flip a seal-less genesis to (step=0, signature=[]) and change the genesis hash.
-        bool isAuRaGenesis = auRaSignature is not null;
-        BlockHeader genesisHeader = isAuRaGenesis
-            ? (AuRaBlockHeaderHandler.Instance ?? throw new InvalidDataException(
-                    "Chainspec genesis carries AuthorityRound seal data but the AuRa plugin assembly is not loaded."))
-                .CreateBlockHeader(parentHash, Keccak.OfAnEmptySequenceRlp, beneficiary, difficulty, 0, (long)gasLimit, timestamp, extraData)
-            : new BlockHeader(parentHash, Keccak.OfAnEmptySequenceRlp, beneficiary, difficulty, 0, (long)gasLimit, timestamp, extraData);
+        // Build a base BlockHeader unconditionally. AuRa-shape is determined by the presence of an
+        // explicit genesis signature in JSON; when present the data is stashed on the ChainSpec and
+        // the AuRa plugin's ChainSpec interceptor upgrades Genesis.Header to AuRaBlockHeader.
+        if (auRaSignature is not null)
+        {
+            chainSpec.GenesisAuRaSeal = new GenesisAuRaSeal(step ?? 0, auRaSignature);
+        }
+        BlockHeader genesisHeader = new(parentHash, Keccak.OfAnEmptySequenceRlp, beneficiary, difficulty, 0, (long)gasLimit, timestamp, extraData);
 
         genesisHeader.Author = beneficiary;
         genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
@@ -421,11 +419,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         if (slotNumberEnabled)
         {
             genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber ?? 0;
-        }
-
-        if (isAuRaGenesis)
-        {
-            AuRaBlockHeaderHandler.Instance!.SetSeal(genesisHeader, step ?? 0, auRaSignature);
         }
 
         chainSpec.Genesis = !blockAccessListsEnabled ?

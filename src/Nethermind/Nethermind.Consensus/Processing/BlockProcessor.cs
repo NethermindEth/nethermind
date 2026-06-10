@@ -293,18 +293,9 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
-        // Preserve the AuRa subclass on the rebuilt header. We can't gate on TryGetSeal because
-        // block-production hands us step-only headers (signature filled in later by AuRaSealer);
-        // those must still arrive at the sealer as AuRaBlockHeader.
-        bool isAuRa = AuRaBlockHeaderHandler.IsAuRa(bh);
-        BlockHeader headerForProcessing = isAuRa
-            ? AuRaBlockHeaderHandler.Instance!.CreateBlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, in bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData)
-            : new BlockHeader(bh.ParentHash, bh.UnclesHash, bh.Beneficiary, bh.Difficulty, bh.Number, bh.GasLimit, bh.Timestamp, bh.ExtraData);
+        BlockHeader headerForProcessing = CloneHeaderShape(bh);
 
         CopyHeaderForProcessing(bh, headerForProcessing);
-        // CopySeal preserves a partial seal (step set, signature null) — critical between
-        // PrepareBlock (stamps step) and SealBlock (stamps signature).
-        AuRaBlockHeaderHandler.CopySeal(bh, headerForProcessing);
 
         if (!ShouldComputeStateRoot(bh))
         {
@@ -342,6 +333,15 @@ public partial class BlockProcessor(
         dst.BlobGasUsed = src.BlobGasUsed;
         dst.ExcessBlobGas = src.ExcessBlobGas;
     }
+
+    /// <summary>
+    /// Construct an empty header carrying the same subclass shape as <paramref name="source"/>.
+    /// Default returns a base <see cref="BlockHeader"/>; consensus engines that use a
+    /// <see cref="BlockHeader"/> subclass (e.g. AuRa) override to preserve the subclass and
+    /// copy engine-specific fields (e.g. partial AuRa seal).
+    /// </summary>
+    protected virtual BlockHeader CloneHeaderShape(BlockHeader source) =>
+        new(source.ParentHash, source.UnclesHash, source.Beneficiary, source.Difficulty, source.Number, source.GasLimit, source.Timestamp, source.ExtraData);
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
     {

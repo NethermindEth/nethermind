@@ -84,6 +84,7 @@ public partial class BlockAccessListManager
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _stateProvider;
         private readonly ILogManager _logManager;
+        private readonly ISystemTransactionProcessorFactory<EthereumGasPolicy>? _systemTxFactory;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
 
@@ -94,12 +95,14 @@ public partial class BlockAccessListManager
             ILogManager logManager,
             PrewarmerEnvFactory? prewarmerEnvFactory,
             PreBlockCaches? preBlockCaches,
-            IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory)
+            IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory,
+            ISystemTransactionProcessorFactory<EthereumGasPolicy>? systemTxFactory)
         {
             _blockHashProvider = blockHashProvider;
             _specProvider = specProvider;
             _stateProvider = stateProvider;
             _logManager = logManager;
+            _systemTxFactory = systemTxFactory;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -223,7 +226,7 @@ public partial class BlockAccessListManager
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _systemTxFactory);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -329,9 +332,10 @@ public partial class BlockAccessListManager
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISystemTransactionProcessorFactory<EthereumGasPolicy>? systemTxFactory)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager);
+            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, systemTxFactory);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -372,7 +376,8 @@ public partial class BlockAccessListManager
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISystemTransactionProcessorFactory<EthereumGasPolicy>? systemTxFactory = null)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -384,7 +389,7 @@ public partial class BlockAccessListManager
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
             EthereumCodeInfoRepository codeInfoRepository = new(WorldState);
-            TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
+            TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, systemTxFactory, parallel);
             TxProcessorAdapter = new(TxProcessor);
         }
 
