@@ -494,7 +494,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: NethermindEth/rpc-tests
-          ref: main
+          ref: rpc-changes
 
       - name: Setup Go environment
         uses: actions/setup-go@v6
