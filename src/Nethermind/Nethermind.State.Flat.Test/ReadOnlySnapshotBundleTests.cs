@@ -126,6 +126,77 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void GetSlot_PersistenceResult_IsMemoized_IncludingZero()
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        // false leaves the SlotValue at default — the canonical zero. Zero results MUST be
+        // memoized too: tip workloads (tick-bitmap scans) re-read absent slots heavily.
+        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>()).Returns(false);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader);
+
+        byte[]? first = bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1);
+        byte[]? second = bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1);
+
+        Assert.That(first, Is.EqualTo(new byte[] { 0 }));
+        Assert.That(second, Is.EqualTo(new byte[] { 0 }));
+        reader.Received(1).TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
+    }
+
+    [Test]
+    public void GetSlot_DifferentSlots_MemoizedIndependently()
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>()).Returns(false);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader);
+
+        bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1);
+        bundle.GetSlot(TestItem.AddressA, (UInt256)2, selfDestructStateIdx: -1);
+        bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1);
+        bundle.GetSlot(TestItem.AddressA, (UInt256)2, selfDestructStateIdx: -1);
+
+        reader.Received(2).TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
+    }
+
+    [Test]
+    public void GetAccount_PersistenceResult_IsMemoized_IncludingNull()
+    {
+        Account account = TestItem.GenerateIndexedAccount(1);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.GetAccount(TestItem.AddressA).Returns(account);
+        reader.GetAccount(TestItem.AddressB).Returns((Account?)null);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader);
+
+        Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+        Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(account));
+        Assert.That(bundle.GetAccount(TestItem.AddressB), Is.Null);
+        Assert.That(bundle.GetAccount(TestItem.AddressB), Is.Null);
+
+        reader.Received(1).GetAccount(TestItem.AddressA);
+        reader.Received(1).GetAccount(TestItem.AddressB);
+    }
+
+    [Test]
+    public void GetSlot_SnapshotHit_DoesNotPopulateMemo()
+    {
+        Address address = TestItem.AddressA;
+        UInt256 index = 42;
+        SlotValue stored = SlotValue.FromSpanWithoutLeadingZero([0x12, 0x34]);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            MakeSnapshot(c => c.Storages[new HashedKey<(Address, UInt256)>((address, index))] = stored)),
+            reader);
+
+        // Snapshot layers answer; persistence (and thus the memo) must stay untouched.
+        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0x12, 0x34 }));
+        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0x12, 0x34 }));
+        reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
+    }
+
+    [Test]
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");

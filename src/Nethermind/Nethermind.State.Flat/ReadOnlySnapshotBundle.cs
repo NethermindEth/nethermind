@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -27,12 +28,29 @@ public sealed class ReadOnlySnapshotBundle(
     public int SnapshotCount => snapshots.Count;
     private bool _isDisposed;
 
+    // Block-scoped read memo over the persistence reader. The reader is an immutable database
+    // snapshot for this bundle's lifetime, so memoizing its answers is sound by construction —
+    // the memo lives and dies with the bundle (one per block, ref-counted), which is also the
+    // natural invalidation boundary: a new head is a new bundle. The win is cross-call: every
+    // eth_call on the same block shares this bundle, and tip workloads (e.g. DEX quote
+    // simulations) re-read the same slots — including ZERO slots (tick-bitmap scans), which is
+    // why misses are memoized too. Past the entry cap the memo stops growing and reads simply
+    // go to the database; no eviction, no contention beyond the dictionary's own.
+    private const int PersistenceMemoMaxEntries = 1 << 17;
+
+    private readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, byte[]?> _slotPersistenceMemo = new();
+    private readonly ConcurrentDictionary<HashedKey<Address>, Account?> _accountPersistenceMemo = new();
+    private int _slotMemoCount;
+    private int _accountMemoCount;
+
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
     private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
+    private static readonly StringLabel _readAccountMemoLabel = new("account_memo");
     private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
     private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
     private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
+    private static readonly StringLabel _readStorageMemoLabel = new("storage_memo");
     private static readonly StringLabel _readStateNodeSnapshotLabel = new("state_node_snapshot");
     private static readonly StringLabel _readStorageNodeSnapshotLabel = new("storage_node_snapshot");
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
@@ -55,6 +73,12 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        if (_accountPersistenceMemo.TryGetValue(key, out Account? memoizedAccount))
+        {
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountMemoLabel);
+            return memoizedAccount;
+        }
+
         Account? account = persistenceReader.GetAccount(address);
         if (account == null)
         {
@@ -64,6 +88,9 @@ public sealed class ReadOnlySnapshotBundle(
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
         }
+
+        if (Volatile.Read(ref _accountMemoCount) < PersistenceMemoMaxEntries && _accountPersistenceMemo.TryAdd(key, account))
+            Interlocked.Increment(ref _accountMemoCount);
 
         return account;
     }
@@ -105,9 +132,15 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        if (_slotPersistenceMemo.TryGetValue(key, out byte[]? memoizedValue))
+        {
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageMemoLabel);
+            return memoizedValue;
+        }
+
         SlotValue outSlotValue = new();
 
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
         byte[]? value = outSlotValue.ToEvmBytes();
 
@@ -122,6 +155,9 @@ public sealed class ReadOnlySnapshotBundle(
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceLabel);
             }
         }
+
+        if (Volatile.Read(ref _slotMemoCount) < PersistenceMemoMaxEntries && _slotPersistenceMemo.TryAdd(key, value))
+            Interlocked.Increment(ref _slotMemoCount);
 
         return value;
     }
