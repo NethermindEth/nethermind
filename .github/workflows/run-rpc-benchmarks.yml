@@ -205,6 +205,27 @@ jobs:
             *) echo "node_config.db_isolation must be overlay | copy | readonly-bind, got '${db_isolation}'."; exit 1;;
           esac
 
+          # These paths reach root-privileged mount/rm on the runner — enforce a
+          # strict shape here (the scripts canonicalize and guard again).
+          validate_runner_path() {
+            local label="$1" p="$2"
+            if ! [[ "${p}" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "${p}" == *..* ]]; then
+              echo "${label} '${p}' must be an absolute path of [A-Za-z0-9._/-] without '..'."
+              exit 1
+            fi
+            local trimmed="${p#/}"; trimmed="${trimmed%/}"
+            if [[ -z "${trimmed}" || "${trimmed}" != */* ]]; then
+              echo "${label} '${p}' is too shallow (need at least two path components)."
+              exit 1
+            fi
+          }
+          validate_runner_path "node_config.db_source" "${db_source}"
+          validate_runner_path "node_config.scratch_root" "${scratch_root}"
+          if [[ "${db_source}/" == "${scratch_root}"/* || "${scratch_root}/" == "${db_source}"/* ]]; then
+            echo "db_source and scratch_root must be disjoint (scratch is wiped on teardown)."
+            exit 1
+          fi
+
           # Decide how to get the Docker image (dotTrace works with any image —
           # the host dottrace CLI is mounted in, expb-style).
           #   provided -> use docker_image verbatim
@@ -336,6 +357,7 @@ jobs:
         run: ./scripts/rpc-bench/start-node.sh
 
       - name: Run flood benchmark
+        id: run-flood
         if: needs.resolve.outputs.benchmark_tool == 'flood'
         continue-on-error: true
         env:
@@ -355,6 +377,7 @@ jobs:
           ./scripts/rpc-bench/run-flood.sh
 
       - name: Run EthCallChaos benchmark
+        id: run-ecc
         if: needs.resolve.outputs.benchmark_tool == 'ethcallchaos'
         continue-on-error: true
         env:
@@ -368,6 +391,7 @@ jobs:
           get() { echo "${cfg}" | jq -r "$1 // empty"; }
           export ECC_REF="$(get '.ref')";                     [[ -z "${ECC_REF}" ]] && export ECC_REF="master"
           export ECC_CORPUS_DB="$(get '.corpus_db')"
+          corpus_url="$(get '.corpus_url')"; [[ -n "${corpus_url}" ]] && export ECC_CORPUS_URL="${corpus_url}"
           export ECC_RATE="$(get '.rate')";                   [[ -z "${ECC_RATE}" ]] && export ECC_RATE="50"
           export ECC_PARALLEL="$(get '.parallel')";           [[ -z "${ECC_PARALLEL}" ]] && export ECC_PARALLEL="8"
           export ECC_DURATION="$(get '.duration')";           [[ -z "${ECC_DURATION}" ]] && export ECC_DURATION="300"
@@ -478,24 +502,24 @@ jobs:
         shell: bash
         env:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
-        run: |
-          # Belt-and-suspenders: remove containers / mounts / scratch even if a
-          # prior step died before stop-node.sh ran. Never touches the snapshot.
-          docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-          docker rm -f "${ECC_CONTAINER_NAME}" >/dev/null 2>&1 || true
-          run_umount() { if [[ "$(id -u)" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
-          for m in "${SCRATCH_ROOT}/run/merged" "${SCRATCH_ROOT}/run/ro"; do
-            if mountpoint -q "${m}" 2>/dev/null; then
-              run_umount umount "${m}" 2>/dev/null || run_umount umount -l "${m}" 2>/dev/null || true
-            fi
-          done
-          run_umount rm -rf "${SCRATCH_ROOT}/run" "${SCRATCH_ROOT}/diag" "${SCRATCH_ROOT}/ethcallchaos" 2>/dev/null || true
+          DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
+        # Belt-and-suspenders: reaps stale containers (any run id), unmounts
+        # everything under scratch, wipes scratch subtrees — with the same
+        # canonical-path guards as start-node.sh, so it can never reach the
+        # snapshot. Never fails the job.
+        run: ./scripts/rpc-bench/cleanup.sh || true
 
       - name: Enforce quality gates
         if: always()
         shell: bash
         run: |
           set -euo pipefail
+          # The tool steps use continue-on-error so teardown and the integrity
+          # check always run — their real outcome is enforced here instead.
+          if [[ "${{ steps.run-flood.outcome }}" == "failure" || "${{ steps.run-ecc.outcome }}" == "failure" ]]; then
+            echo "The benchmark tool step failed — failing the job."
+            exit 1
+          fi
           if [[ "${{ steps.scan.outputs.exception_found }}" == "true" ]]; then
             echo "Exceptions detected in node log — failing."
             exit 1

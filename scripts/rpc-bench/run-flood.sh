@@ -33,7 +33,7 @@ export PATH="$HOME/.local/bin:$PATH"
 if ! command -v vegeta >/dev/null 2>&1; then
   log "Installing vegeta $VEGETA_VERSION..."
   tmp="$(mktemp -d)"
-  curl -sSL "https://github.com/tsenart/vegeta/releases/download/v${VEGETA_VERSION}/vegeta_${VEGETA_VERSION}_linux_amd64.tar.gz" -o "$tmp/vegeta.tgz"
+  curl -sSfL "https://github.com/tsenart/vegeta/releases/download/v${VEGETA_VERSION}/vegeta_${VEGETA_VERSION}_linux_amd64.tar.gz" -o "$tmp/vegeta.tgz"
   tar -xzf "$tmp/vegeta.tgz" -C "$tmp" vegeta
   if as_root install -m0755 "$tmp/vegeta" /usr/local/bin/vegeta 2>/dev/null; then
     log "  vegeta installed to /usr/local/bin"
@@ -51,10 +51,14 @@ vegeta --version || true
 # ---------------------------------------------------------------------------
 log "Installing flood from $FLOOD_REPO..."
 if command -v uv >/dev/null 2>&1; then
-  # No explicit package name: uv infers it from the git source and exposes the
-  # `flood` entry point regardless of the package's distribution name.
-  uv tool install --force "$FLOOD_REPO"
-  export PATH="$(uv tool dir --bin):$PATH"
+  # Pin Python 3.10: flood's 2023-era pins (checkthechain -> pyarrow 12.0.1)
+  # only have prebuilt wheels up to cp311; newer interpreters force source
+  # builds that fail. No explicit package name: uv infers it from the git
+  # source and exposes the `flood` entry point regardless of the dist name.
+  uv tool install --force --python 3.10 "$FLOOD_REPO" \
+    || uv tool install --force --python 3.11 "$FLOOD_REPO"
+  uv_bin="$(uv tool dir --bin)"
+  export PATH="$uv_bin:$PATH"
 else
   python3 -m pip install --user --force-reinstall "$FLOOD_REPO" \
     || python3 -m pip install --user --break-system-packages --force-reinstall "$FLOOD_REPO"
@@ -117,7 +121,9 @@ for t in "${test_list[@]}"; do
   [[ -d "$od" ]] || continue
   {
     echo "=== $t ==="
-    flood report "$od" 2>&1 || true
+    # 'flood print' renders the stored results as text; 'flood report' would
+    # generate notebook/HTML files instead.
+    flood print "$od" 2>&1 || true
     echo
   } >> "$summary"
 done

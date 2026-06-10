@@ -27,6 +27,7 @@ RPC_URL="${RPC_URL:-http://localhost:8545}"
 ECC_REPO="${ECC_REPO:-https://github.com/kamilchodola/EthCallChaos.git}"
 ECC_REF="${ECC_REF:-master}"
 ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"          # optional path on the runner to a pristine corpus DB
+ECC_CORPUS_URL="${ECC_CORPUS_URL:-https://github.com/kamilchodola/EthCallChaos/releases/download/corpus-v1/ethcallchaos.db}"
 ECC_RATE="${ECC_RATE:-50}"                  # -> Rpc__MaxCallsPerSecond
 ECC_PARALLEL="${ECC_PARALLEL:-8}"           # -> Rpc__MaxParallelCalls
 ECC_DURATION="${ECC_DURATION:-300}"         # seconds of load
@@ -36,8 +37,11 @@ SDK_IMAGE="${SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0}"
 CONTAINER_NAME="${ECC_CONTAINER_NAME:-ethcallchaos-bench}"
 
 mkdir -p "$OUT_DIR"
+SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")"
+assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
 work="$SCRATCH_ROOT/ethcallchaos"
-rm -rf "$work"
+# The SDK container may have left root-owned files in scratch on a prior run.
+as_root rm -rf "$work"
 mkdir -p "$work"
 
 # ---------------------------------------------------------------------------
@@ -51,10 +55,13 @@ proj_dir="$work/src/src/EthCallChaos"
 
 # ---------------------------------------------------------------------------
 # Resolve the corpus DB (copied so the source corpus stays pristine).
+# Precedence: runner-local path > release URL > repo-committed > fresh.
 # ---------------------------------------------------------------------------
 if [[ -n "$ECC_CORPUS_DB" && -f "$ECC_CORPUS_DB" ]]; then
   cp "$ECC_CORPUS_DB" "$work/bench.db"
   log "Using provided corpus DB (copied): $ECC_CORPUS_DB"
+elif [[ -n "$ECC_CORPUS_URL" ]] && curl -sfL --retry 3 -o "$work/bench.db" "$ECC_CORPUS_URL"; then
+  log "Using corpus DB downloaded from $ECC_CORPUS_URL ($(du -h "$work/bench.db" | cut -f1))."
 elif [[ -f "$proj_dir/ethcallchaos.db" ]]; then
   cp "$proj_dir/ethcallchaos.db" "$work/bench.db"
   log "Using corpus DB committed in the repo (copied)."
@@ -136,7 +143,8 @@ summary="$OUT_DIR/ethcallchaos-summary.md"
     echo
     echo "| Rank | mean ms | p99 ms | to | calldata |"
     echo "|---:|---:|---:|---|---|"
-    jq -r '.[] | "| \(.RankPosition // "-") | \(.MeanMs // "-") | \(.P99Ms // "-") | \(.ToAddress // "-") | \(.CalldataPreview // "-") |"' \
+    # ASP.NET minimal APIs serialize with camelCase; keep PascalCase fallback.
+    jq -r '.[] | "| \(.rankPosition // .RankPosition // "-") | \(.meanMs // .MeanMs // "-") | \(.p99Ms // .P99Ms // "-") | \(.toAddress // .ToAddress // "-") | \(.calldataPreview // .CalldataPreview // "-") |"' \
       "$OUT_DIR/leaderboard.json" 2>/dev/null | head -n "$ECC_LEADERBOARD_TOP" || true
   fi
 } > "$summary"

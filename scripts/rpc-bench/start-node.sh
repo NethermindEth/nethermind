@@ -46,14 +46,9 @@ mkdir -p "$STATE_DIR"
   die "set node_config.db_source to a valid snapshot path"
 }
 
-# Safety: the scratch tree is wiped on teardown, so the pristine snapshot must
-# not live inside it (and vice versa, to keep isolation paths disjoint).
-case "$DB_SOURCE/" in
-  "$SCRATCH_ROOT"/*) die "DB_SOURCE must not be inside SCRATCH_ROOT — scratch is wiped on teardown" ;;
-esac
-case "$SCRATCH_ROOT/" in
-  "$DB_SOURCE"/*) die "SCRATCH_ROOT must not be inside DB_SOURCE" ;;
-esac
+# Canonicalize (symlink-proof) and enforce DB_SOURCE / SCRATCH_ROOT sanity and
+# disjointness — scratch is wiped on teardown and must never reach the snapshot.
+guard_paths
 
 log "=== RPC benchmark node startup ==="
 log "Image:      $NETHERMIND_IMAGE"
@@ -70,10 +65,35 @@ log "Computing DB integrity baseline (tamper tripwire)..."
 db_fingerprint "$DB_SOURCE" "$STATE_DIR/db-baseline.txt"
 log "  baseline: $(wc -l < "$STATE_DIR/db-baseline.txt") lines, sha256=$(sha256sum "$STATE_DIR/db-baseline.txt" | cut -d' ' -f1)"
 
+# Cross-run anchor: compare against the fingerprint persisted by the last
+# cleanly-verified run, so a mutation during a hard-interrupted run (where the
+# verify step never executed) cannot be silently adopted as the new baseline.
+# Drift is a warning, not an error — admins legitimately refresh snapshots.
+ANCHOR_DIR="$SCRATCH_ROOT/fingerprints"
+ANCHOR_FILE="$ANCHOR_DIR/$(basename "$DB_SOURCE").txt"
+mkdir -p "$ANCHOR_DIR"
+if [[ -f "$ANCHOR_FILE" ]]; then
+  if [[ "$(head -n 1 "$ANCHOR_FILE")" == "$(head -n 1 "$STATE_DIR/db-baseline.txt")" ]] \
+      && ! diff -q "$ANCHOR_FILE" "$STATE_DIR/db-baseline.txt" >/dev/null 2>&1; then
+    log "::warning::Snapshot fingerprint differs from the last verified run's anchor ($ANCHOR_FILE). If the snapshot was not intentionally refreshed, a previous interrupted run may have modified it."
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 # 2) Build an isolated, writable datadir view without touching the source.
 # ---------------------------------------------------------------------------
+# Stale containers from a hard-interrupted previous run would still hold the old
+# overlay mount namespace and port 8545 — reap them before touching scratch.
+reap_stale_containers "nethermind-rpcbench" "ethcallchaos-bench"
+
 RUN_SCRATCH="$SCRATCH_ROOT/run"
+# Unmount leftovers from an interrupted previous run before clearing scratch.
+for m in "$RUN_SCRATCH/merged" "$RUN_SCRATCH/ro"; do
+  if mountpoint -q "$m" 2>/dev/null; then
+    as_root umount "$m" 2>/dev/null || as_root umount -l "$m" 2>/dev/null || true
+  fi
+done
+assert_no_mounts_under "$RUN_SCRATCH"
 as_root rm -rf "$RUN_SCRATCH"
 mkdir -p "$RUN_SCRATCH" "$DIAG_DIR"
 
@@ -113,6 +133,20 @@ case "$DB_ISOLATION" in
     ;;
 esac
 log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DATA_DIR_TARGET)"
+
+# Persist state for teardown/verification NOW — if docker run fails below,
+# stop-node.sh must still be able to verify the fingerprint and tear down the
+# mount (docker logs/stop on a never-started container are harmless no-ops).
+{
+  echo "CONTAINER_NAME=$CONTAINER_NAME"
+  echo "DB_ISOLATION=$DB_ISOLATION"
+  echo "RUN_SCRATCH=$RUN_SCRATCH"
+  echo "SCRATCH_ROOT=$SCRATCH_ROOT"
+  echo "DB_SOURCE=$DB_SOURCE"
+  echo "DIAG_DIR=$DIAG_DIR"
+  echo "DOTTRACE=$DOTTRACE"
+  echo "RPC_PORT=$RPC_PORT"
+} > "$STATE_DIR/node.env"
 
 # ---------------------------------------------------------------------------
 # 3) Assemble the node command (mirrors expb's NethermindConfig).
@@ -156,6 +190,7 @@ docker_args=(
 
 # dotTrace: mount the host-installed CLI and wrap the node binary, exactly as
 # expb's --dottrace does. SIGINT (stop-signal) lets dotTrace finalize the .dtp.
+entry_args=()
 if [[ "$DOTTRACE" == "true" ]]; then
   if [[ ! -x "$DOTTRACE_HOST_PATH/dottrace" ]]; then
     log "dotTrace CLI not found at $DOTTRACE_HOST_PATH — installing via dotnet tool..."
@@ -173,7 +208,6 @@ if [[ "$DOTTRACE" == "true" ]]; then
 else
   # Run the binary directly (as expb does) — skips entrypoint.sh host tuning.
   docker_args+=(--entrypoint /nethermind/nethermind)
-  entry_args=()
 fi
 
 # ---------------------------------------------------------------------------
@@ -182,28 +216,11 @@ fi
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Starting Nethermind container '$CONTAINER_NAME'..."
 log "  node args: ${node_args[*]}"
-docker run "${docker_args[@]}" "$NETHERMIND_IMAGE" "${entry_args[@]}" "${node_args[@]}"
-
-# Persist state for teardown / verification.
-{
-  echo "CONTAINER_NAME=$CONTAINER_NAME"
-  echo "DB_ISOLATION=$DB_ISOLATION"
-  echo "RUN_SCRATCH=$RUN_SCRATCH"
-  echo "DB_SOURCE=$DB_SOURCE"
-  echo "DIAG_DIR=$DIAG_DIR"
-  echo "DOTTRACE=$DOTTRACE"
-  echo "RPC_PORT=$RPC_PORT"
-} > "$STATE_DIR/node.env"
+# ${arr[@]+...} keeps the empty-array expansion safe under set -u on bash < 4.4.
+docker run "${docker_args[@]}" "$NETHERMIND_IMAGE" ${entry_args[@]+"${entry_args[@]}"} "${node_args[@]}"
 
 # ---------------------------------------------------------------------------
 # 5) Wait for the node to serve JSON-RPC.
 # ---------------------------------------------------------------------------
-sleep 5
-if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
-  log "Container exited prematurely. Last 100 log lines:"
-  docker logs "$CONTAINER_NAME" 2>&1 | tail -n 100 || true
-  die "node container failed to start"
-fi
-
-wait_for_rpc "http://localhost:${RPC_PORT}" "$HEALTH_TIMEOUT"
+wait_for_rpc "http://localhost:${RPC_PORT}" "$HEALTH_TIMEOUT" "$CONTAINER_NAME"
 log "=== Node ready for benchmarking ==="

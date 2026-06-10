@@ -53,13 +53,21 @@ builds an isolated, writable *view* of it and gives the container only that view
 
 `start-node.sh` records a **fingerprint** of the snapshot before the run and
 `stop-node.sh` recomputes it after. The fingerprint is a full recursive listing
-(path + size + mtime) plus a sha256 of the small RocksDB control files that get
-rewritten the instant a DB is opened read-write (`CURRENT`, `IDENTITY`,
-`MANIFEST-*`, `OPTIONS-*`). If anything differs, **the job fails**. Hashing is
-limited to the small control files so the check stays fast on a multi-TB DB.
+(path, type, size, mtime, mode, owner, symlink target) plus a sha256 of the
+small RocksDB control files that get rewritten the instant a DB is opened
+read-write (`CURRENT`, `IDENTITY`, `MANIFEST-*`, `OPTIONS-*`). If anything
+differs, **the job fails**. Hashing is limited to the small control files so the
+check stays fast on a multi-TB DB; listing errors are fatal rather than
+silently producing a partial fingerprint. After a clean verification the
+fingerprint is persisted (`<scratch_root>/fingerprints/`) as a **cross-run
+anchor** — the next run warns if the snapshot changed in between (e.g. during a
+hard-interrupted run whose verify step never executed).
 
-A guard also refuses to run if `db_source` and `scratch_root` overlap (scratch is
-wiped on teardown).
+Path safety is layered: the `resolve` job validates `db_source`/`scratch_root`
+shape, and every script canonicalizes them (`realpath`, symlink-proof), rejects
+shallow paths, enforces disjointness, and refuses any recursive delete while
+something is still mounted underneath ([`cleanup.sh`](cleanup.sh) applies the
+same guards in the workflow's defensive-cleanup step).
 
 ## Workflow inputs
 
@@ -128,6 +136,7 @@ duration, then its HTTP API (`/api/stats`, `/api/leaderboard`) is scraped.
 {
   "ref": "master",        // branch/tag of EthCallChaos to build
   "corpus_db": "",         // optional path ON THE RUNNER to a pristine corpus DB (copied, not mutated)
+  "corpus_url": "",        // optional URL override for the corpus download
   "rate": 50,              // Rpc:MaxCallsPerSecond
   "parallel": 8,           // Rpc:MaxParallelCalls
   "duration": 300,         // seconds of load
@@ -136,12 +145,12 @@ duration, then its HTTP API (`/api/stats`, `/api/leaderboard`) is scraped.
 }
 ```
 
-Scope control: `rate`, `parallel`, `duration`, and the `corpus_db` (which
+Scope control: `rate`, `parallel`, `duration`, and the corpus (which
 contracts/calls are exercised). EthCallChaos has no built-in per-method filter;
-the corpus DB is how you constrain the workload. Place a representative
-`ethcallchaos.db` on the runner and pass its path as `corpus_db` (it is copied to
-scratch first, so the original corpus stays pristine). If omitted, the repo's
-committed corpus is used; if there is none, it evolves from scratch.
+the corpus DB is how you constrain the workload. Corpus resolution order:
+`corpus_db` (runner-local path, copied to scratch) → `corpus_url` (defaults to
+the `corpus-v1` release asset of `kamilchodola/EthCallChaos`) → a DB committed
+in the tool repo → fresh evolution from scratch.
 
 ## dotTrace flow (goal #3)
 
@@ -186,8 +195,9 @@ The `reproducible-benchmarks` self-hosted runner must provide:
 
 | File | Role |
 |---|---|
-| `lib.sh` | Shared helpers: logging, RPC health wait, DB fingerprint tripwire. |
+| `lib.sh` | Shared helpers: logging, path guards, RPC health wait, DB fingerprint tripwire. |
 | `start-node.sh` | Fingerprint baseline → isolate DB → start container → wait for RPC. |
-| `stop-node.sh` | Graceful stop → collect dotTrace → **verify snapshot unchanged** → tear down. |
+| `stop-node.sh` | Graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down. |
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests, report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
+| `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |
