@@ -84,6 +84,10 @@ public static partial class IlSegmentCompiler
         // only at dispatch entries and region exits. Otherwise fall back to v4.0
         // (real-stack canonical at block boundaries).
         bool registerized = TryPlanFrames(region, out FramePlan plan);
+        if (registerized)
+            RegionsRegisterized++;
+        else
+            RegionsFallbackV40++;
 
         CompiledSegmentInvoke invoke;
         try
@@ -103,7 +107,7 @@ public static partial class IlSegmentCompiler
             RegionBlock regionBlock = region[i];
             if (!regionBlock.IsEntry)
                 continue;
-            int entryPops = registerized ? plan.Heights[i] - plan.WindowBottom : regionBlock.Metrics.StackRequired;
+            int entryPops = registerized ? plan.Heights[i] - plan.BottomByBlock[i] : regionBlock.Metrics.StackRequired;
             int maxGrowth = registerized
                 ? Math.Max(0, Math.Max(2, plan.FrameSize) - entryPops)
                 : Math.Max(0, regionBlock.Metrics.StackMaxDelta);
@@ -125,87 +129,123 @@ public static partial class IlSegmentCompiler
         return region.Count;
     }
 
+    // Diagnostics (lossy, compile-time only — never on an execution path): how many regions
+    // got register-resident frames vs the v4.0 flush-at-boundaries fallback. A fallback-heavy
+    // mix on hot code is a performance smell worth investigating before deploying.
+    public static long RegionsRegisterized;
+    public static long RegionsFallbackV40;
+
     private struct FramePlan
     {
-        public int[] Heights;     // stack height at each block's entry, relative to the head's 0
-        public int WindowBottom;  // deepest stack position the region touches (≤ 0)
-        public int MaxHeight;     // highest stack height reached
-        public int FrameSize;     // MaxHeight - WindowBottom
+        public int[] Heights;        // stack height at each block's entry, relative to its component's anchor
+        public int[] BottomByBlock;  // deepest stack position the block's component touches (≤ Heights entry)
+        public int FrameSize;        // widest component window; components share the frame locals
     }
 
     /// <summary>
-    /// Forward-propagates stack heights from the region head across every internal edge.
-    /// Registerization requires: every block reachable from the head, every edge agreeing on
-    /// the target's height (solc-generated code does), and a bounded carried window.
+    /// Forward-propagates stack heights across every internal edge, one connected component
+    /// at a time: the head seeds the first component, and every dispatch entry not reached by
+    /// an earlier component anchors its own at height 0. Components have no internal edges
+    /// between them (an edge merges the target into the source's component, or fails the
+    /// plan), so within one invocation execution stays inside a single component — sharing
+    /// the frame locals across components is safe. Registerization still requires every edge
+    /// to agree on its target's height (solc-generated code does) and a bounded window.
     /// </summary>
     private static bool TryPlanFrames(List<RegionBlock> region, out FramePlan plan)
     {
         plan = default;
         int count = region.Count;
         int[] heights = new int[count];
-        bool[] visited = new bool[count];
+        int[] component = new int[count];
+        Array.Fill(component, -1);
         Queue<int> worklist = new();
-        heights[0] = 0;
-        visited[0] = true;
-        worklist.Enqueue(0);
+        int componentCount = 0;
 
-        while (worklist.Count > 0)
+        for (int seed = 0; seed < count; seed++)
         {
-            int index = worklist.Dequeue();
-            RegionBlock block = region[index];
-            int exitHeight = heights[index] + block.Metrics.StackFinalDelta;
+            if (component[seed] >= 0 || (seed != 0 && !region[seed].IsEntry))
+                continue;
 
-            // Internal successors: constant-jump target and/or fall-through. A frame
-            // terminator (STOP/RETURN/REVERT) has NO fall-through edge — propagating one
-            // would seed the next block with a phantom height and corrupt its entry pops.
-            if (block.HasConstantJump)
+            heights[seed] = 0;
+            component[seed] = componentCount++;
+            worklist.Enqueue(seed);
+
+            while (worklist.Count > 0)
             {
-                int target = FindRegionBlock(region, block.JumpDestination);
-                if (target >= 0 && !Propagate(target, exitHeight))
-                    return false;
-                if (block.TerminalJump == Instruction.JUMPI
+                int index = worklist.Dequeue();
+                RegionBlock block = region[index];
+                int exitHeight = heights[index] + block.Metrics.StackFinalDelta;
+
+                // Internal successors: constant-jump target and/or fall-through. A frame
+                // terminator (REVERT) has NO fall-through edge — propagating one would seed
+                // the next block with a phantom height and corrupt its entry pops.
+                if (block.HasConstantJump)
+                {
+                    int target = FindRegionBlock(region, block.JumpDestination);
+                    if (target >= 0 && !Propagate(target, exitHeight, component[index]))
+                        return false;
+                    if (block.TerminalJump == Instruction.JUMPI
+                        && index + 1 < count && region[index + 1].Block.Start == block.Block.End
+                        && !Propagate(index + 1, exitHeight, component[index]))
+                    {
+                        return false;
+                    }
+                }
+                else if (block.IsFullyEmittable && !block.EndsWithTerminator
                     && index + 1 < count && region[index + 1].Block.Start == block.Block.End
-                    && !Propagate(index + 1, exitHeight))
+                    && !Propagate(index + 1, exitHeight, component[index]))
                 {
                     return false;
                 }
+                // Cuts, external jumps and frame terminators are exits; no internal constraint.
             }
-            else if (block.IsFullyEmittable && !block.EndsWithTerminator
-                && index + 1 < count && region[index + 1].Block.Start == block.Block.End
-                && !Propagate(index + 1, exitHeight))
+        }
+
+        // Blocks with no dispatch entry and no internal in-edge are unreachable: give each a
+        // degenerate component so emission stays well-formed. Their code never executes and,
+        // because they are seeded without propagation, their out-edges cannot constrain (or
+        // fail) the live components.
+        for (int i = 0; i < count; i++)
+        {
+            if (component[i] < 0)
             {
-                return false;
+                component[i] = componentCount++;
+                heights[i] = 0;
             }
-            // Cuts, external jumps and frame terminators are exits; no internal constraint.
         }
 
+        int[] bottomByComponent = new int[componentCount];
+        int[] topByComponent = new int[componentCount];
         for (int i = 0; i < count; i++)
         {
-            if (!visited[i])
-                return false; // continuation entries unreachable from the head: keep v4.0
+            int c = component[i];
+            bottomByComponent[c] = Math.Min(bottomByComponent[c], heights[i] - region[i].Metrics.StackRequired);
+            topByComponent[c] = Math.Max(topByComponent[c], heights[i] + region[i].Metrics.StackMaxDelta);
         }
 
-        int windowBottom = 0;
-        int maxHeight = 0;
-        for (int i = 0; i < count; i++)
-        {
-            windowBottom = Math.Min(windowBottom, heights[i] - region[i].Metrics.StackRequired);
-            maxHeight = Math.Max(maxHeight, heights[i] + region[i].Metrics.StackMaxDelta);
-        }
-
-        int frameSize = maxHeight - windowBottom;
+        int frameSize = 0;
+        for (int c = 0; c < componentCount; c++)
+            frameSize = Math.Max(frameSize, topByComponent[c] - bottomByComponent[c]);
         if (frameSize is <= 0 or > 32)
             return false;
 
-        plan = new FramePlan { Heights = heights, WindowBottom = windowBottom, MaxHeight = maxHeight, FrameSize = frameSize };
+        int[] bottomByBlock = new int[count];
+        for (int i = 0; i < count; i++)
+            bottomByBlock[i] = bottomByComponent[component[i]];
+
+        plan = new FramePlan { Heights = heights, BottomByBlock = bottomByBlock, FrameSize = frameSize };
         return true;
 
-        bool Propagate(int target, int height)
+        bool Propagate(int target, int height, int sourceComponent)
         {
-            if (visited[target])
-                return heights[target] == height;
+            if (component[target] >= 0)
+            {
+                // A revisit must agree on both height AND component: a cross-component edge
+                // would mean two independently anchored height systems meet — bail to v4.0.
+                return component[target] == sourceComponent && heights[target] == height;
+            }
             heights[target] = height;
-            visited[target] = true;
+            component[target] = sourceComponent;
             worklist.Enqueue(target);
             return true;
         }
@@ -264,7 +304,7 @@ public static partial class IlSegmentCompiler
         {
             int blockIndex = entryBlockIndexes[e];
             il.MarkLabel(entryStubs[e]);
-            int pops = plan.Heights[blockIndex] - plan.WindowBottom;
+            int pops = plan.Heights[blockIndex] - plan.BottomByBlock[blockIndex];
             for (int i = pops - 1; i >= 0; i--)
             {
                 il.Emit(OpCodes.Ldarg_2);
@@ -300,7 +340,7 @@ public static partial class IlSegmentCompiler
             il.Emit(OpCodes.Blt, bail);
         }
 
-        int entryLength = plan.Heights[index] - plan.WindowBottom;
+        int entryLength = plan.Heights[index] - plan.BottomByBlock[index];
         List<Operand> symbolicStack = new(plan.FrameSize);
         for (int k = 0; k < entryLength; k++)
             symbolicStack.Add(new Operand(OperandKind.Local, frame[k], ConstantIndex: -1));

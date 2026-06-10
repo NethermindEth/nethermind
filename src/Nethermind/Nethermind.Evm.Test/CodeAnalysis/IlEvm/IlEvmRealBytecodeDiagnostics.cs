@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -56,6 +57,8 @@ public class IlEvmRealBytecodeDiagnostics
         }
 
         // Mirror IlEvm.Compile exactly, under PRODUCTION economics (the node's view).
+        long registerizedBefore = IlSegmentCompiler.RegionsRegisterized;
+        long fallbackBefore = IlSegmentCompiler.RegionsFallbackV40;
         IlCompiledSegment?[] segments = new IlCompiledSegment?[analyzed.BlockCount];
         int segmentCount = 0;
         int regionsAttempted = 0;
@@ -75,10 +78,17 @@ public class IlEvmRealBytecodeDiagnostics
         }
 
         int coveredOps = 0;
+        int maxEntryPops = 0;
+        long totalEntryPops = 0;
+        int segmentTally = 0;
         foreach (IlCompiledSegment? segment in segments)
         {
-            if (segment is not null)
-                coveredOps += segment.OpCount;
+            if (segment is null)
+                continue;
+            coveredOps += segment.OpCount;
+            maxEntryPops = Math.Max(maxEntryPops, segment.StackRequired);
+            totalEntryPops += segment.StackRequired;
+            segmentTally++;
         }
 
         StringBuilder report = new();
@@ -87,6 +97,8 @@ public class IlEvmRealBytecodeDiagnostics
         report.AppendLine($"regions attempted:   {regionsAttempted}");
         report.AppendLine($"entry segments:      {segmentCount}");
         report.AppendLine($"entry-block ops sum: {coveredOps}");
+        report.AppendLine($"entry pops (boundary traffic): max={maxEntryPops} avg={(segmentTally > 0 ? (double)totalEntryPops / segmentTally : 0):F1}");
+        report.AppendLine($"regions registerized (v4.1): {IlSegmentCompiler.RegionsRegisterized - registerizedBefore}, fallback (v4.0): {IlSegmentCompiler.RegionsFallbackV40 - fallbackBefore}");
         report.AppendLine($"compile failures:    {Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.ContractCompilationFailures}");
         report.AppendLine("region cutters (interpreter-only block leaders):");
         foreach ((Instruction cutter, int count) in cutters.OrderByDescending(static pair => pair.Value).Take(15))
