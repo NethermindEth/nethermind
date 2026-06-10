@@ -14,8 +14,9 @@ namespace Nethermind.Consensus.Stateless;
 /// Walks the state trie once and captures trie-node RLP along the path to each of N target accounts,
 /// replacing N independent per-account <see cref="State.Proofs.AccountProofCollector"/> walks for
 /// the state-trie portion. Storage tries are walked separately — one
-/// <see cref="State.Proofs.AccountProofCollector"/> per account — because the visitor framework's
-/// <c>ctx.Storage</c> is a state-trie path commitment, not the address hash a discriminator would need.
+/// <see cref="State.Proofs.AccountProofCollector"/> per account — though a single-pass walk is
+/// possible: at the storage descent <c>ctx.Storage</c> is the account's full path commitment
+/// (keccak(address)), so storage-trie nodes could be filtered per account in the same visit.
 /// </summary>
 internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextWithStorage>
 {
@@ -29,15 +30,14 @@ internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextW
         int n = storageSlots.Count;
         _accountHashes = new ValueHash256[n];
         int i = 0;
-        int totalSlots = 0;
         foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> entry in storageSlots)
         {
             _accountHashes[i++] = ValueKeccak.Compute(entry.Key.Value.Bytes);
-            totalSlots += entry.Value.Count;
         }
 
-        // Approximate capacity: a short branch/extension/leaf chain per touched account and slot.
-        _nodes = new List<byte[]>(Math.Max(16, (n + totalSlots) * 2));
+        // Capacity hint: one state-trie path of typical depth per account. Storage slots don't
+        // count — ShouldVisit filters storage tries out of this walk.
+        _nodes = new List<byte[]>(Math.Max(16, n * 8));
     }
 
     public bool IsFullDbScan => false;

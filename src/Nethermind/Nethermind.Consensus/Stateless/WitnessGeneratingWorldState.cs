@@ -20,6 +20,9 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
+/// <param name="stateReader">Serves the post-execution proof-collection walks in <see cref="GetWitness"/>;
+/// must be a plain (non-capturing) reader — re-traversal is proof collection, not state access, so
+/// recording it into <paramref name="trieStore"/> would only duplicate the witness buffers.</param>
 public class WitnessGeneratingWorldState(
     IWorldState state,
     IStateReader stateReader,
@@ -64,13 +67,11 @@ public class WitnessGeneratingWorldState(
             // is 1 (capture) + N (per-account re-walks). The dedup in the downstream PooledSet
             // means the *output* is the same as a single-pass walk; the saving is in avoiding N
             // separate capture passes (and N×state-trie-node RLP encodings) for shared-path nodes.
-            // TODO: teach AccountProofCollector to take the storage root from a previously-visited
-            // account node so the state-trie path can be walked exactly once.
+            // TODO: fold the storage walks into the MultiAccountProofCollector pass — at the storage
+            // descent ctx.Storage is the account's full path commitment (keccak(address)), so
+            // per-account slot filtering is possible and the trie would be walked exactly once.
             MultiAccountProofCollector stateCollector = new(_storageSlots);
-            using (trieStore.PauseRecording())
-            {
-                stateReader.RunTreeVisitor(stateCollector, parentHeader);
-            }
+            stateReader.RunTreeVisitor(stateCollector, parentHeader);
             foreach (byte[] node in stateCollector.Nodes)
             {
                 stateNodes.Add(node);
@@ -80,10 +81,7 @@ public class WitnessGeneratingWorldState(
             {
                 if (entry.Value.Count == 0) continue;
                 AccountProofCollector storageCollector = new(entry.Key.Value, entry.Value);
-                using (trieStore.PauseRecording())
-                {
-                    stateReader.RunTreeVisitor(storageCollector, parentHeader);
-                }
+                stateReader.RunTreeVisitor(storageCollector, parentHeader);
                 (_, IReadOnlyList<byte[]>[] storageProofs) = storageCollector.GetRawResult();
                 foreach (IReadOnlyList<byte[]> slotProof in storageProofs)
                 {
@@ -109,10 +107,9 @@ public class WitnessGeneratingWorldState(
             foreach (byte[] node in stateNodes)
                 state.Add(node);
 
-            int totalKeysCount = 0;
+            int totalKeysCount = _storageSlots.Count;
             foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> kvp in _storageSlots)
             {
-                totalKeysCount++;
                 totalKeysCount += kvp.Value.Count;
             }
 
@@ -257,14 +254,8 @@ public class WitnessGeneratingWorldState(
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         RecordEmptySlots(address);
-        // Both the codeHash and the code bytes are available here. A CREATE/CREATE2 inside the
-        // proof_call that deploys a contract without a subsequent CALL to it would otherwise leave
-        // the witness without that contract's bytecode — the verifier reconstructs the account's
-        // codeHash from the state proof, looks it up in witness.Codes, and finds nothing.
-        // Skip the genesis path: the genesis block's contracts are referenced from chain spec,
-        // not from the state proof, and the runtime code is already in the chain's code DB.
-        if (!isGenesis && code.Length > 0)
-            _bytecodes.TryAdd(codeHash, code.ToArray());
+        // Deployed code is deliberately NOT captured: a stateless re-execution replays the CREATE
+        // and regenerates it, and EEST stateless tests assert it is absent from the witness.
         return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 

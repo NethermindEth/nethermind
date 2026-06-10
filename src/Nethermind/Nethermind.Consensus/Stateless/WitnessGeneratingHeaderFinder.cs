@@ -35,6 +35,12 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
         Hash256 currentHash = parentHash;
         BlockHeader parentHeader = inner.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
 
+        // BLOCKHASH can only reach below the executed block, so a recorded header above the parent
+        // means the bookkeeping is broken — fail loudly instead of computing a non-positive count.
+        if (_lowestRequestedHeader < long.MaxValue && _lowestRequestedHeader > parentHeader.Number)
+            throw new InvalidOperationException(
+                $"Recorded header {_lowestRequestedHeader} is above the executed-against parent {parentHeader.Number}");
+
         // Headers in ascending block-number order — any BLOCKHASH-touched ancestor first, recorded
         // block last — so the chain is contiguous and replayable. _lowestRequestedHeader stays at
         // long.MaxValue unless BLOCKHASH reached further back during processing.
