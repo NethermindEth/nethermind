@@ -7,6 +7,10 @@
     <RootNamespace>Nethermind.Stateless.Execution</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
+    <PackageReference Include="Nethermind.Zkvm.Abstractions" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.SszGenerator\Nethermind.Serialization.SszGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
