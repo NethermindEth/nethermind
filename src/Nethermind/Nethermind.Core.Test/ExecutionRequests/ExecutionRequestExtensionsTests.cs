@@ -131,7 +131,7 @@ public class ExecutionRequestExtensionsTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(requestData, Has.Length.EqualTo(requestDataSize));
-                Assert.That(encodedRequests.AsSpan(offset, requestData.Length).ToArray(), Is.EqualTo(requestData));
+                Assert.That(encodedRequests.AsSpan(offset, requestData.Length).SequenceEqual(requestData), Is.True);
             }
             offset += requestData.Length;
         }
