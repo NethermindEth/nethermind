@@ -75,7 +75,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // metered to its death so the exact failing op and failure type are preserved.
         bool metered = false;
 
-        int entryIndex = programCounter == 0 ? 0 : pcToEntry[programCounter];
+        // Resume pcs (after a CALL-family suspension) are instruction starts at most one past
+        // the end of code; the bound guards a truncated trailing PUSH having overshot it.
+        int entryIndex = programCounter == 0
+            ? 0
+            : (uint)programCounter < (uint)pcToEntry.Length ? pcToEntry[programCounter] : ops.Length;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
             while ((uint)entryIndex < (uint)ops.Length)
@@ -251,6 +255,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     exceptionType = EvmExceptionType.InvalidJumpDestination;
                     break;
                 }
+
+                // pc one past the last instruction maps one past the last entry: clean exit.
+                if ((uint)entryIndex >= (uint)ops.Length)
+                    continue;
 
                 // A fused handler can land one instruction INTO a block (EXTCODESIZE+ISZERO
                 // consumes the block's first op), skipping the BlockStart precharge — the rest
