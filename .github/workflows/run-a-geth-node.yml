@@ -30,9 +30,6 @@ on:
       run_id:
         description: ""
         value: ${{ jobs.trigger_node_and_vm_creation.outputs.run_id }}
-      rpc_url:
-        description: ""
-        value: ${{ jobs.trigger_node_and_vm_creation.outputs.rpc_url }}
 
 jobs:
   create_docker_image:
@@ -171,13 +168,27 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Download machine specs artifact
+        env:
+          GH_APP_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          ARTIFACT_ID=$(curl -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ steps.gh-app.outputs.token }}" https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts | jq '.artifacts[0].id')
-          curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ steps.gh-app.outputs.token }}" -o artifact.zip https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip
+          # wait-for-workflow.sh already blocks until the run completes, so the artifact
+          # exists; this short retry only absorbs brief artifact-API listing lag.
+          ARTIFACT_ID=""
+          for attempt in $(seq 1 10); do
+            ARTIFACT_ID=$(curl -s -H "Accept: application/vnd.github.v3+json" -H "Authorization: token $GH_APP_TOKEN" \
+              "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts" | jq -r '.artifacts[0].id // empty')
+            [ -n "$ARTIFACT_ID" ] && break
+            echo "Artifact not listed yet (attempt $attempt/10); retrying in 15s..."
+            sleep 15
+          done
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "No machine-details artifact found for run ${{ env.RUN_ID }}."
+            exit 1
+          fi
+          curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token $GH_APP_TOKEN" -o artifact.zip "https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip"
           unzip artifact.zip -d ./downloaded-artifacts/
 
       - name: Display machine specs content
-        id: specs
         run: |
           FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
           echo "<details>" >> $GITHUB_STEP_SUMMARY
@@ -190,7 +201,6 @@ jobs:
           rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+' spec-output.txt)
           echo "RPC URL extracted is: $rpc_url"
           echo "RPC_URL=$rpc_url" >> $GITHUB_ENV
-          echo "rpc_url=$rpc_url" >> $GITHUB_OUTPUT
 
       - name: Save RPC URL to file
         if: inputs.custom_run_id != ''
