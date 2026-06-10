@@ -105,7 +105,8 @@ for t in "${test_list[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Build a markdown summary from `flood report`.
+# Build a markdown summary directly from results.json (robust against the
+# pretty-printer's loosely-pinned dependencies; vegeta latencies are seconds).
 # ---------------------------------------------------------------------------
 summary="$OUT_DIR/flood-summary.md"
 {
@@ -113,28 +114,31 @@ summary="$OUT_DIR/flood-summary.md"
   echo
   echo "Node: \`$RPC_URL\` | rates: \`$RATES\` req/s | duration: \`${DURATION}s\` | deep-check: \`$DEEP_CHECK\`"
   echo
-  echo "Tests: ${test_list[*]}"
-  echo
-  echo '```'
 } > "$summary"
 
 missing=0
 for t in "${test_list[@]}"; do
   od="$OUT_DIR/$t"
   {
-    echo "=== $t ==="
+    echo "### $t"
+    echo
     if [[ -f "$od/results.json" ]]; then
-      # 'flood print' renders the stored results as text; 'flood report' would
-      # generate notebook/HTML files instead.
-      flood print "$od" 2>&1 || true
+      echo "| node | rate (rps) | actual rate | success | mean (ms) | p50 (ms) | p90 (ms) | p99 (ms) | max (ms) | requests |"
+      echo "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+      jq -r '
+        def ms(x): (x * 100000 | round) / 100;
+        .results | to_entries[] | .key as $node | .value as $r
+        | range($r.target_rate | length) as $i
+        | "| \($node) | \($r.target_rate[$i]) | \(($r.actual_rate[$i] * 100 | round) / 100) | \(($r.success[$i] * 100) | round)% | \(ms($r.mean[$i])) | \(ms($r.p50[$i])) | \(ms($r.p90[$i])) | \(ms($r.p99[$i])) | \(ms($r.max[$i])) | \($r.requests[$i]) |"
+      ' "$od/results.json" 2>/dev/null \
+        || { echo; echo "Failed to render $od/results.json"; }
     else
-      echo "NO RESULTS — flood did not write $od/results.json (see ${t}.log)"
+      echo "**NO RESULTS** — flood did not write \`results.json\` (see \`${t}.log\` in the artifact)."
       missing=$((missing + 1))
     fi
     echo
   } >> "$summary"
 done
-echo '```' >> "$summary"
 
 log "flood summary written to $summary"
 if (( missing == ${#test_list[@]} )); then
