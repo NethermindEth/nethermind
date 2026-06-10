@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -26,7 +25,6 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options) { }
-    public void TrackBalReadHint(Task balReadHint) { }
     public void DrainBalReadHint() { }
     public void Setup(Block block) { }
     public void SpendGas(long gas) { }

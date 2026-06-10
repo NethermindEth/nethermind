@@ -1274,10 +1274,6 @@ public class BlockProcessorTests
         {
         }
 
-        public void TrackBalReadHint(Task balReadHint)
-        {
-        }
-
         public void DrainBalReadHint()
         {
         }

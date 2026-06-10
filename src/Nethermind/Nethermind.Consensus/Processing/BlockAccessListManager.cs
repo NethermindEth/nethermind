@@ -160,9 +160,14 @@ public partial class BlockAccessListManager(
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
-    }
 
-    public void TrackBalReadHint(Task balReadHint) => _balReadHint = balReadHint;
+        // Kick off BAL read warming. DrainBalReadHint will await this just before the
+        // parallel pre-state apply commits its write batch (which would otherwise cancel it).
+        if (BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
+        {
+            _balReadHint = stateProvider.HintBal(suggestedBlock.BlockAccessList);
+        }
+    }
 
     public void DrainBalReadHint()
     {

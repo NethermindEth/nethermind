@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -24,16 +23,16 @@ public interface IBlockAccessListManager
     /// PrepareForProcessing.</summary>
     bool ForceConstructGeneratedBlockAccessList { get; set; }
 
+    /// <summary>
+    /// Prepares per-block state and, when <see cref="BatchReadEnabled"/> is true and the
+    /// block carries a <see cref="Block.BlockAccessList"/>, kicks off the BAL read-warming
+    /// task; <see cref="DrainBalReadHint"/> awaits it later in the parallel executor.
+    /// </summary>
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
 
     /// <summary>
-    /// Tracks the in-flight BAL read-warming task (<see cref="Nethermind.Evm.State.IWorldState.HintBal"/>)
-    /// started for the block being processed, so <see cref="DrainBalReadHint"/> can await it later.
-    /// </summary>
-    void TrackBalReadHint(Task balReadHint);
-
-    /// <summary>
-    /// Blocks until the tracked BAL read-warming task (if any) completes, then forgets it.
+    /// Blocks until the BAL read-warming task started by <see cref="PrepareForProcessing"/>
+    /// (if any) completes, then forgets it.
     /// </summary>
     /// <remarks>
     /// Used by the parallel-validation executor to let warming finish before the pre-state
