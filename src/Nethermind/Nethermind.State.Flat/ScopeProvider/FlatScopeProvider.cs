@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -14,16 +15,19 @@ public class FlatScopeProvider(
     IFlatDbManager flatDbManager,
     IFlatDbConfig configuration,
     ITrieWarmer trieWarmer,
-    BalReaderPool? balReaderPool,
     ResourcePool.Usage usage,
     ILogManager logManager,
     bool isReadOnly)
     : IWorldStateScopeProvider
 {
-    // Write paths (block processing) wrap the durable production codeDb directly and benefit
-    // from the cross-block persisted-code hint cache. Read-only paths wrap a ReadOnlyDb temp
-    // buffer (writes are transient) and must NOT populate the hint cache — see TrieStoreScopeProvider.
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+
+    private readonly Lazy<BalReaderPool?> _balReaderPool = new(() =>
+    {
+        int configured = configuration.WarmReadConcurrency;
+        int concurrency = configured < 0 ? Math.Min(4 * Environment.ProcessorCount, 64) : configured;
+        return concurrency >= 1 ? new BalReaderPool(concurrency) : null;
+    });
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
@@ -39,8 +43,8 @@ public class FlatScopeProvider(
             flatDbManager,
             configuration,
             trieWarmer,
-            balReaderPool,
             logManager,
+            balReaderPool: _balReaderPool.Value,
             isReadOnly: isReadOnly);
     }
 }

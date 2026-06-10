@@ -7,26 +7,19 @@ using System.Threading;
 namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
-/// Persistent pool of dedicated reader threads that drain a per-call job set via a shared cursor.
-/// Intended for the BAL read-warming pump in <see cref="FlatWorldStateScope"/>.
+/// Persistent pool of dedicated reader threads for the BAL read-warming pump in
+/// <see cref="FlatWorldStateScope"/>.
 /// </summary>
 /// <remarks>
-/// Threads are spawned once at construction and parked on a semaphore between batches. Each
-/// <see cref="Drain"/> call selects up to <see cref="MaxConcurrency"/> of those threads, hands
-/// them a shared <see cref="Interlocked.Increment(ref int)"/> cursor over the batch, and waits
-/// for them all to finish before returning.
+/// Dedicated OS threads rather than the shared thread pool because block execution keeps
+/// the pool saturated for the whole block, so pooled warm reads are starved exactly when
+/// they matter, and the pool's slow thread injection never reaches the oversubscribed
+/// concurrency a disk-latency-bound drain needs. One persistent pool rather than per-block
+/// <see cref="TaskCreationOptions.LongRunning"/> tasks so the ~64 OS thread create/joins
+/// each block don't recur at mainnet cadence.
 ///
-/// Why dedicated OS threads rather than the shared thread pool: block execution keeps the pool
-/// saturated for the whole block, so pooled warm reads are starved exactly when they matter,
-/// and the pool's slow thread injection never reaches the oversubscribed concurrency a
-/// disk-latency-bound drain needs.
-///
-/// Why one persistent pool rather than spawning <see cref="TaskCreationOptions.LongRunning"/>
-/// tasks per block: each block's warmup would otherwise create-and-join up to ~64 OS threads,
-/// which is significant overhead at mainnet block cadence. Persistent threads amortize that.
-///
-/// One <see cref="Drain"/> call at a time. Concurrent callers will see the second drain block
-/// until the first completes (guarded by an interlocked sentinel).
+/// One <see cref="Drain"/> call at a time -- concurrent callers serialize via an interlocked
+/// sentinel.
 /// </remarks>
 public sealed class BalReaderPool : IDisposable
 {
@@ -35,7 +28,7 @@ public sealed class BalReaderPool : IDisposable
     private readonly Thread[] _threads;
     private readonly SemaphoreSlim _workAvailable;
     private Batch? _current;
-    private int _drainInFlight; // 0 = idle, 1 = a Drain owns _current
+    private int _drainInFlight;
     private volatile bool _disposed;
 
     private sealed class Batch
@@ -65,16 +58,10 @@ public sealed class BalReaderPool : IDisposable
 
     /// <summary>
     /// Runs <paramref name="work"/> for each <c>j</c> in <c>[0, jobCount)</c> across up to
-    /// <paramref name="workers"/> dedicated reader threads. Blocks until every job has been
-    /// claimed (executed, or skipped on cancellation). The first exception observed in any
-    /// worker is rethrown after the batch completes.
+    /// <paramref name="workers"/> dedicated reader threads (clamped to <see cref="MaxConcurrency"/>).
+    /// Blocks until every job has been claimed. Cancellation stops new claims but in-flight
+    /// jobs run to completion. The first worker exception is rethrown after the batch joins.
     /// </summary>
-    /// <param name="jobCount">Number of jobs.</param>
-    /// <param name="workers">Number of reader threads to wake for this batch. Clamped to
-    /// <see cref="MaxConcurrency"/>.</param>
-    /// <param name="work">Per-job action; receives the job index.</param>
-    /// <param name="token">Cancels the cursor: workers stop pulling new jobs once observed.
-    /// Jobs already claimed run to completion.</param>
     public void Drain(int jobCount, int workers, Action<int> work, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(work);
@@ -83,7 +70,6 @@ public sealed class BalReaderPool : IDisposable
 
         int activeWorkers = Math.Clamp(workers, 1, MaxConcurrency);
 
-        // Single-batch invariant: only one Drain may own _current at a time.
         while (Interlocked.CompareExchange(ref _drainInFlight, 1, 0) != 0)
         {
             Thread.Yield();
@@ -120,7 +106,7 @@ public sealed class BalReaderPool : IDisposable
             if (_disposed) return;
 
             Batch? batch = _current;
-            if (batch is null) continue; // spurious wake
+            if (batch is null) continue;
 
             try
             {

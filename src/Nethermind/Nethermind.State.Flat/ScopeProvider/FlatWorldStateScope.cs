@@ -53,8 +53,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatCommitTarget commitTarget,
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
-        BalReaderPool? balReaderPool,
         ILogManager logManager,
+        BalReaderPool? balReaderPool = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
@@ -261,7 +261,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
-        if (_balReaderPool is null) return; // warm reads disabled by config
+        if (_balReaderPool is null) return;
 
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
@@ -287,13 +287,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
-        // Scale active workers to the batch: no point waking more readers than ~64-job slices
-        // of work. Pool capacity caps the upper bound.
+        // No point waking more readers than ~64-job slices of work.
         int workers = Math.Min(_balReaderPool.MaxConcurrency, Math.Max(1, idx / 64));
 
         _balReaderPool.Drain(idx, workers, j =>
         {
-            // Paused: claim the slot but skip the read, so the cursor drains without I/O.
             if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);

@@ -77,7 +77,6 @@ public class WriteBatchBenchmark
                 commitTarget: commitTarget,
                 configuration: _config,
                 trieCacheWarmer: new NoopTrieWarmer(),
-                balReaderPool: null,
                 logManager: NullLogManager.Instance);
 
             int addressOffset = totalAccountCount;
@@ -160,7 +159,6 @@ public class WriteBatchBenchmark
             commitTarget: commitTarget,
             configuration: _config,
             trieCacheWarmer: new NoopTrieWarmer(),
-            balReaderPool: null,
             logManager: NullLogManager.Instance);
     }
 
