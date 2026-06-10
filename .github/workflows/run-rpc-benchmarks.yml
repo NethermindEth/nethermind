@@ -63,11 +63,6 @@ on:
         default: ""
   pull_request:
     types: [labeled]
-  # Temporary while the workflow is under development: a push to its branch runs
-  # a narrow smoke test (also forces GitHub to register the workflow so it can
-  # be dispatched via the API). Remove before merging to master.
-  push:
-    branches: [feature/rpc-benchmarks-ci]
 
 # No concurrency group: with cancel-in-progress=false GitHub keeps only the
 # newest PENDING run per group, silently cancelling queued benchmark requests.
@@ -129,25 +124,15 @@ jobs:
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
             node_config="${IN_NODE_CONFIG:-}"
-          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            # PR labeled with 'rpc-benchmark': run flood with defaults, no profiling.
+          else
+            # PR labeled with 'rpc-benchmark': run flood on common read methods.
             branch="${PR_HEAD_BRANCH}"
             benchmark_tool="flood"
             docker_image=""
             dottrace="false"
             state_layout="flat"
             additional_flags=""
-            tool_config=""
-            node_config=""
-          else
-            # push (development): narrow smoke test on the prebuilt master image.
-            branch="${PUSH_BRANCH}"
-            benchmark_tool="flood"
-            docker_image="nethermindeth/nethermind:master"
-            dottrace="false"
-            state_layout="flat"
-            additional_flags=""
-            tool_config='{"tests":"eth_call","rates":"10 50","duration":15}'
+            tool_config='{"tests":"eth_call eth_getBalance eth_getCode eth_getStorageAt eth_getTransactionCount eth_getBlockByNumber","rates":"10 100 500","duration":30}'
             node_config=""
           fi
 
