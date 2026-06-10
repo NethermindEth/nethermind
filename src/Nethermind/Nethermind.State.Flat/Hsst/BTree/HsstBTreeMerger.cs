@@ -31,7 +31,6 @@ internal static class HsstBTreeMerger
     /// The merger drives it to exhaustion.</param>
     /// <param name="valueMerger">Per-key callback bundle. <c>MergeValues</c> emits the merged
     /// value for each key, resolving conflicts across the matching sources.</param>
-    /// <param name="options">Forwarded to the underlying builder.</param>
     /// <param name="expectedKeyCount">Forwarded to the underlying builder (sizing hint).</param>
     /// <param name="keyFirst">Forwarded to the underlying builder (entry layout selector).</param>
     internal static void NWayMerge<TWriter, TWriterReader, TWriterPin, TReader, TPin, TSource, TFactory, TValueMerger>(
@@ -39,7 +38,6 @@ internal static class HsstBTreeMerger
         int keyLength,
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
         TValueMerger valueMerger,
-        HsstBTreeOptions? options = null,
         int expectedKeyCount = 16,
         bool keyFirst = false)
         where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin>
@@ -54,7 +52,7 @@ internal static class HsstBTreeMerger
         using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount);
         NWayMerge<TWriter, TWriterReader, TWriterPin, TReader, TPin, TSource, TFactory, TValueMerger>(
             ref writer, keyLength, ref cursor, valueMerger,
-            ref buffers.Buffers, options, expectedKeyCount, keyFirst);
+            ref buffers.Buffers, expectedKeyCount, keyFirst);
     }
 
     /// <summary>
@@ -70,7 +68,6 @@ internal static class HsstBTreeMerger
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
         TValueMerger valueMerger,
         scoped ref HsstBTreeBuilderBuffers externalBuffers,
-        HsstBTreeOptions? options = null,
         int expectedKeyCount = 16,
         bool keyFirst = false)
         where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin>
@@ -86,7 +83,7 @@ internal static class HsstBTreeMerger
         // compiler refuses `ref` to a `using`-declared local, so manage disposal manually
         // via try/finally (same pattern as PersistedSnapshotMerger's BTree call sites).
         HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> builder =
-            new(ref writer, ref externalBuffers, keyLength, options, expectedKeyCount, keyFirst);
+            new(ref writer, ref externalBuffers, keyLength, expectedKeyCount, keyFirst);
         try
         {
             while (cursor.MoveNext())
@@ -106,7 +103,7 @@ internal static class HsstBTreeMerger
     }
 
     /// <summary>
-    /// Key-first variant of <see cref="NWayMerge{TWriter,TWriterReader,TWriterPin,TReader,TPin,TSource,TValueMerger}(ref TWriter,int,ref NWayMergeCursor{TReader,TPin,TSource},TValueMerger,ref HsstBTreeBuilderBuffers,HsstBTreeOptions?,int,bool)"/>:
+    /// Key-first variant of <see cref="NWayMerge{TWriter,TWriterReader,TWriterPin,TReader,TPin,TSource,TValueMerger}(ref TWriter,int,ref NWayMergeCursor{TReader,TPin,TSource},TValueMerger,ref HsstBTreeBuilderBuffers,int,bool)"/>:
     /// drives an <see cref="IndexType.BTreeKeyFirst"/> outer build, where the BTree
     /// builder requires the value's full length up front. Stages each emitted entry's
     /// value through an internal <see cref="PooledByteBufferWriter"/> (the value-merger
@@ -121,7 +118,6 @@ internal static class HsstBTreeMerger
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
         TValueMerger valueMerger,
         scoped ref HsstBTreeBuilderBuffers externalBuffers,
-        HsstBTreeOptions? options = null,
         int expectedKeyCount = 16)
         where TBuilderWriter : IByteBufferWriterWithReader<TBuilderReader, TBuilderPin>
         where TBuilderPin : struct, IBufferPin, allows ref struct
@@ -134,7 +130,7 @@ internal static class HsstBTreeMerger
     {
         using PooledByteBufferWriter staging = new(4096);
         HsstBTreeBuilder<TBuilderWriter, TBuilderReader, TBuilderPin> builder =
-            new(ref writer, ref externalBuffers, keyLength, options, expectedKeyCount, keyFirst: true);
+            new(ref writer, ref externalBuffers, keyLength, expectedKeyCount, keyFirst: true);
         try
         {
             while (cursor.MoveNext())

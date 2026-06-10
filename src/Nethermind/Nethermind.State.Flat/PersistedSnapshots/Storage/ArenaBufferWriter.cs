@@ -31,7 +31,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// the fast path too.
 /// </summary>
 public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBufferWriter.OpenViewDelegate openView)
-    : IByteBufferWriterWithReader<ArenaBufferReader, NoOpPin>, IDisposable
+    : IByteBufferWriterWithReader<WholeReadSessionReader, NoOpPin>, IDisposable
 {
     private const int BufferSize = 1024 * 1024; // 1 MiB
     private const int MaxSizeHint = 8 * 1024 * 1024; // 8 MiB — largest single span a caller may request
@@ -108,7 +108,7 @@ public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBuf
     /// reader's window.
     /// </summary>
     [UnscopedRef]
-    public ArenaBufferReader OpenReader(long pastSize)
+    public WholeReadSessionReader OpenReader(long pastSize)
     {
         if (_activeView is not null || _pinnedReaderBuffer is not null)
             throw new InvalidOperationException(
@@ -122,7 +122,7 @@ public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBuf
             _pinnedReaderHandle = GCHandle.Alloc(_buffer, GCHandleType.Pinned);
             _pinnedReaderBuffer = _buffer;
             byte* ptr = (byte*)_pinnedReaderHandle.AddrOfPinnedObject() + bufferOffset;
-            return new ArenaBufferReader(ptr, pastSize);
+            return new WholeReadSessionReader(ptr, pastSize);
         }
 
         // Slow path: window straddles already-flushed bytes — flush remainder
@@ -130,12 +130,12 @@ public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBuf
         Flush();
         long writerWindowStart = Written - pastSize;
         _activeView = _openView(writerWindowStart, pastSize);
-        return new ArenaBufferReader(_activeView.DataPtr, pastSize);
+        return new WholeReadSessionReader(_activeView.DataPtr, pastSize);
     }
 
     /// <summary>
     /// Release the view opened by the most recent <see cref="OpenReader"/> call.
-    /// Any outstanding <see cref="ArenaBufferReader"/> borrowed from this writer
+    /// Any outstanding <see cref="WholeReadSessionReader"/> borrowed from this writer
     /// must no longer be used after this returns.
     /// </summary>
     public void DisposeActiveReader()
@@ -213,39 +213,4 @@ public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBuf
         // Do NOT return _buffer to the pool — it's still pinned for the reader.
         _buffer = ArrayPool<byte>.Shared.Rent(requested);
     }
-}
-
-/// <summary>
-/// Pointer-backed reader over an <see cref="IArenaWholeView"/> or pinned write
-/// buffer. The backing memory is owned by the originating
-/// <see cref="ArenaBufferWriter"/>; this reader merely borrows its data pointer.
-/// </summary>
-public readonly unsafe ref struct ArenaBufferReader : IHsstByteReader<NoOpPin>
-{
-    private readonly byte* _ptr;
-    private readonly long _length;
-
-    internal ArenaBufferReader(byte* ptr, long length)
-    {
-        _ptr = ptr;
-        _length = length;
-    }
-
-    public long Length => _length;
-
-    public bool TryRead(long offset, scoped Span<byte> output)
-    {
-        if ((ulong)offset > (ulong)(_length - output.Length)) return false;
-        new ReadOnlySpan<byte>(_ptr + offset, output.Length).CopyTo(output);
-        return true;
-    }
-
-    public NoOpPin PinBuffer(long offset, long size)
-    {
-        if ((ulong)offset + (ulong)size > (ulong)_length)
-            throw new ArgumentOutOfRangeException(nameof(offset));
-        return new NoOpPin(new ReadOnlySpan<byte>(_ptr + offset, checked((int)size)));
-    }
-
-    public void Prefetch(long offset) { }
 }

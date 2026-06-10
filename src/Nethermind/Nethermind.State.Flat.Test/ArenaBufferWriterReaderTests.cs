@@ -50,7 +50,7 @@ public class ArenaBufferWriterReaderTests
 
             Assert.That(fs.Position, Is.EqualTo(0), "no flush yet");
 
-            ArenaBufferReader reader = writer.OpenReader(payload.Length);
+            WholeReadSessionReader reader = writer.OpenReader(payload.Length);
             Assert.That(fs.Position, Is.EqualTo(0), "buffer-backed reader must not flush");
 
             ReadAndAssert(reader, payload);
@@ -92,7 +92,7 @@ public class ArenaBufferWriterReaderTests
 
             // Ask for the full trailing region — straddles already-flushed bytes,
             // so the writer must take the mmap path.
-            ArenaBufferReader reader = writer.OpenReader(payload.Length);
+            WholeReadSessionReader reader = writer.OpenReader(payload.Length);
 
             Assert.That(openViewCalls, Is.EqualTo(1));
             Assert.That(lastOpenViewOffset, Is.EqualTo(0));
@@ -124,7 +124,7 @@ public class ArenaBufferWriterReaderTests
             byte[] payload = MakePattern(payloadSize);
             WriteAll(ref writer, payload);
 
-            ArenaBufferReader reader = writer.OpenReader(64);
+            WholeReadSessionReader reader = writer.OpenReader(64);
             ReadOnlySpan<byte> tail = payload.AsSpan(payload.Length - 64);
             ReadAndAssert(reader, tail);
 
@@ -181,7 +181,7 @@ public class ArenaBufferWriterReaderTests
             Assert.That(fs.Position, Is.EqualTo(0), "buffer is just full, no write-trigger Flush yet");
 
             // OpenReader on the tail data section: fast path, pins the buffer.
-            ArenaBufferReader reader = writer.OpenReader(dataSection);
+            WholeReadSessionReader reader = writer.OpenReader(dataSection);
             Assert.That(fs.Position, Is.EqualTo(0), "fast path must not flush");
             ReadAndAssert(reader, dataBytes);
 
@@ -235,7 +235,7 @@ public class ArenaBufferWriterReaderTests
             writer.Advance(sizeHint);
             Assert.That(writer.Written, Is.EqualTo(sizeHint));
 
-            ArenaBufferReader reader = writer.OpenReader(sizeHint);
+            WholeReadSessionReader reader = writer.OpenReader(sizeHint);
             ReadAndAssert(reader, payload);
             writer.DisposeActiveReader();
         }
@@ -282,7 +282,7 @@ public class ArenaBufferWriterReaderTests
         }
     }
 
-    private static unsafe void ReadAndAssert(ArenaBufferReader reader, ReadOnlySpan<byte> expected)
+    private static unsafe void ReadAndAssert(WholeReadSessionReader reader, ReadOnlySpan<byte> expected)
     {
         Assert.That(reader.Length, Is.EqualTo(expected.Length));
         byte[] actual = new byte[expected.Length];

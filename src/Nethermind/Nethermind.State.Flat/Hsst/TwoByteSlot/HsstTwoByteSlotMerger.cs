@@ -43,7 +43,7 @@ internal static class HsstTwoByteSlotMerger
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TSource : struct, IHsstMergeSource<TReader, TPin>
         where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
-        where TCallback : struct, IHsstTwoByteSlotMergeCallback
+        where TCallback : struct, IHsstMergeKeyCallback
     {
         const int KeyLength = HsstTwoByteSlotValueBuilder<TWriter>.KeyLength;
 

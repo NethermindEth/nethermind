@@ -30,14 +30,10 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     private const int MADV_RANDOM = 1;
     private const int MADV_DONTNEED = 4;
     private const int MADV_POPULATE_READ = 22;
-    private const int POSIX_FADV_DONTNEED = 4;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
 
     [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
     private static extern int Madvise(void* addr, nuint length, int advice);
-
-    [DllImport("libc", EntryPoint = "posix_fadvise", SetLastError = true)]
-    private static extern int PosixFadvise(int fd, long offset, long len, int advice);
 
     private readonly SafeFileHandle _handle;
     private MemoryMappedFile _mmf;
@@ -70,7 +66,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     internal long DeadBytes { get; set; }
 
     /// <summary>
-    /// Last value of <see cref="Frontier"/> reported to <c>Metrics.ArenaAllocatedBytesByTier</c>.
+    /// Last value of <see cref="Frontier"/> reported to <c>Metrics.ArenaAllocatedBytes</c>.
     /// Lets <see cref="ArenaManager"/> push frontier deltas on writer.Complete without
     /// keeping a parallel dict and without re-counting bytes it already reported.
     /// </summary>
@@ -155,13 +151,18 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     {
         if (!OperatingSystem.IsLinux()) return;
 
-        // Round offset up to page boundary, round end down — only advise full pages
-        nuint pageSize = PageSize;
-        nuint start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
-        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
-        if (end <= start) return;
+        if (TryAlignInward(offset, size, out nuint start, out nuint len))
+            Madvise(_basePtr + start, len, MADV_DONTNEED);
+    }
 
-        Madvise(_basePtr + start, end - start, MADV_DONTNEED);
+    // Round offset up to page boundary, round end down — only cover full pages.
+    private static bool TryAlignInward(long offset, long size, out nuint start, out nuint len)
+    {
+        nuint pageSize = PageSize;
+        start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
+        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
+        len = end - start;
+        return end > start;
     }
 
     /// <summary>
@@ -173,12 +174,8 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     {
         if (!OperatingSystem.IsLinux()) return;
 
-        nuint pageSize = PageSize;
-        nuint start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
-        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
-        if (end <= start) return;
-
-        Madvise(_basePtr + start, end - start, MADV_POPULATE_READ);
+        if (TryAlignInward(offset, size, out nuint start, out nuint len))
+            Madvise(_basePtr + start, len, MADV_POPULATE_READ);
     }
 
     /// <summary>
@@ -197,18 +194,8 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// Linux for shared mappings, but useful for benchmarking to ensure arena pages
     /// don't pollute the file cache.
     /// </summary>
-    public void FadviseDontNeed(long offset, long size)
-    {
-        if (!OperatingSystem.IsLinux()) return;
-
-        nuint pageSize = PageSize;
-        nuint start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
-        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
-        if (end <= start) return;
-
-        int fd = (int)_handle.DangerousGetHandle();
-        PosixFadvise(fd, (long)start, (long)(end - start), POSIX_FADV_DONTNEED);
-    }
+    public void FadviseDontNeed(long offset, long size) =>
+        PosixReclaim.FadviseDontNeed((int)_handle.DangerousGetHandle(), offset, size);
 
     /// <summary>
     /// <c>fallocate(PUNCH_HOLE | KEEP_SIZE)</c> over the page-aligned subrange of

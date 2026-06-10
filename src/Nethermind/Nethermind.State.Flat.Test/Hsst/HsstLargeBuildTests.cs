@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.Test.Hsst;
 /// <summary>
 /// End-to-end smoke for the HSST builder/reader/merge path at single-HSST sizes
 /// above the 2 GiB single-Span ceiling. Exercises the long-aware code paths
-/// (Bound.Length, HSST index offsets, mmap-backed long-offset MmapByteReader)
+/// (Bound.Length, HSST index offsets, mmap-backed long-offset WholeReadSessionReader)
 /// and verifies — on every yielded entry — that the bytes round-trip exactly,
 /// not just that the entry count matches.
 ///
@@ -145,7 +145,7 @@ public class HsstLargeBuildTests
                 case IndexType.BTree:
                     {
                         using HsstBTreeBuilderBuffersContainer hsstBuffers = new(checked((int)count));
-                        using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> hsst = new(ref writer, ref hsstBuffers.Buffers, KeySize, expectedKeyCount: checked((int)count));
+                        using HsstBTreeBuilder<ArenaBufferWriter, WholeReadSessionReader, NoOpPin> hsst = new(ref writer, ref hsstBuffers.Buffers, KeySize, expectedKeyCount: checked((int)count));
                         Span<byte> keyBuf = stackalloc byte[8];
                         Span<byte> valueBuf = stackalloc byte[1];
                         valueBuf[0] = BTreeValueByte;
@@ -259,8 +259,8 @@ public class HsstLargeBuildTests
         try
         {
             byte* dataPtr = ptr + accessor.PointerOffset;
-            MmapByteReader reader = new(dataPtr, size);
-            using HsstRefEnumerator<MmapByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
+            WholeReadSessionReader reader = new(dataPtr, size);
+            using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> e = new(in reader, new Bound(0, size));
             Span<byte> expectedKey = stackalloc byte[8];
             Span<byte> expectedValue = stackalloc byte[PackedValueSize];
             Span<byte> keyBuf = stackalloc byte[KeySize];
@@ -311,7 +311,7 @@ public class HsstLargeBuildTests
         try
         {
             byte* dataPtr = ptr + accessor.PointerOffset;
-            MmapByteReader reader = new(dataPtr, size);
+            WholeReadSessionReader reader = new(dataPtr, size);
 
             switch (indexType)
             {
@@ -323,7 +323,7 @@ public class HsstLargeBuildTests
                         for (int i = 0; i < ByteKeyEntryCount; i++)
                         {
                             // Match HsstDenseByteIndexTests' pattern: a fresh reader per lookup.
-                            using HsstReader<MmapByteReader, NoOpPin> r = new(in reader);
+                            using HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader);
                             keyBuf[0] = (byte)i;
                             Assert.That(r.TrySeek(keyBuf, out _), Is.True, $"DenseByteIndex missing tag {i}");
                             Bound vb = r.GetBound();
@@ -366,11 +366,11 @@ public class HsstLargeBuildTests
         {
             byte* dataA = ptrA + accA.PointerOffset;
             byte* dataB = ptrB + accB.PointerOffset;
-            MmapByteReader rA = new(dataA, sizeA);
-            MmapByteReader rB = new(dataB, sizeB);
+            WholeReadSessionReader rA = new(dataA, sizeA);
+            WholeReadSessionReader rB = new(dataB, sizeB);
 
-            using HsstEnumerator<MmapByteReader, NoOpPin> eA = new(in rA, new Bound(0, sizeA));
-            using HsstEnumerator<MmapByteReader, NoOpPin> eB = new(in rB, new Bound(0, sizeB));
+            using HsstEnumerator<WholeReadSessionReader, NoOpPin> eA = new(in rA, new Bound(0, sizeA));
+            using HsstEnumerator<WholeReadSessionReader, NoOpPin> eB = new(in rB, new Bound(0, sizeB));
             bool moreA = eA.MoveNext(in rA);
             bool moreB = eB.MoveNext(in rB);
 
@@ -384,7 +384,7 @@ public class HsstLargeBuildTests
                     case IndexType.BTree:
                         {
                             using HsstBTreeBuilderBuffersContainer outHsstBuffers = new(merged);
-                            using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> outHsst = new(ref writer, ref outHsstBuffers.Buffers, KeySize, expectedKeyCount: merged);
+                            using HsstBTreeBuilder<ArenaBufferWriter, WholeReadSessionReader, NoOpPin> outHsst = new(ref writer, ref outHsstBuffers.Buffers, KeySize, expectedKeyCount: merged);
                             Span<byte> keyBufA = stackalloc byte[KeySize];
                             Span<byte> keyBufB = stackalloc byte[KeySize];
                             while (moreA || moreB)
@@ -459,9 +459,9 @@ public class HsstLargeBuildTests
     }
 
     private static int ComparePins(
-        scoped in MmapByteReader rA, scoped in MmapByteReader rB,
-        scoped in HsstEnumerator<MmapByteReader, NoOpPin> eA,
-        scoped in HsstEnumerator<MmapByteReader, NoOpPin> eB,
+        scoped in WholeReadSessionReader rA, scoped in WholeReadSessionReader rB,
+        scoped in HsstEnumerator<WholeReadSessionReader, NoOpPin> eA,
+        scoped in HsstEnumerator<WholeReadSessionReader, NoOpPin> eB,
         bool moreA, bool moreB)
     {
         if (!moreA) return 1;

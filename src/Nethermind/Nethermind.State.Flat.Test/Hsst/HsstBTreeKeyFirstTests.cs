@@ -33,7 +33,7 @@ public class HsstBTreeKeyFirstTests
         using PooledByteBufferWriter pooled = new(1024);
         using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount: 4);
         HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(
-            ref pooled.GetWriter(), ref buffers.Buffers, keyLength: 4, options: null, expectedKeyCount: 4, keyFirst: true);
+            ref pooled.GetWriter(), ref buffers.Buffers, keyLength: 4, expectedKeyCount: 4, keyFirst: true);
         try
         {
             bool threw = false;

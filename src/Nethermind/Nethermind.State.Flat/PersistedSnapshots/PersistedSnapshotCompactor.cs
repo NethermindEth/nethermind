@@ -152,7 +152,7 @@ public class PersistedSnapshotCompactor(
             using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
             {
                 long sw = Stopwatch.GetTimestamp();
-                PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
+                PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<ArenaBufferWriter, WholeReadSessionReader, NoOpPin>(
                     views, ref arenaWriter.GetWriter(), mergedBloom);
 
                 long len = arenaWriter.GetWriter().Written;

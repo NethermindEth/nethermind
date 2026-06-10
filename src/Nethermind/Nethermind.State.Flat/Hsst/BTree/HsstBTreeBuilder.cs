@@ -37,7 +37,6 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private ref TWriter _writer;
     private long _writtenBeforeValue;
     private readonly long _baseOffset;
-    private readonly HsstBTreeOptions _options;
     private readonly bool _keyFirst;
     private int _keyLength;
 
@@ -115,16 +114,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <see cref="Add"/>.
     /// </para>
     /// </remarks>
-    public HsstBTreeBuilder(ref TWriter writer, ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16, bool keyFirst = false)
+    public HsstBTreeBuilder(ref TWriter writer, ref HsstBTreeBuilderBuffers buffers, int keyLength, int expectedKeyCount = 16, bool keyFirst = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
 
-        HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
-
         _writer = ref writer;
         _baseOffset = _writer.Written;
-        _options = opts;
         _keyLength = keyLength;
         _keyFirst = keyFirst;
 
@@ -384,11 +380,6 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// </remarks>
     public unsafe void Build()
     {
-        int maxIntermediateEntries = _options.MaxIntermediateEntries;
-        int maxIntermediateBytes = _options.MaxIntermediateBytes;
-        int minIntermediateChildren = Math.Min(_options.MinIntermediateChildren, maxIntermediateEntries);
-        int minIntermediateBytes = Math.Min(_options.MinIntermediateBytes, maxIntermediateBytes);
-
         // Trigger 3: flush any remaining unflushed entries so BuildIndex can skip its
         // leaf phase entirely. EmitInlineLeaf does its own on-page trim, so older
         // pending entries that no longer share the writer's current page stay sealed
@@ -413,7 +404,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // populated at descriptor-push time (EmitInlineLeaf, FlushPendingAsEntries,
         // FlushPendingNotOnCurrentPage). BuildIndex propagates first-keys as it walks
         // up the tree, so no read-back is required.
-        int rootSize = BuildIndex(absoluteIndexStart, maxIntermediateEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+        int rootSize = BuildIndex(absoluteIndexStart);
         int rootPrefixLen = _rootPrefixLen;
 
         if ((uint)rootSize > ushort.MaxValue)
@@ -813,6 +804,23 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
     private const int MaxKeyLen = 255;
 
+    /// <summary>Hard upper bound on children per intermediate node (fan-out) — sanity cap
+    /// only; the byte threshold (<see cref="MaxIntermediateBytes"/>) is the normal binding
+    /// constraint.</summary>
+    private const int MaxIntermediateEntries = 2048;
+
+    /// <summary>Byte budget per intermediate node — accumulation stops when the next child
+    /// would push the estimated node size over this threshold. Higher values flatten the
+    /// tree (fewer levels = fewer cache misses per lookup) at the cost of a larger per-node
+    /// binary search. Set to one 4 KiB page so each intermediate fits in a single
+    /// page-aligned pin window.</summary>
+    private const int MaxIntermediateBytes = 4096;
+
+    /// <summary>Minimum children per intermediate node — accumulation always reaches this
+    /// before the dynamic-split heuristics (max-sep growth, value-slot widening, 4 KiB
+    /// page-crossing) are allowed to fire.</summary>
+    private const int MinIntermediateChildren = 16;
+
     // Root's common-key-prefix length, populated by <see cref="BuildIndex"/> for the
     // trailer. Zero for empty HSSTs.
     private int _rootPrefixLen;
@@ -826,11 +834,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <see cref="CopyRootPrefixBytes"/> so readers can locate the root from the HSST
     /// end and supply the root's prefix bytes when parsing its header.
     /// </summary>
-    private int BuildIndex(long absoluteIndexStart,
-        int maxIntermediateEntries,
-        int maxIntermediateBytes,
-        int minIntermediateChildren,
-        int minIntermediateBytes)
+    private int BuildIndex(long absoluteIndexStart)
     {
         long startWritten = _writer.Written;
         long firstOffset = _writer.FirstOffset;
@@ -844,12 +848,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             return WriteEmptyIndexNode();
         }
 
-        if (minIntermediateChildren > maxIntermediateEntries) minIntermediateChildren = maxIntermediateEntries;
-        if (minIntermediateChildren < 1) minIntermediateChildren = 1;
-        if (minIntermediateBytes < 0) minIntermediateBytes = 0;
-        if (minIntermediateBytes > maxIntermediateBytes) minIntermediateBytes = maxIntermediateBytes;
-
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, maxIntermediateEntries * 8));
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, MaxIntermediateEntries * 8));
         byte[] valueScratchArr = bufs.ValueScratch!;
         byte[] commonPrefixArr = bufs.CommonPrefixArr!;
 
@@ -897,8 +896,6 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             {
                 int childCount = ChooseIntermediateChildCount(
                     current, currentFirstKeysSpan, childIdx,
-                    maxIntermediateEntries, maxIntermediateBytes,
-                    minIntermediateChildren, minIntermediateBytes,
                     _writer.Written, firstOffset,
                     commonPrefixArr);
                 ReadOnlySpan<HsstIndexNodeInfo> children = current.Slice(childIdx, childCount);
@@ -1111,18 +1108,16 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         return chainLcp;
     }
 
-    /// <summary>Pick the next intermediate node's child count: accumulate values + keys bytes until the next child would exceed <paramref name="byteThreshold"/>, capped at <paramref name="maxChildren"/>, always at least one child.</summary>
+    /// <summary>Pick the next intermediate node's child count: accumulate values + keys bytes until the next child would exceed <see cref="MaxIntermediateBytes"/>, capped at <see cref="MaxIntermediateEntries"/>, always at least one child.</summary>
     private int ChooseIntermediateChildCount(
         scoped ReadOnlySpan<HsstIndexNodeInfo> level,
         scoped ReadOnlySpan<byte> levelFirstKeys,
         int childIdx,
-        int maxChildren, int byteThreshold,
-        int minChildren, int minBytes,
         long nodeStart, long firstOffset,
         byte[] commonPrefixArr)
     {
         int remaining = level.Length - childIdx;
-        int hardMax = Math.Min(maxChildren, remaining);
+        int hardMax = Math.Min(MaxIntermediateEntries, remaining);
         if (hardMax <= 1) return hardMax;
 
         // Slot 0 carries a separator just like every other slot: the natural
@@ -1197,10 +1192,10 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             // Phantom slot 0 restored: keys array carries newCount real separators
             // (one per child) and values array carries newCount deltas.
             int estimated = newCount * valueSlotSize + newKeysBytes;
-            if (estimated > byteThreshold) break;
+            if (estimated > MaxIntermediateBytes) break;
 
-            // Dynamic split heuristics. Once minChildren is reached, break only
-            // when:
+            // Dynamic split heuristics. Once MinIntermediateChildren is reached, break
+            // only when:
             //   - effective separator (post-LCP-strip) would exceed 8 bytes — past
             //     that the planner can no longer snap to a SIMD-eligible {2,4,8}
             //     Uniform slot. Combines the old "max sep widened" and "LCP shrank"
@@ -1242,8 +1237,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
                 childCount,
                 childCount * BTreeNodeLayoutPlanner.WidenedSlotWidth(maxSepLen, _keyLength),
                 committedValueSlot);
-            if (childCount >= minChildren &&
-                committedSize >= minBytes &&
+            if (childCount >= MinIntermediateChildren &&
                 (newEffSepLen > 8 ||
                  WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;

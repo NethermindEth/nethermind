@@ -122,7 +122,7 @@ public static class PersistedSnapshotMerger
     /// <summary>Per-key bloom callback for state-trie merges: adds
     /// <c>StatePathKey(minKey)</c> to <paramref name="bloom"/>.</summary>
     private readonly struct StatePathBloomCallback(BloomFilter bloom)
-        : IHsstPackedArrayMergeCallback
+        : IHsstMergeKeyCallback
     {
         public void OnKey(scoped ReadOnlySpan<byte> key)
             => bloom.Add(PersistedSnapshotBloomBuilder.StatePathKey(key));
@@ -422,7 +422,7 @@ public static class PersistedSnapshotMerger
             /// <see cref="HsstTwoByteSlotMerger.NWayMerge"/>.</summary>
             private readonly struct SlotSuffixBloomCallback(
                 BloomFilter bloom, ulong addrBloomKey, byte[] slotKeyBuf)
-                : IHsstTwoByteSlotMergeCallback
+                : IHsstMergeKeyCallback
             {
                 public void OnKey(scoped ReadOnlySpan<byte> key)
                 {
@@ -548,7 +548,7 @@ public static class PersistedSnapshotMerger
         /// per-addressHash key prefix so colliding TreePath keys in different addresses don't
         /// alias in the bloom.</summary>
         private readonly struct AddrXorStatePathBloomCallback(BloomFilter bloom, ulong addrKey)
-            : IHsstPackedArrayMergeCallback
+            : IHsstMergeKeyCallback
         {
             public void OnKey(scoped ReadOnlySpan<byte> key)
                 => bloom.Add(addrKey ^ PersistedSnapshotBloomBuilder.StatePathKey(key));

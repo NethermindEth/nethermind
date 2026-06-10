@@ -31,7 +31,7 @@ internal static class HsstPackedArrayMerger
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TSource : struct, IHsstMergeSource<TReader, TPin>
         where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
-        where TCallback : struct, IHsstPackedArrayMergeCallback
+        where TCallback : struct, IHsstMergeKeyCallback
     {
         using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, cursor.KeyLen, valueSize);
 

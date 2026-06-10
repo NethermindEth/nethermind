@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// Implemented as a generic struct constraint
 /// (<c>TValueMerger : struct, IHsstBTreeValueMerger&lt;...&gt;</c>) so the JIT monomorphises
 /// the merger per callback type — every hook call resolves to a direct invocation, no
-/// virtual dispatch. Unlike <see cref="IHsstPackedArrayMergeCallback"/> (key-only),
+/// virtual dispatch. Unlike <see cref="IHsstMergeKeyCallback"/> (key-only),
 /// <see cref="MergeValues"/> needs writer + cursor access because BTree collisions resolve
 /// by re-emitting a per-key inner structure rather than picking a winner.
 /// <para><typeparamref name="TReader"/>/<typeparamref name="TPin"/> describe the CURSOR

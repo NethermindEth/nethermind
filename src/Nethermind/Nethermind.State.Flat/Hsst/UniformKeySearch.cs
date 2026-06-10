@@ -92,7 +92,7 @@ public static class UniformKeySearch
         if (count == 0) return -1;
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
             return FloorScan16(key, keys, count);
-        return BinarySearch2LE(key, keys, count);
+        return BinarySearch2LEStrided(key, keys, count, stride: 2);
     }
 
     /// <summary>
@@ -114,7 +114,7 @@ public static class UniformKeySearch
         if (count == 0) return -1;
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
             return FloorScan32(key, keys, count);
-        return BinarySearch4LE(key, keys, count);
+        return BinarySearch4LEStrided(key, keys, count, stride: 4);
     }
 
     /// <summary>Floor index over 8-byte LE-stored keys.</summary>
@@ -123,7 +123,7 @@ public static class UniformKeySearch
         if (count == 0) return -1;
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
             return FloorScan64(key, keys, count);
-        return BinarySearch8LE(key, keys, count);
+        return BinarySearch8LEStrided(key, keys, count, stride: 8);
     }
 
     /// <summary>
@@ -134,7 +134,7 @@ public static class UniformKeySearch
     public static int UniformBE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int keySize)
     {
         if (count == 0) return -1;
-        return BinarySearchLex(key, keys, count, keySize);
+        return BinarySearchLexStrided(key, keys, count, keySize, stride: keySize);
     }
 
     // =====================================================================================
@@ -308,7 +308,7 @@ public static class UniformKeySearch
         }
         return Avx512BW.IsSupported
             ? MaskedTail16(search, keys, i, count)
-            : ScalarTail16(search, ref src, i, count);
+            : ScalarTail16Strided(search, ref src, i, count, stride: 2);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -369,7 +369,7 @@ public static class UniformKeySearch
         }
         return Avx512F.IsSupported
             ? MaskedTail32(search, keys, i, count)
-            : ScalarTail32(search, ref src, i, count);
+            : ScalarTail32Strided(search, ref src, i, count, stride: 4);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -396,7 +396,7 @@ public static class UniformKeySearch
         }
         return Avx512F.IsSupported
             ? MaskedTail64(search, keys, i, count)
-            : ScalarTail64(search, ref src, i, count);
+            : ScalarTail64Strided(search, ref src, i, count, stride: 8);
     }
 
     // ---- Strided SIMD kernels ----
@@ -540,18 +540,10 @@ public static class UniformKeySearch
         return count - 1;
     }
 
-    // ---- Scalar tails (private; finish the SIMD scan over the leftover < 32/16/8 keys). ----
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail16(ushort search, ref byte src, int i, int count)
-    {
-        for (; i < count; i++)
-        {
-            ushort k = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, (nint)(i * 2)));
-            if (k > search) return i - 1;
-        }
-        return count - 1;
-    }
+    // ---- Scalar tails (private; finish the SIMD scan over the leftover < 32/16/8 keys).
+    //      Contiguous callers reuse the strided variants with the key size as the stride;
+    //      after aggressive inlining the JIT folds the constant, so no dedicated
+    //      fixed-stride copies are needed. ----
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ScalarTail24Le(uint search, ref byte src, int i, int count)
@@ -561,28 +553,6 @@ public static class UniformKeySearch
             ref byte slot = ref Unsafe.Add(ref src, (nint)(i * 3));
             uint k = Unsafe.ReadUnaligned<ushort>(ref slot)
                      | ((uint)Unsafe.Add(ref slot, 2) << 16);
-            if (k > search) return i - 1;
-        }
-        return count - 1;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail32(uint search, ref byte src, int i, int count)
-    {
-        for (; i < count; i++)
-        {
-            uint k = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(i * 4)));
-            if (k > search) return i - 1;
-        }
-        return count - 1;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail64(ulong search, ref byte src, int i, int count)
-    {
-        for (; i < count; i++)
-        {
-            ulong k = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, (nint)(i * 8)));
             if (k > search) return i - 1;
         }
         return count - 1;
@@ -624,26 +594,11 @@ public static class UniformKeySearch
     // =====================================================================================
     //  Scalar binary-search fallbacks (private). LE-stored variants use direct unsigned
     //  integer compare on the native LE-load value, which equals the BE-numeric value of
-    //  the original lex key. BE-stored variants use lex SequenceCompareTo.
+    //  the original lex key. BE-stored variants use lex SequenceCompareTo. Contiguous
+    //  callers reuse the strided variants with the key size as the stride; after
+    //  aggressive inlining the JIT folds the constant, so no dedicated fixed-stride
+    //  copies are needed (3-byte keys excepted — no strided twin exists).
     // =====================================================================================
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BinarySearch2LE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        ushort search = BinaryPrimitives.ReverseEndianness(
-            Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(key)));
-        ref byte src = ref MemoryMarshal.GetReference(keys);
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            ushort midKey = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, (nint)(mid * 2)));
-            if (search >= midKey) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int BinarySearch3LE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
@@ -660,42 +615,6 @@ public static class UniformKeySearch
             ref byte slot = ref Unsafe.Add(ref src, (nint)(mid * 3));
             uint midKey = Unsafe.ReadUnaligned<ushort>(ref slot)
                           | ((uint)Unsafe.Add(ref slot, 2) << 16);
-            if (search >= midKey) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BinarySearch4LE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        uint search = BinaryPrimitives.ReverseEndianness(
-            Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(key)));
-        ref byte src = ref MemoryMarshal.GetReference(keys);
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            uint midKey = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(mid * 4)));
-            if (search >= midKey) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BinarySearch8LE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        ulong search = BinaryPrimitives.ReverseEndianness(
-            Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(key)));
-        ref byte src = ref MemoryMarshal.GetReference(keys);
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            ulong midKey = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, (nint)(mid * 8)));
             if (search >= midKey) { result = mid; lo = mid + 1; }
             else { hi = mid - 1; }
         }
@@ -751,22 +670,6 @@ public static class UniformKeySearch
             int mid = (lo + hi) >>> 1;
             ulong midKey = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, (nint)(mid * stride)));
             if (search >= midKey) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BinarySearchLex(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int keySize)
-    {
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            ReadOnlySpan<byte> midKey = keys.Slice(mid * keySize, keySize);
-            int cmp = key.SequenceCompareTo(midKey);
-            if (cmp >= 0) { result = mid; lo = mid + 1; }
             else { hi = mid - 1; }
         }
         return result;
