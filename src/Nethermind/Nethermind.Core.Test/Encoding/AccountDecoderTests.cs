@@ -18,8 +18,11 @@ namespace Nethermind.Core.Test.Encoding
             AccountDecoder decoder = new();
             Rlp.ValueDecoderContext ctx = Encode(decoder, account);
             (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(ref ctx);
-            Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
-            Assert.That(TestItem.KeccakB, Is.EqualTo(storageRoot));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
+                Assert.That(TestItem.KeccakB, Is.EqualTo(storageRoot));
+            }
         }
 
         [Test]
@@ -29,10 +32,13 @@ namespace Nethermind.Core.Test.Encoding
             AccountDecoder decoder = new();
             Rlp.ValueDecoderContext ctx = Encode(decoder, account);
             Account decoded = decoder.Decode(ref ctx)!;
-            Assert.That((int)decoded.Balance, Is.EqualTo(100));
-            Assert.That((int)decoded.Nonce, Is.EqualTo(0));
-            Assert.That(TestItem.KeccakA, Is.EqualTo(decoded.CodeHash));
-            Assert.That(TestItem.KeccakB, Is.EqualTo(decoded.StorageRoot));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int)decoded.Balance, Is.EqualTo(100));
+                Assert.That((int)decoded.Nonce, Is.EqualTo(0));
+                Assert.That(TestItem.KeccakA, Is.EqualTo(decoded.CodeHash));
+                Assert.That(TestItem.KeccakB, Is.EqualTo(decoded.StorageRoot));
+            }
         }
 
         [Test]
@@ -51,8 +57,11 @@ namespace Nethermind.Core.Test.Encoding
             ctx.Position = positionBefore;
             Hash256 storageRoot = decoder.DecodeStorageRootOnly(ref ctx);
 
-            Assert.That(storageRoot, Is.EqualTo(TestItem.KeccakB));
-            Assert.That(ctx.Position, Is.GreaterThan(positionBeforeStorageRoot));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storageRoot, Is.EqualTo(TestItem.KeccakB));
+                Assert.That(ctx.Position, Is.GreaterThan(positionBeforeStorageRoot));
+            }
         }
 
         private static Rlp.ValueDecoderContext Encode(AccountDecoder decoder, Account account)

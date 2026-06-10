@@ -176,8 +176,11 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
 
-            Assert.That(decoded.CalculateHash(), Is.EqualTo(decoded.Hash!));
-            Assert.That(decoded.Hash, Is.EqualTo(Keccak.Compute(encodedForTreeRoot.Bytes)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.CalculateHash(), Is.EqualTo(decoded.Hash!));
+                Assert.That(decoded.Hash, Is.EqualTo(Keccak.Compute(encodedForTreeRoot.Bytes)));
+            }
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -221,9 +224,12 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decoded = _txDecoder.Decode(ref ctx2, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
             Rlp encoded = _txDecoder.Encode(decoded);
             Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext);
-            Assert.That(decoded.Hash, Is.EqualTo(testCase.Hash));
-            Assert.That(decoded.Hash, Is.EqualTo(decodedByValueDecoderContext.Hash!));
-            Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(encoded.Bytes));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Hash, Is.EqualTo(testCase.Hash));
+                Assert.That(decoded.Hash, Is.EqualTo(decodedByValueDecoderContext.Hash!));
+                Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(encoded.Bytes));
+            }
         }
 
         [TestCaseSource(nameof(TestCaseSource))]

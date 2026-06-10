@@ -16,9 +16,12 @@ namespace Nethermind.Config.Test
         {
             PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
             Enode enode = new($"enode://{publicKey.ToString(false)}@{IPAddress.Loopback}:{1234}");
-            Assert.That(enode.HostIp, Is.EqualTo(IPAddress.Loopback));
-            Assert.That(enode.Port, Is.EqualTo(1234));
-            Assert.That(enode.PublicKey, Is.EqualTo(publicKey));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.HostIp, Is.EqualTo(IPAddress.Loopback));
+                Assert.That(enode.Port, Is.EqualTo(1234));
+                Assert.That(enode.PublicKey, Is.EqualTo(publicKey));
+            }
         }
 
         [Test]
@@ -27,9 +30,12 @@ namespace Nethermind.Config.Test
             PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
             string domain = "nethermind.io";
             Enode enode = new($"enode://{publicKey.ToString(false)}@{domain}:{1234}");
-            Assert.That(Dns.GetHostAddresses(domain), Is.Not.Empty);
-            Assert.That(enode.Port, Is.EqualTo(1234));
-            Assert.That(enode.PublicKey, Is.EqualTo(publicKey));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Dns.GetHostAddresses(domain), Is.Not.Empty);
+                Assert.That(enode.Port, Is.EqualTo(1234));
+                Assert.That(enode.PublicKey, Is.EqualTo(publicKey));
+            }
         }
 
         [Test]
