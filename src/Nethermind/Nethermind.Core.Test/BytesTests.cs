@@ -60,6 +60,16 @@ namespace Nethermind.Core.Test
                 Assert.That(expectedResult, Is.EqualTo(bytes[0]), "new");
         }
 
+        [TestCase("1234", 2, new byte[] { 0x12, 0x34 })]
+        [TestCase("1234", 4, new byte[] { 0x00, 0x00, 0x12, 0x34 })]
+        [TestCase("123", 2, new byte[] { 0x01, 0x23 })]
+        public void FromHexString_with_length_returns_requested_length(string hexString, int length, byte[] expected)
+        {
+            byte[] bytes = Bytes.FromHexString(hexString, length);
+
+            Assert.That(bytes, Is.EqualTo(expected));
+        }
+
         [TestCase("", true)]
         [TestCase("0123456789abcdefABCDEF", true)]
         [TestCase("0123456789abcdefABCDEF0123456789abcdef", true)]

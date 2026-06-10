@@ -1007,7 +1007,9 @@ namespace Nethermind.Core.Extensions
 
             int oddMod = hexString.Length % 2;
             int actualLength = (chars.Length >> 1) + oddMod;
-            byte[] result = GC.AllocateArray<byte>(length);
+            byte[] result = actualLength == length
+                ? GC.AllocateUninitializedArray<byte>(length)
+                : GC.AllocateArray<byte>(length);
             Span<byte> writeToSpan = result.AsSpan(length - actualLength);
             FromHexString(chars, writeToSpan, oddMod);
             return result;
