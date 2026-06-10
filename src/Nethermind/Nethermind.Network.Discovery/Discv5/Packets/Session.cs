@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 

@@ -4,7 +4,6 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.Kademlia;

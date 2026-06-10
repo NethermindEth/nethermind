@@ -3,7 +3,6 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
-using System.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.Kademlia;

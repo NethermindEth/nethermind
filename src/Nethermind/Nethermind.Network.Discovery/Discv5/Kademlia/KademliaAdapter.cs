@@ -4,7 +4,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Collections.Pooled;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
