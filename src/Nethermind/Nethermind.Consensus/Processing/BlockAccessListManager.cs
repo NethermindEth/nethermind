@@ -159,7 +159,7 @@ public partial class BlockAccessListManager(
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
 
-        _balWarmupTask  = BatchReadEnabled && suggestedBlock.BlockAccessList is not null
+        _balWarmupTask = BatchReadEnabled && suggestedBlock.BlockAccessList is not null
             ? stateProvider.HintBal(suggestedBlock.BlockAccessList)
             : null;
     }
