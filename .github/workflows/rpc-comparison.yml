@@ -104,9 +104,6 @@ jobs:
             exit 1
           fi
 
-          # Paprika conversion only happens on a spawned node, so it's meaningless for
-          # full/archive (which reuse an existing node by IP). Fail loudly rather than
-          # silently ignoring the request.
           if [ "$CONVERT_TO_PAPRIKA" == "true" ] && [ "$NODE_TYPE" != "pruned" ]; then
             echo "Error: 'convert_to_paprika' only applies when node_type is 'pruned' (a node is spawned)."
             exit 1
@@ -145,8 +142,7 @@ jobs:
       network: ${{ inputs.network }}
       convert_to_paprika: "${{ inputs.convert_to_paprika }}"
 
-  # Spawn a pruned Geth node via the smoke-tests framework (same provisioning +
-  # auto-teardown as every other node: create-machines + the hourly destroy cron).
+  # Spawn a pruned Geth node via the smoke-tests framework 
   create_geth_node:
     name: Spawn pruned Geth node
     uses: ./.github/workflows/run-a-geth-node.yml
@@ -222,7 +218,6 @@ jobs:
           echo "Nethermind URL: $nm_url"
           echo "nm_url=$nm_url" >> "$GITHUB_OUTPUT"
 
-          # Geth: spawned -> read its uploaded rpc-url artifact; else use the provided geth_url.
           if [ "$SPAWN_GETH" == "true" ]; then
             geth_file="rpc_url%${{ env.CLEAN_GETH_REF }}%${{ github.run_id }}.txt"
             if [ ! -f "artifacts/$geth_file" ]; then
@@ -245,10 +240,10 @@ jobs:
     runs-on: [vpn]
     needs: [verify_correctness_of_setup, resolve_urls, create_geth_node]
     if: always() && needs.resolve_urls.result == 'success' && (needs.verify_correctness_of_setup.outputs.spawn_nm == 'true' || inputs.spawn_geth)
-    timeout-minutes: 24
+    timeout-minutes: 1440
     steps:
       - name: Wait for the nodes to sync
-        timeout-minutes: 24
+        timeout-minutes: 1440
         env:
           SPAWN_NM: ${{ needs.verify_correctness_of_setup.outputs.spawn_nm }}
           NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
@@ -531,8 +526,6 @@ jobs:
           port="${hostport##*:}"
           [ "$port" == "$host" ] && port=8545
 
-          # When a Geth URL is given, pass it as -e (external reference): each fixture
-          # request is sent to both Nethermind and Geth and the responses compared.
           ext=()
           [ -n "$GETH_URL" ] && ext=(-e "$GETH_URL")
 
@@ -540,9 +533,6 @@ jobs:
           exclude=()
           [ -n "$EXCLUDE_APIS" ] && exclude=(-x "$EXCLUDE_APIS")
 
-          echo "=== rpc_int: $NM_URL  [-b $NETWORK $RPC_FLAG] ${ext[*]:-} ${exclude[*]:-} -M $MAX_FAILURES ==="
-          # Capture rpc_int's status explicitly (so we can log it) rather than letting
-          # errexit abort before the exit-code line on test failures.
           set +e
           ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
             "${exclude[@]}" -M "$MAX_FAILURES" -c -f -R rpc-results/report.csv | tee rpc-results/output.txt
