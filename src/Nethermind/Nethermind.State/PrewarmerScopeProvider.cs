@@ -52,14 +52,14 @@ public class PrewarmerScopeProvider(
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, logManager, isPrewarmer);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider, baseBlock, preBlockCaches, logManager, isPrewarmer);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !isPrewarmer;
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider baseProvider, BlockHeader? baseBlock, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer) : IWorldStateScopeProvider.IScope
     {
-        private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
+        private readonly IWorldStateScopeProvider.IScope baseScope = baseProvider.BeginScope(baseBlock);
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
@@ -74,6 +74,8 @@ public class PrewarmerScopeProvider(
         private const int MaxStridePrefetchers = 4;
         private readonly ConcurrentDictionary<AddressAsKey, StorageStridePrefetcher> _stridePrefetchers = new();
         private readonly CancellationTokenSource _prefetchCts = new();
+        private readonly Lock _prefetchScopeLock = new();
+        private IWorldStateScopeProvider.IScope? _prefetchScope;
 
         public void Dispose()
         {
@@ -82,7 +84,7 @@ public class PrewarmerScopeProvider(
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
 
-            // Joins reader threads so the base scope is never disposed under an in-flight read.
+            // Joins reader threads and releases their private scope.
             StopStridePrefetchers();
             _prefetchCts.Dispose();
 
@@ -104,19 +106,36 @@ public class PrewarmerScopeProvider(
             if (_stridePrefetchers.TryGetValue(key, out StorageStridePrefetcher? existing)) return existing;
             if (_stridePrefetchers.Count >= MaxStridePrefetchers) return null;
 
-            // The prefetcher gets its own base tree so its reads never share wrapper state.
+            // The readers must NOT touch this wrapper's base scope: its storage trees are memoized
+            // per address, so they would share the live tree the executing thread reads and (at the
+            // block-end flush) writes through, bypassing the reader-exclusion gates the backend
+            // applies to its own background readers. A separate scope over the same parent gives
+            // them an isolated, parent-state-only view; it is opened lazily on engagement so blocks
+            // without a striding contract pay nothing.
             return _stridePrefetchers.GetOrAdd(
                 key,
-                static (k, state) => new StorageStridePrefetcher(
-                    state.baseScope.CreateStorageTree(k.Value),
-                    state.storageCache,
+                k => new StorageStridePrefetcher(
+                    () => GetOrCreatePrefetchScope().CreateStorageTree(k.Value),
+                    storageCache,
                     k.Value,
-                    state.token),
-                (baseScope, storageCache, token: _prefetchCts.Token));
+                    _prefetchCts.Token));
+        }
+
+        private IWorldStateScopeProvider.IScope GetOrCreatePrefetchScope()
+        {
+            lock (_prefetchScopeLock)
+            {
+                return _prefetchScope ??= baseProvider.BeginScope(baseBlock);
+            }
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            // The batch is about to land this block's writes in the live scope, after which
+            // parent-state prefetches are no longer useful; stop the readers here, mirroring how
+            // the flat scope cancels its own background warmers around write batches.
+            StopStridePrefetchers();
+
             if (!_measureMetric)
             {
                 return baseScope.StartWriteBatch(estimatedAccountNum);
@@ -151,14 +170,22 @@ public class PrewarmerScopeProvider(
 
         private void StopStridePrefetchers()
         {
-            if (_stridePrefetchers.IsEmpty) return;
-
-            _prefetchCts.Cancel();
-            foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
+            if (!_stridePrefetchers.IsEmpty)
             {
-                kv.Value.Dispose();
+                _prefetchCts.Cancel();
+                foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
+                {
+                    kv.Value.Dispose();
+                }
+                _stridePrefetchers.Clear();
             }
-            _stridePrefetchers.Clear();
+
+            // After the join above no reader can touch the private scope.
+            lock (_prefetchScopeLock)
+            {
+                _prefetchScope?.Dispose();
+                _prefetchScope = null;
+            }
         }
 
         public Hash256 RootHash => baseScope.RootHash;

@@ -42,7 +42,7 @@ public sealed class SeqlockCache<TKey, TValue>
     where TValue : class?
 {
     /// <summary>
-    /// Default number of set-index bits: 16384 sets × 2 ways = 32768 total entries.
+    /// Default number of set-index bits: 16384 sets x 2 ways = 32768 total entries.
     /// </summary>
     public const int DefaultSetsBits = 14;
 
@@ -115,7 +115,7 @@ public sealed class SeqlockCache<TKey, TValue>
     /// <remarks>
     /// Size the cache to the expected working set: entries evicted by capacity pressure turn
     /// later reads of the same key into backing-store reads. Memory cost is
-    /// 2^(setsBits+1) × sizeof(Entry) allocated upfront.
+    /// 2^(setsBits+1) x sizeof(Entry) allocated upfront.
     /// </remarks>
     public SeqlockCache(int setsBits)
     {
@@ -146,7 +146,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
 
-        // Prefetch way 1 while we check way 0 — hides L2/L3 latency for skew layout.
+        // Prefetch way 1 while we check way 0; this hides L2/L3 latency for skew layout.
         if (Sse.IsSupported)
         {
             Sse.PrefetchNonTemporal(Unsafe.AsPointer(ref Unsafe.Add(ref entries, idx1)));

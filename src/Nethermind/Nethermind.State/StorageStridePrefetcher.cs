@@ -20,12 +20,19 @@ namespace Nethermind.State;
 /// slots at a fixed stride (arrays, token bloat scans) is bound by single-read latency. Slot
 /// keys hash to random database positions, so the only way to overlap that latency without
 /// knowing the access list in advance is to recognize the index pattern and read ahead.
-/// Prefetched values are parent-state reads of slots the block never writes, so caching them
-/// is correct for the whole block; warming is best-effort throughout — readers swallow
-/// failures and the pattern detector simply disengages on mismatch.
+/// <para>
+/// Isolation invariant: <paramref name="treeFactory"/> must produce a tree over a scope that is
+/// private to the prefetcher and anchored at the executing block's parent, so readers observe
+/// parent state only and never share mutable scope state with the executing thread (the live
+/// scope's tree is unsafe here because it serves in-block values once the block's write batch lands,
+/// and its backing structures gate their own background readers around writes). Parent-state
+/// values are correct to cache for the whole block because the cache sits below the in-block
+/// write layers. Warming is best-effort throughout: readers swallow failures and the pattern
+/// detector simply disengages on mismatch.
+/// </para>
 /// </remarks>
 internal sealed class StorageStridePrefetcher(
-    IWorldStateScopeProvider.IStorageTree tree,
+    Func<IWorldStateScopeProvider.IStorageTree> treeFactory,
     SeqlockCache<StorageCell, byte[]> cache,
     Address address,
     CancellationToken token) : IDisposable
@@ -54,10 +61,12 @@ internal sealed class StorageStridePrefetcher(
 
     private static readonly int ReaderConcurrency = Math.Min(2 * Environment.ProcessorCount, 32);
 
-    private readonly IWorldStateScopeProvider.IStorageTree _tree = tree;
+    private readonly Func<IWorldStateScopeProvider.IStorageTree> _treeFactory = treeFactory;
     private readonly SeqlockCache<StorageCell, byte[]> _cache = cache;
     private readonly Address _address = address;
     private readonly CancellationToken _token = token;
+
+    private IWorldStateScopeProvider.IStorageTree? _tree;
 
     private UInt256 _lastIndex;
     private UInt256 _stride;
@@ -124,6 +133,18 @@ internal sealed class StorageStridePrefetcher(
             return;
         }
 
+        try
+        {
+            _tree = _treeFactory();
+        }
+        catch (Exception)
+        {
+            // Engagement runs inside an EVM storage read; a tree-creation failure must degrade
+            // to "no prefetch", never fault block processing.
+            _broken = true;
+            return;
+        }
+
         _engaged = true;
         _engageIndex = index;
         _readers = new Task[ReaderConcurrency];
@@ -152,7 +173,11 @@ internal sealed class StorageStridePrefetcher(
 
             try
             {
-                byte[] value = _tree.Get(in index);
+                byte[] value = _tree!.Get(in index);
+                // The cancelled token marks the end of the block these parent-state values are
+                // valid for; re-check after the read so a straggler cannot repopulate a cache
+                // that is being handed to the next block.
+                if (_token.IsCancellationRequested || _broken) return;
                 StorageCell cell = new(_address, in index);
                 _cache.Set(in cell, value);
             }
