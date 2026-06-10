@@ -92,11 +92,15 @@ public static class IlEvmOpcodes
                 return true;
 
             case Instruction.MLOAD:
-                info = new OpInfo(GasCostOf.VeryLow, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+            case Instruction.CALLDATALOAD:
+                info = new OpInfo(GasCostOf.VeryLow, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: instruction == Instruction.MLOAD);
                 return true;
             case Instruction.MSTORE:
             case Instruction.MSTORE8:
                 info = new OpInfo(GasCostOf.VeryLow, Pops: 2, Pushes: 0, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.KECCAK256:
+                info = new OpInfo(GasCostOf.Sha3, Pops: 2, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
                 return true;
 
             case Instruction.JUMP:

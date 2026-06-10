@@ -30,6 +30,10 @@ public class IlEvmDifferentialFuzzTests
         Instruction.DUP1, Instruction.DUP2, Instruction.DUP3, Instruction.DUP4,
         Instruction.SWAP1, Instruction.SWAP2, Instruction.SWAP3,
         Instruction.POP, Instruction.PUSH1, Instruction.PUSH2, Instruction.PUSH32,
+        // Handler-call ops: executed mid-segment via the interpreter's own handlers; random
+        // (often huge) operands also exercise the exact-OOG path on dynamic gas.
+        Instruction.MLOAD, Instruction.MSTORE, Instruction.MSTORE8,
+        Instruction.KECCAK256, Instruction.CALLDATALOAD,
     ];
 
     private static readonly byte[] BoundaryBytes = [0x00, 0x01, 0x02, 0x1F, 0x20, 0x7F, 0x80, 0xFF];

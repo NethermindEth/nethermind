@@ -12,13 +12,17 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.CodeAnalysis.IlEvm;
 
 /// <summary>
-/// Signature of a compiled segment. The caller must satisfy the segment's preconditions
+/// Signature of a compiled segment — the opcode-handler ABI plus the constants context bound
+/// as the delegate target. The caller must satisfy the segment's preconditions
 /// (<see cref="IlCompiledSegment.StackRequired"/>, <see cref="IlCompiledSegment.StackMaxGrowth"/>,
 /// <see cref="IlCompiledSegment.StaticGas"/>) before invoking and must only invoke on
-/// non-tracing executions; the segment then always runs to completion and returns
-/// <see cref="EvmExceptionType.None"/> with the program counter at <see cref="IlCompiledSegment.ExitPc"/>.
+/// non-tracing executions. Pure compute always completes; embedded handler calls (memory,
+/// keccak — dynamic gas) may return a non-None halt, which the caller handles exactly like an
+/// interpreted handler's result. On success the program counter lands on
+/// <see cref="IlCompiledSegment.ExitPc"/>; on a handler halt the frame is dead and the program
+/// counter is unobservable.
 /// </summary>
-public delegate EvmExceptionType CompiledSegmentInvoke(ref EvmStack stack, ref EthereumGasPolicy gas, ref int programCounter);
+public delegate EvmExceptionType CompiledSegmentInvoke(VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref int programCounter);
 
 public sealed class IlCompiledSegment
 {
@@ -119,6 +123,43 @@ public static class IlSegmentCompiler
     private static readonly MethodInfo? s_isZero = typeof(UInt256).GetProperty(nameof(UInt256.IsZero))?.GetGetMethod();
     private static readonly MethodInfo? s_fromUlong = ImplicitFromUlong();
 
+    // Opcodes executed mid-segment by calling the interpreter's own handler (closed over
+    // EthereumGasPolicy + OffFlag): the segment flushes just the op's operands to the real
+    // stack, calls the handler (which charges its own static + dynamic gas and may halt), and
+    // reloads any result into a local. This keeps memory/keccak from CUTTING segments — the
+    // full-boundary toll is replaced by a few words of operand traffic.
+    private readonly record struct HandlerOp(MethodInfo Method, int Pops, int Pushes);
+
+    private static readonly HandlerOp? s_mload = HandlerOf(nameof(EvmInstructions.InstructionMLoad), pops: 1, pushes: 1);
+    private static readonly HandlerOp? s_mstore = HandlerOf(nameof(EvmInstructions.InstructionMStore), pops: 2, pushes: 0);
+    private static readonly HandlerOp? s_mstore8 = HandlerOf(nameof(EvmInstructions.InstructionMStore8), pops: 2, pushes: 0);
+    private static readonly HandlerOp? s_keccak256 = HandlerOf(nameof(EvmInstructions.InstructionKeccak256), pops: 2, pushes: 1);
+    private static readonly HandlerOp? s_callDataLoad = HandlerOf(nameof(EvmInstructions.InstructionCallDataLoad), pops: 1, pushes: 1);
+
+    private static HandlerOp? HandlerOf(string name, int pops, int pushes)
+    {
+        try
+        {
+            MethodInfo? open = typeof(EvmInstructions).GetMethod(name);
+            MethodInfo? closed = open?.MakeGenericMethod(typeof(EthereumGasPolicy), typeof(OffFlag));
+            return closed is null ? null : new HandlerOp(closed, pops, pushes);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static HandlerOp? TryGetHandlerOp(Instruction instruction) => instruction switch
+    {
+        Instruction.MLOAD => s_mload,
+        Instruction.MSTORE => s_mstore,
+        Instruction.MSTORE8 => s_mstore8,
+        Instruction.KECCAK256 => s_keccak256,
+        Instruction.CALLDATALOAD => s_callDataLoad,
+        _ => null,
+    };
+
     public static bool TryCompile(ReadOnlySpan<byte> code, in BasicBlock block, out IlCompiledSegment? segment)
     {
         segment = null;
@@ -130,7 +171,7 @@ public static class IlSegmentCompiler
 
         List<DecodedOp> ops = DecodePrefix(code, in block, out int exitPc, out PrefixMetrics metrics);
         int exitPushes = metrics.StackRequired + metrics.StackFinalDelta;
-        int boundaryTraffic = metrics.StackRequired + exitPushes;
+        int boundaryTraffic = metrics.StackRequired + exitPushes + metrics.HandlerOperandTraffic;
         if (ops.Count < MinimumPrefixOps || ops.Count < BoundaryCostFactor * boundaryTraffic)
             return false;
 
@@ -148,7 +189,7 @@ public static class IlSegmentCompiler
         return true;
     }
 
-    private readonly record struct DecodedOp(Instruction Instruction, OpInfo Info, UInt256 Constant);
+    private readonly record struct DecodedOp(Instruction Instruction, OpInfo Info, UInt256 Constant, bool IsHandlerCall);
 
     private struct PrefixMetrics
     {
@@ -156,6 +197,7 @@ public static class IlSegmentCompiler
         public int StackRequired;
         public int StackMaxDelta;
         public int StackFinalDelta;
+        public int HandlerOperandTraffic;
     }
 
     private static List<DecodedOp> DecodePrefix(ReadOnlySpan<byte> code, in BasicBlock block, out int exitPc, out PrefixMetrics metrics)
@@ -168,8 +210,13 @@ public static class IlSegmentCompiler
         while (pc < block.End)
         {
             Instruction instruction = (Instruction)code[pc];
+            bool isHandlerCall = false;
             if (!IsEmittable(instruction, out OpInfo info))
-                break;
+            {
+                if (TryGetHandlerOp(instruction) is null || !TryGetHandlerOpInfo(instruction, out info))
+                    break;
+                isHandlerCall = true;
+            }
 
             UInt256 constant = default;
             if (info.ImmediateBytes > 0)
@@ -182,11 +229,15 @@ public static class IlSegmentCompiler
                 constant = new UInt256(code.Slice(immediateStart, info.ImmediateBytes), isBigEndian: true);
             }
 
-            ops.Add(new DecodedOp(instruction, info, constant));
+            ops.Add(new DecodedOp(instruction, info, constant, isHandlerCall));
+            // Handler statics belong to the gas PRECONDITION (the handler itself charges them
+            // at execution); only the dynamic part can halt, exactly inside the handler.
             metrics.StaticGas += info.StaticGas;
             metrics.StackRequired = Math.Max(metrics.StackRequired, info.Pops - delta);
             delta += info.Pushes - info.Pops;
             metrics.StackMaxDelta = Math.Max(metrics.StackMaxDelta, delta);
+            if (isHandlerCall)
+                metrics.HandlerOperandTraffic += info.Pops + info.Pushes;
 
             pc += 1 + info.ImmediateBytes;
         }
@@ -194,6 +245,30 @@ public static class IlSegmentCompiler
         metrics.StackFinalDelta = delta;
         exitPc = pc;
         return ops;
+    }
+
+    /// <summary>Stack/gas metadata for the handler-call ops; all are fork-invariant.</summary>
+    private static bool TryGetHandlerOpInfo(Instruction instruction, out OpInfo info)
+    {
+        switch (instruction)
+        {
+            case Instruction.MLOAD:
+                info = new OpInfo(GasCostOf.VeryLow, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.MSTORE:
+            case Instruction.MSTORE8:
+                info = new OpInfo(GasCostOf.VeryLow, Pops: 2, Pushes: 0, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.KECCAK256:
+                info = new OpInfo(GasCostOf.Sha3, Pops: 2, Pushes: 1, ImmediateBytes: 0, OpKind.Linear, HasDynamicGas: true);
+                return true;
+            case Instruction.CALLDATALOAD:
+                info = new OpInfo(GasCostOf.VeryLow, Pops: 1, Pushes: 1, ImmediateBytes: 0, OpKind.Linear);
+                return true;
+        }
+
+        info = default;
+        return false;
     }
 
     private static bool IsEmittable(Instruction instruction, out OpInfo info)
@@ -283,25 +358,23 @@ public static class IlSegmentCompiler
         DynamicMethod method = new(
             $"IlEvmSegment_{block.Start}_{exitPc}_{ops.Count}",
             typeof(EvmExceptionType),
-            [typeof(SegmentConstants), typeof(EvmStack).MakeByRefType(), typeof(EthereumGasPolicy).MakeByRefType(), typeof(int).MakeByRefType()],
+            [typeof(SegmentConstants), typeof(VirtualMachine<EthereumGasPolicy>), typeof(EvmStack).MakeByRefType(), typeof(EthereumGasPolicy).MakeByRefType(), typeof(int).MakeByRefType()],
             typeof(IlSegmentCompiler).Module,
             skipVisibility: true);
         ILGenerator il = method.GetILGenerator();
 
-        // The dispatch site has already verified stack depth, stack headroom, and gas
-        // (see IlCompiledSegment preconditions), so the body is check-free straight-line code.
-        // EthereumGasPolicy.Consume(ref gas, staticGas);
-        il.Emit(OpCodes.Ldarg_2);
-        il.Emit(OpCodes.Ldc_I8, metrics.StaticGas);
-        il.Emit(OpCodes.Call, s_gasConsume!);
-
+        // The dispatch site has verified stack depth, stack headroom, and the segment's total
+        // STATIC gas (see IlCompiledSegment preconditions). Static charges are emitted in
+        // chunks so that at every embedded handler call the cumulative charge equals the
+        // interpreter's — and only a handler's DYNAMIC charge (memory expansion, keccak words)
+        // can halt, inside the handler, with exact accounting.
         // Entry pops, top first: e0 = top of stack on entry.
         List<Operand> symbolicStack = [];
         Operand[] entries = new Operand[metrics.StackRequired];
         for (int i = 0; i < metrics.StackRequired; i++)
         {
             LocalBuilder local = il.DeclareLocal(typeof(UInt256));
-            il.Emit(OpCodes.Ldarg_1);
+            il.Emit(OpCodes.Ldarg_2);
             il.Emit(OpCodes.Ldloca, local);
             il.Emit(OpCodes.Call, s_popUInt256!);
             il.Emit(OpCodes.Pop); // the upfront depth check guarantees success
@@ -310,20 +383,33 @@ public static class IlSegmentCompiler
         for (int i = metrics.StackRequired - 1; i >= 0; i--)
             symbolicStack.Add(entries[i]); // bottom .. top
 
+        long pendingChunkGas = 0;
         foreach (DecodedOp op in ops)
-            EmitOp(il, op, symbolicStack, constants);
+        {
+            if (op.IsHandlerCall)
+            {
+                EmitChargePendingGas(il, ref pendingChunkGas);
+                EmitHandlerCall(il, op, symbolicStack);
+            }
+            else
+            {
+                pendingChunkGas += op.Info.StaticGas;
+                EmitOp(il, op, symbolicStack, constants);
+            }
+        }
+        EmitChargePendingGas(il, ref pendingChunkGas);
 
         // Push the surviving values back, bottom first; the upfront growth check guarantees success.
         foreach (Operand operand in symbolicStack)
         {
-            il.Emit(OpCodes.Ldarg_1);
+            il.Emit(OpCodes.Ldarg_2);
             EmitOperandAddress(il, operand);
             il.Emit(OpCodes.Call, s_pushUInt256!);
             il.Emit(OpCodes.Pop);
         }
 
         // programCounter = exitPc; return None;
-        il.Emit(OpCodes.Ldarg_3);
+        il.Emit(OpCodes.Ldarg_S, (byte)4);
         il.Emit(OpCodes.Ldc_I4, exitPc);
         il.Emit(OpCodes.Stind_I4);
         il.Emit(OpCodes.Ldc_I4, (int)EvmExceptionType.None);
@@ -331,6 +417,61 @@ public static class IlSegmentCompiler
 
         SegmentConstants segmentConstants = new([.. constants]);
         return (CompiledSegmentInvoke)method.CreateDelegate(typeof(CompiledSegmentInvoke), segmentConstants);
+    }
+
+    private static void EmitChargePendingGas(ILGenerator il, ref long pendingChunkGas)
+    {
+        if (pendingChunkGas == 0)
+            return;
+        il.Emit(OpCodes.Ldarg_3);
+        il.Emit(OpCodes.Ldc_I8, pendingChunkGas);
+        il.Emit(OpCodes.Call, s_gasConsume!);
+        pendingChunkGas = 0;
+    }
+
+    /// <summary>
+    /// Executes one opcode by calling the interpreter's own handler mid-segment: flushes just
+    /// the op's operands to the real stack (top of the operand group last, so it is the real
+    /// top), calls the handler — which charges its own static and dynamic gas and may halt —
+    /// and reloads any result into a fresh local. A non-None handler result is returned to the
+    /// dispatch loop unchanged, exactly as if the handler had been interpreted.
+    /// </summary>
+    private static void EmitHandlerCall(ILGenerator il, in DecodedOp op, List<Operand> symbolicStack)
+    {
+        HandlerOp handler = TryGetHandlerOp(op.Instruction)!.Value;
+
+        int operandStart = symbolicStack.Count - handler.Pops;
+        for (int i = operandStart; i < symbolicStack.Count; i++)
+        {
+            il.Emit(OpCodes.Ldarg_2);
+            EmitOperandAddress(il, symbolicStack[i]);
+            il.Emit(OpCodes.Call, s_pushUInt256!);
+            il.Emit(OpCodes.Pop); // headroom is covered by the upfront growth precondition
+        }
+        symbolicStack.RemoveRange(operandStart, handler.Pops);
+
+        il.Emit(OpCodes.Ldarg_1);
+        il.Emit(OpCodes.Ldarg_2);
+        il.Emit(OpCodes.Ldarg_3);
+        il.Emit(OpCodes.Ldarg_S, (byte)4);
+        il.Emit(OpCodes.Call, handler.Method);
+        Label success = il.DefineLabel();
+        il.Emit(OpCodes.Dup);
+        il.Emit(OpCodes.Ldc_I4, (int)EvmExceptionType.None);
+        il.Emit(OpCodes.Beq, success);
+        il.Emit(OpCodes.Ret); // propagate the handler's halt; the frame is dead, locals are moot
+        il.MarkLabel(success);
+        il.Emit(OpCodes.Pop);
+
+        for (int i = 0; i < handler.Pushes; i++)
+        {
+            LocalBuilder result = il.DeclareLocal(typeof(UInt256));
+            il.Emit(OpCodes.Ldarg_2);
+            il.Emit(OpCodes.Ldloca, result);
+            il.Emit(OpCodes.Call, s_popUInt256!);
+            il.Emit(OpCodes.Pop);
+            symbolicStack.Add(new Operand(OperandKind.Local, result, ConstantIndex: -1));
+        }
     }
 
     private static void EmitOp(ILGenerator il, in DecodedOp op, List<Operand> symbolicStack, List<UInt256> constants)

@@ -86,6 +86,72 @@ public class IlEvmExecutionTests
     }
 
     [Test]
+    public void Execute_MemoryAndKeccakInsideSegment_MatchesInterpreterExactly()
+    {
+        // Stays one segment end to end: arithmetic, MSTORE, MLOAD, KECCAK256, arithmetic —
+        // memory and keccak run as embedded handler calls, not segment cuts.
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1, 20,
+            (byte)Instruction.PUSH1, 22,
+            (byte)Instruction.ADD,            // 42
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.MSTORE,         // mem[0..32) = 42
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.MLOAD,          // 42 back
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.KECCAK256,      // keccak(mem[0..32))
+            (byte)Instruction.ADD,            // 42 + hash (wraps)
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.RETURN,
+        ];
+
+        Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.Enabled = false;
+        ExecutionResult interpreted = RunCode(code, gasLimit: 100_000, out _);
+
+        Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.Enabled = true;
+        Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.CompileThreshold = 1;
+        ExecutionResult compiled = RunCode(code, gasLimit: 100_000, out CodeInfo codeInfo);
+
+        Assert.That(interpreted.IsError, Is.False, "precondition: the interpreter run must succeed");
+        IlCompiledCode? artifact = Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.GetForExecution(codeInfo, IstanbulSpec);
+        Assert.That(artifact, Is.Not.Null, "the code must compile");
+        Assert.That(compiled.Output, Is.EqualTo(interpreted.Output), "memory/keccak handler calls must produce identical output");
+        Assert.That(compiled.GasLeft, Is.EqualTo(interpreted.GasLeft), "chunked static charges plus handler dynamic gas must match per-op accounting");
+    }
+
+    [Test]
+    public void Execute_MemoryExpansionOutOfGasInsideSegment_MatchesInterpreterHalt()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1, 1,
+            (byte)Instruction.PUSH1, 2,
+            (byte)Instruction.ADD,
+            (byte)Instruction.PUSH4, 0x7F, 0xFF, 0xFF, 0xFF, // huge offset
+            (byte)Instruction.MSTORE,                        // expansion cost far beyond gas
+            (byte)Instruction.PUSH1, 1,
+            (byte)Instruction.ADD,
+            (byte)Instruction.STOP,
+        ];
+
+        Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.Enabled = false;
+        ExecutionResult interpreted = RunCode(code, gasLimit: 50_000, out _);
+
+        Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.Enabled = true;
+        Nethermind.Evm.CodeAnalysis.IlEvm.IlEvm.CompileThreshold = 1;
+        ExecutionResult compiled = RunCode(code, gasLimit: 50_000, out _);
+
+        Assert.That(interpreted.IsError, Is.True, "precondition: the expansion must exhaust gas");
+        Assert.That(compiled.IsError, Is.EqualTo(interpreted.IsError), "the mid-segment handler halt must match");
+        Assert.That(compiled.GasLeft, Is.EqualTo(interpreted.GasLeft), "halt-time gas must match exactly: chunks before the handler equal the interpreter's cumulative charge");
+    }
+
+    [Test]
     public void Execute_OutOfGasMidLoop_MatchesInterpreterHaltExactly()
     {
         byte[] code = BuildSumLoopCode();

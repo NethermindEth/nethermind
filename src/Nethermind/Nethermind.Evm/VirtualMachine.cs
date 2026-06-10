@@ -1342,8 +1342,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     if (TCancelable.IsActive && _txTracer.IsCancelled)
                         ThrowOperationCanceledException();
 
-                    exceptionType = ilSegment.Invoke(ref stack, ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas), ref programCounter);
+                    exceptionType = ilSegment.Invoke(
+                        Unsafe.As<VirtualMachine<EthereumGasPolicy>>(this),
+                        ref stack,
+                        ref Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas),
+                        ref programCounter);
                     opCodeCount += ilSegment.OpCount;
+                    // Embedded handler calls (memory/keccak) charge dynamic gas and may halt —
+                    // mirror the interpreter's post-dispatch checks exactly.
+                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                    {
+                        OpCodeCount += opCodeCount;
+                        goto OutOfGas;
+                    }
+                    if (exceptionType != EvmExceptionType.None)
+                        break;
                     continue;
                 }
 
