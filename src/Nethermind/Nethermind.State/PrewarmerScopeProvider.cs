@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -66,12 +69,27 @@ public class PrewarmerScopeProvider(
         private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
 
+        // Per contract per block; bounded so a block touching many contracts cannot accumulate
+        // reader threads.
+        private const int MaxStridePrefetchers = 4;
+        private readonly ConcurrentDictionary<AddressAsKey, StorageStridePrefetcher> _stridePrefetchers = new();
+        private readonly CancellationTokenSource _prefetchCts = new();
+
         public void Dispose()
         {
             if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
+
+            _prefetchCts.Cancel();
+            foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
+            {
+                // Joins reader threads so the base scope is never disposed under an in-flight read.
+                kv.Value.Dispose();
+            }
+            _prefetchCts.Dispose();
+
             baseScope.Dispose();
         }
 
@@ -81,7 +99,25 @@ public class PrewarmerScopeProvider(
                 baseScope.CreateStorageTree(address),
                 storageCache,
                 address,
-                isPrewarmer);
+                isPrewarmer,
+                isPrewarmer ? null : GetOrCreateStridePrefetcher(address));
+
+        private StorageStridePrefetcher? GetOrCreateStridePrefetcher(Address address)
+        {
+            AddressAsKey key = address;
+            if (_stridePrefetchers.TryGetValue(key, out StorageStridePrefetcher? existing)) return existing;
+            if (_stridePrefetchers.Count >= MaxStridePrefetchers) return null;
+
+            // The prefetcher gets its own base tree so its reads never share wrapper state.
+            return _stridePrefetchers.GetOrAdd(
+                key,
+                static (k, state) => new StorageStridePrefetcher(
+                    state.baseScope.CreateStorageTree(k.Value),
+                    state.storageCache,
+                    k.Value,
+                    state.token),
+                (baseScope, storageCache, token: _prefetchCts.Token));
+        }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -187,7 +223,8 @@ public class PrewarmerScopeProvider(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
-        bool isPrewarmer) : IWorldStateScopeProvider.IStorageTree
+        bool isPrewarmer,
+        StorageStridePrefetcher? stridePrefetcher = null) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
@@ -201,6 +238,8 @@ public class PrewarmerScopeProvider(
 
         public byte[] Get(in UInt256 index)
         {
+            stridePrefetcher?.OnRead(in index);
+
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
