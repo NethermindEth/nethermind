@@ -67,8 +67,7 @@ internal static class BTreeNodeLayoutPlanner
     public static Plan Compute(
         ReadOnlySpan<int> lengths,
         int crossEntryLcp,
-        int keyLength,
-        bool disablePrefix = false)
+        int keyLength)
     {
         int count = lengths.Length;
         if (count == 0)
@@ -77,15 +76,15 @@ internal static class BTreeNodeLayoutPlanner
         int firstLen = lengths[0];
         int minLen = firstLen;
         int maxLen = firstLen;
-        bool allSameLen = true;
 
         for (int i = 1; i < count; i++)
         {
             int len = lengths[i];
             if (len < minLen) minLen = len;
             if (len > maxLen) maxLen = len;
-            if (len != firstLen) allSameLen = false;
         }
+
+        bool allSameLen = minLen == maxLen;
 
         // Slot widening: when every natural separator fits in {2, 4, 8} and the keyLength
         // budget allows, pretend they're all `target` bytes — the builder pads each slot
@@ -122,8 +121,6 @@ internal static class BTreeNodeLayoutPlanner
         // Block cost = 1 + lcp; per-entry saving = lcp; net = lcp * (count - 1) - 1.
         if (lcp <= 0 || lcp * (count - 1) - 1 <= 0)
             lcp = 0;
-
-        if (disablePrefix) lcp = 0;
 
         // KeyType selection on effective (post-strip) lengths. Two outcomes:
         //   * Uniform: every slot is the same fixed width; mixed-length entries pad
