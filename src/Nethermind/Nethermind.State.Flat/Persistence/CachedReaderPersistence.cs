@@ -3,6 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -16,6 +17,8 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 {
+    private const int StorageSlotCacheCapacity = 262_144;
+
     private readonly IPersistence _inner; // Externally owned
     private readonly ILogger _logger;
     private readonly Lock _readerCacheLock = new();
@@ -78,7 +81,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             if (cachedReader is null)
             {
                 _cachedReader = cachedReader = new RefCountingPersistenceReader(
-                    _inner.CreateReader(),
+                    new CachedPersistenceReader(_inner.CreateReader()),
                     _logger
                 );
             }
@@ -143,5 +146,60 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             // not in lock as it has its own lock
             parent.ClearReaderCache();
         }
+    }
+
+    private sealed class CachedPersistenceReader(IPersistence.IPersistenceReader inner)
+        : IPersistence.IPersistenceReader
+    {
+        private readonly AssociativeCache<StorageCell, SlotCacheEntry> _storageSlotCache = new(StorageSlotCacheCapacity);
+
+        public StateId CurrentState => inner.CurrentState;
+
+        public void Dispose() => inner.Dispose();
+
+        public Account? GetAccount(Address address) => inner.GetAccount(address);
+
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+        {
+            StorageCell storageCell = new(address, in slot);
+            if (_storageSlotCache.TryGet(in storageCell, out SlotCacheEntry? entry))
+            {
+                SlotCacheEntry cached = entry!;
+                outValue = cached.Value;
+                return cached.Exists;
+            }
+
+            SlotValue value = default;
+            bool exists = inner.TryGetSlot(address, in slot, ref value);
+            outValue = value;
+            _storageSlotCache.Set(in storageCell, new SlotCacheEntry(exists, value));
+            return exists;
+        }
+
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
+            inner.TryLoadStateRlp(in path, flags);
+
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
+            inner.TryLoadStorageRlp(address, in path, flags);
+
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
+            inner.GetAccountRaw(in addrHash);
+
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
+            inner.TryGetStorageRaw(in addrHash, in slotHash, ref value);
+
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
+            inner.CreateAccountIterator(in startKey, in endKey);
+
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
+            inner.CreateStorageIterator(in accountKey, in startSlotKey, in endSlotKey);
+
+        public bool IsPreimageMode => inner.IsPreimageMode;
+    }
+
+    private sealed class SlotCacheEntry(bool exists, SlotValue value)
+    {
+        public bool Exists { get; } = exists;
+        public SlotValue Value { get; } = value;
     }
 }
