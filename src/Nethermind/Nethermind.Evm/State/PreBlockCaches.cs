@@ -66,9 +66,7 @@ public class PreBlockCaches
 
 public sealed record PreBlockCachesConfig
 {
-    // 2^17 sets × 2 ways = 262144 entries — above the distinct-slot working set of
-    // storage-heavy blocks (~140K slots at 300M gas), so prewarmed values survive
-    // until the main loop reads them.
+    // 2^17 × 2 ways = 262144 entries, above the ~140K-slot working set at 300M gas.
     public int StorageCacheSetsBits { get; init; } = 17;
 }
 

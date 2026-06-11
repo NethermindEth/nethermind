@@ -109,7 +109,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
                 return blocksConfig;
             })
-            // Production default (~10 MB per cache) × N test blockchains per process = OOM on CI runners.
             .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = SeqlockCache<StorageCell, byte[]>.DefaultSetsBits })
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
             {

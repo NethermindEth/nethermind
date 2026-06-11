@@ -26,8 +26,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // Note: There is a special logic for this in `PruningTrieStateFactory`.
                 .AddSingleton<NodeStorageCache>()
 
-                // Parent scope so test modules can override sizing; the child-scope
-                // PreBlockCaches registration falls through here for resolution.
+                // Parent scope so test modules can override; child scope's PreBlockCaches falls through here.
                 .AddSingleton<PreBlockCachesConfig>()
 
                 // Note: Need a small modification to have this work on all branch processor due to the shared
