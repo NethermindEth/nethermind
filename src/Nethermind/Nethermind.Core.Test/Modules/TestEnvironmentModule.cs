@@ -109,9 +109,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
                 return blocksConfig;
             })
-            // Many tests instantiate independent blockchains within the same process; the
-            // production default (2^17 sets × 2 = ~262K entries ≈ +10 MB per blockchain)
-            // multiplies into OOMs on CI runners. Drop back to the SeqlockCache default.
+            // Production default (~10 MB per cache) × N test blockchains per process = OOM on CI runners.
             .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = SeqlockCache<StorageCell, byte[]>.DefaultSetsBits })
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
             {

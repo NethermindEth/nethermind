@@ -64,20 +64,11 @@ public class PreBlockCaches
     }
 }
 
-/// <summary>
-/// Tuning knobs for the per-block warm caches owned by <see cref="PreBlockCaches"/>.
-/// </summary>
 public sealed record PreBlockCachesConfig
 {
-    /// <summary>
-    /// Set-index bits for the per-block storage cache (2^bits sets × 2 ways entries total).
-    /// </summary>
-    /// <remarks>
-    /// Default 17 → 2^17 sets × 2 ways = 262144 entries — above the distinct-slot working
-    /// set of storage-heavy blocks (~140K slots at 300M gas), so prewarmed values survive
-    /// until the main loop reads them. Tests override this to a smaller value to keep
-    /// memory pressure low when many independent test blockchains run in the same process.
-    /// </remarks>
+    // 2^17 sets × 2 ways = 262144 entries — above the distinct-slot working set of
+    // storage-heavy blocks (~140K slots at 300M gas), so prewarmed values survive
+    // until the main loop reads them.
     public int StorageCacheSetsBits { get; init; } = 17;
 }
 
