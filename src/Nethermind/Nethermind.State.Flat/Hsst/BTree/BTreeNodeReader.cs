@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// When <c>CommonPrefixLen &gt; 0</c> the keys section holds suffixes only; the prefix
 /// bytes are supplied by the caller via <see cref="ReadFromStart"/>'s <c>parentSeparator</c>
 /// (the parent's matched separator, or the HSST trailer for the root). Use
-/// <see cref="GetFullKey"/> to reconstruct lex bytes.
+/// <see cref="GetSeparatorBytes"/> to reconstruct lex bytes.
 /// </para>
 /// </remarks>
 public readonly ref struct BTreeNodeReader(
@@ -43,7 +43,7 @@ public readonly ref struct BTreeNodeReader(
     /// <summary>
     /// Bytes shared by every stored key. Empty when the node was written without the
     /// common-prefix optimization. The full lex-order key for entry i is reconstructed via
-    /// <see cref="GetFullKey"/>.
+    /// <see cref="GetSeparatorBytes"/>.
     /// </summary>
     public ReadOnlySpan<byte> CommonKeyPrefix => commonKeyPrefix;
 
@@ -54,7 +54,7 @@ public readonly ref struct BTreeNodeReader(
     /// bytes the parent used to route into this node — the builder guarantees
     /// <c>parentSeparator.Length &gt;= CommonPrefixLen</c>. Pass <c>default</c> when the caller
     /// only needs value-only access (e.g. <see cref="HsstEnumerator{TReader,TPin}"/>): the
-    /// prefix-dependent paths (<see cref="TryGetFloor"/>, <see cref="GetFullKey"/>) will
+    /// prefix-dependent paths (<see cref="TryGetFloor"/>, <see cref="GetSeparatorBytes"/>) will
     /// misbehave but <see cref="GetUInt64Value"/>, <see cref="EntryCount"/>, and friends still work.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -115,7 +115,7 @@ public readonly ref struct BTreeNodeReader(
     /// Raw stored slot at <paramref name="index"/>, zero-copy. Bytes are in storage order, which
     /// for Variable is the 2-byte prefix slot and for LE-stored Uniform is the byte-reversed
     /// form of the original key. Only meaningful as a comparison token in the stored encoding —
-    /// external callers wanting lex-order key bytes use <see cref="GetFullKey"/>.
+    /// external callers wanting lex-order key bytes use <see cref="GetSeparatorBytes"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ReadOnlySpan<byte> GetRawSlot(int index) => metadata.KeyType switch
@@ -247,20 +247,20 @@ public readonly ref struct BTreeNodeReader(
     }
 
     /// <summary>
-    /// Copy the full key (common prefix + per-entry suffix) for entry <paramref name="index"/>
-    /// into <paramref name="dest"/>. Always emits bytes in original (lex) order, byte-swapping
-    /// the per-entry suffix when <see cref="NodeMetadata.IsKeyLittleEndian"/> is set.
+    /// Copy entry <paramref name="index"/>'s full routing separator (common prefix + per-entry
+    /// suffix) into <paramref name="dest"/>. Always emits bytes in original (lex) order,
+    /// byte-swapping the per-entry suffix when <see cref="NodeMetadata.IsKeyLittleEndian"/> is set.
     /// Returns the total number of bytes written.
     /// </summary>
     /// <remarks>
-    /// For an index node the full key is also the routing separator: callers descending into a
-    /// child use this to materialize the lex bytes the child's header omits, passing them as the
-    /// next <see cref="ReadFromStart"/>'s <c>parentSeparator</c>.
+    /// Used when descending into a child: the child's header omits its common-prefix bytes, so the
+    /// parent materializes the matched separator here and passes it as the next
+    /// <see cref="ReadFromStart"/>'s <c>parentSeparator</c>.
     /// </remarks>
-    internal int GetFullKey(int index, Span<byte> dest)
+    internal int GetSeparatorBytes(int index, Span<byte> dest)
     {
         if (metadata.KeyType == 0)
-            return new BTreeNodeVariableKeyReader(keys, metadata.KeyCount).GetFullKey(index, commonKeyPrefix, dest);
+            return new BTreeNodeVariableKeyReader(keys, metadata.KeyCount).GetSeparatorBytes(index, commonKeyPrefix, dest);
 
         ReadOnlySpan<byte> suffix = GetRawSlot(index);
         int total = commonKeyPrefix.Length + suffix.Length;

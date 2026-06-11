@@ -229,7 +229,7 @@ internal static class BTreeNodeWriter<TWriter>
         if (!metadata.IsKeyLittleEndian) return false;
         // Honored only for the shapes the SIMD direct-compare fast path supports: Uniform with
         // KeySlotSize ∈ {2,4,8}. GetKey returns raw stored bytes (LE-reversed) under this flag;
-        // GetFullKey reverses back into a caller dest.
+        // GetSeparatorBytes reverses back into a caller dest.
         return metadata.KeyType == 1 && metadata.KeySlotSize is 2 or 4 or 8;
     }
 

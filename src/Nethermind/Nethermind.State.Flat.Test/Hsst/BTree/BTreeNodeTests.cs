@@ -142,7 +142,7 @@ public class BTreeNodeTests
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] expectedSep = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
-            int len = index.GetFullKey(i, keyBufRead);
+            int len = index.GetSeparatorBytes(i, keyBufRead);
             Assert.That(keyBufRead[..len].ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
             Assert.That(index.GetUInt64Value(i), Is.EqualTo((ulong)values[i]), $"Entry {i} value mismatch");
         }
@@ -260,8 +260,8 @@ public class BTreeNodeTests
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] expectedSep = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
-            // Variable keys are LE-stored (prefix slot byte-reversed); GetFullKey reconstructs lex order.
-            int written2 = index.GetFullKey(i, fullKey);
+            // Variable keys are LE-stored (prefix slot byte-reversed); GetSeparatorBytes reconstructs lex order.
+            int written2 = index.GetSeparatorBytes(i, fullKey);
             Assert.That(fullKey[..written2].ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
         }
     }
@@ -328,11 +328,11 @@ public class BTreeNodeTests
         Assert.That(reader.Metadata.KeyType, Is.EqualTo(0));
         Assert.That(reader.Metadata.IsKeyLittleEndian, Is.True, "Variable keys are always LE-stored");
 
-        // Round-trip via GetFullKey: lex-order bytes must match the original keys.
+        // Round-trip via GetSeparatorBytes: lex-order bytes must match the original keys.
         Span<byte> dest = stackalloc byte[256];
         for (int i = 0; i < keys.Length; i++)
         {
-            int written = reader.GetFullKey(i, dest);
+            int written = reader.GetSeparatorBytes(i, dest);
             Assert.That(dest[..written].ToArray(), Is.EqualTo(keys[i]), $"Entry {i} key mismatch");
         }
 
@@ -516,23 +516,23 @@ public class BTreeNodeTests
         BTreeNodeReader reader = BTreeNodeReader.ReadFromStart(pooled.WrittenSpan, 0, commonPrefix);
         Assert.That(reader.CommonKeyPrefix.ToArray(), Is.EqualTo(Convert.FromHexString("DEADBEEF")));
 
-        // Per-entry decoded suffix matches (suffix only, prefix stripped). GetFullKey
+        // Per-entry decoded suffix matches (suffix only, prefix stripped). GetSeparatorBytes
         // reconstructs lex order for all encodings.
         Span<byte> suffixBuf = stackalloc byte[16];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] expectedSuffix = [Convert.FromHexString(separatorHexes[i])[4]];
-            int total = reader.GetFullKey(i, suffixBuf);
+            int total = reader.GetSeparatorBytes(i, suffixBuf);
             int prefixLenInDest = reader.CommonKeyPrefix.Length;
             Assert.That(suffixBuf.Slice(prefixLenInDest, total - prefixLenInDest).ToArray(),
                 Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
         }
 
-        // GetFullKey reconstructs the original key.
+        // GetSeparatorBytes reconstructs the original key.
         Span<byte> reconstructed = stackalloc byte[16];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
-            int len = reader.GetFullKey(i, reconstructed);
+            int len = reader.GetSeparatorBytes(i, reconstructed);
             Assert.That(reconstructed[..len].ToArray(), Is.EqualTo(Convert.FromHexString(separatorHexes[i])));
         }
 
@@ -595,7 +595,7 @@ public class BTreeNodeTests
     /// <summary>
     /// Round-trip a Uniform LE-encoded leaf for keySize ∈ {2,4,8}: header bit 5 is set,
     /// raw on-disk slot bytes are byte-reversed, GetKey returns raw stored bytes,
-    /// GetFullKey reconstructs the original lex bytes, and FindFloorIndex matches the
+    /// GetSeparatorBytes reconstructs the original lex bytes, and FindFloorIndex matches the
     /// BE baseline at every probe (including misses) with the SIMD path enabled and disabled.
     /// </summary>
     [TestCase(2)]
@@ -642,13 +642,13 @@ public class BTreeNodeTests
             Assert.That(leSlot.ToArray(), Is.EqualTo(reversed), $"LE slot {i} should be byte-reversed BE slot");
         }
 
-        // GetFullKey under LE recovers original lex bytes.
+        // GetSeparatorBytes under LE recovers original lex bytes.
         Span<byte> dest = stackalloc byte[keySize];
         for (int i = 0; i < n; i++)
         {
-            int len = leReader.GetFullKey(i, dest);
+            int len = leReader.GetSeparatorBytes(i, dest);
             Assert.That(len, Is.EqualTo(keySize));
-            Assert.That(dest.ToArray(), Is.EqualTo(keys[i]), $"GetFullKey LE entry {i} should equal lex bytes");
+            Assert.That(dest.ToArray(), Is.EqualTo(keys[i]), $"GetSeparatorBytes LE entry {i} should equal lex bytes");
         }
 
         // Floor-index agreement: hits at every stored key, hits between, miss-below, miss-above.

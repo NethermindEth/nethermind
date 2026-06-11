@@ -19,7 +19,7 @@ internal readonly ref struct BTreeNodeVariableKeyReader(ReadOnlySpan<byte> keys,
 
     /// <summary>
     /// Raw 2-byte prefix slot for entry <paramref name="index"/> in storage (byte-reversed) order.
-    /// External callers wanting lex-order bytes use <see cref="GetFullKey"/>.
+    /// External callers wanting lex-order bytes use <see cref="GetSeparatorBytes"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> GetRawSlot(int index) => keys.Slice(index * 2, 2);
@@ -46,11 +46,11 @@ internal readonly ref struct BTreeNodeVariableKeyReader(ReadOnlySpan<byte> keys,
     }
 
     /// <summary>
-    /// Copy the full lex-order key (<paramref name="commonKeyPrefix"/> + per-entry suffix) for
+    /// Copy the full lex-order separator (<paramref name="commonKeyPrefix"/> + per-entry suffix) for
     /// entry <paramref name="index"/> into <paramref name="dest"/>. Returns the number of bytes
     /// written. The prefix slot is un-reversed here so the result is in original byte order.
     /// </summary>
-    public int GetFullKey(int index, ReadOnlySpan<byte> commonKeyPrefix, Span<byte> dest)
+    public int GetSeparatorBytes(int index, ReadOnlySpan<byte> commonKeyPrefix, Span<byte> dest)
     {
         int slot = GetOffsetSlot(index);
         int tag = slot >>> 14;
