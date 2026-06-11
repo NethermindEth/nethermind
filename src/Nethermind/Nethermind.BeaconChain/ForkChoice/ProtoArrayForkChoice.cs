@@ -151,6 +151,23 @@ public sealed class ProtoArrayForkChoice
     public ulong? GetWeight(Hash256 blockRoot) =>
         _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].Weight : null;
 
+    public ulong? GetBlockSlot(Hash256 blockRoot) =>
+        _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].Slot : null;
+
+    /// <summary>
+    /// Returns the ancestor of <paramref name="blockRoot"/> at or before <paramref name="slot"/>
+    /// (the spec's <c>get_ancestor</c>), or <c>null</c> when the block is unknown.
+    /// </summary>
+    public Hash256? GetAncestor(Hash256 blockRoot, ulong slot)
+    {
+        foreach (ProtoNode node in _protoArray.EnumerateAncestorNodes(blockRoot))
+        {
+            if (node.Slot <= slot) return node.Root;
+        }
+
+        return null;
+    }
+
     public ExecutionStatus? GetBlockExecutionStatus(Hash256 blockRoot) =>
         _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].ExecutionStatus : null;
 

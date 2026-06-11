@@ -108,6 +108,8 @@ public static class Presets
 
     // Config — time parameters
     public const ulong SecondsPerSlot = 12;
+    /// <summary>Phase0 fork-choice <c>INTERVALS_PER_SLOT</c>: a block is timely (proposer boost) when it arrives in the first interval of its slot.</summary>
+    public const ulong IntervalsPerSlot = 3;
     public const ulong MinValidatorWithdrawabilityDelay = 256;
     public const ulong ShardCommitteePeriod = 256;
 

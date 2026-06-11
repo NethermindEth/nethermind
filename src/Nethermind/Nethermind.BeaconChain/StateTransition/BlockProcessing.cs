@@ -407,7 +407,7 @@ public static class BlockProcessing
     /// Spec <c>is_valid_indexed_attestation</c>: indices must be non-empty, sorted, unique, and in
     /// range, and the aggregate signature must verify.
     /// </summary>
-    private static bool IsValidIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys, bool verifySignature)
+    public static bool IsValidIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys, bool verifySignature)
     {
         ulong[] indices = attestation.AttestingIndices ?? [];
         if (indices.Length == 0)

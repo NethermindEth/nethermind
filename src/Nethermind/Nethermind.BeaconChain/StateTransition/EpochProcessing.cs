@@ -51,13 +51,26 @@ public static class EpochProcessing
     }
 
     /// <summary>Altair <c>process_justification_and_finalization</c>.</summary>
-    public static void ProcessJustificationAndFinalization(BeaconStateFulu state, EpochCache cache)
+    public static void ProcessJustificationAndFinalization(BeaconStateFulu state, EpochCache cache) =>
+        ComputeJustificationAndFinalization(state, cache).ApplyTo(state);
+
+    /// <summary>
+    /// Runs the justification/finalization weighing of <c>process_justification_and_finalization</c>
+    /// without mutating <paramref name="state"/>.
+    /// </summary>
+    /// <remarks>
+    /// Fork choice uses this on a block's post-state to compute its unrealized checkpoints (the
+    /// spec's <c>compute_pulled_up_tip</c>) without cloning the state.
+    /// </remarks>
+    public static JustificationAndFinalizationState ComputeJustificationAndFinalization(BeaconStateFulu state, EpochCache cache)
     {
+        JustificationAndFinalizationState result = new(state);
+
         // Initial FFG checkpoint values have a `0x00` stub for `root`.
         // Skip FFG updates in the first two epochs to avoid corner cases that might result in
         // modifying this stub.
         if (state.GetCurrentEpoch() <= Presets.GenesisEpoch + 1)
-            return;
+            return result;
 
         ulong previousEpoch = state.GetPreviousEpoch();
         ulong currentEpoch = state.GetCurrentEpoch();
@@ -79,22 +92,24 @@ public static class EpochProcessing
 
         WeighJustificationAndFinalization(
             state,
+            result,
             state.GetTotalActiveBalance(cache),
             Math.Max(Presets.EffectiveBalanceIncrement, previousTargetBalance),
             Math.Max(Presets.EffectiveBalanceIncrement, currentTargetBalance));
+        return result;
     }
 
     /// <summary>Phase0 <c>weigh_justification_and_finalization</c>: justification-bit shift, 2/3 supermajority justification, and the four finalization rules.</summary>
-    private static void WeighJustificationAndFinalization(BeaconStateFulu state, ulong totalActiveBalance, ulong previousTargetBalance, ulong currentTargetBalance)
+    private static void WeighJustificationAndFinalization(BeaconStateFulu state, JustificationAndFinalizationState result, ulong totalActiveBalance, ulong previousTargetBalance, ulong currentTargetBalance)
     {
         ulong previousEpoch = state.GetPreviousEpoch();
         ulong currentEpoch = state.GetCurrentEpoch();
-        Checkpoint oldPreviousJustifiedCheckpoint = state.PreviousJustifiedCheckpoint!;
-        Checkpoint oldCurrentJustifiedCheckpoint = state.CurrentJustifiedCheckpoint!;
+        Checkpoint oldPreviousJustifiedCheckpoint = result.PreviousJustifiedCheckpoint;
+        Checkpoint oldCurrentJustifiedCheckpoint = result.CurrentJustifiedCheckpoint;
 
         // Process justifications.
-        state.PreviousJustifiedCheckpoint = state.CurrentJustifiedCheckpoint;
-        BitArray bits = state.JustificationBits!;
+        result.PreviousJustifiedCheckpoint = result.CurrentJustifiedCheckpoint;
+        BitArray bits = result.JustificationBits;
         for (int i = bits.Length - 1; i >= 1; i--)
         {
             bits[i] = bits[i - 1];
@@ -102,28 +117,28 @@ public static class EpochProcessing
         bits[0] = false;
         if (previousTargetBalance * 3 >= totalActiveBalance * 2)
         {
-            state.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = previousEpoch, Root = state.GetBlockRoot(previousEpoch) };
+            result.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = previousEpoch, Root = state.GetBlockRoot(previousEpoch) };
             bits[1] = true;
         }
         if (currentTargetBalance * 3 >= totalActiveBalance * 2)
         {
-            state.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = currentEpoch, Root = state.GetBlockRoot(currentEpoch) };
+            result.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = currentEpoch, Root = state.GetBlockRoot(currentEpoch) };
             bits[0] = true;
         }
 
         // Process finalizations.
         // The 2nd/3rd/4th most recent epochs are justified, the 2nd using the 4th as source.
         if (bits[1] && bits[2] && bits[3] && oldPreviousJustifiedCheckpoint.Epoch + 3 == currentEpoch)
-            state.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
+            result.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
         // The 2nd/3rd most recent epochs are justified, the 2nd using the 3rd as source.
         if (bits[1] && bits[2] && oldPreviousJustifiedCheckpoint.Epoch + 2 == currentEpoch)
-            state.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
+            result.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
         // The 1st/2nd/3rd most recent epochs are justified, the 1st using the 3rd as source.
         if (bits[0] && bits[1] && bits[2] && oldCurrentJustifiedCheckpoint.Epoch + 2 == currentEpoch)
-            state.FinalizedCheckpoint = oldCurrentJustifiedCheckpoint;
+            result.FinalizedCheckpoint = oldCurrentJustifiedCheckpoint;
         // The 1st/2nd most recent epochs are justified, the 1st using the 2nd as source.
         if (bits[0] && bits[1] && oldCurrentJustifiedCheckpoint.Epoch + 1 == currentEpoch)
-            state.FinalizedCheckpoint = oldCurrentJustifiedCheckpoint;
+            result.FinalizedCheckpoint = oldCurrentJustifiedCheckpoint;
     }
 
     /// <summary>Altair <c>process_inactivity_updates</c> (EIP-7045 inactivity scores).</summary>
