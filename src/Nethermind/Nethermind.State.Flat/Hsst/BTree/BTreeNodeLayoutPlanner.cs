@@ -86,19 +86,6 @@ internal static class BTreeNodeLayoutPlanner
 
         bool allSameLen = minLen == maxLen;
 
-        // Slot widening: when every natural separator fits in {2, 4, 8} and the keyLength
-        // budget allows, pretend they're all `target` bytes — the builder pads each slot
-        // from key data. The downstream Uniform branch then snaps to a power-of-2 SIMD
-        // slot when the post-strip budget allows; cases where the budget is too tight
-        // keep a non-SIMD slot rather than sacrificing lcp.
-        int target = firstLen > 0 ? WidenedSlotWidth(maxLen, keyLength) : maxLen;
-        if (target > maxLen)
-        {
-            minLen = target;
-            maxLen = target;
-            allSameLen = true;
-        }
-
         // BTreeNodeWriter takes `keySlotSize` bytes per entry from
         // currKey.Slice(prefixLen, slot) for Uniform layouts, padding from key data
         // past each entry's natural separator length when the slot exceeds it. For
@@ -136,12 +123,10 @@ internal static class BTreeNodeLayoutPlanner
         if (allSameLen || effMaxLen <= 8)
         {
             keyType = 1;
-            int budget = keyLength - lcp;
-            keySlotSize =
-                effMaxLen <= 2 && budget >= 2 ? 2 :
-                effMaxLen <= 4 && budget >= 4 ? 4 :
-                effMaxLen <= 8 && budget >= 8 ? 8 :
-                effMaxLen;
+            // Slot widening, applied AFTER the common-prefix strip: snap the post-strip
+            // residual up to a power-of-2 SIMD width when the remaining per-key budget allows
+            // (the writer pads each short slot from key data past its natural separator).
+            keySlotSize = WidenedSlotWidth(effMaxLen, keyLength - lcp);
         }
         else
         {
