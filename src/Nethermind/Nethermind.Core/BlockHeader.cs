@@ -191,28 +191,28 @@ public class BlockHeader
     public virtual BlockHeader CloneForProcessing()
     {
         BlockHeader clone = new(ParentHash!, UnclesHash!, Beneficiary!, Difficulty, Number, GasLimit, Timestamp, ExtraData);
-        CopyProcessingFields(this, clone);
+        CopyProcessingFields(clone);
         return clone;
     }
 
-    protected static void CopyProcessingFields(BlockHeader src, BlockHeader dst)
+    protected void CopyProcessingFields(BlockHeader dst)
     {
-        dst.Bloom = Bloom.Empty;
-        dst.Author = src.Author;
-        dst.Hash = src.Hash;
-        dst.MixHash = src.MixHash;
-        dst.Nonce = src.Nonce;
-        dst.TxRoot = src.TxRoot;
-        dst.TotalDifficulty = src.TotalDifficulty;
-        dst.ReceiptsRoot = src.ReceiptsRoot;
-        dst.BaseFeePerGas = src.BaseFeePerGas;
-        dst.WithdrawalsRoot = src.WithdrawalsRoot;
-        dst.RequestsHash = src.RequestsHash;
-        dst.IsPostMerge = src.IsPostMerge;
-        dst.ParentBeaconBlockRoot = src.ParentBeaconBlockRoot;
-        dst.SlotNumber = src.SlotNumber;
-        dst.BlockAccessListHash = src.BlockAccessListHash;
-        dst.BlobGasUsed = src.BlobGasUsed;
-        dst.ExcessBlobGas = src.ExcessBlobGas;
+        dst.Bloom = Core.Bloom.Empty;
+        dst.Author = Author;
+        dst.Hash = Hash;
+        dst.MixHash = MixHash;
+        dst.Nonce = Nonce;
+        dst.TxRoot = TxRoot;
+        dst.TotalDifficulty = TotalDifficulty;
+        dst.ReceiptsRoot = ReceiptsRoot;
+        dst.BaseFeePerGas = BaseFeePerGas;
+        dst.WithdrawalsRoot = WithdrawalsRoot;
+        dst.RequestsHash = RequestsHash;
+        dst.IsPostMerge = IsPostMerge;
+        dst.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        dst.SlotNumber = SlotNumber;
+        dst.BlockAccessListHash = BlockAccessListHash;
+        dst.BlobGasUsed = BlobGasUsed;
+        dst.ExcessBlobGas = ExcessBlobGas;
     }
 }

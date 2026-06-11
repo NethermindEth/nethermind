@@ -49,7 +49,7 @@ public sealed class AuRaBlockHeader(
             AuRaStep = AuRaStep,
             AuRaSignature = AuRaSignature,
         };
-        CopyProcessingFields(this, clone);
+        CopyProcessingFields(clone);
         return clone;
     }
 

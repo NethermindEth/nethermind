@@ -22,12 +22,15 @@ public class AuRaHeaderModule : Module
 
         AuRaHeaderDecoder headerDecoder = new();
         BlockDecoder blockDecoder = new(headerDecoder);
+        BlockBodyDecoder blockBodyDecoder = new(headerDecoder);
         Rlp.RegisterDecoder(typeof(BlockHeader), headerDecoder);
         Rlp.RegisterDecoder(typeof(Block), blockDecoder);
+        Rlp.RegisterDecoder(typeof(BlockBody), blockBodyDecoder);
 
         builder
             .AddSingleton<IHeaderDecoder>(headerDecoder)
             .AddSingleton(blockDecoder)
+            .AddSingleton(blockBodyDecoder)
             .AddDecorator<IGenesisBuilder, AuRaGenesisBuilder>();
     }
 }
