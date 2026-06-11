@@ -60,17 +60,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
-            // Shared ArenaManager + BlobArenaManager: the persisted-snapshot repo and the
-            // compactor MUST resolve the same instances, otherwise compaction would write
-            // through a different mmap than the repository reads from. Registering them
-            // here as singletons keeps both consumers naturally on the same instance and
-            // lets IPersistedSnapshotRepository / IPersistedSnapshotCompactor be registered
-            // separately below.
-            //
-            // EnableLongFinality off: arena/blob construction is skipped and the Null
-            // impls of repo/compactor are returned. The ArenaManager / BlobArenaManager
-            // singletons are still registered but never actually resolved in that mode
-            // (the Null impls don't reach them).
+            // Shared ArenaManager + BlobArenaManager singletons: the persisted-snapshot repo and
+            // the compactor MUST resolve the same instances, otherwise compaction would write
+            // through a different mmap than the repository reads from.
             .AddSingleton<ArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
             {
                 string basePath = Path.Combine(initConfig.BaseDbPath, "persisted_snapshot");
@@ -91,13 +83,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
-                // Feature flag off: skip arena / blob / catalog construction entirely and
-                // wire a null implementation. Conversion paths in PersistenceManager.
-                // DetermineSnapshotAction are also gated on this flag, so no
-                // ConvertSnapshotToPersistedSnapshot call will ever reach the repo — this
-                // guarantees no on-disk artefacts under `<data-dir>/persisted_snapshot/`.
-                if (!cfg.EnableLongFinality) return NullPersistedSnapshotRepository.Instance;
-
                 IColumnsDb<PersistedSnapshotCatalogColumns> catalogColumns =
                     ctx.Resolve<IColumnsDb<PersistedSnapshotCatalogColumns>>();
                 IDb catalogDb = catalogColumns.GetColumnDb(PersistedSnapshotCatalogColumns.Catalog);
@@ -112,8 +97,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IPersistedSnapshotCompactor>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
-                if (!cfg.EnableLongFinality) return NullPersistedSnapshotCompactor.Instance;
-
                 return new PersistedSnapshotCompactor(
                     ctx.Resolve<IPersistedSnapshotRepository>(),
                     ctx.Resolve<ArenaManager>(),
@@ -174,6 +157,17 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 return new CachedReaderPersistence(persistence, exitSource, logManager);
             })
             ;
+
+        // EnableLongFinality off: override the persisted-snapshot repo/compactor with their Null
+        // impls. Their real factories above are never invoked, so no arena/blob/catalog artefacts
+        // are constructed under `<data-dir>/persisted_snapshot/`. Conversion paths in
+        // PersistenceManager.DetermineSnapshotAction are also gated on this flag.
+        if (!flatDbConfig.EnableLongFinality)
+        {
+            builder
+                .AddSingleton<IPersistedSnapshotRepository>(NullPersistedSnapshotRepository.Instance)
+                .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
+        }
 
         if (flatDbConfig.ImportFromPruningTrieState)
         {

@@ -148,7 +148,7 @@ internal static class HsstBTreeReader
                 // from them at the next ReadFromStart call. Cheap to compute even when
                 // the child is an Entry — the next iteration will discard parentSeparator
                 // before reading the flag byte.
-                int sepBytesWritten = node.GetSeparatorBytes(floorIdx, separatorScratch);
+                int sepBytesWritten = node.GetFullKey(floorIdx, separatorScratch);
                 parentSeparator = separatorScratch[..sepBytesWritten];
 
                 ulong childOffset = node.GetUInt64Value(floorIdx);

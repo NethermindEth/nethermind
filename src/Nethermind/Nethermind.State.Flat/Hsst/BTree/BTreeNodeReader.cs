@@ -54,9 +54,8 @@ public readonly ref struct BTreeNodeReader(
     /// bytes the parent used to route into this node — the builder guarantees
     /// <c>parentSeparator.Length &gt;= CommonPrefixLen</c>. Pass <c>default</c> when the caller
     /// only needs value-only access (e.g. <see cref="HsstEnumerator{TReader,TPin}"/>): the
-    /// prefix-dependent paths (<see cref="TryGetFloor"/>, <see cref="GetFullKey"/>,
-    /// <see cref="GetSeparatorBytes"/>) will misbehave but <see cref="GetUInt64Value"/>,
-    /// <see cref="EntryCount"/>, and friends still work.
+    /// prefix-dependent paths (<see cref="TryGetFloor"/>, <see cref="GetFullKey"/>) will
+    /// misbehave but <see cref="GetUInt64Value"/>, <see cref="EntryCount"/>, and friends still work.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static BTreeNodeReader ReadFromStart(ReadOnlySpan<byte> data, int nodeStart, ReadOnlySpan<byte> parentSeparator = default)
@@ -70,22 +69,25 @@ public readonly ref struct BTreeNodeReader(
         int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(data[(pos + 1)..]);
         int keySize = BinaryPrimitives.ReadUInt16LittleEndian(data[(pos + 3)..]);
         int prefixLen = data[pos + 5];
-        ReadOnlySpan<byte> bo = data.Slice(pos + 6, 6);
-        ulong baseOffset = (ulong)bo[0]
-                         | ((ulong)bo[1] << 8)
-                         | ((ulong)bo[2] << 16)
-                         | ((ulong)bo[3] << 24)
-                         | ((ulong)bo[4] << 32)
-                         | ((ulong)bo[5] << 40);
+        // 6-byte LE base offset read as u32 (bytes 0-3) | u16 (bytes 4-5) << 32. Reads exactly the
+        // 6 header bytes; a single ReadUInt64 would over-read past a minimal 12-byte node.
+        ulong baseOffset = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(pos + 6, 4))
+                         | ((ulong)BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(pos + 10, 2)) << 32);
         pos += 12;
 
         // When prefixLen > 0 the prefix bytes ride in from the caller's parentSeparator.
-        // An insufficient parentSeparator (typical of value-only enumerators) leaves
-        // commonKeyPrefix empty — see the doc on this method for which APIs stay valid
-        // in that mode.
-        ReadOnlySpan<byte> commonKeyPrefix = prefixLen > 0 && parentSeparator.Length >= prefixLen
-            ? parentSeparator[..prefixLen]
-            : default;
+        // A value-only caller passes an empty parentSeparator (see the method doc) and gets an
+        // empty commonKeyPrefix — the prefix-dependent APIs are documented to misbehave then. A
+        // non-empty but too-short separator is a contract violation: the builder guarantees
+        // parentSeparator.Length >= CommonPrefixLen for every real descent.
+        ReadOnlySpan<byte> commonKeyPrefix;
+        if (prefixLen == 0 || parentSeparator.Length == 0)
+            commonKeyPrefix = default;
+        else if (parentSeparator.Length >= prefixLen)
+            commonKeyPrefix = parentSeparator[..prefixLen];
+        else
+            throw new InvalidDataException(
+                $"parentSeparator length {parentSeparator.Length} is shorter than the node's CommonPrefixLen {prefixLen}.");
 
         NodeMetadata metadata = new()
         {
@@ -149,9 +151,12 @@ public readonly ref struct BTreeNodeReader(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong ReadUInt64LE(ReadOnlySpan<byte> src)
     {
+        // Full-width slot: a single LE load. Partial widths (1..7) fall back to a byte loop —
+        // padding up to 8 would need a stackalloc (disqualifies this hot helper from inlining)
+        // and over-reading src would overrun the last value slot.
+        if (src.Length == 8) return BinaryPrimitives.ReadUInt64LittleEndian(src);
         ulong v = 0;
-        int len = src.Length;
-        for (int i = 0; i < len; i++)
+        for (int i = 0; i < src.Length; i++)
             v |= (ulong)src[i] << (i * 8);
         return v;
     }
@@ -189,7 +194,7 @@ public readonly ref struct BTreeNodeReader(
     /// Returns -1 if key is less than all entries.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int FindFloorIndex(ReadOnlySpan<byte> key)
+    internal int FindFloorIndex(ReadOnlySpan<byte> key)
     {
         if (!TryStripCommonPrefix(key, out ReadOnlySpan<byte> q, out int shortcut))
             return shortcut;
@@ -247,7 +252,12 @@ public readonly ref struct BTreeNodeReader(
     /// the per-entry suffix when <see cref="NodeMetadata.IsKeyLittleEndian"/> is set.
     /// Returns the total number of bytes written.
     /// </summary>
-    public int GetFullKey(int index, Span<byte> dest)
+    /// <remarks>
+    /// For an index node the full key is also the routing separator: callers descending into a
+    /// child use this to materialize the lex bytes the child's header omits, passing them as the
+    /// next <see cref="ReadFromStart"/>'s <c>parentSeparator</c>.
+    /// </remarks>
+    internal int GetFullKey(int index, Span<byte> dest)
     {
         if (metadata.KeyType == 0)
             return new BTreeNodeVariableKeyReader(keys, metadata.KeyCount).GetFullKey(index, commonKeyPrefix, dest);
@@ -271,12 +281,4 @@ public readonly ref struct BTreeNodeReader(
         }
         return total;
     }
-
-    /// <summary>
-    /// Copy entry <paramref name="index"/>'s full lex-order separator bytes (common prefix +
-    /// per-entry suffix) into <paramref name="dest"/>. Returns the number of bytes written.
-    /// Equivalent to <see cref="GetFullKey"/> — callers descending into a child node use this
-    /// to materialize the bytes that the child's header omits.
-    /// </summary>
-    public int GetSeparatorBytes(int index, Span<byte> dest) => GetFullKey(index, dest);
 }
