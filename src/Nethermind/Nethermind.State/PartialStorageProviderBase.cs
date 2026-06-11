@@ -15,10 +15,10 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase(ILogManager? logManager)
+    internal abstract class PartialStorageProviderBase(ILogManager logManager)
     {
         protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = [];
-        protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+        protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = [];
 
@@ -177,7 +177,7 @@ namespace Nethermind.State
         {
             // If the cache is completely empty (no writes or reads yet this transaction),
             // skip hashing the 52-byte cell — TryGetValue would miss anyway.
-            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out StackList<int>? stack))
             {
                 int lastChangeIndex = stack.Peek();
                 {
@@ -221,7 +221,7 @@ namespace Nethermind.State
                 value = StackList<int>.Rent();
             }
 
-            return value;
+            return value!;
         }
 
         /// <summary>

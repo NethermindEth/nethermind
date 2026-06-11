@@ -32,7 +32,7 @@ public class HeaderStore(
     {
         using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
         headerDb.Set(header.Number, header.Hash!, rlp);
-        InsertBlockNumber(header.Hash, header.Number);
+        InsertBlockNumber(header.Hash!, header.Number);
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)
@@ -47,7 +47,7 @@ public class HeaderStore(
             headerWriteBatch.Set(header.Number, header.Hash!, rlp);
 
             header.Number.WriteBigEndian(blockNumberSpan);
-            blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+            blockNumberWriteBatch.Set(header.Hash!, blockNumberSpan);
         }
     }
 
@@ -63,7 +63,7 @@ public class HeaderStore(
         return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     }
 
-    public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
+    public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash!.ValueHash256, header);
 
     public void Delete(Hash256 blockHash)
     {
@@ -125,7 +125,9 @@ public class HeaderStore(
             while (view.MoveNext())
             {
                 if (view.CurrentKey.Length != 40) continue; // skip old hash-only keys
-                BlockHeader header = _headerDecoder.Decode(view.CurrentValue);
+                BlockHeader? header = _headerDecoder.Decode(view.CurrentValue);
+                if (header is null) continue;
+
                 header.Hash ??= new Hash256(view.CurrentKey[8..]);
                 prefetched[header.Hash.ValueHash256] = header;
             }

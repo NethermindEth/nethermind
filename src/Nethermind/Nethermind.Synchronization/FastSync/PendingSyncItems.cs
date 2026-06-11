@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
@@ -144,7 +145,7 @@ namespace Nethermind.Synchronization.FastSync
         /// </summary>
         /// <param name="node"></param>
         /// <returns></returns>
-        private bool TryTake(out StateSyncItem? node)
+        private bool TryTake([NotNullWhen(true)] out StateSyncItem? node)
         {
             // index 0 is Codes so we skip it
             for (int i = 1; i < _allStacks.Length; i++)
@@ -187,9 +188,9 @@ namespace Nethermind.Synchronization.FastSync
 
                 for (int i = 0; i < codeMaxCount; i++)
                 {
-                    if (CodeItems.TryPop(out StateSyncItem codeItem))
+                    if (CodeItems.TryPop(out StateSyncItem? codeItem) && codeItem is not null)
                     {
-                        requestItems.Add(codeItem!);
+                        requestItems.Add(codeItem);
                     }
                 }
 
@@ -204,7 +205,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (TryTake(out StateSyncItem? requestItem))
                 {
-                    requestItems.Add(requestItem!);
+                    requestItems.Add(requestItem);
                 }
                 else
                 {

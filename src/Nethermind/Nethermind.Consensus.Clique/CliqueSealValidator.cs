@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Retrieve the snapshot needed to validate this header and cache it
-            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
+            Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash!);
 
             // If the block is a checkpoint block, validate the signer list
             if (IsEpochTransition(header.Number))

@@ -180,7 +180,7 @@ public abstract class TransactionForRpc
             // Copy the reader so we can do a double parse:
             // The first parse is used to check for fields, while the second parses the entire Transaction
             Utf8JsonReader txTypeReader = reader;
-            JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
+            JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options) ?? throw new JsonException("Transaction object cannot be null.");
 
             Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted);
 
@@ -233,8 +233,8 @@ public abstract class TransactionForRpc
         class TxTypeInfo
         {
             public TxType TxType { get; set; }
-            public Type Type { get; set; }
-            public FromTransactionFunc FromTransactionFunc { get; set; }
+            public Type Type { get; set; } = null!;
+            public FromTransactionFunc FromTransactionFunc { get; set; } = null!;
             public string[] DiscriminatorProperties { get; set; } = [];
         }
     }

@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public Hash256 StateRoot = stateRoot;
 
-        public IList<StateSyncItem>? RequestedNodes { get; } = requestedNodes;
+        public IList<StateSyncItem> RequestedNodes { get; } = requestedNodes;
 
         public IByteArrayList? Responses { get; set; }
 

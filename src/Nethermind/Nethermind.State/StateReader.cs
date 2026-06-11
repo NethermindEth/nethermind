@@ -13,12 +13,12 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
-    public class StateReader(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager) : IStateReader
+    public class StateReader(ITrieStore trieStore, IKeyValueStore codeDb, ILogManager logManager) : IStateReader
     {
-        private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+        private readonly IKeyValueStore _codeDb = codeDb;
         private readonly StateTree _state = new(trieStore.GetTrieStore(null), logManager);
         private readonly ITrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ILogManager _logManager = logManager;
 
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => TryGetState(baseBlock, address, out account);
 

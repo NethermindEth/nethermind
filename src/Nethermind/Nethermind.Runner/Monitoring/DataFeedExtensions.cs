@@ -18,7 +18,7 @@ namespace Nethermind.Runner.Monitoring;
 
 public static class DataFeedExtensions
 {
-    private static DataFeed _dataFeed;
+    private static DataFeed? _dataFeed;
 
     public static IEndpointConventionBuilder MapDataFeeds(this IEndpointRouteBuilder endpoints, ApplicationLifetime lifetime)
     {

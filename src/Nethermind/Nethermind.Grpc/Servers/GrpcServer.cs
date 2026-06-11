@@ -56,7 +56,7 @@ namespace Nethermind.Grpc.Servers
             }
         }
 
-        public Task PublishAsync<T>(T data, string client) where T : class
+        public Task PublishAsync<T>(T? data, string? client) where T : class
         {
             if (data is null)
             {
@@ -86,7 +86,7 @@ namespace Nethermind.Grpc.Servers
                 return Task.CompletedTask;
             }
 
-            if (!_clientResults.TryGetValue(client, out BlockingCollection<string> clientResult))
+            if (!_clientResults.TryGetValue(client, out BlockingCollection<string>? clientResult))
             {
                 return Task.CompletedTask;
             }

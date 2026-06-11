@@ -35,18 +35,18 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; } = [];
 
-    public Address[] GenesisMasterNodes { get; set; }
+    public Address[] GenesisMasterNodes { get; set; } = [];
     public ulong MergeSignRange { get; set; }
-    public HashSet<Address> BlackListedAddresses { get; set; }
-    public Address BlockSignerContract { get; set; }
-    public Address RandomizeSMCBinary { get; set; }
-    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
-    public Address XDCXLendingAddressBinary { get; set; }
-    public Address XDCXAddressBinary { get; set; }
-    public Address TradingStateAddressBinary { get; set; }
+    public HashSet<Address> BlackListedAddresses { get; set; } = [];
+    public Address BlockSignerContract { get; set; } = null!;
+    public Address RandomizeSMCBinary { get; set; } = null!;
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; } = null!;
+    public Address XDCXLendingAddressBinary { get; set; } = null!;
+    public Address XDCXAddressBinary { get; set; } = null!;
+    public Address TradingStateAddressBinary { get; set; } = null!;
     public ulong TIP2019Block { get; set; }
-    public Address FoundationWallet { get; set; }
-    public Address MasternodeVotingContract { get; set; }
+    public Address FoundationWallet { get; set; } = null!;
+    public Address MasternodeVotingContract { get; set; } = null!;
     public bool IsTipUpgradeRewardEnabled { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
@@ -90,7 +90,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
         {
             if (property.CanRead && property.CanWrite)
             {
-                object value = property.GetValue(spec);
+                object? value = property.GetValue(spec);
                 property.SetValue(xdcSpec, value);
             }
         }

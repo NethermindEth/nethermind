@@ -21,7 +21,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonDiscriminator]
-    public byte[][]? BlobVersionedHashes { get; set; }
+    public byte[]?[]? BlobVersionedHashes { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[][]? Blobs { get; set; }
@@ -51,16 +51,21 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
+        byte[]?[]? blobVersionedHashes = BlobVersionedHashes;
+        if (blobVersionedHashes is null || blobVersionedHashes.Length == 0)
             return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
 
-        foreach (byte[]? hash in BlobVersionedHashes)
+        byte[][] validatedBlobVersionedHashes = new byte[blobVersionedHashes.Length][];
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
         {
+            byte[]? hash = blobVersionedHashes[i];
             if (hash is null || hash.Length != Eip4844Constants.BytesPerBlobVersionedHash)
                 return RpcTransactionErrors.InvalidBlobVersionedHashSize;
 
             if (hash[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
                 return RpcTransactionErrors.InvalidBlobVersionedHashVersion;
+
+            validatedBlobVersionedHashes[i] = hash;
         }
 
         if (To is null)
@@ -71,7 +76,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
         if (validateUserInput && spec?.IsEip4844Enabled == true)
         {
-            ValidationResult blobCountValidation = BlobFieldsTxValidator.ValidateBlobGasLimits(BlobVersionedHashes.Length, spec);
+            ValidationResult blobCountValidation = BlobFieldsTxValidator.ValidateBlobGasLimits(validatedBlobVersionedHashes.Length, spec);
             if (!blobCountValidation)
                 return blobCountValidation.Error!;
         }
@@ -79,12 +84,12 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (!baseResult) return baseResult;
 
-        Transaction tx = baseResult.Data;
+        Transaction tx = baseResult.Data!;
 
         if (tx.SupportsBlobs)
         {
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
-            tx.BlobVersionedHashes = BlobVersionedHashes;
+            tx.BlobVersionedHashes = validatedBlobVersionedHashes;
         }
 
         return tx;
@@ -113,8 +118,21 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         IBlobProofsManager manager = IBlobProofsManager.For(version);
         if (!manager.ValidateLengths(wrapper))
             return "blob sidecar lengths invalid (blobs/commitments/proofs counts or individual byte sizes)";
-        if (tx.BlobVersionedHashes is not null && !manager.ValidateHashes(wrapper, tx.BlobVersionedHashes))
-            return "blob commitments do not match the supplied blobVersionedHashes";
+        if (tx.BlobVersionedHashes is not null)
+        {
+            byte[]?[] blobVersionedHashes = tx.BlobVersionedHashes;
+            byte[][] validatedBlobVersionedHashes = new byte[blobVersionedHashes.Length][];
+            for (int i = 0; i < blobVersionedHashes.Length; i++)
+            {
+                if (blobVersionedHashes[i] is not { } blobVersionedHash)
+                    return "blobVersionedHashes contains null";
+
+                validatedBlobVersionedHashes[i] = blobVersionedHash;
+            }
+
+            if (!manager.ValidateHashes(wrapper, validatedBlobVersionedHashes))
+                return "blob commitments do not match the supplied blobVersionedHashes";
+        }
 
         tx.NetworkWrapper = wrapper;
         return null;

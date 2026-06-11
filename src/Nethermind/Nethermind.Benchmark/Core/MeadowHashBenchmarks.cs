@@ -40,7 +40,7 @@ namespace Nethermind.Benchmarks.Core
         private Memory<byte> _remainderBuffer;
         private int _remainderLength;
         private Memory<ulong> _state;
-        private byte[] _hash;
+        private byte[]? _hash;
         #endregion
 
         #region Properties

@@ -547,7 +547,7 @@ public static partial class EvmInstructions
         // Deduct gas cost for balance operation as per specification.
         TGasPolicy.Consume(ref gas, spec.GasCosts.BalanceCost);
 
-        Address address = stack.PopAddress();
+        Address? address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
@@ -607,7 +607,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
 
-        Address address = stack.PopAddress();
+        Address? address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
@@ -705,12 +705,12 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         // Retrieve the array of versioned blob hashes from the execution context.
-        byte[][] versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
+        byte[]?[]? versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
 
         // If versioned hashes are available and the index is within range, push the corresponding blob hash.
         // Otherwise, push zero.
-        return versionedHashes is not null && result < versionedHashes.Length
-            ? stack.PushBytes<TTracingInst>(versionedHashes[result.u0])
+        return versionedHashes is not null && result < versionedHashes.Length && versionedHashes[result.u0] is { } versionedHash
+            ? stack.PushBytes<TTracingInst>(versionedHash)
             : stack.PushZero<TTracingInst>();
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:

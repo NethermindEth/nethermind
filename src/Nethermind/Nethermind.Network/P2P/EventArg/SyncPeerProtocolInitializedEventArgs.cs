@@ -9,12 +9,12 @@ namespace Nethermind.Network.P2P.EventArg
 {
     public class SyncPeerProtocolInitializedEventArgs(SyncPeerProtocolHandlerBase protocolHandler) : ProtocolInitializedEventArgs(protocolHandler)
     {
-        public string Protocol { get; set; }
+        public string Protocol { get; set; } = null!;
         public byte ProtocolVersion { get; set; }
         public ulong NetworkId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
-        public Hash256 BestHash { get; set; }
-        public Hash256 GenesisHash { get; set; }
+        public Hash256? BestHash { get; set; }
+        public Hash256? GenesisHash { get; set; }
         public ForkId? ForkId { get; set; }
     }
 }

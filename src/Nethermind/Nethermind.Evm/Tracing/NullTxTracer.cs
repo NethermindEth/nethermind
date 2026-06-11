@@ -65,7 +65,7 @@ public class NullTxTracer : TxTracer
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         => ThrowInvalidOperationException();
 
-    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
         => ThrowInvalidOperationException();
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)

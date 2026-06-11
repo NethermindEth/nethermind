@@ -98,7 +98,7 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("subtraces"u8))
             {
                 reader.Read();
-                value.Subtraces = JsonSerializer.Deserialize<List<ParityTraceAction>>(ref reader, options);
+                value.Subtraces = JsonSerializer.Deserialize<List<ParityTraceAction>>(ref reader, options) ?? [];
             }
             else if (reader.ValueTextEquals("author"u8))
             {

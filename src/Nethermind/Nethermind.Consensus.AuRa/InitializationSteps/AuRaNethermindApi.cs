@@ -42,8 +42,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
                 IAuraConfig config = auraConfig;
                 string? auraConfigTxPriorityConfigFilePath = config.TxPriorityConfigFilePath;
-                bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath is not null;
-                if (usesTxPriorityLocalData)
+                if (auraConfigTxPriorityConfigFilePath is not null)
                 {
                     _txPriorityContractLocalDataSource = new TxPriorityContract.LocalDataSource(
                         auraConfigTxPriorityConfigFilePath,

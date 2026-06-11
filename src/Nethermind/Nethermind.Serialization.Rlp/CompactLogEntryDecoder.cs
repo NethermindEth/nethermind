@@ -26,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
             int logEntryLength = decoderContext.ReadSequenceLength();
             decoderContext.GuardLimit(logEntryLength, RlpLimit);
             int logEntryCheck = decoderContext.Position + logEntryLength;
-            Address? address = decoderContext.DecodeAddress();
+            Address address = decoderContext.DecodeAddressNonNull();
             int topicsLength = decoderContext.ReadSequenceLength();
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
             decoderContext.GuardLimit(topicCount, RlpLimit.L4);
@@ -34,7 +34,7 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolListRef<Hash256> topics = new(topicCount);
             while (decoderContext.Position < untilPosition)
             {
-                topics.Add(decoderContext.DecodeZeroPrefixKeccak());
+                topics.Add(decoderContext.DecodeZeroPrefixKeccakNonNull());
             }
             decoderContext.Check(untilPosition);
 
@@ -75,7 +75,7 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolListRef<Hash256> topics = new(sequenceLength * 2 / Rlp.LengthOfKeccakRlp);
             while (reader.Position < untilPosition)
             {
-                topics.Add(reader.DecodeZeroPrefixKeccak());
+                topics.Add(reader.DecodeZeroPrefixKeccakNonNull());
             }
             reader.Check(untilPosition);
 

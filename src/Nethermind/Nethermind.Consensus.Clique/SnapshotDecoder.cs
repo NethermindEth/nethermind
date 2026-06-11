@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Clique
             // Block number
             ulong number = (ulong)decoderContext.DecodeUInt256();
             // Hash
-            Hash256 hash = decoderContext.DecodeKeccak();
+            Hash256 hash = decoderContext.DecodeKeccakNonNull();
             // Signers
             SortedList<Address, ulong> signers = DecodeSigners(ref decoderContext);
             // Votes
@@ -30,8 +30,14 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Snapshot? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item is null)
+            {
+                writer.EncodeNullObject();
+                return;
+            }
+
             (int contentLength, int signersLength, int votesLength, int tallyLength) =
                 GetContentLength(item, rlpBehaviors);
             writer.StartSequence(contentLength);
@@ -43,8 +49,13 @@ namespace Nethermind.Consensus.Clique
 
         }
 
-        public override int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(Snapshot? item, RlpBehaviors rlpBehaviors)
         {
+            if (item is null)
+            {
+                return 1;
+            }
+
             (int contentLength, int _, int _, int _) = GetContentLength(item, rlpBehaviors);
             return Rlp.LengthOfSequence(contentLength);
         }
@@ -73,7 +84,7 @@ namespace Nethermind.Consensus.Clique
             SortedList<Address, ulong> signers = new(GenericComparer.GetOptimized<Address>());
             for (int i = 0; i < length; i++)
             {
-                Address signer = decoderContext.DecodeAddress();
+                Address signer = decoderContext.DecodeAddressNonNull();
                 ulong signedAt = (ulong)decoderContext.DecodeUInt256();
                 signers.Add(signer, signedAt);
             }
@@ -89,9 +100,9 @@ namespace Nethermind.Consensus.Clique
             List<Vote> votes = new(length);
             for (int i = 0; i < length; i++)
             {
-                Address signer = decoderContext.DecodeAddress();
+                Address signer = decoderContext.DecodeAddressNonNull();
                 ulong block = (ulong)decoderContext.DecodeUInt256();
-                Address address = decoderContext.DecodeAddress();
+                Address address = decoderContext.DecodeAddressNonNull();
                 bool authorize = decoderContext.DecodeBool();
                 Vote vote = new(signer, block, address, authorize);
                 votes.Add(vote);
@@ -107,7 +118,7 @@ namespace Nethermind.Consensus.Clique
             Dictionary<Address, Tally> tally = new(length);
             for (int i = 0; i < length; i++)
             {
-                Address address = decoderContext.DecodeAddress();
+                Address address = decoderContext.DecodeAddressNonNull();
                 int votes = decoderContext.DecodeInt();
                 bool authorize = decoderContext.DecodeBool();
                 Tally tallyItem = new(authorize);

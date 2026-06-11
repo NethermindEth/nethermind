@@ -141,7 +141,8 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         if (version == DepositEvent.Version0)
         {
             DepositLogEventV0 depositLogEventV0 = DepositLogEventV0.FromBytes(log.Data);
-            Hash256 sourceHash = ComputeSourceHash(log.BlockHash, (ulong)(log.LogIndex ?? 0)); // TODO: Unsafe cast with possible null;
+            Hash256 l1BlockHash = log.BlockHash ?? throw new InvalidOperationException("Deposit log is missing L1 block hash.");
+            Hash256 sourceHash = ComputeSourceHash(l1BlockHash, (ulong)(log.LogIndex ?? 0));
 
             return new()
             {

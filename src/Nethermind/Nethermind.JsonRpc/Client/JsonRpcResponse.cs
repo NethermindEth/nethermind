@@ -11,17 +11,17 @@ namespace Nethermind.JsonRpc.Client
         [JsonConverter(typeof(IdConverter))]
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         [JsonPropertyName("id")]
-        public object Id { get; set; }
+        public object? Id { get; set; }
 
         [JsonPropertyName("jsonrpc")]
-        public string JsonRpc { get; set; }
+        public string JsonRpc { get; set; } = null!;
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("result")]
-        public T Result { get; set; }
+        public T? Result { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("error")]
-        public Error Error { get; set; }
+        public Error? Error { get; set; }
     }
 }

@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 #pragma warning disable IDE0290 // Constructor has unused DI parameters (txPool, blocksConfig)
     public partial class ReportingContractBasedValidator : IAuRaValidator, IReportingValidator
     {
-        private delegate Transaction CreateReportTransactionDelegate(Address validator, ulong block, byte[] proof);
+        private delegate Transaction? CreateReportTransactionDelegate(Address validator, ulong block, byte[] proof);
 
         private readonly ContractBasedValidator _contractValidator;
         private readonly ulong _posdaoTransition;
@@ -64,9 +64,10 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void ReportMalicious(Address validator, ulong blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause) => Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
 
-        private Transaction CreateReportMaliciousTransaction(Address validator, ulong blockNumber, byte[] proof)
+        private Transaction? CreateReportMaliciousTransaction(Address validator, ulong blockNumber, byte[] proof)
         {
-            if (!Validators.Contains(validator))
+            Address[]? validators = Validators;
+            if (validators is null || !validators.Contains(validator))
             {
                 if (_logger.IsWarn) _logger.Warn($"Not reporting {validator} on block {blockNumber}: Not a validator");
                 return null;
@@ -104,7 +105,8 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
                 else
                 {
-                    if (!Validators.Contains(ValidatorContract.NodeAddress))
+                    Address[]? validators = Validators;
+                    if (validators is null || !validators.Contains(ValidatorContract.NodeAddress))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Skipping reporting {reportType} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator} as we are not validator");
                     }
@@ -112,7 +114,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         if (_logger.IsTrace) _logger.Trace($"Reporting {reportType} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
 
-                        Transaction transaction = createReportTransactionDelegate(validator, blockNumber, proof);
+                        Transaction? transaction = createReportTransactionDelegate(validator, blockNumber, proof);
                         if (transaction is not null)
                         {
                             ITxSender txSender = SetSender(blockNumber);
@@ -159,17 +161,21 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void TryReportSkipped(BlockHeader header, BlockHeader parent)
         {
-            if (Validators is null)
+            Address[]? validators = Validators;
+            if (validators is null)
             {
                 return;
             }
 
-            bool areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
+            if (header.AuRaStep is not ulong headerStep || parent.AuRaStep is not ulong parentStep)
+            {
+                return;
+            }
+
+            bool areThereSkipped = headerStep > parentStep + 1;
             bool firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)
             {
-                Address[] validators = Validators;
-
                 if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap indicating skipped steps. " +
                                                    $"Current step: {header.AuRaStep} at block {header.Number}, parent step: {parent.AuRaStep} at block {parent.Number}. " +
                                                    $"CurrentValidators [{(string.Join(", ", validators.AsEnumerable()))}");
@@ -200,7 +206,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public Address[] Validators => _contractValidator.Validators;
+        public Address[]? Validators => _contractValidator.Validators;
 
         public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) => _contractValidator.OnBlockProcessingStart(block, options);
 
@@ -209,7 +215,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _contractValidator.OnBlockProcessingEnd(block, receipts, options);
             if (!_contractValidator.ForSealing)
             {
-                BlockHeader parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                BlockHeader? parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 if (parentHeader is not null)
                 {
                     ResendPersistedReports(parentHeader);

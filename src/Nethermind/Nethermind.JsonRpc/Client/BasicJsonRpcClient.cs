@@ -7,6 +7,7 @@ using System.Data;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -53,7 +54,8 @@ namespace Nethermind.JsonRpc.Client
                 responseString = await response.Content.ReadAsStringAsync();
                 if (_logger.IsTrace) _logger.Trace(responseString);
 
-                JsonRpcResponse<T> jsonResponse = _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString);
+                JsonRpcResponse<T> jsonResponse = _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString)
+                    ?? throw new JsonException("JSON-RPC response decoding returned null.");
                 if (jsonResponse.Error is not null)
                 {
                     if (_logger.IsError) _logger.Error(string.Concat(jsonResponse.Error.Message, " | ", jsonResponse.Error.Data));
@@ -88,7 +90,7 @@ namespace Nethermind.JsonRpc.Client
 
         private void AddAuthorizationHeader()
         {
-            string url = _client.BaseAddress.ToString();
+            string url = _client.BaseAddress!.ToString();
             if (!url.Contains('@'))
             {
                 return;

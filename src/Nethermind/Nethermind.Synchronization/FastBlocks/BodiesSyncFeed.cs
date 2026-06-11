@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -22,7 +23,7 @@ using Nethermind.History;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>
+    public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch>
     {
         protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
@@ -53,7 +54,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IHistoryPruner _historyPruner;
         private readonly BodiesDownloadStrategy _bodiesDownloadStrategy;
 
-        private SyncStatusList _syncStatusList;
+        private SyncStatusList _syncStatusList = null!;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
         private bool AllDownloaded => (_syncPointers.LowestInsertedBodyNumber ?? ulong.MaxValue) <= _barrier;
@@ -190,17 +191,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
         }
 
-        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
+        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch batch, PeerInfo? peer = null)
         {
-            batch?.MarkHandlingStart();
+            batch.MarkHandlingStart();
             try
             {
-                if (batch is null)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
-                    return SyncResponseHandlingResult.InternalError;
-                }
-
                 int added = InsertBodies(batch);
                 return added == 0
                     ? SyncResponseHandlingResult.NoProgress
@@ -218,15 +213,15 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
-                batch?.Dispose();
-                batch?.MarkHandlingEnd();
+                batch.Dispose();
+                batch.MarkHandlingEnd();
             }
         }
 
-        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
+        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, [NotNullWhen(true)] out Block? block)
         {
-            BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
-            if (_blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
+            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+            if (header is not null && _blockValidator.ValidateBodyAgainstHeader(header, blockBody, out _))
             {
                 block = new Block(header, blockBody);
             }
@@ -241,7 +236,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private int InsertBodies(BodiesSyncBatch batch)
         {
             int validResponsesCount = 0;
-            BlockBody[]? responses = batch.Response?.Bodies ?? [];
+            BlockBody?[] responses = batch.Response?.Bodies ?? [];
             int responseIndex = 0;
 
             for (int i = 0; i < batch.Infos.Length; i++)
@@ -272,7 +267,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     responseIndex++;
                     validResponsesCount++;
-                    InsertOneBlock(block!);
+                    InsertOneBlock(block);
                 }
                 else
                 {

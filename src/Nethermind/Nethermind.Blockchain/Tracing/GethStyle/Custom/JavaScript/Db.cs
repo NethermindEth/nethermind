@@ -17,7 +17,7 @@ public class Db(IWorldState worldState)
 
     public ulong getNonce(object address) => WorldState.GetNonce(address.ToAddress());
 
-    public ITypedArray<byte> getCode(object address) => WorldState.GetCode(address.ToAddress()).ToTypedScriptArray();
+    public ITypedArray<byte> getCode(object address) => (WorldState.GetCode(address.ToAddress()) ?? []).ToTypedScriptArray();
 
     public ITypedArray<byte> getState(object address, object hash)
     {

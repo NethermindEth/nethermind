@@ -5,7 +5,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     public class ChainSpecSealJson
     {
-        public ChainSpecEthereumSealJson Ethereum { get; set; }
-        public ChainSpecAuRaSealJson AuthorityRound { get; set; }
+        public ChainSpecEthereumSealJson? Ethereum { get; set; }
+        public ChainSpecAuRaSealJson? AuthorityRound { get; set; }
     }
 }

@@ -34,8 +34,8 @@ namespace Nethermind.Consensus
 
         public bool CanSignHeader => false;
 
-        public void SetSigner(PrivateKey key) { }
+        public void SetSigner(PrivateKey? key) { }
 
-        public void SetSigner(IProtectedPrivateKey key) { }
+        public void SetSigner(IProtectedPrivateKey? key) { }
     }
 }

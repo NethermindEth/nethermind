@@ -52,8 +52,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_statuses.TrySet(currentNumber, FastBlockStatus.Sent, out FastBlockStatus status))
                 {
-                    if (_cache.TryGet(currentNumber, out BlockInfo blockInfo))
+                    BlockInfo? blockInfo;
+                    if (_cache.TryGet(currentNumber, out BlockInfo cachedBlockInfo))
                     {
+                        blockInfo = cachedBlockInfo;
                         _cache.Delete(currentNumber);
                     }
                     else
@@ -61,8 +63,11 @@ namespace Nethermind.Synchronization.FastBlocks
                         blockInfo = _blockTree.FindCanonicalBlockInfo(currentNumber);
                     }
 
-                    blockInfos[collected] = blockInfo;
-                    collected++;
+                    if (blockInfo is not null)
+                    {
+                        blockInfos[collected] = blockInfo;
+                        collected++;
+                    }
                 }
                 else if (status == FastBlockStatus.Inserted)
                 {
@@ -127,15 +132,15 @@ namespace Nethermind.Synchronization.FastBlocks
                     bool hasInserted = false;
                     ParallelUnbalancedWork.For(0, workingArray.Count, (i) =>
                     {
-                        if (workingArray[i] is not null)
+                        if (workingArray[i] is { } blockInfo)
                         {
-                            if (blockDownloadStrategy.ShouldDownloadBlock(workingArray[i]))
+                            if (blockDownloadStrategy.ShouldDownloadBlock(blockInfo))
                             {
                                 hasNonNull = true;
                             }
                             else
                             {
-                                MarkInserted(workingArray[i].BlockNumber);
+                                MarkInserted(blockInfo.BlockNumber);
                                 hasInserted = true;
                                 workingArray[i] = null;
                             }
@@ -150,17 +155,17 @@ namespace Nethermind.Synchronization.FastBlocks
                     outputArray = new BlockInfo?[batchSize];
                     for (int i = 0; i < workingArray.Count; i++)
                     {
-                        if (workingArray[i] is null) continue;
+                        if (workingArray[i] is not { } blockInfo) continue;
 
                         if (slot < outputArray.Length)
                         {
-                            outputArray[slot] = workingArray[i];
+                            outputArray[slot] = blockInfo;
                             slot++;
                         }
                         else
                         {
                             // Not enough space in output we'll need to put back the block
-                            MarkPending(workingArray[i]);
+                            MarkPending(blockInfo);
                         }
                     }
                 }

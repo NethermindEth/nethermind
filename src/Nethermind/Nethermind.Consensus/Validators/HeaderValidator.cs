@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Validators
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
         /// <param name="isUncle"><value>True</value> if is an uncle block, otherwise <value>False</value></param>
         /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false) =>
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false) =>
             Validate(header, parent, isUncle, out _);
 
         /// <summary>
@@ -71,32 +71,47 @@ namespace Nethermind.Consensus.Validators
         /// <param name="isUncle"><value>True</value> if is an uncle block, otherwise <value>False</value></param>
         /// <param name="error">Detailed error message if validation fails, otherwise <value>null</value>.</param>
         /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
             Validate<OffFlag>(header, parent, isUncle, out error);
 
-        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
+        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error) where TOrphaned : struct, IFlag
         {
-            IReleaseSpec spec;
+            IReleaseSpec spec = _specProvider.GetSpec(header);
             error = null;
             bool orphaned = typeof(TOrphaned) == typeof(OnFlag);
-            parent = orphaned ? null : parent!;
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
-            return ValidateFieldLimit(header, ref error)
-                   && ValidateHash(header, ref error)
-                   && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
-                   && (orphaned || ValidateParent(header, parent, ref error))
-                   && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
-                   && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
-                   && ValidateGasUsed(header, ref error)
-                   && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
-                   && (orphaned || ValidateTimestamp(header, parent, ref error))
-                   && (orphaned || ValidateBlockNumber(header, parent, ref error))
-                   && (orphaned || Validate1559(header, parent, spec, ref error))
-                   && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
-                   && ValidateRequestsHash(header, spec, ref error)
-                   && ValidateBlockAccessListHash(header, spec, ref error)
-                   && (orphaned || ValidateSlotNumber(header, parent, spec, ref error));
+            bool commonChecks = ValidateFieldLimit(header, ref error)
+                                && ValidateHash(header, ref error)
+                                && ValidateExtraData(header, spec, isUncle, ref error)
+                                && ValidateGasUsed(header, ref error)
+                                && ValidateRequestsHash(header, spec, ref error)
+                                && ValidateBlockAccessListHash(header, spec, ref error);
+
+            if (orphaned || !commonChecks)
+            {
+                return commonChecks;
+            }
+
+            if (!ValidateParent(header, parent, ref error))
+            {
+                error ??= BlockErrorMessages.InvalidAncestor;
+                return false;
+            }
+
+            if (parent is null)
+            {
+                return true;
+            }
+
+            return ValidateTotalDifficulty(header, parent, ref error)
+                   && ValidateSeal(header, parent, isUncle, ref error)
+                   && ValidateGasLimitRange(header, parent, spec, ref error)
+                   && ValidateTimestamp(header, parent, ref error)
+                   && ValidateBlockNumber(header, parent, ref error)
+                   && Validate1559(header, parent, spec, ref error)
+                   && ValidateBlobGasFields(header, parent, spec, ref error)
+                   && ValidateSlotNumber(header, parent, spec, ref error);
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>

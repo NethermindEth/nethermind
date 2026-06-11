@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal sealed class PendingValidatorsDecoder : RlpDecoder<PendingValidators>
     {
-        protected override PendingValidators DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override PendingValidators? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -22,14 +22,14 @@ namespace Nethermind.Consensus.AuRa.Validators
             int pendingValidatorsCheck = decoderContext.Position + sequenceLength;
 
             ulong blockNumber = decoderContext.DecodeULong();
-            Hash256 blockHash = decoderContext.DecodeKeccak();
+            Hash256 blockHash = decoderContext.DecodeKeccakNonNull();
 
             int addressSequenceLength = decoderContext.ReadSequenceLength();
             int addressCheck = decoderContext.Position + addressSequenceLength;
             List<Address> addresses = [];
             while (decoderContext.Position < addressCheck)
             {
-                addresses.Add(decoderContext.DecodeAddress());
+                addresses.Add(decoderContext.DecodeAddressNonNull());
             }
             decoderContext.Check(addressCheck);
 
@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             writer.Encode(item.AreFinalized);
         }
 
-        public override int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
+        public override int GetLength(PendingValidators? item, RlpBehaviors rlpBehaviors) =>
             item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)

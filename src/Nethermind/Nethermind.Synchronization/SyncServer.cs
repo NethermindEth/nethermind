@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization
         private readonly ulong _pivotNumber;
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
-        private CancellationTokenSource _rangeBroadcastCts = new();
+        private CancellationTokenSource? _rangeBroadcastCts = new();
         private Task _rangeBroadcastTask = Task.CompletedTask;
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
@@ -107,26 +107,28 @@ namespace Nethermind.Synchronization
         }
 
         public ulong NetworkId => _blockTree.NetworkId;
-        public BlockHeader Genesis => _blockTree.Genesis;
+        public BlockHeader Genesis => _blockTree.Genesis ?? throw new InvalidOperationException("Genesis block is not available.");
 
         public BlockHeader? Head
         {
             get
             {
-                if (_blockTree.Head is null)
+                Block? head = _blockTree.Head;
+                if (head is null)
                 {
                     return null;
                 }
 
-                bool headIsGenesis = _blockTree.Head.Hash == _blockTree.Genesis.Hash;
+                BlockHeader? genesis = _blockTree.Genesis;
+                bool headIsGenesis = genesis is not null && head.Hash == genesis.Hash;
                 if (headIsGenesis)
                 {
                     _pivotHeader ??= _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
                 }
 
                 return headIsGenesis
-                    ? _pivotHeader ?? _blockTree.Genesis
-                    : _blockTree.Head?.Header;
+                    ? _pivotHeader ?? genesis
+                    : head.Header;
             }
         }
 
@@ -195,7 +197,7 @@ namespace Nethermind.Synchronization
                     if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
                 }
 
-                Block? parent = _blockTree.FindBlock(block.ParentHash);
+                Block? parent = block.ParentHash is null ? null : _blockTree.FindBlock(block.ParentHash);
                 if (parent is not null)
                 {
                     // we null total difficulty for a block in a block tree as we don't trust the message
@@ -264,7 +266,10 @@ namespace Nethermind.Synchronization
             {
                 if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;
-                syncPeer.HeadHash = block.Hash;
+                if (block.Hash is not null)
+                {
+                    syncPeer.HeadHash = block.Hash;
+                }
                 syncPeer.TotalDifficulty = block.TotalDifficulty ?? syncPeer.TotalDifficulty;
             }
         }
@@ -396,7 +401,7 @@ namespace Nethermind.Synchronization
                 : _blockAccessListStore.GetRlp(header.Number, blockHash);
         }
 
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        public IOwnedReadOnlyList<BlockHeader?> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
@@ -439,7 +444,7 @@ namespace Nethermind.Synchronization
                 : new RlpByteArrayList(builder.ToRlpItemList());
         }
 
-        public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+        public Block? Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 

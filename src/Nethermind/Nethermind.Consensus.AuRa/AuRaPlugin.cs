@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.AuRa
 
                 IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
                 (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
-                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
+                ContractRewriter? contractRewriter = rewriteBytecode.Count > 0 || rewriteBytecodeTimestamp.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
                 AuRaContractGasLimitOverride? gasLimitOverride = gasLimitOverrideFactory.GetGasLimitCalculator();
 

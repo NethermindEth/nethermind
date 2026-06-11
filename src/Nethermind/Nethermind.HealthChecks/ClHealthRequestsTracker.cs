@@ -21,7 +21,7 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
     private DateTime _latestForkchoiceUpdated = timestamper.UtcNow;
     private DateTime _latestNewPayload = timestamper.UtcNow;
 
-    private Timer _timer;
+    private Timer? _timer;
 
     public Task StartAsync()
     {
@@ -37,7 +37,7 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
         if (_timer is not null) await _timer.DisposeAsync();
     }
 
-    private void ReportClStatus(object _)
+    private void ReportClStatus(object? _)
     {
         if (!CheckClAlive())
         {

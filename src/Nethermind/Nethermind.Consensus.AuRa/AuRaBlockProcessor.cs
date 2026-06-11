@@ -164,8 +164,8 @@ namespace Nethermind.Consensus.AuRa
                 if (tx.Signature is not null)
                 {
                     EthereumEcdsa ecdsa = new(_specProvider.ChainId);
-                    Address txSenderAddress = ecdsa.RecoverAddress(tx, !currentSpec.ValidateChainId);
-                    if (tx.SenderAddress != txSenderAddress)
+                    Address? txSenderAddress = ecdsa.RecoverAddress(tx, !currentSpec.ValidateChainId);
+                    if (txSenderAddress is not null && tx.SenderAddress != txSenderAddress)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {args.Block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
                         tx.SenderAddress = txSenderAddress;

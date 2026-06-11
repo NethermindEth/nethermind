@@ -6,7 +6,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class NewBlockMessageSerializer(BlockDecoder blockDecoder = null) : IZeroInnerMessageSerializer<NewBlockMessage>
+    public class NewBlockMessageSerializer(BlockDecoder? blockDecoder = null) : IZeroInnerMessageSerializer<NewBlockMessage>
     {
         private readonly BlockDecoder _blockDecoder = blockDecoder ?? new();
 
@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         public NewBlockMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("New block message decoding returned null.");
 
         public int GetLength(NewBlockMessage message, out int contentLength)
         {
@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             NewBlockMessage message = new();
             ctx.ReadSequenceLength();
-            message.Block = _blockDecoder.Decode(ref ctx);
+            message.Block = _blockDecoder.DecodeGuardNotNull(ref ctx);
             message.TotalDifficulty = ctx.DecodeUInt256();
             return message;
         }

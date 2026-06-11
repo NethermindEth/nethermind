@@ -13,7 +13,7 @@ namespace Nethermind.Benchmarks.Core
     {
         //private static HashLib.Crypto.SHA3.Keccak256 _hash = HashFactory.Crypto.SHA3.CreateKeccak256();
 
-        private byte[] _a;
+        private byte[] _a = null!;
 
         private byte[][] _scenarios =
         {

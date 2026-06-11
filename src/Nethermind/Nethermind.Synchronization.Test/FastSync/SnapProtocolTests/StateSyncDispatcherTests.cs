@@ -91,7 +91,7 @@ public class StateSyncDispatcherTests
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         peer.HeadNumber.Returns(ChainLength - 1);
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
-        peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
+        peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer?>()).Returns(
             x =>
             {
                 x[1] = snapPeer;

@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
     {
         private readonly MessageQueue<GetNodeDataMessage, IByteArrayList> _nodeDataRequests;
 
-        private readonly MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests;
+        private readonly MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]?>, long)> _receiptsRequests;
 
         public Eth63ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(this);
-            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]?>, long)>(this);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
@@ -110,14 +110,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             // maybe remeasure allocations on another network since goerli has been phased out.
             return SendRequest(msg, token);
         }
-        public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public override async Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
-                return ArrayPoolList<TxReceipt[]>.Empty();
+                return ArrayPoolList<TxReceipt[]?>.Empty();
             }
 
-            IOwnedReadOnlyList<TxReceipt[]> txReceipts = await _nodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]>, Hash256, TxReceipt[]>(RequestType.Receipts, blockHashes, async clampedBlockHashes =>
+            IOwnedReadOnlyList<TxReceipt[]?> txReceipts = await NodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]?>, Hash256, TxReceipt[]?>(RequestType.Receipts, blockHashes, async clampedBlockHashes =>
                 await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList()), token));
 
             return txReceipts;
@@ -139,7 +139,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 token);
         }
 
-        protected virtual Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        protected virtual Task<(IOwnedReadOnlyList<TxReceipt[]?>, long)> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

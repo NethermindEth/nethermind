@@ -8,6 +8,6 @@ namespace Nethermind.Consensus.AuRa
 {
     public interface IAuRaValidatorFactory
     {
-        IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader, ulong? startBlock = null);
+        IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader? parentHeader = null, ulong? startBlock = null);
     }
 }

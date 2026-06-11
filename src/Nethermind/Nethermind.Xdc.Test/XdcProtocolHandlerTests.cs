@@ -150,7 +150,7 @@ public class XdcProtocolHandlerTests
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
+            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string?>()).Returns(true);
 
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
@@ -169,7 +169,7 @@ public class XdcProtocolHandlerTests
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>())
+            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string?>())
                 .Returns(x => { x[1] = "rounds too low"; return false; });
 
             HandleIncomingStatus(handler, serializer);

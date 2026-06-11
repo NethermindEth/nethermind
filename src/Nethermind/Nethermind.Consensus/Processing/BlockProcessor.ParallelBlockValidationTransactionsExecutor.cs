@@ -110,7 +110,7 @@ public partial class BlockProcessor
                 if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
             }
 
-            return [.. receiptsTracer.TxReceipts];
+            return receiptsTracer.ToReceiptArray();
         }
 
         private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token)
@@ -347,9 +347,10 @@ public partial class BlockProcessor
             ulong cumulativeGas = 0;
             for (int i = 0; i < length; i++)
             {
-                ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
+                ReadOnlySpan<TxReceipt?> receipts = perTxTracers[i].TxReceipts;
                 if (receipts.IsEmpty) continue;
-                TxReceipt receipt = receipts[0];
+                TxReceipt? receipt = receipts[0];
+                if (receipt is null) continue;
                 cumulativeGas += receipt.GasUsed;
                 receipt.GasUsedTotal = cumulativeGas;
                 outer.SetReceipt(i, receipt);
@@ -363,7 +364,7 @@ public partial class BlockProcessor
             Bloom blockBloom = new();
             for (int i = 0; i < len; i++)
             {
-                result[i] = receiptsTracers[i].TxReceipts[0];
+                result[i] = receiptsTracers[i].GetReceipt(0);
                 result[i].Index = i;
                 cumulativeGas += result[i].GasUsed;
                 result[i].GasUsedTotal = cumulativeGas;

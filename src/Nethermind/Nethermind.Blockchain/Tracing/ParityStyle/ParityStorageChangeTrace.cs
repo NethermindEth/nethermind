@@ -9,7 +9,6 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 //},
 public class ParityStorageChangeTrace
 {
-    public byte[] Key { get; set; }
-    public byte[] Value { get; set; }
+    public byte[] Key { get; set; } = null!;
+    public byte[] Value { get; set; } = null!;
 }
-

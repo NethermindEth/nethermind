@@ -15,13 +15,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ContractDataStore<T> : IDisposable, IContractDataStore<T>
+    public class ContractDataStore<T> : IDisposable, IContractDataStore<T> where T : notnull
     {
         internal IContractDataStoreCollection<T> Collection { get; }
         private readonly IDataContract<T> _dataContract;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
-        private Hash256 _lastHash;
+        private Hash256 _lastHash = Keccak.Zero;
         private Task _latestRefresh = Task.CompletedTask;
         private readonly Lock _lock = new();
         private readonly ILogger _logger;
@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         protected internal ContractDataStore(IContractDataStoreCollection<T> collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
         {
-            Collection = collection is null || collection is ThreadSafeContractDataStoreCollectionDecorator<T> ? collection : new ThreadSafeContractDataStoreCollectionDecorator<T>(collection);
+            Collection = collection is ThreadSafeContractDataStoreCollectionDecorator<T> ? collection : new ThreadSafeContractDataStoreCollectionDecorator<T>(collection);
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             return Collection.GetSnapshot();
         }
 
-        private void OnNewHead(object sender, BlockEventArgs e)
+        private void OnNewHead(object? sender, BlockEventArgs e)
         {
             // we don't want this to be on main processing thread
             Task refresh = Task.Run(() => Refresh(e.Block))
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         private void Refresh(Block block) => GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
 
-        private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
+        private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[]? receipts = null)
         {
             bool fromReceipts = receipts is not null;
             if (fromReceipts || !isConsecutiveBlock)
@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                     {
                         if (canGetFullStateFromReceipts)
                         {
-                            dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts, out items);
+                            dataChanged = _dataContract.TryGetItemsChangedFromBlock(blockHeader, receipts!, out items);
 
                             if (!dataChanged && !isConsecutiveBlock)
                             {
@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                         TraceDataChanged("contract");
                     }
 
-                    _lastHash = blockHeader.Hash;
+                    _lastHash = blockHeader.Hash!;
 
                     if (_logger.IsTrace) _logger.Trace($"{GetType()} trying to {nameof(GetItemsFromContractAtBlock)} with params " +
                                                        $"{nameof(canGetFullStateFromReceipts)}:{canGetFullStateFromReceipts}, " +

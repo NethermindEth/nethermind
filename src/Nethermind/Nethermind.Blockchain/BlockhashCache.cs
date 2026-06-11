@@ -41,7 +41,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         bool alwaysAdd = depth == MaxDepth;
         using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new((int)depth + 1);
         Hash256 currentHash = blockHeader.Hash!;
-        CacheNode currentNode = null;
+        CacheNode? currentNode = null;
         bool needToAddAny = false;
         ulong skipped = 0;
         for (ulong i = 0; i <= depth && !cancellationToken.IsCancellationRequested; i++)
@@ -131,19 +131,19 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                bool emptyHash = blockHeader.Hash is null;
+                Hash256? blockHash = blockHeader.Hash;
 
-                if (emptyHash || !_flatCache.TryGet(blockHeader.Hash, out hashes))
+                if (blockHash is null || !_flatCache.TryGet(blockHash, out hashes))
                 {
-                    if (_flatCache.TryGet(blockHeader.ParentHash, out Hash256[] parentHashes))
+                    if (blockHeader.ParentHash is not null && _flatCache.TryGet(blockHeader.ParentHash, out Hash256[] parentHashes))
                     {
                         int length = FlatCacheLength(blockHeader);
                         hashes = new Hash256[length];
                         hashes[0] = blockHeader.ParentHash;
                         Array.Copy(parentHashes, 0, hashes, 1, length - 1);
-                        if (!emptyHash)
+                        if (blockHash is not null)
                         {
-                            _flatCache.Set(blockHeader.Hash, hashes);
+                            _flatCache.Set(blockHash, hashes);
                         }
                     }
                     else
@@ -205,7 +205,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
             if (kvp.Value.Number < blockNumber)
             {
-                if (_blocks.TryRemove(kvp.Key, out CacheNode node))
+                if (_blocks.TryRemove(kvp.Key, out CacheNode? node))
                 {
                     _flatCache.Delete(node.Hash);
                     removed++;

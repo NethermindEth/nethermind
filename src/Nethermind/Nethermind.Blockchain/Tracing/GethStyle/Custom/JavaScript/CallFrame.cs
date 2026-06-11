@@ -59,8 +59,8 @@ public record CallFrame
     private ITypedArray<byte>? _toConverted;
     private ITypedArray<byte>? _inputConverted;
     private dynamic? _valueConverted;
-    private Address _from;
-    private Address _to;
+    private Address _from = null!;
+    private Address _to = null!;
     private ReadOnlyMemory<byte> _input;
     private UInt256? _value;
 

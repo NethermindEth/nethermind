@@ -18,14 +18,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Hashes));
 
         public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("New pooled transaction hashes message decoding returned null.");
 
         private static NewPooledTransactionHashesMessage68 Deserialize(ref RlpReader ctx)
         {
             ctx.ReadSequenceLength();
             ArrayPoolList<byte> types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
             ArrayPoolList<int> sizes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeInt(), limit: SizesRlpLimit);
-            ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+            ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakNonNull(), limit: HashesRlpLimit);
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
 

@@ -133,11 +133,11 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         {
             Server = _applicationServices.GetRequiredService<IServer>();
 
-            IServerAddressesFeature serverAddressesFeature = Server.Features?.Get<IServerAddressesFeature>();
-            ICollection<string> addresses = serverAddressesFeature?.Addresses;
+            IServerAddressesFeature? serverAddressesFeature = Server.Features.Get<IServerAddressesFeature>();
+            ICollection<string>? addresses = serverAddressesFeature?.Addresses;
             if (addresses != null && !addresses.IsReadOnly && addresses.Count == 0)
             {
-                string urls = _config[WebHostDefaults.ServerUrlsKey];//?? _config[DeprecatedServerUrlsKey];
+                string? urls = _config[WebHostDefaults.ServerUrlsKey];//?? _config[DeprecatedServerUrlsKey];
                 if (!string.IsNullOrEmpty(urls))
                 {
                     //serverAddressesFeature!.PreferHostingUrls = WebHostUtilities.ParseBool(_config[WebHostDefaults.PreferHostingUrlsKey]);

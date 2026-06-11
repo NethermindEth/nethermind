@@ -34,15 +34,15 @@ public class SubscriptionFactory : ISubscriptionFactory
             IJsonRpcParam? param = null;
             bool thereIsParameter = paramType is not null;
             bool thereAreArgs = args is not null;
-            JsonDocument doc = null;
+            JsonDocument? doc = null;
             try
             {
-                if (thereIsParameter && (thereAreArgs || paramType.CannotBeAssignedNull()))
+                if (thereIsParameter && (thereAreArgs || paramType!.CannotBeAssignedNull()))
                 {
-                    param = (IJsonRpcParam)Activator.CreateInstance(paramType);
+                    param = (IJsonRpcParam?)Activator.CreateInstance(paramType!);
                     if (thereAreArgs)
                     {
-                        doc = JsonDocument.Parse(args);
+                        doc = JsonDocument.Parse(args!);
                         param!.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
                     }
                 }
@@ -65,7 +65,7 @@ public class SubscriptionFactory : ISubscriptionFactory
 
     private static CustomSubscriptionType CreateSubscriptionType<T>(Func<IJsonRpcDuplexClient, T, Subscription> customSubscriptionDelegate)
         where T : IJsonRpcParam?, new() =>
-        new(((client, args) => customSubscriptionDelegate(client, (T)args)), typeof(T));
+        new(((client, args) => customSubscriptionDelegate(client, args is null ? default! : (T)args)), typeof(T));
 
     public void RegisterSubscriptionType(string subscriptionType, Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) =>
         _subscriptionConstructors[subscriptionType] = CreateSubscriptionType(customSubscriptionDelegate);
@@ -73,9 +73,9 @@ public class SubscriptionFactory : ISubscriptionFactory
     private static CustomSubscriptionType CreateSubscriptionType(Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) =>
         new(((client, _) => customSubscriptionDelegate(client)));
 
-    private readonly struct CustomSubscriptionType(Func<IJsonRpcDuplexClient, object, Subscription> constructor, Type? paramType = null)
+    private readonly struct CustomSubscriptionType(Func<IJsonRpcDuplexClient, IJsonRpcParam?, Subscription> constructor, Type? paramType = null)
     {
-        public Func<IJsonRpcDuplexClient, object, Subscription> Constructor { get; } = constructor;
+        public Func<IJsonRpcDuplexClient, IJsonRpcParam?, Subscription> Constructor { get; } = constructor;
         public Type? ParamType { get; } = paramType;
     }
 }

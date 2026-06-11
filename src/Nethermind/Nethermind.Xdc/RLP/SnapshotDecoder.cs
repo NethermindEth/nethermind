@@ -8,7 +8,7 @@ namespace Nethermind.Xdc.RLP;
 
 internal sealed class SnapshotDecoder : BaseSnapshotDecoder<Snapshot>
 {
-    protected override Snapshot DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Snapshot? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     => DecodeBase<Snapshot>(ref decoderContext, (number, hash, candidates) => new Snapshot(number, hash, candidates), rlpBehaviors);
 
 }

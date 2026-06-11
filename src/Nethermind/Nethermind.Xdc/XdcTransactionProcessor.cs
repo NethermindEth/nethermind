@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
+using System;
 
 namespace Nethermind.Xdc;
 
@@ -86,9 +87,11 @@ internal class XdcTransactionProcessor(
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
-        XdcReleaseSpec xdcSpec = spec as XdcReleaseSpec;
-        Address target = tx.To;
-        Address sender = tx.SenderAddress;
+        if (spec is not IXdcReleaseSpec xdcSpec)
+            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+
+        Address? target = tx.To;
+        Address? sender = tx.SenderAddress;
 
         if (xdcSpec.IsBlackListingEnabled)
         {
@@ -102,12 +105,13 @@ internal class XdcTransactionProcessor(
         return base.ValidateSender(tx, header, spec, tracer, opts);
     }
 
-    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender) => spec.BlackListedAddresses.Contains(sender);
+    private bool IsBlackListed(IXdcReleaseSpec spec, Address? sender) => sender is not null && spec.BlackListedAddresses.Contains(sender);
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-        IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
+        if (GetSpec(header) is not IXdcReleaseSpec spec)
+            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
 
         if (tx.RequiresSpecialHandling(spec))
             return ExecuteSpecialTransaction(tx, tracer, opts);
@@ -122,7 +126,10 @@ internal class XdcTransactionProcessor(
         {
             if (tx.IsSignTransaction(xdcSpec))
             {
-                ulong nonce = WorldState.GetNonce(tx.SenderAddress);
+                if (tx.SenderAddress is not { } sender)
+                    return TransactionResult.SenderNotSpecified;
+
+                ulong nonce = WorldState.GetNonce(sender);
 
                 if (nonce < tx.Nonce)
                 {
@@ -133,7 +140,7 @@ internal class XdcTransactionProcessor(
                     return XdcTransactionResult.NonceTooLow;
                 }
 
-                WorldState.IncrementNonce(tx.SenderAddress);
+                WorldState.IncrementNonce(sender);
             }
 
             return TransactionResult.Ok;
@@ -178,7 +185,8 @@ internal class XdcTransactionProcessor(
     private TransactionResult ExecuteSpecialTransaction(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-        IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
+        if (GetSpec(header) is not IXdcReleaseSpec spec)
+            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
 
         bool restore = opts.HasFlag(ExecutionOptions.Restore);
 
@@ -208,15 +216,16 @@ internal class XdcTransactionProcessor(
 
         if (tracer.IsTracingReceipt)
         {
-            Hash256 stateRoot = null;
+            Hash256? stateRoot = null;
             if (!spec.IsEip658Enabled)
             {
                 WorldState.RecalculateStateRoot();
                 stateRoot = WorldState.StateRoot;
             }
 
-            LogEntry log = new(tx.To, [], []);
-            tracer.MarkAsSuccess(tx.To, 0, [], [log], stateRoot);
+            Address recipient = tx.To ?? throw new InvalidOperationException("Special transaction is missing a recipient.");
+            LogEntry log = new(recipient, [], []);
+            tracer.MarkAsSuccess(recipient, 0, [], [log], stateRoot);
         }
 
         return TransactionResult.Ok;

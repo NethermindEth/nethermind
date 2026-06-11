@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Ethash
                 value = [];
             }
 
-            HashSet<uint> epochForGuid = value;
+            HashSet<uint> epochForGuid = value!;
             uint currentMin = uint.MaxValue;
             uint currentMax = 0;
             foreach (uint alreadyCachedEpoch in epochForGuid.ToList())
@@ -77,8 +77,11 @@ namespace Nethermind.Consensus.Ethash
                     if (_epochRefs[alreadyCachedEpoch] == 0)
                     {
                         // _logger.Warn($"Removing data set for epoch {alreadyCachedEpoch}");
-                        _cachedSets.Remove(alreadyCachedEpoch, out Task<IEthashDataSet> removed);
-                        _recent[alreadyCachedEpoch] = new DataSetWithTime(DateTimeOffset.UtcNow, removed);
+                        if (_cachedSets.Remove(alreadyCachedEpoch, out Task<IEthashDataSet>? removed))
+                        {
+                            _recent[alreadyCachedEpoch] = new DataSetWithTime(DateTimeOffset.UtcNow, removed);
+                        }
+
                         Interlocked.Decrement(ref _cachedEpochsCount);
                     }
                 }
@@ -125,9 +128,9 @@ namespace Nethermind.Consensus.Ethash
             }
         }
 
-        public IEthashDataSet Get(uint epoch)
+        public IEthashDataSet? Get(uint epoch)
         {
-            _cachedSets.TryGetValue(epoch, out Task<IEthashDataSet> dataSetTask);
+            _cachedSets.TryGetValue(epoch, out Task<IEthashDataSet>? dataSetTask);
             return dataSetTask?.Result;
         }
     }

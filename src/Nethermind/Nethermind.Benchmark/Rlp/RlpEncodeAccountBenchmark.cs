@@ -11,7 +11,7 @@ namespace Nethermind.Benchmarks.Rlp
 {
     public class RlpEncodeAccountBenchmark
     {
-        private static Account _account;
+        private static Account _account = null!;
 
         private Account[] _scenarios =
         {

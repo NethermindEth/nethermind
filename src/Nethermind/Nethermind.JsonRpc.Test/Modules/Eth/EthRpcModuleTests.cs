@@ -174,11 +174,11 @@ public partial class EthRpcModuleTests
         ctx.Test.TxPool.SubmitTx(sent, TxHandlingOptions.None);
 
         string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", sent.Hash);
-        byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized).Result;
+        byte[]? txBytes = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<byte[]>>(serialized)!.Result;
 
         Assert.That(txBytes, Is.Not.Null);
-        RlpReader context = new(txBytes);
-        Transaction tx = TxDecoder.Instance.Decode(ref context, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        RlpReader context = new(txBytes!);
+        Transaction tx = TxDecoder.Instance.DecodeGuardNotNull(ref context, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         Assert.That(tx.IsInMempoolForm(), Is.True);
     }
 
@@ -758,7 +758,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>?>(), Arg.Any<CancellationToken>())
             .Returns(static x =>
             {
                 x[1] = new[] { CreateTestFilterLog() };
@@ -777,7 +777,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>?>(), Arg.Any<CancellationToken>())
             .Returns(static x =>
             {
                 x[1] = new[] { CreateTestFilterLog(), CreateTestFilterLog() };
@@ -799,7 +799,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>?>(), Arg.Any<CancellationToken>())
             .Returns(static x =>
             {
                 x[1] = GetLogs();
@@ -827,7 +827,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(5, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+        bridge.TryGetLogs(5, out Arg.Any<IEnumerable<FilterLog>?>(), Arg.Any<CancellationToken>())
                 .Returns(static x => { x[1] = null; return false; });
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
@@ -956,7 +956,7 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
             .Returns([CreateTestFilterLog()]);
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>?>(), Arg.Any<CancellationToken>())
             .Returns(static x =>
             {
                 x[1] = new[] { CreateTestFilterLog() };
@@ -1280,7 +1280,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>?>(), Arg.Any<CancellationToken>())
             .Returns(static x =>
             {
                 x[1] = ThrowsOnIteration();
@@ -1940,7 +1940,7 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
-        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
+        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction))!;
         await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid, InvalidTxSignature: Signature is invalid.\"},\"id\":67}"));
     }
@@ -2099,7 +2099,7 @@ public partial class EthRpcModuleTests
 
         (byte[] code, AccessListForRpc _) = GetTestAccessList(loads);
 
-        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}")!;
 
         if (accessListProvided != AccessListProvided.None)
         {
@@ -2119,7 +2119,7 @@ public partial class EthRpcModuleTests
 
         // Contract creation with infinite loop; gas 200K should be capped to 60K
         TransactionForRpc transaction = test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"gasPrice\": \"0x0\", \"gas\": \"0x30D40\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}")!;
 
         string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
 
@@ -2370,7 +2370,7 @@ public partial class EthRpcModuleTests
 
         string result = await Test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(testTx).Bytes));
 
-        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)!;
         Assert.That(actual.Error!.Message, Does.Contain(AcceptTxResult.SenderIsContract.ToString()));
     }
 
@@ -2408,7 +2408,7 @@ public partial class EthRpcModuleTests
 
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(normalTx).Bytes));
 
-        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result);
+        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result)!;
         Assert.That(actual.Result, Is.Not.Null);
     }
 
@@ -2431,7 +2431,7 @@ public partial class EthRpcModuleTests
 
         string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(invalidSetCodeTx).Bytes));
 
-        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result)!;
         Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
     }
 
@@ -2461,7 +2461,7 @@ public partial class EthRpcModuleTests
 
         string jsonFromRpc = await test.TestEthRpc("eth_getTransactionByHash", setCodeTx!.CalculateHash());
 
-        SetCodeTransactionForRpc actual = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc).Result;
+        SetCodeTransactionForRpc actual = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc)!.Result!;
 
         AuthorizationListForRpc.RpcAuthTuple result = actual.AuthorizationList!.First();
 
@@ -2568,7 +2568,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_sign", keyAddress, message.ToHexString(true));
 
         JsonRpcResponse<string> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<string>>(serialized)!;
-        Address recovered = new EthereumEcdsa(1).RecoverAddress(new Signature(response.Result), Eip191Hasher.HashMessage(message))!;
+        Address recovered = new EthereumEcdsa(1).RecoverAddress(new Signature(response.Result!), Eip191Hasher.HashMessage(message))!;
 
         Assert.That(recovered, Is.EqualTo(new Address(keyAddress)));
     }

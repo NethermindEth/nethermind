@@ -35,13 +35,7 @@ public class L2Api(
         BlockForRpc? block = await RetryGetBlock(new(number));
         ArgumentNullException.ThrowIfNull(block); // We cannot get null here
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
-        return new L2Block
-        {
-            Hash = block.Hash!,
-            ParentHash = block.ParentHash,
-            StateRoot = block.StateRoot,
-            PayloadAttributesRef = payloadAttributes
-        };
+        return CreateL2Block(block, payloadAttributes);
     }
 
     private PayloadAttributesRef PayloadAttributesFromBlockForRpc(BlockForRpc? block)
@@ -50,15 +44,16 @@ public class L2Api(
         OptimismPayloadAttributes payloadAttributes = new()
         {
             NoTxPool = true,
-            EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
+            EIP1559Params = block.ExtraData is null || block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
             GasLimit = block.GasLimit,
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
-            PrevRandao = block.MixHash!,
-            SuggestedFeeRecipient = block.Miner,
+            PrevRandao = block.MixHash ?? throw new InvalidOperationException("L2 block is missing mix hash."),
+            SuggestedFeeRecipient = block.Miner ?? throw new InvalidOperationException("L2 block is missing fee recipient."),
             Timestamp = block.Timestamp.ToUInt64(null),
             Withdrawals = block.Withdrawals?.ToArray()
         };
-        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t =>
+        object[] transactions = block.Transactions ?? throw new InvalidOperationException("L2 block is missing full transaction objects.");
+        Transaction[] txs = transactions.Cast<TransactionForRpc>().Select(t =>
         {
             Result<Transaction> result = t.ToTransaction();
             return result.IsError ? throw new InvalidOperationException($"Failed to convert transaction: {result.Error}") : result.Data;
@@ -71,7 +66,7 @@ public class L2Api(
         if (block.Number != 0)
         {
             l1BlockInfo =
-                L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data.Span, block.ExtraData);
+                L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data.Span, block.ExtraData ?? []);
             systemConfig =
                 systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data.Span, block.ExtraData, block.GasLimit);
         }
@@ -95,13 +90,7 @@ public class L2Api(
         BlockForRpc? block = await RetryGetBlock(BlockParameter.Latest);
         ArgumentNullException.ThrowIfNull(block); // We cannot get null here
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
-        return new L2Block
-        {
-            Hash = block.Hash!,
-            ParentHash = block.ParentHash,
-            StateRoot = block.StateRoot,
-            PayloadAttributesRef = payloadAttributes
-        };
+        return CreateL2Block(block, payloadAttributes);
     }
 
     public async Task<L2Block?> GetFinalizedBlock()
@@ -112,13 +101,7 @@ public class L2Api(
             return null;
         }
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
-        return new L2Block
-        {
-            Hash = block.Hash!,
-            ParentHash = block.ParentHash,
-            StateRoot = block.StateRoot,
-            PayloadAttributesRef = payloadAttributes
-        };
+        return CreateL2Block(block, payloadAttributes);
     }
 
     public async Task<L2Block?> GetSafeBlock()
@@ -129,13 +112,7 @@ public class L2Api(
             return null;
         }
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
-        return new L2Block
-        {
-            Hash = block.Hash!,
-            ParentHash = block.ParentHash,
-            StateRoot = block.StateRoot,
-            PayloadAttributesRef = payloadAttributes
-        };
+        return CreateL2Block(block, payloadAttributes);
     }
 
     public Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, ulong blockNumber)
@@ -179,7 +156,7 @@ public class L2Api(
 
     private async Task<BlockForRpc?> RetryGetBlock(BlockParameter blockParameter)
     {
-        ResultWrapper<BlockForRpc>? result = l2EthRpc.eth_getBlockByNumber(blockParameter, true);
+        ResultWrapper<BlockForRpc?>? result = l2EthRpc.eth_getBlockByNumber(blockParameter, true);
         while (result?.Result.ResultType != ResultType.Success && result?.ErrorCode != ErrorCodes.UnknownBlockError)
         {
             if (_logger.IsWarn) _logger.Warn($"Unable to get L2 block by parameter: {blockParameter}. Error: {result?.Result.Error}");
@@ -191,8 +168,16 @@ public class L2Api(
         {
             return null;
         }
-        return result.Data;
+        return result?.Data;
     }
+
+    private static L2Block CreateL2Block(BlockForRpc block, PayloadAttributesRef payloadAttributes) => new()
+    {
+        Hash = block.Hash ?? throw new InvalidOperationException("L2 block is missing hash."),
+        ParentHash = block.ParentHash ?? throw new InvalidOperationException("L2 block is missing parent hash."),
+        StateRoot = block.StateRoot ?? throw new InvalidOperationException("L2 block is missing state root."),
+        PayloadAttributesRef = payloadAttributes
+    };
 
     private async Task<T> RetryEngineApi<T>(Func<Task<JsonRpc.ResultWrapper<T>>> rpcCall, Func<string?, string> getErrorMessage)
     {

@@ -7,6 +7,6 @@ namespace Nethermind.Sockets
     public interface IWebSocketsManager
     {
         void AddModule(IWebSocketsModule module, bool isDefault = false);
-        IWebSocketsModule GetModule(string name);
+        IWebSocketsModule? GetModule(string name);
     }
 }

@@ -36,13 +36,13 @@ namespace Nethermind.Consensus.Clique
             if (sealedBlock is null) return Task.FromResult<Block?>(null);
 
             sealedBlock.Header.Hash = sealedBlock.Header.CalculateHash();
-            return Task.FromResult(sealedBlock);
+            return Task.FromResult<Block?>(sealedBlock);
         }
 
         private Block? Seal(Block block)
         {
             // Bail out if we're unauthorized to sign a block
-            if (!CanSeal(block.Number, block.ParentHash))
+            if (!CanSeal(block.Number, block.ParentHash!))
             {
                 if (_logger.IsInfo) _logger.Info($"Not authorized to seal the block {block.ToString(Block.Format.Short)}");
                 return null;
@@ -95,6 +95,11 @@ namespace Nethermind.Consensus.Clique
 
         public bool CanSeal(ulong blockNumber, Hash256 parentHash)
         {
+            if (parentHash is null)
+            {
+                return false;
+            }
+
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
             if (!_signer.CanSign)
             {

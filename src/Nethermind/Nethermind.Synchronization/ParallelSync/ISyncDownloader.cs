@@ -7,7 +7,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync;
 
-public interface ISyncDownloader<in T>
+public interface ISyncDownloader<in T> where T : class
 {
     public Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 }

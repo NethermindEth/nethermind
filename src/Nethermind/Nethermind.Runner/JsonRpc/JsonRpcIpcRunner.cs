@@ -33,8 +33,8 @@ namespace Nethermind.Runner.JsonRpc
         private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
         private readonly IJsonRpcConfig _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
 
-        private string _path;
-        private Socket _server;
+        private string? _path;
+        private Socket? _server;
 
         public void Start(CancellationToken cancellationToken)
         {
@@ -170,7 +170,8 @@ namespace Nethermind.Runner.JsonRpc
         public void Dispose()
         {
             _server?.Dispose();
-            DeleteSocketFileIfExists(_path);
+            if (!string.IsNullOrEmpty(_path))
+                DeleteSocketFileIfExists(_path);
             if (_logger.IsInfo) _logger.Info("IPC JSON RPC service stopped");
         }
     }

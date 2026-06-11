@@ -239,14 +239,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
                 callFrame.To = null;
             }
 
-            if (error == EvmExceptionType.Revert && output?.Length != 0)
+            if (error == EvmExceptionType.Revert && output is { Length: not 0 } revertOutput)
             {
-                ArrayPoolList<byte> outputList = output?.Span.ToPooledList();
+                ArrayPoolList<byte> outputList = revertOutput.Span.ToPooledList();
                 callFrame.Output = outputList;
 
-                if (outputList?.Count >= 4)
+                if (outputList.Count >= 4)
                 {
-                    ProcessRevertReason(callFrame, output.Value);
+                    ProcessRevertReason(callFrame, revertOutput);
                 }
             }
         }
@@ -259,7 +259,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private static void ProcessRevertReason(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte> output)
     {
         ReadOnlySpan<byte> span = output.Span;
-        string errorMessage;
+        string? errorMessage;
         try
         {
             errorMessage = TransactionSubstate.GetErrorMessage(span);
@@ -268,7 +268,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         {
             errorMessage = TransactionSubstate.EncodeErrorMessage(span);
         }
-        callFrame.RevertReason = ValidateRevertReason(errorMessage);
+        callFrame.RevertReason = errorMessage is null ? null : ValidateRevertReason(errorMessage);
     }
 
     private static void ClearFailedLogs(NativeCallTracerCallFrame callFrame, bool parentFailed)

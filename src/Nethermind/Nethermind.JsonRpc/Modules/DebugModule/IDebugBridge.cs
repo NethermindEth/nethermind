@@ -28,10 +28,10 @@ public interface IDebugBridge
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     Block? GetBlock(BlockParameter param);
-    byte[] GetBlockRlp(BlockParameter param);
-    byte[] GetDbValue(string dbName, byte[] key);
-    object GetConfigValue(string category, string name);
-    ChainLevelInfo GetLevelInfo(ulong number);
+    byte[]? GetBlockRlp(BlockParameter param);
+    byte[]? GetDbValue(string dbName, byte[] key);
+    object? GetConfigValue(string category, string name);
+    ChainLevelInfo? GetLevelInfo(ulong number);
     int DeleteChainSlice(ulong startNumber, bool force = false);
     void UpdateHeadBlock(Hash256 blockHash);
     Task<bool> MigrateReceipts(ulong from, ulong to);

@@ -396,7 +396,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     private static void FilterStateDiff(ParityLikeTxTrace trace)
     {
         trace.StateChanges = null;
-        if (trace.VmTrace is not null)
+        if (trace.VmTrace?.Operations is not null)
         {
             for (int i = 0; i < trace.VmTrace.Operations.Count; i++)
             {

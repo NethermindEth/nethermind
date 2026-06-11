@@ -16,9 +16,9 @@ namespace Nethermind.Synchronization.Blocks
 
         private DownloaderOptions BuildOptions() => DownloaderOptions.Insert | DownloaderOptions.WithReceipts;
 
-        public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => forwardSyncController.PrepareRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead, token);
+        public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default) => forwardSyncController.PrepareRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead, token);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null) => forwardSyncController.HandleResponse(response, peer);
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer = null) => forwardSyncController.HandleResponse(response, peer);
 
         public override bool IsMultiFeed => true;
 

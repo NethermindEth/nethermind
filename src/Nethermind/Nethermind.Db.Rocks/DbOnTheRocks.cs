@@ -1074,7 +1074,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
@@ -1193,7 +1193,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(Iterator iterator)
+    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAllCore(Iterator iterator)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
@@ -1203,7 +1203,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             while (iterator.Valid())
             {
-                yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
+                yield return new KeyValuePair<byte[], byte[]>(iterator.Key(), iterator.Value());
                 IteratorNextWithErrorHandling(iterator);
             }
         }

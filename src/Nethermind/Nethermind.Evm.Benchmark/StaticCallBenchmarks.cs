@@ -26,12 +26,12 @@ namespace Nethermind.Evm.Benchmark
     {
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
-        private ExecutionEnvironment _environment;
-        private IVirtualMachine _virtualMachine;
+        private ExecutionEnvironment _environment = null!;
+        private IVirtualMachine _virtualMachine = null!;
         private BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
-        private VmState<EthereumGasPolicy> _evmState;
-        private IWorldState _stateProvider;
+        private VmState<EthereumGasPolicy> _evmState = null!;
+        private IWorldState _stateProvider = null!;
 
         public IEnumerable<byte[]> Bytecodes
         {
@@ -75,7 +75,7 @@ namespace Nethermind.Evm.Benchmark
             .Done;
 
         [ParamsSource(nameof(Bytecodes))]
-        public byte[] Bytecode { get; set; }
+        public byte[] Bytecode { get; set; } = null!;
 
         [GlobalSetup]
         public void GlobalSetup()

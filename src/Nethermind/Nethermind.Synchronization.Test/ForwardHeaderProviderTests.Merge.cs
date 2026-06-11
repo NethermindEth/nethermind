@@ -53,7 +53,7 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         ctx.ConfigureBestPeer(syncPeer);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         Assert.That(headers?[0]?.Number, Is.EqualTo(expectedFirstBlock));
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedLastBlock));
     }
@@ -89,7 +89,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(syncPeer);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedBestKnownNumber));
 
 
@@ -119,7 +119,7 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(peerInfo);
-        using IOwnedReadOnlyList<BlockHeader?>? headers = await forwardHeader.GetBlockHeaders(blocksToIgnore, 128, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader>? headers = await forwardHeader.GetBlockHeaders(blocksToIgnore, 128, CancellationToken.None);
         Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedBestKnownNumber));
     }
 

@@ -20,8 +20,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IContractDataStore<Address> _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
-        private Hash256 _blockHash;
-        private ISet<Address> _sendersWhiteListSet;
+        private Hash256 _blockHash = Keccak.Zero;
+        private ISet<Address> _sendersWhiteListSet = new HashSet<Address>();
 
         // expected SortedList based)
 
@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public bool IsWhiteListed(Transaction tx)
         {
             CheckReloadSendersWhitelist();
-            return _sendersWhiteListSet.Contains(tx.SenderAddress);
+            return tx.SenderAddress is not null && _sendersWhiteListSet.Contains(tx.SenderAddress);
         }
 
         private void CheckReloadSendersWhitelist()

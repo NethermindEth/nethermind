@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
@@ -374,11 +375,14 @@ namespace Nethermind.Xdc
             Address[] currentMasternodes;
             if (_epochSwitchManager.IsEpochSwitchAtRound(round, currentHead))
             {
-                (currentMasternodes, _) = _masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, currentHead.Hash, spec);
+                Hash256 parentHash = currentHead.Hash
+                    ?? throw new InvalidOperationException($"Current head {currentHead.Number} is missing a hash.");
+                (currentMasternodes, _) = _masternodesCalculator.CalculateNextEpochMasternodes(currentHead.Number + 1, parentHash, spec);
             }
             else
             {
-                EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead)
+                    ?? throw new InvalidOperationException($"Cannot find epoch switch info for block {currentHead.ToString(BlockHeader.Format.FullHashAndNumber)}.");
                 currentMasternodes = epochSwitchInfo.Masternodes;
             }
 

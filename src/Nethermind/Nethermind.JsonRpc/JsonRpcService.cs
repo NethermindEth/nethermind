@@ -713,7 +713,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (reader.TokenType == JsonTokenType.String && expectedParameter.ReparseString)
         {
-            return JsonSerializer.Deserialize(reader.GetString(), expectedParameter.ParameterType, EthereumJsonSerializer.JsonOptions);
+            return JsonSerializer.Deserialize(reader.GetString()!, expectedParameter.ParameterType, EthereumJsonSerializer.JsonOptions);
         }
 
         return DeserializeTypedParameter(ref reader, expectedParameter);
@@ -724,7 +724,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         Type paramType = expectedParameter.ParameterType;
         if (providedParameter.ValueKind == JsonValueKind.String && expectedParameter.ReparseString)
         {
-            return JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
+            return JsonSerializer.Deserialize(providedParameter.GetString()!, paramType, EthereumJsonSerializer.JsonOptions);
         }
 
         JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
@@ -938,7 +938,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return (errorType, errorMessage, methodName, null);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
+        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string? module) => result switch
         {
             ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"The method '{methodName}' is not supported."),
             ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
@@ -946,7 +946,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
                 $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
-            _ => (null, null)
+            _ => (null, string.Empty)
         };
     }
 }

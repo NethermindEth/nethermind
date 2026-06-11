@@ -13,7 +13,7 @@ public static class SignatureBuilder
     {
         bool allowUnsigned = rlpBehaviors.HasFlag(RlpBehaviors.AllowUnsigned);
         bool isSignatureOk = true;
-        string signatureError = null;
+        string? signatureError = null;
         if (rBytes.Length == 0 || sBytes.Length == 0)
         {
             isSignatureOk = false;
@@ -39,6 +39,6 @@ public static class SignatureBuilder
             ? new Signature(rBytes, sBytes, v)
             : allowUnsigned
                 ? null
-                : throw new RlpException(signatureError);
+                : throw new RlpException(signatureError ?? "Invalid transaction signature.");
     }
 }

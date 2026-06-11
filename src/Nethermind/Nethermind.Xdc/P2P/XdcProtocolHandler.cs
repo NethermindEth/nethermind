@@ -93,7 +93,7 @@ internal class XdcProtocolHandler(
     private void Handle(TimeoutMsg timeoutMsg) => _ = timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
-        if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string error))
+        if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string? error))
         {
             //TODO Disconnect peer?
             if (Logger.IsDebug) Logger.Debug($"Received useless SyncInfo from peer {Session.RemoteNodeId}: {error}");

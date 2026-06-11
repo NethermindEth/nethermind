@@ -551,7 +551,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tracer.IsTracingReceipt)
             {
-                Hash256 stateRoot = null;
+                Hash256? stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
                     WorldState.RecalculateStateRoot();
@@ -725,7 +725,7 @@ namespace Nethermind.Evm.TransactionProcessing
             AuthorizationTuple authorizationTuple,
             in StackAccessTracker accessTracker,
             IReleaseSpec spec,
-            [NotNullWhen(false)] out string? error)
+            out string? error)
         {
             if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
             {
@@ -1072,7 +1072,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return InsufficientFundsForGas(tx, balance, balanceCheck);
             }
 
-            if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+            if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
 
             return TransactionResult.Ok;
         }
@@ -1102,7 +1102,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             ulong newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
-            WorldState.SetNonce(tx.SenderAddress, newNonce);
+            WorldState.SetNonce(tx.SenderAddress!, newNonce);
 
             return TransactionResult.Ok;
         }

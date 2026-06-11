@@ -76,7 +76,8 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     {
         if (_blockTree.FindHeader(gapNumber) is not XdcBlockHeader gapBlockHeader)
             return null;
-        TSnapshot? snapshot = GetSnapshot(gapBlockHeader.Hash);
+        Hash256 gapBlockHash = gapBlockHeader.Hash ?? throw new InvalidOperationException($"Header hash is missing for block {gapBlockHeader.Number}.");
+        TSnapshot? snapshot = GetSnapshot(gapBlockHash);
         snapshot ??= TryRecoverSnapshot(gapBlockHeader);
 
         return snapshot;
@@ -93,12 +94,17 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         Span<byte> key = headerHash.Bytes;
         if (!_snapshotDb.KeyExists(key))
             return null;
-        Span<byte> value = _snapshotDb.Get(key);
+        Span<byte> value = _snapshotDb.Get(key) ?? [];
         if (value.IsEmpty)
             return null;
 
         RlpReader context = new(value);
-        TSnapshot decoded = _snapshotDecoder.Decode(ref context);
+        TSnapshot? decoded = _snapshotDecoder.Decode(ref context);
+        if (decoded is null)
+        {
+            return null;
+        }
+
         snapshot = decoded;
         _snapshotCache.Set(headerHash, snapshot);
         return snapshot;

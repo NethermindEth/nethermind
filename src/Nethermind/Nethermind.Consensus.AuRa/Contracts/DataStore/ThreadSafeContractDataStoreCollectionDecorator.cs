@@ -3,11 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ThreadSafeContractDataStoreCollectionDecorator<T>(IContractDataStoreCollection<T> inner) : IDictionaryContractDataStoreCollection<T>
+    public class ThreadSafeContractDataStoreCollectionDecorator<T>(IContractDataStoreCollection<T> inner) : IDictionaryContractDataStoreCollection<T> where T : notnull
     {
         private readonly IContractDataStoreCollection<T> _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         private readonly Lock _lock = new();
@@ -44,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             }
         }
 
-        public bool TryGetValue(T key, out T value)
+        public bool TryGetValue(T key, [MaybeNullWhen(false)] out T value)
         {
             // ReSharper disable once InconsistentlySynchronizedField
             if (_inner is not IDictionaryContractDataStoreCollection<T> dictionaryContractDataStoreCollection)

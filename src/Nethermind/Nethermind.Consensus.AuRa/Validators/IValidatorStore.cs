@@ -12,6 +12,6 @@ namespace Nethermind.Consensus.AuRa.Validators
         Address[] GetValidators(in ulong? blockNumber = null);
         ValidatorInfo GetValidatorsInfo(in ulong? blockNumber = null);
 
-        PendingValidators PendingValidators { get; set; }
+        PendingValidators? PendingValidators { get; set; }
     }
 }

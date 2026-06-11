@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Rewards
@@ -14,6 +15,7 @@ namespace Nethermind.Consensus.Rewards
 
         public static ZeroWeiRewards Instance { get; } = new();
 
-        public BlockReward[] CalculateRewards(Block block) => new[] { new BlockReward(block.Beneficiary, 0) };
+        public BlockReward[] CalculateRewards(Block block) =>
+            [new BlockReward(block.Beneficiary ?? throw new InvalidOperationException("Block beneficiary is required to calculate rewards."), 0)];
     }
 }

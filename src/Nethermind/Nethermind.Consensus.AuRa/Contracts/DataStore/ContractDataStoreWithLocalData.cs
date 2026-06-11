@@ -13,14 +13,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ContractDataStoreWithLocalData<T> : ContractDataStore<T>
+    public class ContractDataStoreWithLocalData<T> : ContractDataStore<T> where T : notnull
     {
         private readonly ILocalDataSource<IEnumerable<T>> _localDataSource;
         private T[] _localData = [];
 
         public ContractDataStoreWithLocalData(
             IContractDataStoreCollection<T> collection,
-            IDataContract<T> dataContract,
+            IDataContract<T>? dataContract,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             ILogManager logManager,
@@ -32,10 +32,10 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             LoadLocalData();
         }
 
-        public event EventHandler Loaded;
+        public event EventHandler? Loaded;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private void OnChanged(object sender, EventArgs e)
+        private void OnChanged(object? sender, EventArgs e)
         {
             LoadLocalData();
             Interlocked.MemoryBarrier();

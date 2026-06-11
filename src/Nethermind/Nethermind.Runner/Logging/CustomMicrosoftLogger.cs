@@ -10,7 +10,7 @@ namespace Nethermind.Runner.Logging
     {
         private readonly Nethermind.Logging.ILogger _logger = logger;
 
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             if (!IsLevelEnabled(logLevel))
             {
@@ -24,7 +24,10 @@ namespace Nethermind.Runner.Logging
             {
                 case LogLevel.Error:
                 case LogLevel.Critical:
-                    _logger.Error(message, exception);
+                    if (exception is null)
+                        _logger.Error(message);
+                    else
+                        _logger.Error(message, exception);
                     break;
                 case LogLevel.Information:
                     _logger.Info(message);
@@ -43,7 +46,7 @@ namespace Nethermind.Runner.Logging
 
         public bool IsEnabled(LogLevel logLevel) => IsLevelEnabled(logLevel);
 
-        public IDisposable BeginScope<TState>(TState state) => NullScope.Instance;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
 
         private bool IsLevelEnabled(LogLevel logLevel) => logLevel switch
         {

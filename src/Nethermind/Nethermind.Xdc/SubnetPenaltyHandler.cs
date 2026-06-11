@@ -43,7 +43,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
 
             if (parentNumber == minBlockNumber + 1)
             {
-                foreach (Address penalty in parentHeader.PenaltiesAddress)
+                foreach (Address penalty in parentHeader.PenaltiesAddress ?? [])
                 {
                     penalties.Add(penalty);
                 }
@@ -52,8 +52,8 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             listBlockHash.Add(parentHash);
             listBlockNumber.Add(parentNumber);
 
-            Address miner = parentHeader.Beneficiary;
-            minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
+            Address miner = parentHeader.Beneficiary ?? throw new InvalidOperationException($"Beneficiary is missing for block {parentHeader.Number}.");
+            minerStatistics[miner] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
 
             bool isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
 
@@ -72,7 +72,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             }
 
             parentNumber--;
-            parentHash = parentHeader.ParentHash;
+            parentHash = parentHeader.ParentHash ?? throw new InvalidOperationException($"Parent hash is missing for block {parentHeader.Number}.");
         }
 
         HashSet<Hash256> blockHashes = [];
@@ -97,8 +97,13 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             {
                 Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
                 tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
-                Address fromSigner = tx.SenderAddress;
 
+                if (tx.SenderAddress is null)
+                {
+                    continue;
+                }
+
+                Address fromSigner = tx.SenderAddress;
                 if (blockHashes.Contains(signedBlockHash))
                     penalties.Remove(fromSigner);
             }

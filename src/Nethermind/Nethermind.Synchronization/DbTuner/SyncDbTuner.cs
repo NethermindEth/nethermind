@@ -32,12 +32,12 @@ public class SyncDbTuner
             return;
         }
 
-        if (bodiesSyncFeed is not NoopSyncFeed<BodiesSyncBatch>)
+        if (bodiesSyncFeed is not null and not NoopSyncFeed<BodiesSyncBatch>)
         {
             bodiesSyncFeed.StateChanged += BodiesStateChanged;
         }
 
-        if (receiptSyncFeed is not NoopSyncFeed<ReceiptsSyncBatch>)
+        if (receiptSyncFeed is not null and not NoopSyncFeed<ReceiptsSyncBatch>)
         {
             receiptSyncFeed.StateChanged += ReceiptsStateChanged;
         }

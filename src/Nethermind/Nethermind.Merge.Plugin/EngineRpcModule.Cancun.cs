@@ -20,7 +20,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V3);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, Hash256[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
         NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), EngineApiVersions.NewPayload.V3);
 
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>

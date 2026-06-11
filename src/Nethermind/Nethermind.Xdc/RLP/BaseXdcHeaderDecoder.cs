@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using System;
 
 namespace Nethermind.Xdc.RLP;
 
@@ -17,9 +17,9 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         => (beh & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
 
     protected abstract TH CreateHeader(
-        Hash256? parentHash,
-        Hash256? unclesHash,
-        Address? beneficiary,
+        Hash256 parentHash,
+        Hash256 unclesHash,
+        Address beneficiary,
         UInt256 difficulty,
         ulong number,
         ulong gasLimit,
@@ -44,12 +44,12 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         int headerCheck = decoderContext.Position + headerSequenceLength;
 
         // Common fields
-        Hash256? parentHash = decoderContext.DecodeKeccak();
-        Hash256? unclesHash = decoderContext.DecodeKeccak();
-        Address? beneficiary = decoderContext.DecodeAddress();
-        Hash256? stateRoot = decoderContext.DecodeKeccak();
-        Hash256? transactionsRoot = decoderContext.DecodeKeccak();
-        Hash256? receiptsRoot = decoderContext.DecodeKeccak();
+        Hash256 parentHash = decoderContext.DecodeKeccakNonNull();
+        Hash256 unclesHash = decoderContext.DecodeKeccakNonNull();
+        Address beneficiary = decoderContext.DecodeAddressNonNull();
+        Hash256 stateRoot = decoderContext.DecodeKeccakNonNull();
+        Hash256 transactionsRoot = decoderContext.DecodeKeccakNonNull();
+        Hash256 receiptsRoot = decoderContext.DecodeKeccakNonNull();
         Bloom? bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
         ulong number = decoderContext.DecodeULong();
@@ -133,6 +133,9 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
 
     public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
     {
+        if (item is null)
+            return Rlp.OfEmptyList.Length;
+
         if (item is not TH header)
             throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
 
@@ -154,7 +157,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             + Rlp.LengthOf(header.GasLimit)
             + Rlp.LengthOf(header.GasUsed)
             + Rlp.LengthOf(header.Timestamp)
-            + Rlp.LengthOf(header.ExtraData)
+            + Rlp.LengthOf(header.ExtraData ?? [])
             + Rlp.LengthOf(header.MixHash)
             + Rlp.LengthOfNonce(header.Nonce);
 

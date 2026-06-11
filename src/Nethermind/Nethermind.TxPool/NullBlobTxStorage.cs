@@ -29,7 +29,7 @@ public class NullBlobTxStorage : IBlobTxStorage
 
     public void Delete(in ValueHash256 hash, in UInt256 timestamp) { }
 
-    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[]? blockBlobTransactions)
+    public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
     {
         blockBlobTransactions = default;
         return false;

@@ -75,11 +75,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    while (SendChannel.Reader.TryRead(out Func<Task> action))
+                    while (SendChannel.Reader.TryRead(out Func<Task>? action))
                     {
                         try
                         {
-                            await action();
+                            await action!();
                         }
                         catch (Exception e)
                         {

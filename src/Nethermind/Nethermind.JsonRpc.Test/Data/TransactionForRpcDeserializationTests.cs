@@ -20,7 +20,7 @@ public class TransactionForRpcDeserializationTests
     [TestCaseSource(nameof(TxJsonTestCases))]
     public TxType Test_TxTypeIsDetected_ForDifferentFieldSet(string txJson)
     {
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson)!;
         Result<Transaction> result = transactionForRpc.ToTransaction();
         return result.Data?.Type ?? transactionForRpc.Type ?? TxType.Legacy;
     }
@@ -83,7 +83,7 @@ public class TransactionForRpcDeserializationTests
     [TestCaseSource(nameof(SpecAwareResolutionCases))]
     public TxType Test_DefaultedType_IsResolvedBySpec(string txJson, IReleaseSpec? spec)
     {
-        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson)!;
         Result<Transaction> result = transactionForRpc.ToTransaction(spec: spec);
         Assert.That(result.IsError, Is.False, result.Error);
         return result.Data!.Type;
@@ -131,7 +131,7 @@ public class TransactionForRpcDeserializationTests
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)
     {
         TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
-            """{"to":"0x0000000000000000000000000000000000000001","data":"0x01"}""");
+            """{"to":"0x0000000000000000000000000000000000000001","data":"0x01"}""")!;
 
         Transaction tx = rpc.ToTransaction(spec: spec).Data!;
         Assert.That(tx.AccessList is not null, Is.EqualTo(hasAccessList));
@@ -155,7 +155,7 @@ public class TransactionForRpcDeserializationTests
     public void Test_BlobTransaction_WithTooManyBlobHashes_ReturnsBlobGasLimitError_WhenUserInputValidated()
     {
         TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
-            """{"type":"0x3","to":"0x0000000000000000000000000000000000000001","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000","0x0100000000000000000000000000000000000000000000000000000000000001","0x0100000000000000000000000000000000000000000000000000000000000002","0x0100000000000000000000000000000000000000000000000000000000000003","0x0100000000000000000000000000000000000000000000000000000000000004","0x0100000000000000000000000000000000000000000000000000000000000005","0x0100000000000000000000000000000000000000000000000000000000000006"]}""");
+            """{"type":"0x3","to":"0x0000000000000000000000000000000000000001","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000","0x0100000000000000000000000000000000000000000000000000000000000001","0x0100000000000000000000000000000000000000000000000000000000000002","0x0100000000000000000000000000000000000000000000000000000000000003","0x0100000000000000000000000000000000000000000000000000000000000004","0x0100000000000000000000000000000000000000000000000000000000000005","0x0100000000000000000000000000000000000000000000000000000000000006"]}""")!;
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, spec: Cancun.Instance);
 

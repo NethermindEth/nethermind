@@ -18,7 +18,7 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         bool result = blockValidator.Validate(header, parent, isUncle, out error);
         if (!result)
@@ -77,27 +77,32 @@ public class InvalidBlockInterceptor(
 
     private static bool ShouldNotTrackInvalidation(BlockHeader header) => !HeaderValidator.ValidateHash(header);
 
-    public bool ValidateWithdrawals(Block block, out string? error)
+    public bool ValidateWithdrawals(Block block, [NotNullWhen(false)] out string? error)
     {
         bool result = blockValidator.ValidateWithdrawals(block, out error);
 
-        if (!result)
+        if (result)
         {
-            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+            invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
 
-            if (ShouldNotTrackInvalidation(block.Header))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
-
-                return false;
-            }
-
-            invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+            return true;
         }
 
+        error ??= "Invalid withdrawals.";
+
+        if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+
+        if (ShouldNotTrackInvalidation(block.Header))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
+
+            return false;
+        }
+
+        invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
         invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
 
-        return result;
+        return false;
     }
 
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>

@@ -36,7 +36,7 @@ public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
                 throw new ConfigurationErrorsException($"{miningConfig.Signer} must be a valid uri.");
             }
 
-            string blockAuthorAccount = _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount;
+            string? blockAuthorAccount = _nethermindApi.Config<IKeyStoreConfig>().BlockAuthorAccount;
 
             IJsonSerializer ethereumJsonSerializer = new EthereumJsonSerializer(new[] { new ChecksumAddressConverter() });
 
@@ -53,7 +53,7 @@ public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
         return Task.CompletedTask;
     }
 
-    private ClefSigner SetupExternalSigner(ClefWallet clefWallet, string blockAuthorAccount)
+    private ClefSigner SetupExternalSigner(ClefWallet clefWallet, string? blockAuthorAccount)
     {
         try
         {

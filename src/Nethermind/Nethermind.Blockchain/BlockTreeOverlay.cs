@@ -18,8 +18,13 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     private readonly IBlockTree _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
 
     // Cannot be called until blocktree is ready.
-    public void ResetMainChain() =>
-        _overlayTree.TryUpdateMainChain(_baseTree.Head!.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { _baseTree.Head! });
+    public void ResetMainChain()
+    {
+        if (_baseTree.Head is { } head)
+        {
+            _overlayTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [head]);
+        }
+    }
 
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
@@ -41,8 +46,8 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public ulong BestKnownNumber => Math.Max(_overlayTree.BestKnownNumber, _baseTree.BestKnownNumber);
     public ulong BestKnownBeaconNumber => Math.Max(_overlayTree.BestKnownBeaconNumber, _baseTree.BestKnownBeaconNumber);
-    public Hash256 HeadHash => _overlayTree.HeadHash ?? _baseTree.HeadHash;
-    public Hash256 GenesisHash => _baseTree.GenesisHash;
+    public Hash256? HeadHash => _overlayTree.HeadHash ?? _baseTree.HeadHash;
+    public Hash256? GenesisHash => _baseTree.GenesisHash;
     public Hash256? PendingHash => _overlayTree.PendingHash ?? _baseTree.PendingHash;
     public Hash256? FinalizedHash => _overlayTree.FinalizedHash ?? _baseTree.FinalizedHash;
     public Hash256? SafeHash => _overlayTree.SafeHash ?? _baseTree.SafeHash;
@@ -110,20 +115,26 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash)
     {
-        (BlockInfo Info, ChainLevelInfo Level) overlayInfo = _overlayTree.GetInfo(number, blockHash);
+        (BlockInfo? Info, ChainLevelInfo? Level) overlayInfo = _overlayTree.GetInfo(number, blockHash);
         return overlayInfo.Info is not null || overlayInfo.Level is not null ? overlayInfo : _baseTree.GetInfo(number, blockHash);
     }
 
     public ChainLevelInfo? FindLevel(ulong number) => _overlayTree.FindLevel(number) ?? _baseTree.FindLevel(number);
 
-    public BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => _overlayTree.FindCanonicalBlockInfo(blockNumber) ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
+    public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber) => _overlayTree.FindCanonicalBlockInfo(blockNumber) ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
 
-    public Hash256 FindHash(ulong blockNumber) => _overlayTree.FindHash(blockNumber) ?? _baseTree.FindHash(blockNumber);
+    public Hash256? FindHash(ulong blockNumber) => _overlayTree.FindHash(blockNumber) ?? _baseTree.FindHash(blockNumber);
 
-    public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+    public IOwnedReadOnlyList<BlockHeader?> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
     {
-        IOwnedReadOnlyList<BlockHeader> overlayHeaders = _overlayTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
-        return overlayHeaders.Count > 0 ? overlayHeaders : _baseTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        IOwnedReadOnlyList<BlockHeader?> overlayHeaders = _overlayTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        if (overlayHeaders.Count > 0 && overlayHeaders.AsSpan()[0] is not null)
+        {
+            return overlayHeaders;
+        }
+
+        overlayHeaders.Dispose();
+        return _baseTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
     }
 
     public void DeleteInvalidBlock(Block invalidBlock) =>
@@ -260,7 +271,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();
 
-    public (ulong BlockNumber, Hash256 BlockHash) SyncPivot
+    public (ulong BlockNumber, Hash256? BlockHash) SyncPivot
     {
         get => _baseTree.SyncPivot;
         set => _baseTree.SyncPivot = value;
@@ -291,7 +302,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) =>
         _baseTree.IsMainChain(blockHash, false) || _overlayTree.IsMainChain(blockHash, throwOnMissingHash);
 
-    public BlockHeader FindBestSuggestedHeader() =>
+    public BlockHeader? FindBestSuggestedHeader() =>
         _overlayTree.FindBestSuggestedHeader() ?? _baseTree.FindBestSuggestedHeader();
 
 

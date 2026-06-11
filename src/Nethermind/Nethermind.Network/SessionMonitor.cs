@@ -17,8 +17,8 @@ namespace Nethermind.Network
 {
     public class SessionMonitor : ISessionMonitor
     {
-        private PeriodicTimer _pingTimer;
-        private Task _pingTimerTask;
+        private PeriodicTimer? _pingTimer;
+        private Task? _pingTimerTask;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
@@ -55,13 +55,17 @@ namespace Nethermind.Network
         }
 
         public void RemoveSession(ISession session) =>
-            _sessions.TryRemove(session.SessionId, out session);
+            _sessions.TryRemove(session.SessionId, out _);
 
         private async Task SendPingMessagesAsync()
         {
-            CancellationToken token = _cancellationTokenSource.Token;
+            CancellationTokenSource cancellationTokenSource = _cancellationTokenSource
+                ?? throw new InvalidOperationException("Session monitor has not been started");
+            PeriodicTimer pingTimer = _pingTimer
+                ?? throw new InvalidOperationException("Session monitor has not been started");
+            CancellationToken token = cancellationTokenSource.Token;
             while (!token.IsCancellationRequested
-                && await _pingTimer.WaitForNextTickAsync(token))
+                && await pingTimer.WaitForNextTickAsync(token))
             {
                 try
                 {
@@ -125,7 +129,7 @@ namespace Nethermind.Network
                 {
                     if (!session.IsClosing)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
+                        if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session.Node:c} | last pong time {session.LastPongUtc:T}");
                         return false;
                     }
 
@@ -152,7 +156,7 @@ namespace Nethermind.Network
         {
             try
             {
-                _pingTimer.Dispose();
+                _pingTimer?.Dispose();
                 if (_logger.IsTrace) _logger.Trace("Stopping session monitor");
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }

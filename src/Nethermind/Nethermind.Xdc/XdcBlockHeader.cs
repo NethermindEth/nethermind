@@ -120,14 +120,14 @@ public class XdcBlockHeader(
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
     {
         XdcBlockHeader x = new(
-            src.ParentHash,
-            src.UnclesHash,
-            src.Beneficiary,
+            src.ParentHash ?? throw new ArgumentException("Parent hash is missing.", nameof(src)),
+            src.UnclesHash ?? throw new ArgumentException("Uncles hash is missing.", nameof(src)),
+            src.Beneficiary ?? throw new ArgumentException("Beneficiary is missing.", nameof(src)),
             src.Difficulty,
             src.Number,
             src.GasLimit,
             src.Timestamp,
-            src.ExtraData)
+            src.ExtraData ?? [])
         {
             Bloom = src.Bloom ?? Bloom.Empty,
             Hash = src.Hash,

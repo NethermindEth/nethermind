@@ -75,7 +75,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         {
             byte[]? bytes = storageTree.Get(in index);
             logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {bytes?.ToHexString()}");
-            return bytes;
+            return bytes ?? [];
         }
 
         public void HintSet(in UInt256 index, byte[]? value) => storageTree.HintSet(in index, value);
@@ -84,7 +84,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         {
             byte[]? bytes = storageTree.Get(in hash);
             logger.Trace($"{scopeId}: S:{address} Get slot via hash {hash}, got {bytes?.ToHexString()}");
-            return bytes;
+            return bytes ?? [];
         }
     }
 

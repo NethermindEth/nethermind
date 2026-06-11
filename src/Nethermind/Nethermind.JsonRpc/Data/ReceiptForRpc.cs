@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Data
             Type = receipt.TxType;
         }
 
-        public Hash256 TransactionHash { get; set; }
+        public Hash256 TransactionHash { get; set; } = null!;
         public long TransactionIndex { get; set; }
         public Hash256? BlockHash { get; set; }
         public ulong BlockNumber { get; set; }
@@ -51,14 +51,14 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? BlobGasPrice { get; set; }
 
         public UInt256? EffectiveGasPrice { get; set; }
-        public Address From { get; set; }
+        public Address? From { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address To { get; set; }
+        public Address? To { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address? ContractAddress { get; set; }
-        public LogEntryForRpc[] Logs { get; set; }
+        public LogEntryForRpc[] Logs { get; set; } = [];
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
         public long? Status { get; set; }

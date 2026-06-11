@@ -75,8 +75,10 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         _timeouts.Add(timeout);
         IReadOnlyCollection<Timeout> collectedTimeouts = _timeouts.GetItemsByKey(timeout);
 
-        XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
+        if (_blockTree.Head?.Header is not XdcBlockHeader xdcHeader)
+            return Task.CompletedTask;
+
+        EpochSwitchInfo? epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
         if (epochSwitchInfo is null)
         {
             // Failed to get epoch switch info, cannot process timeout
@@ -107,7 +109,10 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     private void OnTimeoutPoolThresholdReached(IEnumerable<Timeout> timeouts, Timeout timeout)
     {
-        Signature[] signatures = timeouts.Select(t => t.Signature).ToArray();
+        Signature[] signatures = timeouts
+            .Where(t => t.Signature is not null)
+            .Select(t => t.Signature!)
+            .ToArray();
 
         TimeoutCertificate timeoutCertificate = new(timeout.Round, signatures, timeout.GapNumber);
 
@@ -142,7 +147,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         ArgumentNullException.ThrowIfNull(timeoutCertificate);
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeoutCertificate.GapNumber);
+        Snapshot? snapshot = _snapshotManager.GetSnapshotByGapNumber(timeoutCertificate.GapNumber);
         if (snapshot is null)
         {
             errorMessage = $"Failed to get snapshot using gap number {timeoutCertificate.GapNumber}";
@@ -154,9 +159,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = "Empty master node list from snapshot";
             return false;
         }
-        XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
+        if (_blockTree.Head?.Header is not XdcBlockHeader xdcHeader)
+        {
+            errorMessage = "Failed to get current XDC header";
+            return false;
+        }
+
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
-        EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
+        EpochSwitchInfo? epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
         if (epochInfo is null)
         {
             errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCertificate.Round}";
@@ -174,6 +184,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
         if (VotesManager.CountValidSignatures(candidates, signatures, timeoutMsgHash, out errorMessage) is not { } signCount)
         {
+            errorMessage ??= "Timeout certificate contains invalid signatures.";
             return false;
         }
 
@@ -197,8 +208,10 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             SendTimeout();
             _consensusContext.TimeoutCounter++;
 
-            XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _consensusContext.CurrentRound);
+            if (_blockTree.Head?.Header is not XdcBlockHeader xdcHeader)
+                return;
+
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, _consensusContext.CurrentRound);
 
             if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
             {
@@ -218,14 +231,21 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     private void ResetTimer()
     {
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(_blockTree.Head?.Header as XdcBlockHeader, _consensusContext.CurrentRound);
+        if (_blockTree.Head?.Header is not XdcBlockHeader xdcHeader)
+            return;
+
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, _consensusContext.CurrentRound);
         _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
     }
 
     public Task OnReceiveTimeout(Timeout timeout)
     {
         Block currentBlock = _blockTree.Head ?? throw new InvalidOperationException("Failed to get current block");
-        XdcBlockHeader currentHeader = currentBlock.Header as XdcBlockHeader;
+        if (currentBlock.Header is not XdcBlockHeader currentHeader)
+        {
+            return Task.CompletedTask;
+        }
+
         ulong currentBlockNumber = currentBlock.Number;
         ulong epochLength = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
 
@@ -250,12 +270,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     internal bool FilterTimeout(Timeout timeout)
     {
         if (timeout.Round < _consensusContext.CurrentRound) return false;
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
+        Snapshot? snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
+        if (timeout.Signature is null) return false;
 
         // Verify msg signature
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
-        Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
+        Address? signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
+        if (signer is null) return false;
         timeout.Signer = signer;
 
         return snapshot.NextEpochCandidates.Contains(signer);
@@ -265,8 +287,10 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     private void SendTimeout()
     {
-        XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header
-            ?? throw new InvalidOperationException("Failed to retrieve current header");
+        if (_blockTree.Head?.Header is not XdcBlockHeader currentHeader)
+        {
+            throw new InvalidOperationException("Failed to retrieve current header");
+        }
         ulong currentRound = _consensusContext.CurrentRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, currentRound);
 
@@ -301,8 +325,10 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     // Returns true if the signer is within the master node list
     private bool AllowedToSend()
     {
-        XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader);
+        if (_blockTree.Head?.Header is not XdcBlockHeader currentHeader)
+            return false;
+
+        EpochSwitchInfo? epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader);
         if (epochSwitchInfo is null)
             return false;
         return epochSwitchInfo.Masternodes.Contains(_signer.Address);

@@ -19,9 +19,9 @@ namespace Nethermind.HealthChecks
     public class CheckHealthResult
     {
         public bool Healthy { get; set; }
-        public IEnumerable<(string Message, string LongMessage)> Messages { get; set; }
+        public IEnumerable<(string Message, string LongMessage)> Messages { get; set; } = [];
         public bool IsSyncing { get; set; }
-        public IEnumerable<string> Errors { get; set; }
+        public IEnumerable<string> Errors { get; set; } = [];
     }
 
     public class NodeHealthService(
@@ -31,7 +31,7 @@ namespace Nethermind.HealthChecks
         IHealthChecksConfig healthChecksConfig,
         IHealthHintService healthHintService,
         IEthSyncingInfo ethSyncingInfo,
-        IClHealthTracker clHealthTracker,
+        IClHealthTracker? clHealthTracker,
         UInt256? terminalTotalDifficulty,
         IDriveInfo[] drives,
         bool isMining)
@@ -44,7 +44,7 @@ namespace Nethermind.HealthChecks
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
-            IClHealthTracker clHealthTracker,
+            IClHealthTracker? clHealthTracker,
             ISpecProvider specProvider,
             [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
             IMiningConfig miningConfig) : this(

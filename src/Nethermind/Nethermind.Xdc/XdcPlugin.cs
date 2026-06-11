@@ -11,7 +11,7 @@ namespace Nethermind.Xdc;
 
 public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
-    private INethermindApi _nethermindApi;
+    private INethermindApi _nethermindApi = null!;
     public const string Xdc = "Xdc";
     public string Author => "Nethermind";
     public string Name => Xdc;

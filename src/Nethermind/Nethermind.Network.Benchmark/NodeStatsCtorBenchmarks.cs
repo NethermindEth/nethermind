@@ -12,7 +12,7 @@ namespace Nethermind.Network.Benchmarks
     public class NodeStatsCtorBenchmarks
     {
         private DateTime _now = DateTime.UtcNow;
-        private Node _node;
+        private Node _node = null!;
 
         [GlobalSetup]
         public void Setup() => _node = new Node(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"), "127.0.0.1", 1234);

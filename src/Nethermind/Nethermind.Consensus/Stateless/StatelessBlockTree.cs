@@ -153,7 +153,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public Hash256? FindHash(ulong blockNumber)
         => throw new NotSupportedException();
 
-    public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+    public IOwnedReadOnlyList<BlockHeader?> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         => throw new NotSupportedException();
 
     public void DeleteInvalidBlock(Block invalidBlock)
@@ -202,7 +202,7 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public void RecalculateTreeLevels()
         => throw new NotSupportedException();
 
-    public (ulong BlockNumber, Hash256 BlockHash) SyncPivot
+    public (ulong BlockNumber, Hash256? BlockHash) SyncPivot
     {
         get => throw new NotSupportedException();
         set => throw new NotSupportedException();
@@ -235,16 +235,26 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     {
         const ulong length = BlockhashCache.MaxDepth + 1;
         Hash256[] result = new Hash256[(int)length];
+        if (blockHeader.Hash is null)
+        {
+            return Task.FromResult<Hash256[]?>(null);
+        }
+
         result[0] = blockHeader.Hash;
         for (ulong i = 1; i < length; i++)
         {
-            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader header))
+            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader? header))
             {
+                if (header?.Hash is null)
+                {
+                    return Task.FromResult<Hash256[]?>(null);
+                }
+
                 result[i] = header.Hash;
             }
         }
 
-        return Task.FromResult(result);
+        return Task.FromResult<Hash256[]?>(result);
     }
 
     // No-op: the stateless block tree is its own cache (headers are fixed for the verification scope),

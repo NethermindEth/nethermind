@@ -23,7 +23,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private const int JUMPDEST = (int)Instruction.JUMPDEST;
     private const int BitShiftPerInt64 = 6;
 
-    private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
+    private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
@@ -52,11 +52,11 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         {
             WaitForAnalysisToComplete(resetEvent);
 
-            return _jumpDestinationBitmap;
+            return _jumpDestinationBitmap!;
         }
 
         // Must be the bitmap, and lost check->create benign data race
-        return (long[])previous;
+        return (long[])previous!;
     }
 
     private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
@@ -67,7 +67,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         resetEvent.Wait();
     }
 
-    private void AnalyzeJumpDestinations(out object previous)
+    private void AnalyzeJumpDestinations(out object? previous)
     {
         ManualResetEventSlim analysisComplete = new(initialState: false);
         previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);

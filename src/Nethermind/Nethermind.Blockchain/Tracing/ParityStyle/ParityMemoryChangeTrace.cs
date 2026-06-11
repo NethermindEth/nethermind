@@ -10,5 +10,5 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 public class ParityMemoryChangeTrace
 {
     public long Offset { get; set; }
-    public byte[] Data { get; set; }
+    public byte[] Data { get; set; } = null!;
 }

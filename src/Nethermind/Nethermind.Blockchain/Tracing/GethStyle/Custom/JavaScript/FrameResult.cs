@@ -9,7 +9,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 public class FrameResult
 {
     private ITypedArray<byte>? _outputConverted;
-    private byte[] _output;
+    private byte[] _output = [];
     public ulong GasUsed { get; set; }
 
     public byte[] Output

@@ -13,7 +13,7 @@ namespace Nethermind.Benchmarks.Core
     {
         //private static HashLib.Crypto.SHA3.Keccak512 _hash = HashFactory.Crypto.SHA3.CreateKeccak512();
 
-        private byte[] _a;
+        private byte[] _a = null!;
 
         private byte[][] _scenarios =
         {
@@ -33,7 +33,7 @@ namespace Nethermind.Benchmarks.Core
         public byte[] Improved() => throw new NotImplementedException();
 
         [Benchmark]
-        public byte[] Current() => Keccak512.Compute(_a).Bytes;
+        public byte[] Current() => Keccak512.Compute(_a).Bytes!;
 
         //[Benchmark]
         //public byte[] HashLib()

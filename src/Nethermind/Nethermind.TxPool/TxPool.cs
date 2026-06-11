@@ -344,8 +344,7 @@ namespace Nethermind.TxPool
                 }
 
                 if (_blobReorgsSupportEnabled
-                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlock.Number, out Transaction[]? blobTxs)
-                    && blobTxs is not null)
+                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlock.Number, out Transaction[]? blobTxs))
                 {
                     foreach (Transaction blobTx in blobTxs)
                     {
@@ -1167,4 +1166,3 @@ Db usage:
         private static void DisposeBlockAccountChanges(Block block) => block.DisposeAccountChanges();
     }
 }
-

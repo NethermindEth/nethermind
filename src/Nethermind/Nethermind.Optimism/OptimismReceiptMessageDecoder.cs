@@ -54,7 +54,8 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
-            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes)
+                ?? throw new RlpException("Log entry decoding returned null.");
         }
         txReceipt.Logs = entries;
 
@@ -74,7 +75,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         return txReceipt;
     }
 
-    private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
         {
@@ -127,8 +128,13 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
+        if (item is null)
+        {
+            return Rlp.LengthOfSequence(0);
+        }
+
         (int total, _) = GetContentLength(item, rlpBehaviors);
         int receiptPayloadLength = Rlp.LengthOfSequence(total);
 

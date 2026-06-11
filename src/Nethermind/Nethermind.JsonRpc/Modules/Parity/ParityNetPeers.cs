@@ -11,7 +11,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public int Max { get; set; }
 
-        public PeerInfo[] Peers { get; set; }
+        public PeerInfo[] Peers { get; set; } = [];
 
         public ParityNetPeers()
         {

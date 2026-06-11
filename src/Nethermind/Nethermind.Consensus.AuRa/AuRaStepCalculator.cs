@@ -79,10 +79,15 @@ namespace Nethermind.Consensus.AuRa
             return (long)(currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
         }
 
-        private StepDurationInfo GetStepInfo(ulong timestampInSeconds) =>
-            _stepDurations.TryGetForActivation(timestampInSeconds, out StepDurationInfo currentStepInfo)
-                ? currentStepInfo
-                : throw new InvalidOperationException($"Couldn't find state step duration information at timestamp {timestampInSeconds}");
+        private StepDurationInfo GetStepInfo(ulong timestampInSeconds)
+        {
+            if (_stepDurations.TryGetForActivation(timestampInSeconds, out StepDurationInfo? currentStepInfo))
+            {
+                return currentStepInfo;
+            }
+
+            throw new InvalidOperationException($"Couldn't find state step duration information at timestamp {timestampInSeconds}");
+        }
 
         private void ValidateStepDurations(IDictionary<ulong, long> stepDurations)
         {

@@ -30,7 +30,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
     private readonly ISyncReport _syncReport;
 
     private readonly Lock _cacheLock = new();
-    private BlockHeader?[]? _cachedHeaders;
+    private BlockHeader[]? _cachedHeaders;
     private Hash256? _cachedProcessDestinationHash;
     private ulong _cachedProcessDestinationNumber;
     private int _cachedSkipLastN;
@@ -59,7 +59,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
 
     private bool ShouldUsePreMerge() => !_beaconPivot.BeaconPivotExists() && !_poSSwitcher.HasEverReachedTerminalBlock();
 
-    public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(ulong skipLastNUlong, ulong maxHeaderUlong, CancellationToken cancellation)
+    public override Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong skipLastNUlong, ulong maxHeaderUlong, CancellationToken cancellation)
     {
         if (ShouldUsePreMerge())
         {
@@ -71,7 +71,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
 
         _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_beaconPivot.PivotNumber, _beaconPivot.PivotDestinationNumber);
 
-        ArrayPoolList<BlockHeader?>? slice = TryServeFromCache(maxHeader, skipLastN);
+        ArrayPoolList<BlockHeader>? slice = TryServeFromCache(maxHeader, skipLastN);
         if (slice is not null)
         {
             try
@@ -86,7 +86,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
                 throw;
             }
             if (_logger.IsTrace) _logger.Trace($"Served {slice.Count} headers from forward-header cache");
-            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(slice);
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(slice);
         }
 
         // Fetch a larger batch than asked so subsequent peer allocations can be served from the cache.
@@ -97,7 +97,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
         if (fresh is null || fresh.Length <= 1)
         {
             if (_logger.IsTrace) _logger.Trace("Chain level helper got no headers suggestion");
-            return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(null);
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(null);
         }
 
         // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
@@ -108,13 +108,13 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
         if (fresh.Length >= fetchSize) UpdateCache(fresh, skipLastN);
 
         int take = Math.Min(fresh.Length, maxHeader);
-        ArrayPoolList<BlockHeader?> result = new(((BlockHeader?[])fresh).AsSpan(0, take));
-        return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(result);
+        ArrayPoolList<BlockHeader> result = new(fresh.AsSpan(0, take));
+        return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
     }
 
-    private ArrayPoolList<BlockHeader?>? TryServeFromCache(int maxHeader, int skipLastN)
+    private ArrayPoolList<BlockHeader>? TryServeFromCache(int maxHeader, int skipLastN)
     {
-        BlockHeader?[] cached;
+        BlockHeader[] cached;
         int offset;
         int take;
         lock (_cacheLock)
@@ -141,7 +141,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
             take = Math.Min(available, maxHeader);
         }
 
-        return new ArrayPoolList<BlockHeader?>(cached.AsSpan(offset, take));
+        return new ArrayPoolList<BlockHeader>(cached.AsSpan(offset, take)!);
     }
 
     private void UpdateCache(BlockHeader[] headers, int skipLastN)
@@ -163,7 +163,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
 
         lock (_cacheLock)
         {
-            BlockHeader?[]? cached = _cachedHeaders;
+            BlockHeader[]? cached = _cachedHeaders;
             if (cached is null) return;
 
             ulong cacheStart = cached[0]!.Number;

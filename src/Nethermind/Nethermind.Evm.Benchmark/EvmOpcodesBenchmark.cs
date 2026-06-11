@@ -52,16 +52,16 @@ public unsafe class EvmOpcodesBenchmark
     private int _stackOffset;
     private int _stackLength;
     private EthereumGasPolicy _gas;
-    private ExecutionEnvironment _env = null!;
-    private VmState<EthereumGasPolicy> _vmState = null!;
+    private ExecutionEnvironment? _env;
+    private VmState<EthereumGasPolicy>? _vmState;
     private IWorldState _stateProvider = null!;
-    private IDisposable _stateScope = null!;
+    private IDisposable? _stateScope;
     private int _stackDepth;
     private int _runsPerBatch;
     private int _iterationId;
-    private UInt256[] _dynamicStorageKeys = null!;
+    private UInt256[]? _dynamicStorageKeys;
     private UInt256[] _dynamicKeccakOffsets = null!;
-    private UInt256[] _dynamicCallTargets = null!;
+    private UInt256[]? _dynamicCallTargets;
     private EthereumCodeInfoRepository _codeInfoRepository = null!;
 
     // Full-width 256-bit test values for 2-param ops (a is popped first from slot[1], b from slot[0]).
@@ -205,7 +205,7 @@ public unsafe class EvmOpcodesBenchmark
             new StackAccessTracker(),
             Snapshot.Empty);
         _vmState.InitializeStacks(bytecode, out _);
-        InitializeKeccakMemoryLocations();
+        InitializeKeccakMemoryLocations(_vmState);
 
         _vm.SetVmState(_vmState);
         _vm.SetTracer(NullTxTracer.Instance);
@@ -679,7 +679,7 @@ public unsafe class EvmOpcodesBenchmark
     }
 
     private static ulong s_keccak;
-    private void InitializeKeccakMemoryLocations()
+    private void InitializeKeccakMemoryLocations(VmState<EthereumGasPolicy> vmState)
     {
         _dynamicKeccakOffsets = new UInt256[InnerCount];
         Span<byte> word = stackalloc byte[KeccakWordSize];
@@ -699,7 +699,7 @@ public unsafe class EvmOpcodesBenchmark
 
             word.Xor(hash.Bytes);
 
-            _vmState.Memory.TrySave(in offset, word);
+            vmState.Memory.TrySave(in offset, word);
         }
     }
 
@@ -718,13 +718,15 @@ public unsafe class EvmOpcodesBenchmark
     /// </summary>
     private void PreSeedTransientStorageForIteration()
     {
-        Address address = _env.ExecutingAccount;
+        ExecutionEnvironment env = _env ?? throw new InvalidOperationException("Execution environment is not initialized.");
+        UInt256[] dynamicStorageKeys = _dynamicStorageKeys ?? throw new InvalidOperationException("Dynamic storage keys are not initialized.");
+        Address address = env.ExecutingAccount;
         byte[] seedValue = ToStorageBytes(ValueA);
         for (int i = 0; i < InnerCount; i++)
         {
             long sequence = ((long)_iterationId * InnerCount) + i;
-            int index = (int)(sequence % _dynamicStorageKeys.Length);
-            UInt256 key = _dynamicStorageKeys[index];
+            int index = (int)(sequence % dynamicStorageKeys.Length);
+            UInt256 key = dynamicStorageKeys[index];
             StorageCell cell = new(address, key);
             _stateProvider.SetTransientState(in cell, seedValue);
         }
@@ -813,15 +815,17 @@ public unsafe class EvmOpcodesBenchmark
 
             case Instruction.SLOAD:
             case Instruction.TLOAD:
-                int loadStorageIndex = (int)(sequence % _dynamicStorageKeys.Length);
-                UInt256 loadKey = _dynamicStorageKeys[loadStorageIndex];
+                UInt256[] loadStorageKeys = _dynamicStorageKeys ?? throw new InvalidOperationException("Dynamic storage keys are not initialized.");
+                int loadStorageIndex = (int)(sequence % loadStorageKeys.Length);
+                UInt256 loadKey = loadStorageKeys[loadStorageIndex];
                 WriteStackSlot(0, in loadKey);
                 break;
 
             case Instruction.SSTORE:
             case Instruction.TSTORE:
-                int storeStorageIndex = (int)(sequence % _dynamicStorageKeys.Length);
-                UInt256 storeKey = _dynamicStorageKeys[storeStorageIndex];
+                UInt256[] storeStorageKeys = _dynamicStorageKeys ?? throw new InvalidOperationException("Dynamic storage keys are not initialized.");
+                int storeStorageIndex = (int)(sequence % storeStorageKeys.Length);
+                UInt256 storeKey = storeStorageKeys[storeStorageIndex];
                 UInt256 value = ((runIndex + _iterationId) & 1) == 0 ? ValueA : ValueB;
                 WriteStackSlot(0, in value); // value (popped second)
                 WriteStackSlot(1, in storeKey); // key (popped first)
@@ -829,15 +833,17 @@ public unsafe class EvmOpcodesBenchmark
 
             case Instruction.CALL:
             case Instruction.CALLCODE:
-                int callStoreIndex = (int)(sequence % _dynamicCallTargets.Length);
-                UInt256 callTarget = _dynamicCallTargets[callStoreIndex];
+                UInt256[] callTargets = _dynamicCallTargets ?? throw new InvalidOperationException("Dynamic call targets are not initialized.");
+                int callStoreIndex = (int)(sequence % callTargets.Length);
+                UInt256 callTarget = callTargets[callStoreIndex];
                 SetupCallStack(hasValue: true, in callTarget);
                 break;
 
             case Instruction.DELEGATECALL:
             case Instruction.STATICCALL:
-                int delegateCallIndex = (int)(sequence % _dynamicCallTargets.Length);
-                UInt256 delegateCallTarget = _dynamicCallTargets[delegateCallIndex];
+                UInt256[] delegateCallTargets = _dynamicCallTargets ?? throw new InvalidOperationException("Dynamic call targets are not initialized.");
+                int delegateCallIndex = (int)(sequence % delegateCallTargets.Length);
+                UInt256 delegateCallTarget = delegateCallTargets[delegateCallIndex];
                 SetupCallStack(hasValue: false, in delegateCallTarget);
                 break;
         }
@@ -893,7 +899,8 @@ public unsafe class EvmOpcodesBenchmark
     {
         private static readonly FieldInfo CodeInfoRepositoryField =
             typeof(VirtualMachine<EthereumGasPolicy>)
-                .GetField("_codeInfoRepository", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                .GetField("_codeInfoRepository", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new MissingFieldException(typeof(VirtualMachine<EthereumGasPolicy>).FullName, "_codeInfoRepository");
 
         public void SetVmState(VmState<EthereumGasPolicy> state) => VmState = state;
         public void SetTracer(ITxTracer tracer) => _txTracer = tracer;

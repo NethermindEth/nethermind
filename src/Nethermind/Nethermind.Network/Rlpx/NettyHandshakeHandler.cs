@@ -37,9 +37,10 @@ namespace Nethermind.Network.Rlpx
 
         private readonly IHandshakeService _service = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
         private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
-        private PublicKey RemoteId => _session.RemoteNodeId;
+        private PublicKey RemoteId => _session.RemoteNodeId ?? _handshake.RemoteNodeId
+            ?? throw new InvalidOperationException("Remote node id is required during RLPx handshake");
         private readonly TaskCompletionSource<object> _initCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private IChannel _channel;
+        private IChannel _channel = null!;
         private readonly TimeSpan _sendLatency = sendLatency;
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -92,8 +93,8 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            string clientId = $"unknown {_session?.RemoteHost}";
-            if (_session.RemoteNodeId is not null) clientId = _session?.Node?.ToString(Node.Format.Console);
+            string clientId = $"unknown {_session.RemoteHost}";
+            if (_session.RemoteNodeId is not null) clientId = _session.Node.ToString(Node.Format.Console);
 
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
@@ -149,7 +150,7 @@ namespace Nethermind.Network.Rlpx
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
 
-            using (FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets))
+            using (FrameMacProcessor macProcessor = new(RemoteId, _handshake.Secrets))
             {
                 FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
                 context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor));

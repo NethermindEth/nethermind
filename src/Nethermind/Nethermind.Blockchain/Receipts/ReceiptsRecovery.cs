@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public ReceiptsRecoveryResult TryRecover(ReceiptRecoveryBlock block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
-            bool canRecover = block.TransactionCount == receipts?.Length;
+            bool canRecover = block.TransactionCount == receipts.Length;
             if (canRecover)
             {
                 bool needRecover = NeedRecover(receipts, forceRecoverSender);

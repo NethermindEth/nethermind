@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Messages
             contentLength += Rlp.LengthOf(msg.P2PVersion);
             contentLength += Rlp.LengthOf(msg.ClientId);
             int innerContentLength = 0;
-            foreach (Capability? capability in msg.Capabilities.AsSpan())
+            foreach (Capability capability in msg.Capabilities.AsSpan())
             {
                 int capabilityLength = Rlp.LengthOf(capability.ProtocolCode.ToLowerInvariant());
                 capabilityLength += Rlp.LengthOf(capability.Version);
@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Messages
         }
 
         public HelloMessage Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
+            msgBytes.DeserializeRlp(Deserialize) ?? throw new RlpException("Hello message decoding returned null.");
 
         private static HelloMessage Deserialize(ref RlpReader ctx)
         {

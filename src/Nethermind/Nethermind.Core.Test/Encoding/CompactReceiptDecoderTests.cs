@@ -80,7 +80,7 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
             RlpReader reader = new(rlp.Bytes);
-            TxReceipt deserialized = decoder.Decode(ref reader, RlpBehaviors.Storage);
+            TxReceipt deserialized = decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpected());
         }

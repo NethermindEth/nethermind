@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Producers
             _blockProductionTrigger.TriggerBlockProduction += OnTriggerBlockProduction;
         }
 
-        private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
+        private void BlockTreeOnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
         {
             if (_blockTree.Head?.Hash != e.Block.Hash)
             {

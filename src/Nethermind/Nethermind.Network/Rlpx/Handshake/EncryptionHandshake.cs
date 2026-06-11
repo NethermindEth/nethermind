@@ -8,14 +8,14 @@ namespace Nethermind.Network.Rlpx.Handshake
 {
     public class EncryptionHandshake
     {
-        public EncryptionSecrets Secrets { get; set; }
-        public byte[] InitiatorNonce { get; set; }
-        public byte[] RecipientNonce { get; set; }
-        public PublicKey RemoteNodeId { get; set; }
-        public PublicKey RemoteEphemeralPublicKey { get; set; }
-        public PrivateKey EphemeralPrivateKey { get; set; }
+        public EncryptionSecrets Secrets { get; set; } = null!;
+        public byte[] InitiatorNonce { get; set; } = null!;
+        public byte[] RecipientNonce { get; set; } = null!;
+        public PublicKey RemoteNodeId { get; set; } = null!;
+        public PublicKey RemoteEphemeralPublicKey { get; set; } = null!;
+        public PrivateKey EphemeralPrivateKey { get; set; } = null!;
 
-        public Packet AuthPacket { get; set; }
-        public Packet AckPacket { get; set; }
+        public Packet AuthPacket { get; set; } = null!;
+        public Packet AckPacket { get; set; } = null!;
     }
 }

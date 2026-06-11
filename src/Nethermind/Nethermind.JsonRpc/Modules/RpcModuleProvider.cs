@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule
         {
             Type moduleClass = typeof(T);
-            RpcModuleAttribute attribute = moduleClass.GetCustomAttribute<RpcModuleAttribute>();
+            RpcModuleAttribute? attribute = moduleClass.GetCustomAttribute<RpcModuleAttribute>();
             if (attribute is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot register {moduleClass.Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
@@ -170,7 +170,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             static ResolvedMethodInfo? Resolve(FrozenDictionary<string, ResolvedMethodInfo> methods, string methodName) =>
-                methods.TryGetValue(methodName, out ResolvedMethodInfo result) ? result : null;
+                methods.TryGetValue(methodName, out ResolvedMethodInfo? result) ? result : null;
         }
 
         private static bool TryGetResolvedMethod(MethodCache cache, string methodName, [NotNullWhen(true)] out ResolvedMethodInfo? method)
@@ -181,7 +181,7 @@ namespace Nethermind.JsonRpc.Modules
                 return true;
             }
 
-            if (cache.Methods.TryGetValue(methodName, out ResolvedMethodInfo result))
+            if (cache.Methods.TryGetValue(methodName, out ResolvedMethodInfo? result))
             {
                 method = result;
                 return true;
@@ -448,7 +448,7 @@ namespace Nethermind.JsonRpc.Modules
                 Availability = availability;
                 IsTaskWrapped = TryGetTaskResultType(methodInfo.ReturnType, out Type? taskResultType);
                 ResultWrapperType = IsTaskWrapped ? taskResultType : methodInfo.ReturnType;
-                if (!ResultWrapperType.IsAssignableTo(typeof(IResultWrapper)))
+                if (ResultWrapperType is not null && !ResultWrapperType.IsAssignableTo(typeof(IResultWrapper)))
                 {
                     ResultWrapperType = null;
                 }
@@ -473,9 +473,9 @@ namespace Nethermind.JsonRpc.Modules
                 DirectParameterInvoker = CreateDirectParameterInvoker(methodInfo, parameters);
             }
 
-            public string ModuleType { get; }
-            public MethodInfo MethodInfo { get; }
-            public MethodInvoker Invoker { get; }
+            public string ModuleType { get; } = null!;
+            public MethodInfo MethodInfo { get; } = null!;
+            public MethodInvoker Invoker { get; } = null!;
             public Func<IRpcModule, object?>? DirectNoParameterInvoker { get; }
             public Func<IRpcModule, object?[], object?>? DirectParameterInvoker { get; }
             public ExpectedParameter[] ExpectedParameters { get; }

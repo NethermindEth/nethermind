@@ -12,7 +12,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State.Healing;
 
 [method: DebuggerStepThrough]
-public sealed class HealingStateTree(ITrieStore? store, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, ILogManager? logManager) : StateTree(store.GetTrieStore(null), logManager)
+public sealed class HealingStateTree(ITrieStore store, INodeStorage nodeStorage, Lazy<IPathRecovery> recovery, ILogManager logManager) : StateTree(store.GetTrieStore(null), logManager)
 {
     private Lazy<IPathRecovery> _recovery = recovery;
     private readonly INodeStorage _nodeStorage = nodeStorage;

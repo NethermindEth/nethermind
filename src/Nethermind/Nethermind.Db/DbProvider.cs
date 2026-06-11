@@ -13,6 +13,6 @@ namespace Nethermind.Db
 
         public T GetDb<T>(string dbName) where T : class, IDb => (T)ctx.ResolveKeyed<IDb>(dbName);
 
-        public IColumnsDb<T> GetColumnDb<T>(string dbName) => ctx.Resolve<IColumnsDb<T>>();
+        public IColumnsDb<T> GetColumnDb<T>(string dbName) where T : notnull => ctx.Resolve<IColumnsDb<T>>();
     }
 }

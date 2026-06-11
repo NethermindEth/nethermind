@@ -32,16 +32,16 @@ namespace Nethermind.Blockchain.Contracts
                 return ((T1)objects[0], (T2)objects[1]);
             }
 
-            public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
+            public T Call<T>(BlockHeader? parentHeader, string functionName, Address sender, params object[] arguments) =>
                 Call<T>(new CallInfo(parentHeader, functionName, sender, arguments));
 
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
+            public (T1, T2) Call<T1, T2>(BlockHeader? parentHeader, string functionName, Address sender, params object[] arguments) =>
                 Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments));
 
-            public T Call<T>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
+            public T Call<T>(BlockHeader? parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
                 Call<T>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
 
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
+            public (T1, T2) Call<T1, T2>(BlockHeader? parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
                 Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
         }
 
@@ -95,9 +95,9 @@ namespace Nethermind.Blockchain.Contracts
             }
         }
 
-        public class CallInfo(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
+        public class CallInfo(BlockHeader? parentHeader, string functionName, Address sender, params object[] arguments)
         {
-            public BlockHeader ParentHeader { get; } = parentHeader;
+            public BlockHeader? ParentHeader { get; } = parentHeader;
             public string FunctionName { get; } = functionName;
             public Address Sender { get; } = sender;
             public object[] Arguments { get; } = arguments;

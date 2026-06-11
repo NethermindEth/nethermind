@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public interface IContractDataStoreCollection<T>
+    public interface IContractDataStoreCollection<T> where T : notnull
     {
         void Clear();
 

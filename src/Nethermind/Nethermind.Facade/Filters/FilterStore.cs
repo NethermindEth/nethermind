@@ -28,7 +28,7 @@ namespace Nethermind.Facade.Filters
 
         public void RefreshFilter(int filterId)
         {
-            if (_filters.TryGetValue(filterId, out FilterBase filter))
+            if (_filters.TryGetValue(filterId, out FilterBase? filter))
             {
                 filter.LastUsed = DateTimeOffset.UtcNow;
             }
@@ -37,7 +37,7 @@ namespace Nethermind.Facade.Filters
         public FilterType GetFilterType(int filterId)
         {
             /* so far ok to use block filter if none */
-            if (!_filters.TryGetValue(filterId, out FilterBase filter))
+            if (!_filters.TryGetValue(filterId, out FilterBase? filter))
             {
                 return FilterType.BlockFilter;
             }
@@ -112,7 +112,7 @@ namespace Nethermind.Facade.Filters
             _enumerator = enumerator;
         }
 
-        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out FilterBase filter)
+        public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out FilterBase? filter)
                 ? filter as T
                 : null;
 

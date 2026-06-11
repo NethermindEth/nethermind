@@ -17,11 +17,11 @@ public class PublicApiSnapshot
     /// <summary>
     /// Block hash where the snapshot was created
     /// </summary>
-    public Hash256 Hash { get; set; }
+    public Hash256 Hash { get; set; } = null!;
 
     /// <summary>
     /// Set of authorized signers at this moment
     /// </summary>
-    public HashSet<Address> Signers { get; set; }
+    public HashSet<Address> Signers { get; set; } = null!;
 
 }

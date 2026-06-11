@@ -11,7 +11,7 @@ namespace Nethermind.Benchmarks.Rlp
 {
     public class RlpDecodeAccountBenchmark
     {
-        private static byte[] _account;
+        private static byte[] _account = null!;
 
         private byte[][] _scenarios =
         {
@@ -26,9 +26,11 @@ namespace Nethermind.Benchmarks.Rlp
         public void Setup() => _account = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public Account Improved() => Serialization.Rlp.Rlp.Decode<Account>(_account);
+        public Account Improved() => Serialization.Rlp.Rlp.Decode<Account>(_account)
+            ?? throw new Serialization.Rlp.RlpException("Account decoding returned null.");
 
         [Benchmark]
-        public Account Current() => Serialization.Rlp.Rlp.Decode<Account>(_account);
+        public Account Current() => Serialization.Rlp.Rlp.Decode<Account>(_account)
+            ?? throw new Serialization.Rlp.RlpException("Account decoding returned null.");
     }
 }

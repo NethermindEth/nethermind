@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain
             _receiptStorage.NewCanonicalReceipts += OnBlockAddedToMain;
         }
 
-        private void OnBlockAddedToMain(object sender, BlockReplacementEventArgs e) =>
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) =>
             // we don't want this to be on main processing thread
             Task.Run(() => TriggerReceiptInsertedEvent(e.Block, e.PreviousBlock));
 

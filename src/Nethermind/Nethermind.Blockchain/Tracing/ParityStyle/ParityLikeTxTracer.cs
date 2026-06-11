@@ -28,7 +28,7 @@ public class ParityLikeTxTracer : TxTracer
     private readonly List<byte[]> _currentPushList = [];
 
     private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
-    private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
+    private (ParityVmTrace? VmTrace, List<ParityVmOperationTrace>? Ops) _currentVmTrace;
 
     protected bool _treatGasParityStyle;
     protected bool _gasAlreadySetForCurrentOp;
@@ -124,7 +124,7 @@ public class ParityLikeTxTracer : TxTracer
 
     protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
 
-    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after) => new(before, after);
+    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[]? before, byte[]? after) => new(before, after);
 
     protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
 
@@ -217,7 +217,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         if (!IsTracingInstructions) return;
 
-        _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops;
+        _currentVmTrace.VmTrace!.Operations = _currentVmTrace.Ops;
         _vmTraceStack.Pop();
         _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
         _currentOperation = _currentVmTrace.Ops?.Last();
@@ -277,7 +277,7 @@ public class ParityLikeTxTracer : TxTracer
         operationTrace.Cost = gas;
         _currentOperation = operationTrace;
         _currentPushList.Clear();
-        _currentVmTrace.Ops.Add(operationTrace);
+        _currentVmTrace.Ops!.Add(operationTrace);
     }
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -285,7 +285,10 @@ public class ParityLikeTxTracer : TxTracer
         if (error != EvmExceptionType.InvalidJumpDestination &&
             error != EvmExceptionType.NotEnoughBalance)
         {
-            _currentVmTrace.Ops.Remove(_currentOperation);
+            if (_currentOperation is not null)
+            {
+                _currentVmTrace.Ops!.Remove(_currentOperation);
+            }
         }
     }
 
@@ -338,13 +341,13 @@ public class ParityLikeTxTracer : TxTracer
         }
         else
         {
-            before = value.Balance?.Before ?? before;
+            before = value!.Balance?.Before ?? before;
         }
 
-        value.Balance = RentNullableUInt256StateChange(before, after);
+        value!.Balance = RentNullableUInt256StateChange(before, after);
     }
 
-    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         if (_trace.StateChanges is null)
         {
@@ -359,43 +362,43 @@ public class ParityLikeTxTracer : TxTracer
         }
         else
         {
-            before = value.Code?.Before ?? before;
+            before = value!.Code?.Before ?? before;
         }
 
-        value.Code = RentByteStateChange(before, after);
+        value!.Code = RentByteStateChange(before, after);
     }
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
     {
         ref ParityAccountStateChange? value =
-            ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges!, address, out bool exists);
         if (!exists)
         {
             value = RentAccountStateChange();
         }
         else
         {
-            before = value.Nonce?.Before ?? before;
+            before = value!.Nonce?.Before ?? before;
         }
 
-        value.Nonce = RentNullableUInt256StateChange(before, after);
+        value!.Nonce = RentNullableUInt256StateChange(before, after);
     }
 
     public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
     {
         ref ParityAccountStateChange? value =
-            ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, storageCell.Address, out bool exists);
+            ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges!, storageCell.Address, out bool exists);
         if (!exists)
         {
             value = RentAccountStateChange();
         }
 
-        Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= RentStorageDictionary();
+        Dictionary<UInt256, ParityStateChange<byte[]>> storage = value!.Storage ??= RentStorageDictionary();
         ref ParityStateChange<byte[]>? change =
             ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
         if (exists)
         {
-            before = change.Before ?? before;
+            before = change!.Before ?? before;
         }
 
         change = RentByteStateChange(before, after);
@@ -480,7 +483,7 @@ public class ParityLikeTxTracer : TxTracer
 
     public override void ReportByteCode(ReadOnlyMemory<byte> byteCode) =>
         // TODO: use memory pool?
-        _currentVmTrace.VmTrace.Code = byteCode.ToArray();
+        _currentVmTrace.VmTrace!.Code = byteCode.ToArray();
 
     public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) =>
         _currentOperation!.Used = gasAvailable;

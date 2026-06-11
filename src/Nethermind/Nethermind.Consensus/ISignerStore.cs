@@ -7,8 +7,8 @@ namespace Nethermind.Consensus
 {
     public interface ISignerStore
     {
-        void SetSigner(PrivateKey key);
+        void SetSigner(PrivateKey? key);
 
-        void SetSigner(IProtectedPrivateKey key);
+        void SetSigner(IProtectedPrivateKey? key);
     }
 }

@@ -177,13 +177,15 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     spec,
                     cancellationToken);
 
+                Hash256 processedBlockHash = processedBlock.Hash ?? throw new InvalidOperationException("Cannot simulate a processed block without a calculated hash.");
+
                 stateProvider.CommitTree(processedBlock.Number);
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
-                blockTree.UpdateHeadBlock(processedBlock.Hash!);
+                blockTree.UpdateHeadBlock(processedBlockHash);
 
                 if (tracer is SimulateBlockTracer simulateTracer)
                 {
-                    simulateTracer.ReapplyBlockHash(processedBlock.Hash);
+                    simulateTracer.ReapplyBlockHash(processedBlockHash);
                 }
 
                 SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)

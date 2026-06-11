@@ -100,8 +100,8 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         {
             foreach (IIPSource s in GetIPSources())
             {
-                (bool success, IPAddress ip) = await s.TryGetIP();
-                if (success)
+                (bool success, IPAddress? ip) = await s.TryGetIP();
+                if (success && ip is not null)
                 {
                     ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
                     return ip;
@@ -127,8 +127,8 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         {
             foreach (IIPSource s in GetIPSources())
             {
-                (bool success, IPAddress ip) = await s.TryGetIP();
-                if (success)
+                (bool success, IPAddress? ip) = await s.TryGetIP();
+                if (success && ip is not null)
                 {
                     return ip;
                 }

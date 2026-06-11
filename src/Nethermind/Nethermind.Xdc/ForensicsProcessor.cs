@@ -11,6 +11,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -63,12 +64,12 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
             return Task.CompletedTask;
         }
 
-        if (TryFindQCsInSameRound(highestCommittedQCs, incomingQuorumCerts, out QuorumCertificate sameRoundHCQC, out QuorumCertificate sameRoundQC))
+        if (TryFindQCsInSameRound(highestCommittedQCs, incomingQuorumCerts, out QuorumCertificate? sameRoundHCQC, out QuorumCertificate? sameRoundQC))
         {
             return SendForensicProof(sameRoundHCQC, sameRoundQC);
         }
 
-        if (!TryFindAncestorQcThroughRound(highestCommittedQCs, incomingQuorumCerts, out QuorumCertificate ancestorQC, out QuorumCertificate[] lowerRoundQCs))
+        if (!TryFindAncestorQcThroughRound(highestCommittedQCs, incomingQuorumCerts, out QuorumCertificate? ancestorQC, out QuorumCertificate[] lowerRoundQCs))
         {
             if (_logger.IsDebug) _logger.Debug("[ProcessForensics] Failed to find ancestor QC through round");
             return Task.CompletedTask;
@@ -124,14 +125,14 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
     public Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool)
     {
-        if (!TryGetVoteSigner(vote, out Address signer))
+        if (!TryGetVoteSigner(vote, out Address? signer))
         {
             return Task.CompletedTask;
         }
 
         foreach (Vote pooledVote in votePool)
         {
-            if (!TryGetVoteSigner(pooledVote, out Address pooledSigner))
+            if (!TryGetVoteSigner(pooledVote, out Address? pooledSigner))
             {
                 continue;
             }
@@ -287,8 +288,8 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
     internal bool TryFindQCsInSameRound(
         QuorumCertificate[] quorumCerts1,
         QuorumCertificate[] quorumCerts2,
-        out QuorumCertificate? first,
-        out QuorumCertificate? second)
+        [NotNullWhen(true)] out QuorumCertificate? first,
+        [NotNullWhen(true)] out QuorumCertificate? second)
     {
         for (int i = 0; i < quorumCerts1.Length; i++)
         {
@@ -336,7 +337,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
     private bool TryFindAncestorQcThroughRound(
         QuorumCertificate[] highestCommittedQCs,
         QuorumCertificate[] incomingQCAndItsParents,
-        out QuorumCertificate ancestorQc,
+        [NotNullWhen(true)] out QuorumCertificate? ancestorQc,
         out QuorumCertificate[] lowerRoundQCs)
     {
         lowerRoundQCs = highestCommittedQCs;
@@ -391,8 +392,9 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         ValueHash256 signHash = VoteHash(signVote);
         for (int i = 0; i < signatures.Length; i++)
         {
-            Address signer = _ethereumEcdsa.RecoverAddress(signatures[i], in signHash);
-            signerList.Add(signer.ToString());
+            Address? signer = _ethereumEcdsa.RecoverAddress(signatures[i], in signHash);
+            if (signer is not null)
+                signerList.Add(signer.ToString());
         }
 
         return signerList;
@@ -404,7 +406,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
     private static string GenerateVoteEquivocationId(Address signer, ulong round1, ulong round2)
         => $"{signer}:{round1}:{round2}";
 
-    private bool TryGetVoteSigner(Vote vote, out Address signer)
+    private bool TryGetVoteSigner(Vote vote, [NotNullWhen(true)] out Address? signer)
     {
         if (vote.Signer is not null)
         {
@@ -414,12 +416,15 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
         if (vote.Signature is null)
         {
-            signer = default;
+            signer = null;
             return false;
         }
 
         ValueHash256 signHash = VoteHash(new Vote(vote.ProposedBlockInfo, vote.GapNumber));
         signer = _ethereumEcdsa.RecoverAddress(vote.Signature, in signHash);
+        if (signer is null)
+            return false;
+
         vote.Signer = signer;
         return true;
     }
@@ -507,14 +512,14 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
             return Task.CompletedTask;
         }
 
-        if (TryGetVoteSigner(incomingVote, out Address signer))
+        if (TryGetVoteSigner(incomingVote, out Address? signer))
         {
             QuorumCertificate qc = highestCommittedQCs[NumberOfForensicsQcs - 1];
             Signature[] signatures = qc.Signatures ?? [];
             for (int i = 0; i < signatures.Length; i++)
             {
                 Vote voteFromQc = new(qc.ProposedBlockInfo, qc.GapNumber, signatures[i]);
-                if (!TryGetVoteSigner(voteFromQc, out Address signerFromQc))
+                if (!TryGetVoteSigner(voteFromQc, out Address? signerFromQc))
                 {
                     continue;
                 }
@@ -577,7 +582,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         {
             Id = GenerateForensicsId(ancestorHash, lowerRoundQc, higherRoundQc),
             ForensicsType = "QC",
-            Content = JsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
+            Content = JsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions) ?? string.Empty
         };
 
         if (_logger.IsInfo) _logger.Info($"Forensics proof generated: {forensicsProof.Content}");
@@ -606,7 +611,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         {
             Id = GenerateVoteEquivocationId(signer, smallerRoundVote.ProposedBlockInfo.Round, largerRoundVote.ProposedBlockInfo.Round),
             ForensicsType = "Vote",
-            Content = JsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
+            Content = JsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions) ?? string.Empty
         };
 
         if (_logger.IsInfo) _logger.Info($"Forensics vote-equivocation proof generated: {forensicsProof.Content}");

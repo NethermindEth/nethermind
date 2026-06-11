@@ -27,7 +27,7 @@ public interface IRbuilderRpcModule
         IsSharable = true,
         ExampleResponse = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter block,
-        IDictionary<Address, AccountChange> accountDiff);
+        IDictionary<Address, AccountChange?>? accountDiff);
 
     [JsonRpcMethod(IsImplemented = true,
         Description = "Get account data",

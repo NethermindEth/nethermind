@@ -43,7 +43,7 @@ public class BlockTreeSuggestPacer : IDisposable
             : signal.Task;
     }
 
-    private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         TaskCompletionSource? completionSource = _dbBatchProcessed;
         if (completionSource is null) return;

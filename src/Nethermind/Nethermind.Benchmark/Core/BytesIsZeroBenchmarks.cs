@@ -11,7 +11,7 @@ namespace Nethermind.Benchmarks.Core
 {
     public class BytesIsZeroBenchmarks
     {
-        private byte[] _a;
+        private byte[] _a = null!;
 
         private byte[][] _scenarios = new byte[][]
         {

@@ -22,8 +22,8 @@ namespace Nethermind.Wallet
         private readonly ILogger _logger;
 
         private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = [];
-        public event EventHandler<AccountLockedEventArgs> AccountLocked;
-        public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        public event EventHandler<AccountLockedEventArgs>? AccountLocked;
+        public event EventHandler<AccountUnlockedEventArgs>? AccountUnlocked;
 
         public DevKeyStoreWallet(IKeyStore keyStore, ILogManager logManager, bool createTestAccounts = true)
         {
@@ -38,11 +38,25 @@ namespace Nethermind.Wallet
 
         public void Import(byte[] keyData, SecureString passphrase) => _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
 
-        public Address[] GetAccounts() => _keyStore.GetKeyAddresses().Addresses.ToArray();
+        public Address[] GetAccounts()
+        {
+            (IReadOnlyCollection<Address>? addresses, Result result) = _keyStore.GetKeyAddresses();
+            if (result.ResultType == ResultType.Failure || addresses is null)
+            {
+                throw new InvalidOperationException($"Unable to get key addresses: {result.Error}");
+            }
+
+            return addresses.ToArray();
+        }
 
         public Address NewAccount(SecureString passphrase)
         {
-            (PrivateKey privateKey, _) = _keyStore.GenerateKey(passphrase);
+            (PrivateKey? privateKey, Result result) = _keyStore.GenerateKey(passphrase);
+            if (result != Result.Success || privateKey is null)
+            {
+                throw new InvalidOperationException($"Unable to generate key: {result.Error}");
+            }
+
             return privateKey.Address;
         }
 
@@ -57,8 +71,8 @@ namespace Nethermind.Wallet
 
             if (_unlockedAccounts.ContainsKey(address)) return true;
 
-            (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
-            if (result.ResultType == ResultType.Success)
+            (PrivateKey? key, Result result) = _keyStore.GetKey(address, passphrase);
+            if (result.ResultType == ResultType.Success && key is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Unlocking account: {address}");
                 _unlockedAccounts.Add(key.Address, key);
@@ -78,9 +92,9 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
 
-        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature? signature)
         {
-            if (!_unlockedAccounts.TryGetValue(address, out PrivateKey key))
+            if (!_unlockedAccounts.TryGetValue(address, out PrivateKey? key))
             {
                 signature = null;
                 return false;
@@ -90,7 +104,7 @@ namespace Nethermind.Wallet
             return true;
         }
 
-        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature) =>
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature? signature) =>
             WalletSigner.TrySignWithPassphrase(_keyStore, in message, address, passphrase, out signature);
     }
 }

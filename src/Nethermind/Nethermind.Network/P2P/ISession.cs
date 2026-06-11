@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.EventArg;
@@ -24,9 +25,9 @@ namespace Nethermind.Network.P2P
         /// </summary>
         bool IsChannelClosed => false;
 
-        PublicKey RemoteNodeId { get; }
-        PublicKey ObsoleteRemoteNodeId { get; }
-        string RemoteHost { get; set; }
+        PublicKey? RemoteNodeId { get; }
+        PublicKey? ObsoleteRemoteNodeId { get; }
+        string? RemoteHost { get; set; }
         int RemotePort { get; set; }
         int LocalPort { get; }
         bool IsNetworkIdMatched { get; set; }
@@ -42,33 +43,33 @@ namespace Nethermind.Network.P2P
         bool HasAvailableCapability(Capability capability);
         bool HasAgreedCapability(Capability capability);
 
-        IPingSender PingSender { get; set; }
+        IPingSender? PingSender { get; set; }
 
         void AddProtocolHandler(IProtocolHandler handler);
 
-        bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler);
+        bool TryGetProtocolHandler(string protocolCode, [NotNullWhen(true)] out IProtocolHandler? handler);
 
         void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
 
         /// <summary>
         /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
         /// </summary>
-        void InitiateDisconnect(DisconnectReason disconnectReason, string details);
+        void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null);
 
         /// <summary>
         ///  Drop tcp connection after a delay
         /// </summary>
-        void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details);
+        void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string? details);
 
-        void Handshake(PublicKey handshakeRemoteNodeId);
+        void Handshake(PublicKey? handshakeRemoteNodeId);
 
         void StartTrackingSession();
 
-        event EventHandler<DisconnectEventArgs> Disconnecting;
+        event EventHandler<DisconnectEventArgs>? Disconnecting;
         event EventHandler<DisconnectEventArgs> Disconnected;
-        event EventHandler<EventArgs> Initialized;
-        event EventHandler<EventArgs> HandshakeComplete;
-        event EventHandler<PeerEventArgs> MsgReceived;
-        event EventHandler<PeerEventArgs> MsgDelivered;
+        event EventHandler<EventArgs>? Initialized;
+        event EventHandler<EventArgs>? HandshakeComplete;
+        event EventHandler<PeerEventArgs>? MsgReceived;
+        event EventHandler<PeerEventArgs>? MsgDelivered;
     }
 }

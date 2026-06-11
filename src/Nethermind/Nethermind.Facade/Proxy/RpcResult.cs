@@ -6,8 +6,8 @@ namespace Nethermind.Facade.Proxy
     public class RpcResult<T>
     {
         public long Id { get; set; }
-        public T Result { get; set; }
-        public RpcError Error { get; set; }
+        public T? Result { get; set; }
+        public RpcError? Error { get; set; }
         public bool IsValid => Error is null;
 
         public static RpcResult<T> Ok(T result, int id = 0) => new()
@@ -27,7 +27,7 @@ namespace Nethermind.Facade.Proxy
         public class RpcError
         {
             public long Code { get; set; }
-            public string Message { get; set; }
+            public string Message { get; set; } = null!;
         }
     }
 }

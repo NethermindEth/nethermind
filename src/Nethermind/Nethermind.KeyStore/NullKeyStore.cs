@@ -15,29 +15,29 @@ public class NullKeyStore : IKeyStore
     public int Version => 0;
     public int CryptoVersion => 0;
 
-    public (KeyStoreItem KeyData, Result Result) Verify(string keyJson) =>
-        (null!, Result.Fail("null keystore"));
+    public (KeyStoreItem? KeyData, Result Result) Verify(string keyJson) =>
+        (null, Result.Fail("null keystore"));
 
-    public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password) =>
-        (null!, Result.Fail("null keystore"));
+    public (PrivateKey? PrivateKey, Result Result) GetKey(Address address, SecureString password) =>
+        (null, Result.Fail("null keystore"));
 
-    public (byte[] Key, Result Result) GetKeyBytes(Address address, SecureString password) =>
-        (null!, Result.Fail("null keystore"));
+    public (byte[]? Key, Result Result) GetKeyBytes(Address address, SecureString password) =>
+        (null, Result.Fail("null keystore"));
 
-    public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password) =>
-        (null!, Result.Fail("null keystore"));
+    public (ProtectedPrivateKey? PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password) =>
+        (null, Result.Fail("null keystore"));
 
-    public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address) =>
-        (null!, Result.Fail("null keystore"));
+    public (KeyStoreItem? KeyData, Result Result) GetKeyData(Address address) =>
+        (null, Result.Fail("null keystore"));
 
-    public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses() =>
+    public (IReadOnlyCollection<Address>? Addresses, Result Result) GetKeyAddresses() =>
         ([], Result.Success);
 
-    public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password) =>
-        (null!, Result.Fail("null keystore"));
+    public (PrivateKey? PrivateKey, Result Result) GenerateKey(SecureString password) =>
+        (null, Result.Fail("null keystore"));
 
-    public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password) =>
-        (null!, Result.Fail("null keystore"));
+    public (ProtectedPrivateKey? PrivateKey, Result Result) GenerateProtectedKey(SecureString password) =>
+        (null, Result.Fail("null keystore"));
 
     public Result StoreKey(Address address, KeyStoreItem keyStoreItem) => Result.Success;
     public Result StoreKey(PrivateKey key, SecureString password) => Result.Success;

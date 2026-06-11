@@ -40,7 +40,13 @@ internal class XdcSealValidator(
 
         ExtraFieldsV2 extraFieldsV2 = xdcHeader.ExtraConsensusData!;
 
-        if (extraFieldsV2.BlockRound <= extraFieldsV2.QuorumCert.ProposedBlockInfo.Round)
+        if (extraFieldsV2.QuorumCert is not { } quorumCert)
+        {
+            error = "ExtraData doesn't contain a quorum certificate.";
+            return false;
+        }
+
+        if (extraFieldsV2.BlockRound <= quorumCert.ProposedBlockInfo.Round)
         {
             error = "Round number is not greater than the round in the QC.";
             return false;
@@ -57,7 +63,13 @@ internal class XdcSealValidator(
                 error = "Vote nonce in checkpoint block non-zero.";
                 return false;
             }
-            (masternodes, Address[] penalties) = MasternodesCalculator.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
+            if (xdcHeader.ParentHash is not { } parentHash)
+            {
+                error = $"Parent hash is missing for block {xdcHeader.Number}.";
+                return false;
+            }
+
+            (masternodes, Address[] penalties) = MasternodesCalculator.CalculateNextEpochMasternodes(xdcHeader.Number, parentHash, xdcSpec);
 
             if (!ValidateEpochFields(xdcHeader, masternodes, penalties, out error))
                 return false;
@@ -66,7 +78,13 @@ internal class XdcSealValidator(
         {
             if (!ValidateNonEpochFields(xdcHeader, out error))
                 return false;
-            EpochSwitchInfo epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
+            EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
+            if (epochSwitchInfo is null)
+            {
+                error = $"Cannot find epoch switch info for block {xdcHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.";
+                return false;
+            }
+
             masternodes = epochSwitchInfo.Masternodes;
             if (masternodes is null || masternodes.Length == 0)
                 throw new InvalidOperationException($"Snap shot returned no master nodes for header \n{xdcHeader}");
@@ -83,7 +101,7 @@ internal class XdcSealValidator(
         return true;
     }
 
-    protected virtual bool ValidateEpochFields(XdcBlockHeader xdcHeader, Address[] masternodes, Address[] penalties, out string? error)
+    protected virtual bool ValidateEpochFields(XdcBlockHeader xdcHeader, Address[] masternodes, Address[] penalties, [NotNullWhen(false)] out string? error)
     {
         if (xdcHeader.Validators is null || xdcHeader.Validators.Length == 0)
         {
@@ -109,7 +127,7 @@ internal class XdcSealValidator(
         return true;
     }
 
-    protected virtual bool ValidateNonEpochFields(XdcBlockHeader xdcHeader, out string? error)
+    protected virtual bool ValidateNonEpochFields(XdcBlockHeader xdcHeader, [NotNullWhen(false)] out string? error)
     {
         if (xdcHeader.Validators is not null && xdcHeader.Validators.Length != 0)
         {
@@ -144,7 +162,11 @@ internal class XdcSealValidator(
             KeccakRlpWriter writer = new();
             _headerDecoder.Encode(ref writer, xdcHeader, RlpBehaviors.ForSealing);
             ValueHash256 hash = writer.GetValueHash();
-            Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), in hash);
+            Address? signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), in hash);
+            if (signer is null)
+            {
+                return false;
+            }
 
             header.Author = signer;
         }

@@ -20,8 +20,8 @@ namespace Nethermind.Consensus.AuRa.Config;
 public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public const ulong TransitionDisabled = ulong.MaxValue;
-    public string? EngineName => "AuthorityRound";
-    public string? SealEngineType => Core.SealEngineType.AuRa;
+    public string EngineName => "AuthorityRound";
+    public string SealEngineType => Core.SealEngineType.AuRa;
 
     [JsonConverter(typeof(StepDurationJsonConverter))]
     public SortedDictionary<ulong, long> StepDuration { get; set; } = [];
@@ -44,7 +44,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong ValidateStepTransition { get; set; }
 
     [JsonPropertyName("Validators")]
-    public AuRaValidatorJson ValidatorsJson { get; set; }
+    public AuRaValidatorJson ValidatorsJson { get; set; } = null!;
 
     public IDictionary<ulong, Address> RandomnessContractAddress { get; set; } = new Dictionary<ulong, Address>();
 
@@ -71,7 +71,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
-    public Address WithdrawalContractAddress { get; set; }
+    public Address WithdrawalContractAddress { get; set; } = null!;
 
     private AuRaParameters.Validator? _validators;
 
@@ -96,13 +96,13 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         switch (validator.ValidatorType)
         {
             case AuRaParameters.ValidatorType.List:
-                validator.Addresses = validatorJson.List;
+                validator.Addresses = validatorJson.List ?? [];
                 break;
             case AuRaParameters.ValidatorType.Contract:
-                validator.Addresses = [validatorJson.SafeContract];
+                validator.Addresses = [validatorJson.SafeContract!];
                 break;
             case AuRaParameters.ValidatorType.ReportingContract:
-                validator.Addresses = [validatorJson.Contract];
+                validator.Addresses = [validatorJson.Contract!];
                 break;
             case AuRaParameters.ValidatorType.Multi:
                 if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");
@@ -141,11 +141,11 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
                     {
                         throw new ArgumentException("Cannot deserialize BlockReward.");
                     }
-                    ulong key = ulong.Parse(reader.GetString());
+                    ulong key = ulong.Parse(reader.GetString() ?? throw new ArgumentException("Cannot deserialize BlockReward."));
                     reader.Read();
                     if (reader.TokenType == JsonTokenType.String)
                     {
-                        value.Add(key, long.Parse(reader.GetString()));
+                        value.Add(key, long.Parse(reader.GetString()!));
                     }
                     else if (reader.TokenType == JsonTokenType.Number)
                     {

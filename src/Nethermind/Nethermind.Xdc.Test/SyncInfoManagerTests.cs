@@ -161,7 +161,7 @@ public class SyncInfoManagerTests
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
         ILogManager logManager = Substitute.For<ILogManager>();
 
-        qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
+        qcManager.VerifyCertificate(qc, out Arg.Any<string?>()).Returns(true);
         timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(true);
 
         SyncInfoManager manager = new(xdcContext, qcManager, timeoutManager, logManager);
@@ -192,7 +192,7 @@ public class SyncInfoManagerTests
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
         ILogManager logManager = Substitute.For<ILogManager>();
 
-        qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
+        qcManager.VerifyCertificate(qc, out Arg.Any<string?>()).Returns(true);
         timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(true);
 
         SyncInfoManager manager = new(xdcContext, qcManager, timeoutManager, logManager);
@@ -223,7 +223,7 @@ public class SyncInfoManagerTests
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
         ILogManager logManager = Substitute.For<ILogManager>();
 
-        qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
+        qcManager.VerifyCertificate(qc, out Arg.Any<string?>()).Returns(true);
         timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(true);
 
         SyncInfoManager manager = new(xdcContext, qcManager, timeoutManager, logManager);
@@ -254,7 +254,7 @@ public class SyncInfoManagerTests
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
         ILogManager logManager = Substitute.For<ILogManager>();
 
-        qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
+        qcManager.VerifyCertificate(qc, out Arg.Any<string?>()).Returns(true);
         timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(true);
 
         SyncInfoManager manager = new(xdcContext, qcManager, timeoutManager, logManager);

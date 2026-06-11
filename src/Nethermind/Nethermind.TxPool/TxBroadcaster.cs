@@ -4,6 +4,7 @@
 using System;
 using NonBlocking;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -361,7 +362,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
         {
             if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.SupportsBlobs)
             {

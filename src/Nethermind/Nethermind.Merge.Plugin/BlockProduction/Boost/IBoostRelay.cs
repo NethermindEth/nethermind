@@ -9,6 +9,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 
 public interface IBoostRelay
 {
-    Task<BoostPayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken);
+    Task<BoostPayloadAttributes?> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken);
     Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken);
 }

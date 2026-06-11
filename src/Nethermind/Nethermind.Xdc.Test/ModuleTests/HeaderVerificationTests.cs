@@ -228,7 +228,7 @@ internal class HeaderVerificationTests
         XdcBlockHeader nonEpochSwitchWithValidators = GetLastHeader(false);
         nonEpochSwitchWithValidators.Validators = xdcTestBlockchain.MasterNodeCandidates.SelectMany(addr => addr.Address.Bytes.ToArray()).ToArray(); // implement helper to return acc1 addr bytes
         BlockHeader? nonEpochSwitchWithValidatorsParent = xdcTestBlockchain.BlockTree.FindHeader(nonEpochSwitchWithValidators.ParentHash!);
-        bool result = xdcHeaderValidator.Validate(nonEpochSwitchWithValidators, nonEpochSwitchWithValidatorsParent);
+        bool result = xdcHeaderValidator.Validate(nonEpochSwitchWithValidators, nonEpochSwitchWithValidatorsParent!);
         Assert.That(result, Is.False);
     }
 
@@ -237,7 +237,7 @@ internal class HeaderVerificationTests
     {
         XdcBlockHeader happyPathHeader = GetLastHeader(true);
         BlockHeader? happyPathParent = xdcTestBlockchain.BlockTree.FindHeader(happyPathHeader.ParentHash!);
-        bool result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent);
+        bool result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent!);
         Assert.That(result, Is.True);
     }
 
@@ -247,7 +247,7 @@ internal class HeaderVerificationTests
         XdcBlockHeader happyPathHeader = GetLastHeader(false);
         BlockHeader? happyPathParent = xdcTestBlockchain.BlockTree.FindHeader(happyPathHeader.ParentHash!);
 
-        bool result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent);
+        bool result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent!);
         Assert.That(result, Is.True);
     }
 

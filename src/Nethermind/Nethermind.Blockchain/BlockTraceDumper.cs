@@ -30,7 +30,7 @@ public static class BlockTraceDumper
         if (toFile || toLog)
         {
             Rlp rlp = new BlockDecoder().Encode(block, RlpBehaviors.AllowExtraBytes);
-            Hash256 blockHash = block.Hash;
+            Hash256? blockHash = block.Hash;
             if (toFile)
             {
                 string fileName = $"block_{blockHash}.rlp";
@@ -62,7 +62,7 @@ public static class BlockTraceDumper
             {
                 fileName = $"receipts_{blockHash}_{state}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
-                TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
+                TxReceipt?[] receipts = receiptsTracer.TxReceipts.ToArray();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Receipts trace of {logCondition} block {blockHash} in file {diagnosticFile.Name}");
@@ -97,15 +97,22 @@ public static class BlockTraceDumper
 
     private static bool GetConditionAndHashString(Either<Hash256, IList<Block>> blocksOrHash, out string condition, out string blockHash)
     {
-        if (blocksOrHash.Is(out Hash256 failedBlockHash))
+        if (blocksOrHash.Is(out Hash256? failedBlockHash))
         {
             condition = "invalid";
-            blockHash = failedBlockHash.ToString();
+            blockHash = failedBlockHash?.ToString() ?? "unknown";
             return false;
         }
 
-        if (blocksOrHash.Is(out IList<Block> blocks))
+        if (blocksOrHash.Is(out IList<Block>? blocks))
         {
+            if (blocks is null)
+            {
+                condition = UnknownHash;
+                blockHash = UnknownHash;
+                return false;
+            }
+
             condition = "valid on rerun";
 
             blockHash = blocks.Count == 1

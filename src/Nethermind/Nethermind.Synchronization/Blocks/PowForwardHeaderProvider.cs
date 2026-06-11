@@ -55,8 +55,13 @@ public class PowForwardHeaderProvider(
         }
     }
 
-    public virtual Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(ulong skipLastN, ulong maxHeaders, CancellationToken cancellation) => syncPeerPool.AllocateAndRun(async (peerInfo) =>
+    public virtual Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong skipLastN, ulong maxHeaders, CancellationToken cancellation) => syncPeerPool.AllocateAndRun(async (peerInfo) =>
     {
+        if (peerInfo is null)
+        {
+            return null;
+        }
+
         if (peerInfo != _currentBestPeer)
         {
             OnNewBestPeer(peerInfo);
@@ -68,10 +73,10 @@ public class PowForwardHeaderProvider(
 
         // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
         // TODO: Unit test this mechanism.
-        IOwnedReadOnlyList<BlockHeader?>? headers = AssembleResponseFromLastResponseBatch();
+        IOwnedReadOnlyList<BlockHeader>? headers = AssembleResponseFromLastResponseBatch();
         if (headers is not null)
         {
-            ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
+            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
             if (_logger.IsTrace) _logger.Trace($"PoW header info from last response from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
             return headers;
         }
@@ -79,7 +84,7 @@ public class PowForwardHeaderProvider(
         headers = await GetBlockHeaders(peerInfo, skipLastN, maxHeaders, cancellation);
         if (headers is not null)
         {
-            ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
+            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
             if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo} of {headersSpan.Length} header from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
         }
         else
@@ -124,7 +129,7 @@ public class PowForwardHeaderProvider(
     private void OnNewBestPeer(PeerInfo newBestPeer)
     {
         if (_logger.IsTrace) _logger.Trace($"On new best peer. Current best peer: {_currentBestPeer}, new best peer: {newBestPeer}");
-        if (newBestPeer?.HeadHash != _currentBestPeer?.HeadHash)
+        if (newBestPeer.HeadHash != _currentBestPeer?.HeadHash)
         {
             LastResponseBatch = null;
         }
@@ -137,12 +142,12 @@ public class PowForwardHeaderProvider(
         _currentBestPeer = newBestPeer;
     }
 
-    private async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(PeerInfo bestPeer, ulong skipLastN, ulong maxHeaders, CancellationToken cancellation)
+    private async Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(PeerInfo bestPeer, ulong skipLastN, ulong maxHeaders, CancellationToken cancellation)
     {
         while (true)
         {
             if (!ImprovementRequirementSatisfied(bestPeer)) return null;
-            if (_currentNumber > bestPeer!.HeadNumber) return null;
+            if (_currentNumber > bestPeer.HeadNumber) return null;
 
             if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {blockTree.BestKnownNumber})");
 
@@ -166,6 +171,10 @@ public class PowForwardHeaderProvider(
             {
                 IOwnedReadOnlyList<BlockHeader>? headers =
                     await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
+                if (headers is null)
+                {
+                    return null;
+                }
 
                 {
                     ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
@@ -228,13 +237,18 @@ public class PowForwardHeaderProvider(
         return true;
     }
 
-    private async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, ulong currentNumber, ulong headersToRequest)
+    private async Task<IOwnedReadOnlyList<BlockHeader>?> RequestHeaders(PeerInfo peer, CancellationToken cancellation, ulong currentNumber, ulong headersToRequest)
     {
         ulong start = currentNumber.SaturatingSub(1028);
         sealValidator.HintValidationRange(_sealValidatorUserGuid, start, currentNumber + 30000);
 
-        IOwnedReadOnlyList<BlockHeader> headers = await peer.SyncPeer.GetBlockHeaders(currentNumber, (int)headersToRequest, 0, cancellation);
+        IOwnedReadOnlyList<BlockHeader>? headers = await peer.SyncPeer.GetBlockHeaders(currentNumber, (int)headersToRequest, 0, cancellation);
         cancellation.ThrowIfCancellationRequested();
+        if (headers is null)
+        {
+            return null;
+        }
+
         headers = FilterPosHeader(headers);
 
         ValidateSeals(headers, cancellation);
@@ -248,20 +262,16 @@ public class PowForwardHeaderProvider(
         // so we need to confirm that the blocks form a valid subchain
         for (int i = 1; i < headers.Length; i++)
         {
-            if (headers[i] is not null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
+            if (headers[i].ParentHash != headers[i - 1].Hash)
             {
                 if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
                 throw new EthSyncException("Peer sent an inconsistent block list");
             }
 
-            if (headers[i] is null)
-            {
-                break;
-            }
         }
     }
 
-    protected void ValidateSeals(IReadOnlyList<BlockHeader?> headers, CancellationToken cancellation)
+    protected void ValidateSeals(IReadOnlyList<BlockHeader> headers, CancellationToken cancellation)
     {
         if (_logger.IsTrace) _logger.Trace("Starting seal validation");
         ConcurrentQueue<Exception> exceptions = new();
@@ -275,11 +285,7 @@ public class PowForwardHeaderProvider(
                 return;
             }
 
-            BlockHeader? header = headers[i];
-            if (header is null)
-            {
-                return;
-            }
+            BlockHeader header = headers[i];
 
             try
             {
@@ -289,7 +295,7 @@ public class PowForwardHeaderProvider(
                 bool terminalBlock = !lastBlock
                                      && headers.Count > 1
                                      && headers[i + 1].Difficulty == 0
-                                     && headers[i].Difficulty != 0;
+                                     && header.Difficulty != 0;
                 bool forceValidation = lastBlock || i == randomNumberForValidation || terminalBlock;
                 if (!sealValidator.ValidateSeal(header, forceValidation))
                 {

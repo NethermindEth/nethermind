@@ -7,7 +7,7 @@ namespace Nethermind.Facade.Proxy.Models
 {
     public class BlockParameterModel
     {
-        public string Type { get; set; }
+        public string? Type { get; set; }
         public UInt256? Number { get; set; }
 
         public static BlockParameterModel FromNumber(long number) => new()

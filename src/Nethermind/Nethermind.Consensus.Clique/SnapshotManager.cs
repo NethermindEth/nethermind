@@ -45,7 +45,8 @@ namespace Nethermind.Consensus.Clique
         {
             if (header.Author is not null) return header.Author;
             if (header.Number == 0) return Address.Zero;
-            Address? cached = _signatures.Get(header.Hash);
+            Hash256 hash = header.Hash ?? throw new InvalidOperationException("Clique header hash is not set.");
+            Address? cached = _signatures.Get(hash);
             if (cached is not null) return cached;
 
             int extraSeal = 65;
@@ -60,8 +61,9 @@ namespace Nethermind.Consensus.Clique
             Signature signature = new(signatureBytes);
             signature.V += Signature.VOffset;
             ValueHash256 message = CalculateCliqueHeaderHash(header);
-            Address address = _ecdsa.RecoverAddress(signature, in message);
-            _signatures.Set(header.Hash, address);
+            Address address = _ecdsa.RecoverAddress(signature, in message)
+                ?? throw new BlockchainException($"Cannot recover Clique block sealer{Environment.NewLine}{header.ToString(BlockHeader.Format.Full)}");
+            _signatures.Set(hash, address);
             return address;
         }
 
@@ -117,10 +119,9 @@ namespace Nethermind.Consensus.Clique
                     header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                         ?? throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
 
-                    if (header.Hash is null)
-                        throw new InvalidOperationException("Block tree block without hash set");
+                    Hash256 headerHash = header.Hash ?? throw new InvalidOperationException("Block tree block without hash set");
+                    Hash256 parentHash = header.ParentHash ?? throw new InvalidOperationException("Block tree block without parent hash set");
 
-                    Hash256 parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
                     {
                         Snapshot? parentSnapshot = GetSnapshot(number - 1, parentHash);
@@ -135,7 +136,7 @@ namespace Nethermind.Consensus.Clique
                             signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0UL : parentSnapshot.Signers.TryGetValue(signer, out ulong value) ? value : 0UL);
                         }
 
-                        snapshot = new Snapshot(number, header.Hash, signers);
+                        snapshot = new Snapshot(number, headerHash, signers);
                         Store(snapshot);
                         break;
                     }
@@ -143,7 +144,7 @@ namespace Nethermind.Consensus.Clique
                     // No snapshot for this header, gather the header and move backward
                     headers.Add(header);
                     number--;
-                    hash = header.ParentHash;
+                    hash = parentHash;
                 }
 
                 if (headers.Count > 0)
@@ -266,17 +267,18 @@ namespace Nethermind.Consensus.Clique
                 }
 
                 // Resolve the authorization key and check against signers
-                Address signer = header.Author;
+                Address signer = header.Author ?? throw new InvalidOperationException($"Clique block header {header.Number} author is not set.");
                 if (!snapshot.Signers.TryGetValue(signer, out ulong value)) throw new InvalidOperationException("Unauthorized signer");
                 if (HasSignedRecently(snapshot, number, signer)) throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {value} with {snapshot.Signers.Count} signers)");
 
                 snapshot.Signers[signer] = number;
+                Address beneficiary = header.Beneficiary ?? throw new InvalidOperationException("Clique block header beneficiary is not set.");
 
                 // Header authorized, discard any previous votes for the signer
                 for (int i = 0; i < snapshot.Votes.Count; i++)
                 {
                     Vote vote = snapshot.Votes[i];
-                    if (vote.Signer == signer && vote.Address == header.Beneficiary)
+                    if (vote.Signer == signer && vote.Address == beneficiary)
                     {
                         // Uncast the vote from the cached tally
                         Uncast(snapshot, vote.Address, vote.Authorize);
@@ -288,14 +290,14 @@ namespace Nethermind.Consensus.Clique
 
                 // Tally up the new vote from the signer
                 bool authorize = header.Nonce == Clique.NonceAuthVote;
-                if (Cast(snapshot, header.Beneficiary, authorize))
+                if (Cast(snapshot, beneficiary, authorize))
                 {
-                    Vote vote = new(signer, number, header.Beneficiary, authorize);
+                    Vote vote = new(signer, number, beneficiary, authorize);
                     snapshot.Votes.Add(vote);
                 }
 
                 // If the vote passed, update the list of signers
-                Tally tally = snapshot.Tally[header.Beneficiary];
+                Tally tally = snapshot.Tally[beneficiary];
                 if (tally.Votes > snapshot.Signers.Count / 2)
                 {
                     if (tally.Authorize)
@@ -304,13 +306,13 @@ namespace Nethermind.Consensus.Clique
                     }
                     else
                     {
-                        snapshot.Signers.Remove(header.Beneficiary);
+                        snapshot.Signers.Remove(beneficiary);
                     }
 
                     // Discard any previous votes the deauthorized signer cast
                     for (int i = 0; i < snapshot.Votes.Count; i++)
                     {
-                        if (snapshot.Votes[i].Signer == header.Beneficiary)
+                        if (snapshot.Votes[i].Signer == beneficiary)
                         {
                             // Uncast the vote from the cached tally
                             if (Uncast(snapshot, snapshot.Votes[i].Address, snapshot.Votes[i].Authorize))
@@ -325,14 +327,14 @@ namespace Nethermind.Consensus.Clique
                     // Discard any previous votes around the just changed account
                     for (int i = 0; i < snapshot.Votes.Count; i++)
                     {
-                        if (snapshot.Votes[i].Address == header.Beneficiary)
+                        if (snapshot.Votes[i].Address == beneficiary)
                         {
                             snapshot.Votes.RemoveAt(i);
                             i--;
                         }
                     }
 
-                    snapshot.Tally.Remove(header.Beneficiary);
+                    snapshot.Tally.Remove(beneficiary);
                 }
             }
 
@@ -340,7 +342,7 @@ namespace Nethermind.Consensus.Clique
 
             // was this needed?
             //            snapshot.Hash = headers[headers.Count - 1].CalculateHash();
-            snapshot.Hash = headers[^1].Hash;
+            snapshot.Hash = headers[^1].Hash ?? throw new InvalidOperationException("Clique block header hash is not set.");
             return snapshot;
         }
 
@@ -356,7 +358,7 @@ namespace Nethermind.Consensus.Clique
             if (!IsValidVote(snapshot, address, authorize)) return false;
 
             // Cast the vote into tally ref
-            value.Votes++;
+            value!.Votes++;
             return true;
         }
 

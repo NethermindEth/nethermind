@@ -130,7 +130,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             TxPriorityContract? txPriorityContract = null;
             if (usesTxPriorityContract)
             {
-                txPriorityContract = new TxPriorityContract(abiEncoder, txPriorityContractAddress, readOnlyTxProcessingEnvFactory.Create());
+                txPriorityContract = new TxPriorityContract(abiEncoder, txPriorityContractAddress!, readOnlyTxProcessingEnvFactory.Create());
             }
 
             return txPriorityContract;

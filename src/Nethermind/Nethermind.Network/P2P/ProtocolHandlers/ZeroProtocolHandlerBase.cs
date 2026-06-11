@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
@@ -23,7 +24,23 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         ILogManager logManager)
         : ProtocolHandlerBase(session, nodeStats, serializer, backgroundTaskScheduler, logManager), IZeroProtocolHandler
     {
-        protected readonly INodeStats _nodeStats = nodeStats.GetOrAdd(session.Node);
+        private static readonly PublicKey PreSessionNodeId = new(new byte[64]);
+        private INodeStats? _nodeStats;
+        private readonly INodeStats _preSessionNodeStats = new NodeStatsLight(new Node(PreSessionNodeId, "127.0.0.1", 0));
+
+        protected INodeStats NodeStats
+        {
+            get
+            {
+                Node? node = Session.Node;
+                if (node is null)
+                {
+                    return _preSessionNodeStats;
+                }
+
+                return _nodeStats ??= StatsManager.GetOrAdd(node);
+            }
+        }
 
         public override void HandleMessage(Packet message)
         {

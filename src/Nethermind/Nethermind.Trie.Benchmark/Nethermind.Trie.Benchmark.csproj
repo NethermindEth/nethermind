@@ -2,6 +2,8 @@
 
     <PropertyGroup>
       <OutputType>Exe</OutputType>
+      <Nullable>enable</Nullable>
+      <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
     </PropertyGroup>
 
     <ItemGroup>

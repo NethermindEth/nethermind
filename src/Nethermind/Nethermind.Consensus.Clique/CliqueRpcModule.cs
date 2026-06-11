@@ -56,51 +56,55 @@ namespace Nethermind.Consensus.Clique
 
         public Snapshot GetSnapshot(ulong? number = null)
         {
-            Block head = _blockTree.Head;
+            Block head = _blockTree.Head ?? throw new InvalidOperationException("Cannot create Clique snapshot without head block.");
             if (number is not null && head.Number != number.Value)
             {
-                head = _blockTree.FindBlock(number.Value);
+                head = _blockTree.FindBlock(number.Value) ?? throw new InvalidOperationException($"Could not find block {number.Value}.");
             }
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash ?? throw new InvalidOperationException($"Block {head.Number} has no hash."));
         }
 
         public Snapshot GetSnapshot(Hash256 hash)
         {
-            BlockHeader head = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
+            BlockHeader head = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                ?? throw new InvalidOperationException($"Could not find block header with hash {hash}.");
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash ?? throw new InvalidOperationException($"Block header {head.Number} has no hash."));
         }
 
         public Address[] GetSigners()
         {
-            Block head = _blockTree.Head;
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(static s => s.Key).ToArray();
+            Block head = _blockTree.Head ?? throw new InvalidOperationException("Cannot get Clique signers without head block.");
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash ?? throw new InvalidOperationException($"Block {head.Number} has no hash.")).Signers.Select(static s => s.Key).ToArray();
         }
 
         public Address[] GetSigners(ulong number)
         {
-            BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
+            BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                ?? throw new InvalidOperationException($"Could not find block header {number}.");
+            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash ?? throw new InvalidOperationException($"Block header {header.Number} has no hash.")).Signers
                 .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated()
         {
-            Block header = _blockTree.Head;
-            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
+            Block header = _blockTree.Head ?? throw new InvalidOperationException("Cannot get Clique signers without head block.");
+            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash ?? throw new InvalidOperationException($"Block {header.Number} has no hash.")).Signers
                 .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
         public Address[] GetSigners(Hash256 hash)
         {
-            BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
+            BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                ?? throw new InvalidOperationException($"Could not find block header with hash {hash}.");
+            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash ?? throw new InvalidOperationException($"Block header {header.Number} has no hash.")).Signers
                 .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated(Hash256 hash)
         {
-            BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
+            BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                ?? throw new InvalidOperationException($"Could not find block header with hash {hash}.");
+            return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash ?? throw new InvalidOperationException($"Block header {header.Number} has no hash.")).Signers
                 .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
@@ -127,17 +131,17 @@ namespace Nethermind.Consensus.Clique
         {
             if (hash is null)
             {
-                return ResultWrapper<Address>.Fail($"Hash parameter cannot be null");
+                return ResultWrapper<Address?>.Fail($"Hash parameter cannot be null");
             }
 
             BlockHeader? header = _blockTree.FindHeader(hash);
             if (header is null)
             {
-                return ResultWrapper<Address>.Fail($"Could not find block with hash {hash}");
+                return ResultWrapper<Address?>.Fail($"Could not find block with hash {hash}");
             }
 
             header.Author ??= _snapshotManager.GetBlockSealer(header);
-            return ResultWrapper<Address>.Success(header.Author);
+            return ResultWrapper<Address?>.Success(header.Author);
         }
 
         public ResultWrapper<bool> clique_propose(Address signer, bool vote)

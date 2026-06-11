@@ -32,8 +32,18 @@ public partial class BlockAccessListManager
     /// is written. Storage <em>reads</em> (slots that appear in <c>StorageReads</c> only) are
     /// not applied — they describe what the block <em>observed</em>, not what it changed.
     /// </remarks>
-    public static void ApplyStateChanges(ReadOnlyBlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
+    public static void ApplyStateChanges(ReadOnlyBlockAccessList? suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
+        if (suggestedBlockAccessList is null)
+        {
+            if (shouldComputeStateRoot)
+            {
+                stateProvider.RecalculateStateRoot();
+            }
+
+            return;
+        }
+
         foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
             if (accountChanges.BalanceChanges.Length > 0)

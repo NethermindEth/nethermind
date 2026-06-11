@@ -9,15 +9,15 @@ namespace Nethermind.Facade.Proxy.Models
 {
     public class TransactionModel
     {
-        public Hash256 Hash { get; set; }
+        public Hash256 Hash { get; set; } = null!;
         public ulong Nonce { get; set; }
-        public Hash256 BlockHash { get; set; }
+        public Hash256? BlockHash { get; set; }
         public UInt256 BlockNumber { get; set; }
-        public Address From { get; set; }
-        public Address To { get; set; }
+        public Address From { get; set; } = null!;
+        public Address? To { get; set; }
         public ulong Gas { get; set; }
         public UInt256 GasPrice { get; set; }
-        public byte[] Input { get; set; }
+        public byte[] Input { get; set; } = null!;
         public UInt256 Value { get; set; }
 
         public Transaction ToTransaction()

@@ -20,6 +20,6 @@ public class PeerMsgSendRecvResponse
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string Type { get; set; }
+    public string Type { get; set; } = null!;
     public string? Error { get; set; }
 }

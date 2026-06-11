@@ -53,7 +53,7 @@ namespace Nethermind.Trie.Benchmark
         public TrieNode Just_trie_node_56B() => new(NodeType.Unknown);
 
         [Benchmark]
-        public Keccak Just_keccak_80B() => Keccak.Compute(_bytes);
+        public Hash256 Just_keccak_80B() => Keccak.Compute(_bytes);
 
         private byte[] _bytes = new byte[32];
 
@@ -95,7 +95,7 @@ namespace Nethermind.Trie.Benchmark
         }
 
         [Benchmark]
-        public HexPrefix Just_hex_prefix_64B() => new(true, new byte[5]);
+        public byte[] Just_hex_prefix_64B() => HexPrefix.ToBytes(new byte[5], true);
 
         [Benchmark]
         public Rlp Just_rlp_56B() => new(new byte[8]);

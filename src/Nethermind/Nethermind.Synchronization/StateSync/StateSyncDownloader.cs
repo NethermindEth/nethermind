@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.StateSync
                 task = peer.GetNodeData(hashList, cancellationToken);
             }
             // If GetNodeData is not supported, fall back to the Snap protocol
-            else if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapHandler))
+            else if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer? snapHandler))
             {
                 if (batch.NodeDataType == NodeDataType.Code)
                 {
@@ -88,17 +88,24 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = [];
+            Dictionary<Hash256AsKey, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = [];
             List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = [];
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
             {
-                if (item.Address is not null)
+                if (item is null)
                 {
-                    if (!itemsGroupedByAccount.TryGetValue(item.Address, out List<(TreePath path, StateSyncItem syncItem)> storagePaths))
+                    continue;
+                }
+
+                Hash256? address = item.Address;
+                if (address is not null)
+                {
+                    Hash256AsKey addressKey = address;
+                    if (!itemsGroupedByAccount.TryGetValue(addressKey, out List<(TreePath path, StateSyncItem syncItem)>? storagePaths))
                     {
                         storagePaths = [];
-                        itemsGroupedByAccount[item.Address] = storagePaths;
+                        itemsGroupedByAccount[addressKey] = storagePaths;
                     }
 
                     storagePaths.Add((item.Path, item));
@@ -124,10 +131,10 @@ namespace Nethermind.Synchronization.StateSync
                 requestedNodeIndex++;
             }
 
-            foreach (KeyValuePair<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> kvp in itemsGroupedByAccount)
+            foreach (KeyValuePair<Hash256AsKey, List<(TreePath path, StateSyncItem syncItem)>> kvp in itemsGroupedByAccount)
             {
                 using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
-                groupWriter.WriteValue(kvp.Key?.Value.Bytes.ToArray());
+                groupWriter.WriteValue(kvp.Key.Value.Bytes);
 
                 for (int groupIndex = 0; groupIndex < kvp.Value.Count; groupIndex++)
                 {
@@ -157,9 +164,9 @@ namespace Nethermind.Synchronization.StateSync
         /// </summary>
         private sealed class HashList : IReadOnlyList<Hash256>
         {
-            private static HashList s_cache;
+            private static HashList? s_cache;
 
-            private IList<StateSyncItem> _items;
+            private IList<StateSyncItem> _items = null!;
 
             public static HashList Rent(IList<StateSyncItem> items)
             {
@@ -176,7 +183,7 @@ namespace Nethermind.Synchronization.StateSync
 
             public void Initialize(IList<StateSyncItem> items) => _items = items;
 
-            public void Reset() => _items = null;
+            public void Reset() => _items = null!;
 
             public Hash256 this[int index] => _items[index].Hash;
 

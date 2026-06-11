@@ -52,7 +52,7 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload,
-        Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
+        Hash256[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
 
     [JsonRpcMethod(
         Description = "Retrieves the transaction pool content with the given upper limits.",

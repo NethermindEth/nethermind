@@ -22,7 +22,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
     private readonly string _exposeHost;
     private readonly int? _exposePort;
     private readonly string _nodeName;
-    private readonly string _pushGatewayUrl;
+    private readonly string? _pushGatewayUrl;
     private readonly int _intervalSeconds;
     private readonly CancellationTokenSource _timerCancellationSource;
 
@@ -41,7 +41,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         string exposeHost = metricsConfig.ExposeHost;
         int? exposePort = metricsConfig.ExposePort;
         string nodeName = metricsConfig.NodeName;
-        string pushGatewayUrl = metricsConfig.PushGatewayUrl;
+        string? pushGatewayUrl = metricsConfig.PushGatewayUrl;
         int intervalSeconds = metricsConfig.IntervalSeconds;
 
         _exposeHost = exposeHost;
@@ -113,7 +113,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
     private Options GetOptions(IMetricsConfig config)
     {
-        string endpoint = _pushGatewayUrl?.Split("/").Last();
+        string? endpoint = _pushGatewayUrl?.Split("/").Last();
         string group = endpoint?.Contains('-', StringComparison.Ordinal) == true
             ? endpoint.Split("-")[0] : config.MonitoringGroup;
         string instance = _nodeName.Replace("enode://", string.Empty).Split("@")[0];

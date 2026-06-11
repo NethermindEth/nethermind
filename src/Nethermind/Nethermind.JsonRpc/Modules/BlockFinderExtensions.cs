@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules
                 SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
                 if (!headerResult.IsError)
                 {
-                    requestedBlock = headerResult.Object.Number;
+                    requestedBlock = headerResult.Object!.Number;
                 }
             }
             return requestedBlock < blockFinder.GetLowestBlock();
@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules
 
             blockParameter ??= BlockParameter.Latest;
 
-            BlockHeader header = blockFinder.FindHeader(blockParameter);
+            BlockHeader? header = blockFinder.FindHeader(blockParameter);
             if (blockParameter.RequireCanonical && header is null && !allowNulls && blockParameter.BlockHash is not null)
             {
                 header = blockFinder.FindHeader(blockParameter.BlockHash);
@@ -47,14 +47,14 @@ namespace Nethermind.JsonRpc.Modules
 
             return header is null && !allowNulls
                 ? new SearchResult<BlockHeader>(HeaderNotFound, ErrorCodes.ResourceNotFound)
-                : new SearchResult<BlockHeader>(header);
+                : new SearchResult<BlockHeader>(header!);
         }
 
         public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
             blockParameter ??= BlockParameter.Latest;
 
-            Block block = blockFinder.FindBlock(blockParameter);
+            Block? block = blockFinder.FindBlock(blockParameter);
             if (blockParameter.RequireCanonical && block is null && !allowNulls && blockParameter.BlockHash is not null)
             {
                 BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules
                 }
             }
 
-            return new SearchResult<Block>(block);
+            return new SearchResult<Block>(block!);
         }
 
         public static IEnumerable<SearchResult<Block>> SearchForBlocksOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock)
@@ -96,8 +96,12 @@ namespace Nethermind.JsonRpc.Modules
             {
                 SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
                 if (finalBlockHeader.IsError || finalBlockHeader.Object is null)
+                {
                     yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
-                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object!);
+                    yield break;
+                }
+
+                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object);
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {

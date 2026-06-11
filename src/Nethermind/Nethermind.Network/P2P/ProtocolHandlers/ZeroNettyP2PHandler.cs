@@ -116,7 +116,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         {
             // Do nothing as we don't want to drop peer for internal issue.
         }
-        else if (_session?.Node?.IsStatic != true)
+        else if (_session.Node?.IsStatic != true)
         {
             DisconnectReason reason =
                 exception is SocketException socketException &&

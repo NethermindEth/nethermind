@@ -112,9 +112,10 @@ namespace Nethermind.Network
 
         protected bool ValidateGenesisHash(ISession session, SyncPeerProtocolInitializedEventArgs syncPeerArgs)
         {
-            if (syncPeerArgs.GenesisHash != _blockTree.Genesis.Hash)
+            BlockHeader genesis = _blockTree.Genesis ?? throw new InvalidOperationException("Cannot validate genesis before the block tree genesis is available");
+            if (syncPeerArgs.GenesisHash != genesis.Hash)
                 return Disconnect(session, DisconnectReason.InvalidGenesis, CompatibilityValidationType.DifferentGenesis, "invalid genesis",
-                    _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}" : "");
+                    _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {genesis.Hash}" : "");
             return true;
         }
 

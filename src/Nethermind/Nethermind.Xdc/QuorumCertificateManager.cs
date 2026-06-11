@@ -56,12 +56,12 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
     }
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
-    public QuorumCertificate LockCertificate => _context.LockQC;
+    public QuorumCertificate? LockCertificate => _context.LockQC;
 
     public void CommitCertificate(QuorumCertificate qc)
     {
-        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash)
-            ?? throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
+        if (_blockTree.FindHeader(qc.ProposedBlockInfo.Hash) is not XdcBlockHeader proposedBlockHeader)
+            throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
@@ -97,7 +97,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             XdcBlockHeader parent = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash!)!;
             _ = _forensicsProcessor.ForensicsMonitoring([parent, proposedBlockHeader], qc);
 
-            _blockTree.ForkChoiceUpdated(grandParent.Hash, grandParent.Hash);
+            Hash256 committedHash = grandParent.Hash
+                ?? throw new BlockchainException($"Committed block {grandParent.Number} is missing a hash.");
+            _blockTree.ForkChoiceUpdated(committedHash, committedHash);
         }
 
         if (qc.ProposedBlockInfo.Round >= _context.CurrentRound)
@@ -167,14 +169,18 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             return false;
         }
 
-        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
+        Hash256 blockHash = grandParentHeader.Hash
+            ?? throw new BlockchainException($"Committed block {grandParentHeader.Number} is missing a hash.");
+        ExtraFieldsV2 extraConsensusData = grandParentHeader.ExtraConsensusData
+            ?? throw new BlockchainException($"Committed block {grandParentHeader.Number} is missing XDC consensus data.");
+
+        _context.HighestCommitBlock = new BlockRoundInfo(blockHash, extraConsensusData.BlockRound, grandParentHeader.Number);
         return true;
     }
 
-    public bool VerifyCertificate(QuorumCertificate qc, [NotNullWhen(false)] out string error)
+    public bool VerifyCertificate(QuorumCertificate qc, [NotNullWhen(false)] out string? error)
     {
-        XdcBlockHeader certificateTarget = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
-        if (certificateTarget is null)
+        if (_blockTree.FindHeader(qc.ProposedBlockInfo.Hash) is not XdcBlockHeader certificateTarget)
         {
             error = $"Certificate target block not found hash={qc.ProposedBlockInfo.Hash}";
             return false;
@@ -182,17 +188,17 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
         return VerifyCertificate(qc, certificateTarget, out error);
     }
 
-    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, [NotNullWhen(false)] out string error)
+    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, [NotNullWhen(false)] out string? error)
     {
         ArgumentNullException.ThrowIfNull(qc);
         ArgumentNullException.ThrowIfNull(certificateTarget);
         if (qc.Signatures is null)
             throw new ArgumentException("QC must contain vote signatures.", nameof(qc));
 
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(certificateTarget) ?? _epochSwitchManager.GetEpochSwitchInfo(qc.ProposedBlockInfo.Hash);
+        EpochSwitchInfo? epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(certificateTarget) ?? _epochSwitchManager.GetEpochSwitchInfo(qc.ProposedBlockInfo.Hash);
         if (epochSwitchInfo is null)
         {
-            error = $"Epoch switch info not found for header {certificateTarget?.ToString(BlockHeader.Format.FullHashAndNumber)}";
+            error = $"Epoch switch info not found for header {certificateTarget.ToString(BlockHeader.Format.FullHashAndNumber)}";
             return false;
         }
 
@@ -213,6 +219,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
             if (VotesManager.CountValidSignatures(masternodes, signatures, voteHash, out error) is not { } signCount)
             {
+                error ??= "Certificate contains invalid signatures.";
                 return false;
             }
 
@@ -267,14 +274,20 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
         {
             if (current.ExtraConsensusData is null && _logger.IsInfo)
                 _logger.Info($"Block {current.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data; initializing consensus on round 1.");
-            latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
+            latestQc = new QuorumCertificate(new BlockRoundInfo(
+                    current.Hash ?? throw new InvalidOperationException($"Header hash is missing for block {current.Number}."),
+                    0,
+                    current.Number),
+                Array.Empty<Signature>(),
                     current.Number.SaturatingSub(spec.Gap));
             _context.HighestQC = latestQc;
             _context.SetNewRound(1);
         }
         else
         {
-            CommitCertificate(current.ExtraConsensusData.QuorumCert);
+            QuorumCertificate quorumCert = current.ExtraConsensusData?.QuorumCert
+                ?? throw new BlockchainException($"Block {current.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data");
+            CommitCertificate(quorumCert);
         }
     }
 
@@ -298,7 +311,8 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
             if (xdcHeader.ExtraConsensusData is null)
                 throw new InvalidOperationException($"Block {xdcHeader.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data");
 
-            CommitCertificate(xdcHeader.ExtraConsensusData.QuorumCert);
+            CommitCertificate(xdcHeader.ExtraConsensusData.QuorumCert
+                ?? throw new InvalidOperationException($"Block {xdcHeader.ToString(BlockHeader.Format.FullHashAndNumber)} has no quorum certificate"));
         }
     }
 

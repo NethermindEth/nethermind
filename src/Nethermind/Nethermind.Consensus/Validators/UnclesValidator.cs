@@ -81,7 +81,12 @@ namespace Nethermind.Consensus.Validators
                 for (int ancestorLevel = 0; ancestorLevel < ancestorsCount && ancestorLevel < MaxAncestorLevelsToCheckForDuplicates; ancestorLevel++)
                 {
                     BlockHeader includedByAncestorHeader = ancestors[ancestorLevel];
-                    Block? includedByAncestor = _blockTree.FindBlock(includedByAncestorHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (includedByAncestorHeader.Hash is not { } includedByAncestorHash)
+                    {
+                        break;
+                    }
+
+                    Block? includedByAncestor = _blockTree.FindBlock(includedByAncestorHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (includedByAncestor is null)
                     {
                         break;

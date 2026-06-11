@@ -149,7 +149,7 @@ namespace Nethermind.Consensus.Ethash
         public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
         {
             uint epoch = GetEpoch(header.Number);
-            IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
+            IEthashDataSet? dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
@@ -213,9 +213,14 @@ namespace Nethermind.Consensus.Ethash
                 }
             }
 
+            if (header.MixHash is not { } mixHash)
+            {
+                return false;
+            }
+
             ulong fullSize = GetDataSize(epoch);
             Hash256 headerHashed = GetTruncatedHash(header);
-            (byte[] _, ValueHash256 result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
+            (byte[] _, ValueHash256 result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, mixHash, header.Nonce);
             if (!isValid)
             {
                 return false;
@@ -255,7 +260,7 @@ namespace Nethermind.Consensus.Ethash
             return headerHashed;
         }
 
-        public static (byte[], ValueHash256, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Hash256 headerHash, Hash256 expectedMixHash, ulong nonce)
+        public static (byte[], ValueHash256, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Hash256 headerHash, Hash256? expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
@@ -264,7 +269,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] nonceBytes = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, nonce);
 
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.BytesToArray(), nonceBytes)).Bytes; // this tests fine
+            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.BytesToArray(), nonceBytes)).Bytes!; // this tests fine
             uint[] mixInts = new uint[MixBytes / WordBytes];
 
             for (int i = 0; i < hashesInMix; i++)
@@ -297,7 +302,7 @@ namespace Nethermind.Consensus.Ethash
 
             if (expectedMixHash is not null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
             {
-                return (null, null, false);
+                return (Array.Empty<byte>(), default, false);
             }
 
             return (cmix, ValueKeccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)), true); // this tests fine

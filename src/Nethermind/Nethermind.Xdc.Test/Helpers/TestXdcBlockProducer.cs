@@ -40,7 +40,7 @@ internal class TestXdcBlockProducer(
 {
     private readonly Signer signer = (Signer)signer;
 
-    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
+    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
         if (parent is not XdcBlockHeader xdcParent)
             throw new ArgumentException($"Must be a {nameof(XdcBlockHeader)}", nameof(parent));

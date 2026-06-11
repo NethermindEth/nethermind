@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.FastSync
             public readonly bool Equals(NodeKey other)
                 => Address == other.Address && Path == other.Path && Hash == other.Hash;
 
-            public override bool Equals(object obj)
+            public override bool Equals(object? obj)
                 => obj is NodeKey key && Equals(key);
 
             public override int GetHashCode()

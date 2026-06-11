@@ -221,7 +221,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
-        else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
+        else if (DoTryFindStorageNodeExternal(address, path, hash, out node))
         {
         }
         else
@@ -244,7 +244,7 @@ public sealed class SnapshotBundle : IDisposable
         else
         {
             node = _transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
-                DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null
+                DoTryFindStorageNodeExternal(address, path, hash, out node)
                     ? node
                     : new TrieNode(NodeType.Unknown, hash));
         }
@@ -255,7 +255,7 @@ public sealed class SnapshotBundle : IDisposable
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed. So we skip the
     // check for slightly improved latency.
-    private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
+    private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
@@ -321,7 +321,7 @@ public sealed class SnapshotBundle : IDisposable
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
 
-    public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
+    public void SetChangedSlot(Address address, in UInt256 index, byte[]? value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of

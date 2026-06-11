@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="logEntry">Log to be checked</param>
         /// <param name="searchedEntryTemplate">Searched  entry template</param>
         /// <returns></returns>
-        public bool Equals(LogEntry logEntry, LogEntry searchedEntryTemplate)
+        public bool Equals(LogEntry? logEntry, LogEntry? searchedEntryTemplate)
         {
             Hash256[] matchEntryTopics = searchedEntryTemplate?.Topics ?? [];
             return ReferenceEquals(logEntry, searchedEntryTemplate) || (

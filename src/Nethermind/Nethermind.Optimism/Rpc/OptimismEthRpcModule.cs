@@ -83,12 +83,12 @@ public class OptimismEthRpcModule(
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-        if (searchResult.IsError)
+        if (searchResult.IsError || searchResult.Object is null)
         {
             return ResultWrapper<ReceiptForRpc[]?>.Success(null);
         }
 
-        Block? block = searchResult.Object!;
+        Block block = searchResult.Object;
         TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 

@@ -14,8 +14,8 @@ namespace Nethermind.JsonRpc
         private JsonRpcId _id;
         private bool _paramsSet;
 
-        public string JsonRpc { get; set; }
-        public string Method { get; set; }
+        public string JsonRpc { get; set; } = null!;
+        public string Method { get; set; } = null!;
 
         public JsonElement Params
         {

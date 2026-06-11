@@ -80,7 +80,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
             {
                 if (requestIdValues.Value.Elapsed > _oldRequestThreshold)
                 {
-                    if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
+                    if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData>? request))
                     {
                         Interlocked.Decrement(ref _requestCount);
                         request.Message.TryDispose();

@@ -32,7 +32,7 @@ namespace Nethermind.Facade.Find
 
                 IEnumerable<FilterLog> logs = logFinder.FindLogs(logFilter);
                 int count = 0;
-                T first = default;
+                T first = default!;
                 foreach (FilterLog log in logs)
                 {
                     T @event = ParseEvent(log);

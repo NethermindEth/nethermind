@@ -49,7 +49,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
 
     public void Dispose()
     {
-        ArrayPool<byte> pool = arrayPool;
+        ArrayPool<byte>? pool = arrayPool;
         if (pool is not null)
         {
             DisposeCustomArrayPool(pool);
@@ -59,7 +59,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
         ConcurrentQueue<byte[]>? rentedQueue = _rentedQueue;
         if (rentedQueue is not null)
         {
-            while (rentedQueue.TryDequeue(out byte[] rentedBuffer))
+            while (rentedQueue.TryDequeue(out byte[]? rentedBuffer))
             {
                 // Devirtualize the shared array pool by referring directly to it
                 SafeArrayPool<byte>.Shared.Return(rentedBuffer);
@@ -67,7 +67,7 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
         }
         else
         {
-            Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList);
+            Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList!);
             foreach (byte[] rentedBuffer in items)
             {
                 SafeArrayPool<byte>.Shared.Return(rentedBuffer);
@@ -80,14 +80,14 @@ public sealed class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>
     {
         if (_rentedQueue is not null)
         {
-            while (_rentedQueue.TryDequeue(out byte[] rentedBuffer))
+            while (_rentedQueue.TryDequeue(out byte[]? rentedBuffer))
             {
                 arrayPool.Return(rentedBuffer);
             }
         }
         else
         {
-            Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList);
+            Span<byte[]> items = CollectionsMarshal.AsSpan(_rentedList!);
             foreach (byte[] rentedBuffer in items)
             {
                 arrayPool.Return(rentedBuffer);

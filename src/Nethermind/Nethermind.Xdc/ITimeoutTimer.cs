@@ -8,7 +8,7 @@ namespace Nethermind.Xdc;
 
 public interface ITimeoutTimer
 {
-    event EventHandler<ElapsedEventArgs> TimeoutElapsed;
+    event EventHandler<ElapsedEventArgs>? TimeoutElapsed;
     void Reset(TimeSpan period);
     void Start(TimeSpan period);
     void TriggerTimeout();

@@ -21,7 +21,7 @@ public class ConcurrentNodeWriteBatcher(INodeStorage underlyingDb, long batchSiz
     public void Dispose()
     {
         _disposing = true;
-        while (_batches.TryDequeue(out INodeStorage.IWriteBatch batch))
+        while (_batches.TryDequeue(out INodeStorage.IWriteBatch? batch))
         {
             batch.Dispose();
         }
@@ -37,7 +37,7 @@ public class ConcurrentNodeWriteBatcher(INodeStorage underlyingDb, long batchSiz
     private INodeStorage.IWriteBatch RentBatch()
     {
         if (_disposing) throw new InvalidOperationException("Trying to set while disposing");
-        if (!_batches.TryDequeue(out INodeStorage.IWriteBatch currentBatch))
+        if (!_batches.TryDequeue(out INodeStorage.IWriteBatch? currentBatch))
         {
             currentBatch = underlyingDb.StartWriteBatch();
         }

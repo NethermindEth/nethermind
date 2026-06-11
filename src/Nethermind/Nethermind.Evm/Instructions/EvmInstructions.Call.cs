@@ -100,7 +100,7 @@ public static partial class EvmInstructions
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
         // Pop the code source address from the stack.
-        Address codeSource = stack.PopAddress();
+        Address? codeSource = stack.PopAddress();
         if (codeSource is null) goto StackUnderflow;
 
         ExecutionEnvironment env = vm.VmState.Env;

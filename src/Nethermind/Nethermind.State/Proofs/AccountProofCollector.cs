@@ -83,11 +83,11 @@ namespace Nethermind.State.Proofs
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][]? storageKeys)
             : this(hashedAddress, storageKeys?.Select(ToKey), storageKeys?.Length ?? 0, storageKeys) { }
 
-        public AccountProofCollector(Address? address, params byte[][] storageKeys)
-            : this(Keccak.Compute((address ?? Address.Zero).Bytes).Bytes, storageKeys)
-            => _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
+        public AccountProofCollector(Address address, params byte[][] storageKeys)
+            : this(Keccak.Compute(address.Bytes).Bytes, storageKeys)
+            => _accountProof.Address = _address = address;
 
-        public AccountProofCollector(Address? address, IEnumerable<UInt256> storageKeys)
+        public AccountProofCollector(Address address, IEnumerable<UInt256> storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray()) { }
 
         public AccountProof BuildResult()
@@ -178,7 +178,8 @@ namespace Nethermind.State.Proofs
             // RLP, so EIP-1186 / go-ethereum convention is to omit them from the proof entries.
             if (node.Keccak is null) return;
 
-            byte[] rlp = node.FullRlp.ToArray();
+            byte[]? rlp = node.FullRlp.ToArray();
+            if (rlp is null) return;
             if (ctx.Storage is null)
             {
                 _accountProofItems.Add(rlp);

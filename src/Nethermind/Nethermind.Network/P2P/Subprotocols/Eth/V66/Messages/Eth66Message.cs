@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         public override int PacketType => EthMessage.PacketType;
         public override string Protocol => EthMessage.Protocol;
         public long RequestId { get; set; } = MessageConstants.Random.NextLong();
-        public T EthMessage { get; set; }
+        public T EthMessage { get; set; } = null!;
 
         protected Eth66Message()
         {

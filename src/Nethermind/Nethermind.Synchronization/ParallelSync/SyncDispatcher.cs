@@ -14,7 +14,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public class SyncDispatcher<T> : IAsyncDisposable
+    public class SyncDispatcher<T> : IAsyncDisposable where T : class
     {
         private readonly Lock _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         long prepareRequestTime = Stopwatch.GetTimestamp();
-                        T request = await (Feed.PrepareRequest(cancellationToken) ?? Task.FromResult<T>(default!)); // just to avoid null refs
+                        T? request = await Feed.PrepareRequest(cancellationToken);
                         Metrics.SyncDispatcherPrepareRequestTimeMicros.Observe(Stopwatch.GetElapsedTime(prepareRequestTime).TotalMicroseconds, new StringLabel(_feedName));
                         if (request is null)
                         {
@@ -146,12 +146,13 @@ namespace Nethermind.Synchronization.ParallelSync
                             // yields (e.g. on the IsMultiFeed semaphore await), dropping the _activeTasks count
                             // while the dispatch was still in flight. That race is what the flaky
                             // When_ConcurrentHandleResponseIsRunning_Then_BlockDispose test was catching.
+                            PeerInfo peer = allocatedPeer;
                             Task task = Task.Run(
                                 async () =>
                                 {
                                     try
                                     {
-                                        await DoDispatch(cancellationToken, allocatedPeer, request, allocation);
+                                        await DoDispatch(cancellationToken, peer, request, allocation);
                                     }
                                     finally
                                     {
@@ -187,7 +188,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private async Task DoDispatch(CancellationToken cancellationToken, PeerInfo? allocatedPeer, T request,
+        private async Task DoDispatch(CancellationToken cancellationToken, PeerInfo allocatedPeer, T request,
             SyncPeerAllocation allocation)
         {
             long dispatchTimeStart = Stopwatch.GetTimestamp();
@@ -317,7 +318,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         newDormantStateTask = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
                     }
 
-                    TaskCompletionSource<object> previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
+                    TaskCompletionSource<object?>? previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
                     previous?.TrySetResult(null);
                 }
             }

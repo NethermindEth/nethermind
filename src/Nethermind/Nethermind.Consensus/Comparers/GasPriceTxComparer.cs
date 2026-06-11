@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Comparers
 
             // When we're adding Tx to TxPool, we don't know the base fee of the block in which transaction will be added.
             // We can get a base fee from the current head.
-            Block block = _blockFinder.Head;
+            Block? block = _blockFinder.Head;
             bool isEip1559Enabled = _specProvider.GetSpecFor1559(block?.Number ?? 0UL).IsEip1559Enabled;
 
             return GasPriceTxComparerHelper.Compare(x, y, (block?.Header.BaseFeePerGas).GetValueOrDefault(), isEip1559Enabled);

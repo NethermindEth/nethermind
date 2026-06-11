@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Visitors
         private readonly ProgressReporter _progress;
         private int _good = 0;
         private int _bad = 0;
-        private ChainLevelInfo _currentLevel;
+        private ChainLevelInfo? _currentLevel;
         private ulong _checked = 0;
         private readonly ulong _toCheck;
 
@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Visitors
 
         public ulong EndLevelExclusive { get; }
 
-        public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
+        public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             _currentLevel = chainLevelInfo;
             return Task.FromResult(LevelVisitOutcome.None);
@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Visitors
             int transactionsLength = block.Transactions.Length;
             if (txReceiptsLength != transactionsLength)
             {
-                if (_currentLevel.MainChainBlock?.BlockHash == block.Hash)
+                if (_currentLevel?.MainChainBlock?.BlockHash == block.Hash)
                 {
                     _bad++;
                     await OnBlockWithoutReceipts(block, transactionsLength, txReceiptsLength);
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Visitors
             if (useIterator)
             {
                 int txReceiptsLength = 0;
-                if (_receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash, out ReceiptsIterator iterator))
+                if (block.Hash is not null && _receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash, out ReceiptsIterator iterator))
                 {
                     try
                     {
@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
+        public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             _checked++;
             _progress.Update(_checked);

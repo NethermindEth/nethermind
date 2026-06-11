@@ -48,7 +48,10 @@ internal class EpochSwitchManager(
         }
 
         ulong round = header.ExtraConsensusData.BlockRound;
-        QuorumCertificate qc = header.ExtraConsensusData.QuorumCert;
+        if (header.ExtraConsensusData.QuorumCert is not { } qc)
+        {
+            return false;
+        }
         ulong parentRound = qc.ProposedBlockInfo.Round;
         ulong epochStartRound = round - (round % xdcSpec.EpochLength);
 
@@ -59,7 +62,7 @@ internal class EpochSwitchManager(
 
         if (parentRound < epochStartRound)
         {
-            Round2EpochBlockInfo.Set(round, new BlockRoundInfo(header.Hash, round, header.Number));
+            Round2EpochBlockInfo.Set(round, new BlockRoundInfo(GetHeaderHash(header), round, header.Number));
             return true;
         }
 
@@ -105,14 +108,13 @@ internal class EpochSwitchManager(
     {
         List<EpochSwitchInfo> epochSwitchInfos = [];
 
-        Hash256 iteratorHash = end.Hash;
+        Hash256 iteratorHash = GetHeaderHash(end);
         ulong iteratorBlockNumber = end.Number;
 
         while (iteratorBlockNumber > start.Number)
         {
-            EpochSwitchInfo epochSwitchInfo;
-
-            if ((epochSwitchInfo = GetEpochSwitchInfo(iteratorHash)) is null)
+            EpochSwitchInfo? epochSwitchInfo = GetEpochSwitchInfo(iteratorHash);
+            if (epochSwitchInfo is null)
             {
                 return null;
             }
@@ -159,7 +161,7 @@ internal class EpochSwitchManager(
 
         foreach (BlockRoundInfo blockInfo in epochSwitchInCache)
         {
-            BlockHeader header = Tree.FindHeader(blockInfo.BlockNumber);
+            BlockHeader? header = Tree.FindHeader(blockInfo.BlockNumber);
             if (header is null)
             {
                 continue;
@@ -173,7 +175,7 @@ internal class EpochSwitchManager(
         return null;
     }
 
-    private bool TryBinarySearchBlockByEpochNumber(ulong targetEpochNumber, ulong start, ulong end, ulong switchBlock, ulong epoch, IXdcReleaseSpec xdcSpec, out BlockRoundInfo epochBlockInfo)
+    private bool TryBinarySearchBlockByEpochNumber(ulong targetEpochNumber, ulong start, ulong end, ulong switchBlock, ulong epoch, IXdcReleaseSpec xdcSpec, out BlockRoundInfo? epochBlockInfo)
     {
         while (start < end)
         {
@@ -194,15 +196,16 @@ internal class EpochSwitchManager(
             }
 
             bool isEpochSwitch = IsEpochSwitchAtBlock(header);
-            ulong epochNum = xdcSpec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / xdcSpec.EpochLength;
+            ExtraFieldsV2 extraConsensusData = header.ExtraConsensusData;
+            ulong epochNum = xdcSpec.SwitchEpoch + extraConsensusData.BlockRound / xdcSpec.EpochLength;
 
             if (epochNum == targetEpochNumber)
             {
-                ulong round = header.ExtraConsensusData.BlockRound;
+                ulong round = extraConsensusData.BlockRound;
 
                 if (isEpochSwitch)
                 {
-                    epochBlockInfo = new BlockRoundInfo(header.Hash, round, header.Number);
+                    epochBlockInfo = new BlockRoundInfo(GetHeaderHash(header), round, header.Number);
                     return true;
                 }
                 else
@@ -241,7 +244,7 @@ internal class EpochSwitchManager(
         }
         IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(headHeader);
 
-        EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(headHeader);
+        EpochSwitchInfo? epochSwitchInfo = GetEpochSwitchInfo(headHeader);
         if (epochSwitchInfo is null)
         {
             return null;
@@ -266,7 +269,7 @@ internal class EpochSwitchManager(
 
         ulong estRound = (targetEpoch - xdcSpec.SwitchEpoch) * xdcSpec.EpochLength;
 
-        BlockRoundInfo epochBlockInfo = GetBlockInfoInCache(estRound, xdcSpec.EpochLength);
+        BlockRoundInfo? epochBlockInfo = GetBlockInfoInCache(estRound, xdcSpec.EpochLength);
         if (epochBlockInfo is not null)
         {
             return epochBlockInfo;
@@ -287,7 +290,7 @@ internal class EpochSwitchManager(
             {
                 return null;
             }
-            EpochSwitchInfo[] epochSwitchInfos = GetEpochSwitchInfoBetween(estBlockHeader, headHeader);
+            EpochSwitchInfo[]? epochSwitchInfos = GetEpochSwitchInfoBetween(estBlockHeader, headHeader);
             if (epochSwitchInfos is null)
             {
                 return null;

@@ -232,7 +232,7 @@ public class SnapServer : ISnapServer
                 break;
             }
 
-            Account accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes.ToArray());
+            Account? accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes.ToArray());
             if (accountNeth is null)
             {
                 break;

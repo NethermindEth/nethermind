@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public abstract class ActivatedSyncFeed<T> : SyncFeed<T>, IDisposable
+    public abstract class ActivatedSyncFeed<T> : SyncFeed<T>, IDisposable where T : class
     {
         private bool _disposed;
 

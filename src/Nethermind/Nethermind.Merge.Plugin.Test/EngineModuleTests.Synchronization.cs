@@ -36,7 +36,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -95,7 +95,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -147,7 +147,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -188,7 +188,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -284,7 +284,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -331,7 +331,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
 
         ExecutionPayload parentBlockRequest = ExecutionPayload.Create(Build.A.Block.WithNumber(2).TestObject);
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, parentBlockRequest, Address.Zero, 7);
@@ -384,7 +384,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -421,7 +421,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -572,7 +572,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -625,7 +625,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256? startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
             .WithHash(TestItem.KeccakA)
@@ -679,7 +679,7 @@ public partial class EngineModuleTests
     public async Task Blocks_from_cache_inserted_when_fast_headers_sync_finish_before_newPayloadV1_request()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, ExecutionPayload.Create(chain.BlockTree.Head!), Address.Zero, 7);
 
@@ -733,7 +733,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         // create 7 block gap
         int gap = 7;
         ExecutionPayload headBlockRequest = ExecutionPayload.Create(chain.BlockTree.Head!);
@@ -937,7 +937,7 @@ public partial class EngineModuleTests
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
         // initiate sync
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ForkchoiceStateV1 forkchoiceStateV1 = new(pivotBlock!.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
@@ -1071,10 +1071,10 @@ public partial class EngineModuleTests
             chain.BlockTree,
             new FullStateFinder(chain.BlockTree, chain.StateReader),
             new SyncConfig(),
-            Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
-            Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
-            Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
-            Substitute.For<ISyncFeed<BlockAccessListsSyncBatch?>>());
+            Substitute.For<ISyncFeed<HeadersSyncBatch>>(),
+            Substitute.For<ISyncFeed<BodiesSyncBatch>>(),
+            Substitute.For<ISyncFeed<ReceiptsSyncBatch>>(),
+            Substitute.For<ISyncFeed<BlockAccessListsSyncBatch>>());
 
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,
             syncPeerPool, new SyncConfig(), No.BeaconSync,

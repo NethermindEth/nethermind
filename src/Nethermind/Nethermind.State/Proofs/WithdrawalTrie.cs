@@ -20,7 +20,7 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
     public WithdrawalTrie(ReadOnlySpan<Withdrawal> withdrawals, bool canBuildProof = false)
         : base(withdrawals, canBuildProof, canBeParallel: false) { }
 
-    public static Hash256? CalculateRoot(ReadOnlySpan<Withdrawal> withdrawals) =>
+    public static Hash256 CalculateRoot(ReadOnlySpan<Withdrawal> withdrawals) =>
         new WithdrawalTrie(withdrawals).RootHash;
 
     protected override void Initialize(ReadOnlySpan<Withdrawal> withdrawals)

@@ -35,10 +35,10 @@ namespace Nethermind.Consensus.Processing
         public bool IsProcessingBlocks(ulong? maxProcessingInterval) => _processor.IsProcessingBlocks(maxProcessingInterval);
 
 #pragma warning disable 67
-        public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-        public event EventHandler<BlockProcessedEventArgs> BlockInvalid;
+        public event EventHandler<BlockProcessedEventArgs> BlockProcessed = delegate { };
+        public event EventHandler<BlockProcessedEventArgs> BlockInvalid = delegate { };
         public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
-        public event EventHandler<BlockStatistics> NewProcessingStatistics;
+        public event EventHandler<BlockStatistics> NewProcessingStatistics = delegate { };
 #pragma warning restore 67
 
         public ValueTask DisposeAsync() => _processor?.DisposeAsync() ?? default;

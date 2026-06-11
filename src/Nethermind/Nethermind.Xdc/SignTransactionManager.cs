@@ -70,10 +70,17 @@ internal class SignTransactionManager(
         if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash) || _blockTree.IsSyncing().isSyncing)
             return;
 
-        if (_alreadySigned.Contains(xdcHeader.Hash))
+        Hash256? headerHash = xdcHeader.Hash ?? e.Block.Hash;
+        if (headerHash is null)
             return;
 
-        ulong round = xdcHeader.ExtraConsensusData!.BlockRound;
+        if (_alreadySigned.Contains(headerHash))
+            return;
+
+        if (xdcHeader.ExtraConsensusData is null)
+            return;
+
+        ulong round = xdcHeader.ExtraConsensusData.BlockRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, round);
         if (spec is null)
             return;
@@ -86,13 +93,13 @@ internal class SignTransactionManager(
         if (xdcHeader.Number % spec.MergeSignRange != 0)
             return;
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(xdcHeader.Number, spec);
+        Snapshot? snapshot = _snapshotManager.GetSnapshotByBlockNumber(xdcHeader.Number, spec);
         if (snapshot is null)
             return;
 
         if (IsMasternode(snapshot, _signer.Value.Address))
         {
-            _alreadySigned.Set(xdcHeader.Hash);
+            _alreadySigned.Set(headerHash);
             _ = SubmitTransactionSign(xdcHeader, spec)
                 .ContinueWith(t => _logger.Error("Failed to submit sign transaction", t.Exception),
                 TaskContinuationOptions.OnlyOnFaulted);

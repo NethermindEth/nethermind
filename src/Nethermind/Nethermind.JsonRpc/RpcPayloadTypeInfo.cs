@@ -29,7 +29,7 @@ internal static class RpcPayloadTypeInfo
 
         if (RpcGeneratedTypeInfoRegistry.TryGet(type, out JsonTypeInfo? generated))
         {
-            return _canonicalGeneratedCache.GetOrAdd(type, generated);
+            return _canonicalGeneratedCache.GetOrAdd(type, generated!);
         }
 
         return EthereumJsonSerializer.JsonOptions.GetTypeInfo(type);

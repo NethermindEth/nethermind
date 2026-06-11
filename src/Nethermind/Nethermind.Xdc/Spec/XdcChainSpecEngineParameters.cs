@@ -20,26 +20,26 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong Gap { get; set; }
     public ulong Period { get; set; }
     public bool SkipV1Validation { get; set; }
-    public Address FoundationWalletAddr { get; set; }
+    public Address FoundationWalletAddr { get; set; } = null!;
     public ulong Reward { get; set; }
     public ulong SwitchEpoch { get; set; }
     public ulong SwitchBlock { get; set; }
     public ulong RangeReturnSigner { get; set; }
     public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
 
-    public Address BlockSignerContract { get; set; }
-    public Address RandomizeSMCBinary { get; set; }
-    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; }
-    public Address XDCXLendingAddressBinary { get; set; }
-    public Address XDCXAddressBinary { get; set; }
-    public Address TradingStateAddressBinary { get; set; }
+    public Address BlockSignerContract { get; set; } = null!;
+    public Address RandomizeSMCBinary { get; set; } = null!;
+    public Address XDCXLendingFinalizedTradeAddressBinary { get; set; } = null!;
+    public Address XDCXLendingAddressBinary { get; set; } = null!;
+    public Address XDCXAddressBinary { get; set; } = null!;
+    public Address TradingStateAddressBinary { get; set; } = null!;
 
-    public Address MasternodeVotingContract { get; set; }
+    public Address MasternodeVotingContract { get; set; } = null!;
 
     public ulong LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public ulong LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
-    public Address RelayerRegistrationSMC { get; set; }
-    public Address TRC21IssuerSMC { get; set; }
+    public Address RelayerRegistrationSMC { get; set; } = null!;
+    public Address TRC21IssuerSMC { get; set; } = null!;
 
     private List<V2ConfigParams> _v2Configs = [];
     public List<V2ConfigParams> V2Configs
@@ -62,7 +62,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public UInt256 ProtectorReward { get; set; }
     public UInt256 ObserverReward { get; set; }
     public ulong MergeSignRange { get; set; }
-    public Address[] BlackListedAddresses { get; set; }
+    public Address[] BlackListedAddresses { get; set; } = [];
     public ulong BlackListHFNumber { get; set; }
     public ulong TipXDCX { get; set; }
     public ulong TIPXDCXMinerDisable { get; set; }
@@ -71,7 +71,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     private readonly struct V2ConfigBySwitchRoundComparer : IComparer<V2ConfigParams>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int Compare(V2ConfigParams a, V2ConfigParams b) => a.SwitchRound.CompareTo(b.SwitchRound);
+        public int Compare(V2ConfigParams? a, V2ConfigParams? b) => a?.SwitchRound.CompareTo(b?.SwitchRound ?? 0) ?? (b is null ? 0 : -1);
     }
 
     private static void CheckConfig(ReadOnlySpan<V2ConfigParams> list)

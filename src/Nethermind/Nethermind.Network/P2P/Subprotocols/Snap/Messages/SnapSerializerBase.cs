@@ -23,6 +23,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         }
 
         public T Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+            byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException($"{typeof(T).Name} decoding returned null.");
     }
 }

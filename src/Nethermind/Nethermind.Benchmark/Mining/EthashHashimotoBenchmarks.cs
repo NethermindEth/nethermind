@@ -14,7 +14,7 @@ namespace Nethermind.Benchmarks.Mining
     {
         private Ethash _ethash = new(LimboLogs.Instance);
 
-        private BlockHeader _header;
+        private BlockHeader _header = null!;
 
         private BlockHeader[] _scenarios =
         {

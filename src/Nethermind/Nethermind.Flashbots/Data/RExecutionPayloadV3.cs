@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Linq;
 using Nethermind.Core;
@@ -82,30 +83,33 @@ public class RExecutionPayloadV3
         ulong gas_limit,
         ulong gas_used,
         ulong timestamp,
-        byte[] extra_data,
+        byte[]? extra_data,
         UInt256 base_fee_per_gas,
-        Hash256 block_hash,
-        byte[][] transactions,
-        RWithdrawal[]? withdrawals,
+        Hash256? block_hash,
+        byte[]?[]? transactions,
+        RWithdrawal?[]? withdrawals,
         ulong? blob_gas_used,
         ulong? excess_blob_gas
     )
     {
-        this.parent_hash = parent_hash;
-        this.fee_recipient = fee_recipient;
-        this.state_root = state_root;
-        this.receipts_root = receipts_root;
-        this.logs_bloom = logs_bloom;
-        this.prev_randao = prev_randao;
+        this.parent_hash = parent_hash ?? throw new JsonException("parent_hash must not be null");
+        this.fee_recipient = fee_recipient ?? throw new JsonException("fee_recipient must not be null");
+        this.state_root = state_root ?? throw new JsonException("state_root must not be null");
+        this.receipts_root = receipts_root ?? throw new JsonException("receipts_root must not be null");
+        this.logs_bloom = logs_bloom ?? throw new JsonException("logs_bloom must not be null");
+        this.prev_randao = prev_randao ?? throw new JsonException("prev_randao must not be null");
         this.block_number = block_number;
         this.gas_limit = gas_limit;
         this.gas_used = gas_used;
         this.timestamp = timestamp;
-        this.extra_data = extra_data;
+        this.extra_data = extra_data ?? throw new JsonException("extra_data must not be null");
         this.base_fee_per_gas = base_fee_per_gas;
-        this.block_hash = block_hash;
-        this.transactions = transactions;
-        this.withdrawals = withdrawals;
+        this.block_hash = block_hash ?? throw new JsonException("block_hash must not be null");
+        this.transactions = transactions?.Select(static transaction =>
+            transaction ?? throw new JsonException("transactions must not contain null values")).ToArray()
+            ?? throw new JsonException("transactions must not be null");
+        this.withdrawals = withdrawals?.Select(static withdrawal =>
+            withdrawal ?? throw new JsonException("withdrawals must not contain null values")).ToArray();
         this.blob_gas_used = blob_gas_used;
         this.excess_blob_gas = excess_blob_gas;
     }

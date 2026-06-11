@@ -27,7 +27,7 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
     {
         public UInt256 ChainId { get; set; }
         public ulong Nonce { get; set; }
-        public Address Address { get; set; }
+        public Address Address { get; set; } = null!;
         public ulong? YParity { get; set; }
         public UInt256 S { get; set; }
         public UInt256 R { get; set; }
@@ -75,8 +75,12 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
             List<RpcAuthTuple>? list = JsonSerializer.Deserialize<List<RpcAuthTuple>>(ref reader, options);
             if (list is not null)
             {
-                foreach (RpcAuthTuple tuple in list)
+                foreach (RpcAuthTuple? tuple in list)
                 {
+                    if (tuple is null)
+                        throw new JsonException("missing authorization tuple");
+                    if (tuple.Address is null)
+                        throw new JsonException("missing address");
                     if (tuple.YParity is null)
                         throw new JsonException("missing yParity");
                 }

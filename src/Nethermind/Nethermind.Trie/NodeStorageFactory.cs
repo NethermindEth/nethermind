@@ -56,7 +56,7 @@ public class NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogM
 
         int total = 0;
         int keyOfLength32 = 0;
-        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in db.GetAll().Take(20))
+        foreach (KeyValuePair<byte[], byte[]> keyValuePair in db.GetAll().Take(20))
         {
             total++;
             if (keyValuePair.Key.Length == 32)

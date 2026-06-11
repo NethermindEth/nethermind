@@ -8,7 +8,7 @@ namespace Nethermind.JsonRpc.Modules
     [AttributeUsage(AttributeTargets.Method)]
     public class JsonRpcMethodAttribute : Attribute
     {
-        public string Description { get; set; }
+        public string Description { get; set; } = null!;
 
         public string? EdgeCaseHint { get; set; }
 

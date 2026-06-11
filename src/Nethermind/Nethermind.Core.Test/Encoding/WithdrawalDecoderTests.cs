@@ -38,7 +38,7 @@ public class WithdrawalDecoderTests
             AmountInGwei = 3
         };
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
-        Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp);
+        Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp)!;
 
         Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
     }

@@ -99,8 +99,8 @@ internal sealed class MultiAccountProofCollector : ITreeVisitor<TreePathContextW
 
     private void AddProofItem(TrieNode node)
     {
-        if (node.Keccak is null) return;
-        _nodes.Add(node.FullRlp.ToArray());
+        if (node.Keccak is null || !node.FullRlp.IsNotNull) return;
+        _nodes.Add(node.FullRlp.ToArray()!);
     }
 
     private static bool IsPrefix(ReadOnlySpan<byte> target, in TreePath currentPath)

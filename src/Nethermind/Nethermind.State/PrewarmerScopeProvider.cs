@@ -51,7 +51,7 @@ public class PrewarmerScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new ScopeWrapper(baseProvider.BeginScope(baseBlock, metrics), preBlockCaches, logManager, isPrewarmer, metrics);
 
-    public PreBlockCaches? Caches => preBlockCaches;
+    public PreBlockCaches Caches => preBlockCaches;
     public bool IsWarmWorldState => !isPrewarmer;
 
     private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
@@ -207,7 +207,7 @@ public class PrewarmerScopeProvider(
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
+            if (preBlockCache.TryGetValue(in storageCell, out byte[]? value))
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
@@ -219,7 +219,7 @@ public class PrewarmerScopeProvider(
                 preBlockCache.Set(in storageCell, value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
-            return value;
+            return value ?? [];
         }
 
         public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);

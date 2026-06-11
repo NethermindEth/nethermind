@@ -43,12 +43,13 @@ public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
     {
         int port = context.Connection.LocalPort;
 
-        if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
+        if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl? jsonRpcUrl) || !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
         {
             throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
         }
 
-        if (jsonRpcUrl.IsAuthenticated && !await _rpcAuthentication.Authenticate(context.Request.Headers.Authorization))
+        string authorization = context.Request.Headers.Authorization.ToString();
+        if (jsonRpcUrl.IsAuthenticated && (string.IsNullOrEmpty(authorization) || !await _rpcAuthentication.Authenticate(authorization)))
         {
             throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
         }

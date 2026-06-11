@@ -22,16 +22,16 @@ namespace Nethermind.Evm.Benchmark
     [MemoryDiagnoser]
     public class EvmBenchmarks
     {
-        public static byte[] ByteCode { get; set; }
+        public static byte[] ByteCode { get; set; } = null!;
 
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
-        private ExecutionEnvironment _environment;
-        private IVirtualMachine _virtualMachine;
+        private ExecutionEnvironment _environment = null!;
+        private IVirtualMachine _virtualMachine = null!;
         private BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
-        private VmState<EthereumGasPolicy> _evmState;
-        private IWorldState _stateProvider;
+        private VmState<EthereumGasPolicy> _evmState = null!;
+        private IWorldState _stateProvider = null!;
 
         [GlobalSetup]
         public void GlobalSetup()

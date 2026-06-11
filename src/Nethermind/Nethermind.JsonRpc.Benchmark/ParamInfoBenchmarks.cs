@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
@@ -13,7 +14,7 @@ namespace Nethermind.JsonRpc.Benchmark
     {
         // ReSharper disable once UnassignedField.Global
         // ReSharper disable once MemberCanBePrivate.Global
-        [ParamsSource(nameof(Scenarios))] public MethodInfo MethodInfo;
+        [ParamsSource(nameof(Scenarios))] public MethodInfo MethodInfo = null!;
 
         // ReSharper disable once MemberCanBePrivate.Global
         public MethodInfo[] Scenarios { get; } = new MethodInfo[2];
@@ -22,8 +23,10 @@ namespace Nethermind.JsonRpc.Benchmark
 
         public ParamInfoBenchmarks()
         {
-            Scenarios[0] = typeof(EthRpcModule).GetMethod("eth_getStorageAt", BindingFlags.Public | BindingFlags.Instance);
-            Scenarios[1] = typeof(EthRpcModule).GetMethod("eth_blockNumber", BindingFlags.Public | BindingFlags.Instance);
+            Scenarios[0] = typeof(EthRpcModule).GetMethod("eth_getStorageAt", BindingFlags.Public | BindingFlags.Instance)
+                ?? throw new MissingMethodException(nameof(EthRpcModule), "eth_getStorageAt");
+            Scenarios[1] = typeof(EthRpcModule).GetMethod("eth_blockNumber", BindingFlags.Public | BindingFlags.Instance)
+                ?? throw new MissingMethodException(nameof(EthRpcModule), "eth_blockNumber");
         }
 
         [Benchmark(Baseline = true)]

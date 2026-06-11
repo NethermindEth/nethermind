@@ -52,12 +52,18 @@ namespace Nethermind.Network
                 // regression - old format
             }
 
-            NetworkNode networkNode = new(publicKey, ip != string.Empty ? ip : null, port, reputation);
+            if (ip == string.Empty)
+            {
+                throw new RlpException("Persisted network node does not contain host");
+            }
+
+            NetworkNode networkNode = new(publicKey, ip, port, reputation);
             return networkNode;
         }
 
         public override void Encode<TWriter>(ref TWriter writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            ArgumentNullException.ThrowIfNull(item);
             int contentLength = GetContentLength(item, rlpBehaviors);
             writer.StartSequence(contentLength);
             if (!item.IsEnr)
@@ -70,7 +76,8 @@ namespace Nethermind.Network
             writer.Encode(item.Reputation);
         }
 
-        public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+        public override int GetLength(NetworkNode? item, RlpBehaviors rlpBehaviors)
+            => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item)), rlpBehaviors));
 
         private static void EncodeLegacyFormat<TWriter>(ref TWriter writer, NetworkNode item)
             where TWriter : struct, IRlpWriteBackend, allows ref struct

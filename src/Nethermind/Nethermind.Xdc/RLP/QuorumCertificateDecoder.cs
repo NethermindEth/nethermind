@@ -16,10 +16,10 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
     {
         int sequenceLength = decoderContext.ReadSequenceLength();
         if (sequenceLength == 0)
-            return null;
+            return null!;
         int endPosition = decoderContext.Position + sequenceLength;
 
-        BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
+        BlockRoundInfo blockInfo = _blockInfoDecoder.DecodeGuardNotNull(ref decoderContext, rlpBehaviors);
 
         byte[][]? signatureBytes = decoderContext.DecodeByteArrays(innerSize: Signature.Size);
         Signature[]? signatures = null;
@@ -40,7 +40,7 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public override Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;
@@ -83,7 +83,7 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
         writer.Encode(item.GapNumber);
     }
 
-    public override int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

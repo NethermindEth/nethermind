@@ -24,8 +24,8 @@ internal class XdcSealerTests
         Block block = Build.A.Block.WithHeader(Build.A.XdcBlockHeader().TestObject).TestObject;
 
         // Act
-        Block sealedBlock = await sealer.SealBlock(block, CancellationToken.None);
-        XdcBlockHeader sealedHeader = (XdcBlockHeader)sealedBlock.Header;
+        Block? sealedBlock = await sealer.SealBlock(block, CancellationToken.None);
+        XdcBlockHeader sealedHeader = (XdcBlockHeader)sealedBlock!.Header;
 
         // Assert
         Assert.That(sealedHeader.Validator, Is.Not.Null);

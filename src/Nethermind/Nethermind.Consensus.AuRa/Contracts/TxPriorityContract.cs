@@ -41,11 +41,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Constant.Call<Address[]>(new CallInfo(parentHeader, nameof(GetSendersWhitelist), Address.SystemUser) { MissingContractResult = MissingSenderWhitelistResult });
 
         public Destination[] GetMinGasPrices(BlockHeader parentHeader) =>
-            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetMinGasPrices), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult })
+            (Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetMinGasPrices), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult }) ?? [])
                 .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
 
         public Destination[] GetPriorities(BlockHeader parentHeader) =>
-            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetPriorities), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult })
+            (Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetPriorities), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult }) ?? [])
                 .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
 
         public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
@@ -72,9 +72,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             LogEntry logEntry = GetSearchLogEntry(nameof(SendersWhitelistSet));
 
-            if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry))
+            if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry? foundEntry))
             {
-                items = DecodeAddresses(foundEntry.Data);
+                items = DecodeAddresses(foundEntry!.Data);
                 return true;
             }
 
@@ -101,12 +101,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public IDataContract<Destination> Priorities { get; }
 
         public Transaction SetPriority(Address target, byte[] fnSignature, UInt256 weight) =>
-            GenerateTransaction<GeneratedTransaction>(nameof(SetPriority), ContractAddress, target, fnSignature, weight);
+            GenerateTransaction<GeneratedTransaction>(nameof(SetPriority), ContractAddress!, target, fnSignature, weight);
 
         public Transaction SetSendersWhitelist(params Address[] addresses) =>
-            GenerateTransaction<GeneratedTransaction>(nameof(SetSendersWhitelist), ContractAddress, (object)addresses);
+            GenerateTransaction<GeneratedTransaction>(nameof(SetSendersWhitelist), ContractAddress!, (object)addresses);
 
         public Transaction SetMinGasPrice(Address target, byte[] fnSignature, UInt256 weight) =>
-            GenerateTransaction<GeneratedTransaction>(nameof(SetMinGasPrice), ContractAddress, target, fnSignature, weight);
+            GenerateTransaction<GeneratedTransaction>(nameof(SetMinGasPrice), ContractAddress!, target, fnSignature, weight);
     }
 }

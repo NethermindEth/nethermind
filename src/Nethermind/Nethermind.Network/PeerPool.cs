@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,7 +25,7 @@ namespace Nethermind.Network
 {
     public class PeerPool : IPeerPool
     {
-        private PeriodicTimer _peerPersistenceTimer;
+        private PeriodicTimer? _peerPersistenceTimer;
         private Task? _storageCommitTask;
 
         private readonly INodeSource _nodeSource;
@@ -125,7 +126,7 @@ namespace Nethermind.Network
 
         private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
-            Node node = new(arg.Node) { IsTrusted = _trustedNodesManager.IsTrusted(arg.Node.Enode) };
+            Node node = new(arg.Node) { IsTrusted = arg.Node.Enode is not null && _trustedNodesManager.IsTrusted(arg.Node.Enode) };
 
             Peer peer = new(node, _stats.GetOrAdd(node));
 
@@ -133,9 +134,9 @@ namespace Nethermind.Network
             return peer;
         }
 
-        public bool TryGet(PublicKey id, out Peer peer) => Peers.TryGetValue(id, out peer);
+        public bool TryGet(PublicKey id, [NotNullWhen(true)] out Peer? peer) => Peers.TryGetValue(id, out peer);
 
-        public bool TryRemove(PublicKey id, out Peer peer)
+        public bool TryRemove(PublicKey id, [NotNullWhen(true)] out Peer? peer)
         {
             if (!Peers.TryRemove(id, out peer))
                 return false;
@@ -154,14 +155,17 @@ namespace Nethermind.Network
 
         public Peer Replace(ISession session)
         {
-            if (Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer previousPeer))
+            PublicKey obsoleteRemoteNodeId = session.ObsoleteRemoteNodeId
+                ?? throw new InvalidOperationException("Cannot replace a peer session without an obsolete remote node id");
+
+            if (Peers.TryRemove(obsoleteRemoteNodeId, out Peer? previousPeer))
             {
                 // this should happen
                 if (previousPeer.InSession == session || previousPeer.OutSession == session)
                 {
                     // (what with the other session?)
 
-                    _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
+                    _staticPeers.TryRemove(obsoleteRemoteNodeId, out _);
 
                     if (previousPeer is not null)
                     {
@@ -196,8 +200,10 @@ namespace Nethermind.Network
         private async Task RunPeerCommit()
         {
             CancellationToken token = _cancellationTokenSource.Token;
+            PeriodicTimer peerPersistenceTimer = _peerPersistenceTimer
+                ?? throw new InvalidOperationException("Peer persistence timer has not been started");
             while (!token.IsCancellationRequested
-                && await _peerPersistenceTimer.WaitForNextTickAsync(token))
+                && await peerPersistenceTimer.WaitForNextTickAsync(token))
             {
                 try
                 {

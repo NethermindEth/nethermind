@@ -13,8 +13,8 @@ namespace Nethermind.Synchronization.FastBlocks
         public int RequestSize { get; set; }
         public long ResponseSizeEstimate { get; private set; }
 
-        private IOwnedReadOnlyList<BlockHeader?>? _response;
-        public IOwnedReadOnlyList<BlockHeader?>? Response
+        private IOwnedReadOnlyList<BlockHeader>? _response;
+        public IOwnedReadOnlyList<BlockHeader>? Response
         {
             get => _response;
             set

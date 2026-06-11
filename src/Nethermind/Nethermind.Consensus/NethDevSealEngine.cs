@@ -11,11 +11,11 @@ namespace Nethermind.Consensus
 {
     public class NethDevSealEngine(Address? address = null) : ISealer, ISealValidator
     {
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
+        public Task<Block?> SealBlock(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;
             block.Header.Hash = block.CalculateHash();
-            return Task.FromResult(block);
+            return Task.FromResult<Block?>(block);
         }
 
         public bool CanSeal(ulong blockNumber, Hash256 parentHash) => true;

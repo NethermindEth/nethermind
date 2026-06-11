@@ -20,26 +20,20 @@ namespace Nethermind.KeyStore
             _filePasswordProvider = new FilePasswordProvider(Map);
         }
 
-        private static string GetNthOrLast(int n, string[] items)
+        private static string? GetNthOrLast(int n, string?[]? items)
             => items?.Length > 0 ? items[Math.Min(n, items.Length - 1)] : null;
 
-        private string Map(Address address)
+        private string? Map(Address address)
         {
-            string result = string.Empty;
-
             int keyStoreConfigPasswordIndex = _keyStoreConfig.FindUnlockAccountIndex(address);
-            if (keyStoreConfigPasswordIndex >= 0)
-            {
-                string passwordFile = GetNthOrLast(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
-                result = passwordFile ?? string.Empty;
-            }
-
-            return result;
+            return keyStoreConfigPasswordIndex >= 0
+                ? GetNthOrLast(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles)
+                : null;
         }
 
-        public override SecureString GetPassword(Address address)
+        public override SecureString? GetPassword(Address address)
         {
-            SecureString password = null;
+            SecureString? password = null;
             int keyStoreConfigPasswordIndex = _keyStoreConfig.FindUnlockAccountIndex(address);
 
             if (keyStoreConfigPasswordIndex >= 0)

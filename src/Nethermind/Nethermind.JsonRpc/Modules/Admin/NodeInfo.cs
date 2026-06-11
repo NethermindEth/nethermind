@@ -40,15 +40,15 @@ public class NodeInfo
         Ports = new PortsInfo();
     }
 
-    public string Enode { get; set; }
+    public string Enode { get; set; } = null!;
 
-    public string Id { get; set; }
+    public string Id { get; set; } = null!;
 
     public string? Ip { get; set; }
 
-    public string ListenAddress { get; set; }
+    public string ListenAddress { get; set; } = null!;
 
-    public string Name { get; set; }
+    public string Name { get; set; } = null!;
 
     public PortsInfo Ports { get; set; }
 

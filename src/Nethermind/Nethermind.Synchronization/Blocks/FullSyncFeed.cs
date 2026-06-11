@@ -8,7 +8,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FullSyncFeed(IForwardSyncController forwardSyncController) : ActivatedSyncFeed<BlocksRequest?>
+    public class FullSyncFeed(IForwardSyncController forwardSyncController) : ActivatedSyncFeed<BlocksRequest>
     {
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.Full;
 
@@ -17,7 +17,7 @@ namespace Nethermind.Synchronization.Blocks
         // ReSharper disable once RedundantTypeArgumentsOfMethod
         public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default) => forwardSyncController.PrepareRequest(BuildOptions(), 0, token);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, PeerInfo peer = null) => forwardSyncController.HandleResponse(response, peer);
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer = null) => forwardSyncController.HandleResponse(response, peer);
 
         public override bool IsMultiFeed => true;
 

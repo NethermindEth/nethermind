@@ -41,7 +41,7 @@ public sealed class EvmOpcodeGasColumnProvider : IColumnProvider
             Summary summary,
             BenchmarkCase benchmarkCase,
             out long gas,
-            out Statistics stats)
+            out Statistics? stats)
         {
             gas = 0;
             stats = summary.Reports.FirstOrDefault(r => r.BenchmarkCase == benchmarkCase)?.ResultStatistics;
@@ -51,7 +51,7 @@ public sealed class EvmOpcodeGasColumnProvider : IColumnProvider
                 return false;
             }
 
-            object opcodeValue = benchmarkCase.Parameters.Items
+            object? opcodeValue = benchmarkCase.Parameters.Items
                 .FirstOrDefault(p => p.Name == nameof(EvmOpcodesBenchmark.Opcode))
                 ?.Value;
 
@@ -103,7 +103,7 @@ public sealed class EvmOpcodeGasColumnProvider : IColumnProvider
 
         public override string GetValue(Summary summary, BenchmarkCase benchmarkCase)
         {
-            if (!TryGetBenchmarkData(summary, benchmarkCase, out long gas, out Statistics stats) ||
+            if (!TryGetBenchmarkData(summary, benchmarkCase, out long gas, out Statistics? stats) ||
                 stats?.Mean is null ||
                 stats.Mean <= 0)
             {
@@ -133,7 +133,7 @@ public sealed class EvmOpcodeGasColumnProvider : IColumnProvider
                 return "N/A";
             }
 
-            object opcodeValue = benchmarkCase.Parameters.Items
+            object? opcodeValue = benchmarkCase.Parameters.Items
                 .FirstOrDefault(p => p.Name == nameof(EvmOpcodesBenchmark.Opcode))
                 ?.Value;
 

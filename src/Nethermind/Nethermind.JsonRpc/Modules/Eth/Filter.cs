@@ -25,7 +25,7 @@ public class Filter : IJsonRpcParam
 
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
-        JsonDocument doc = null;
+        JsonDocument? doc = null;
         try
         {
             if (filter.ValueKind == JsonValueKind.String)

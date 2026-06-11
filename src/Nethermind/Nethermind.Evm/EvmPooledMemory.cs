@@ -143,7 +143,7 @@ public struct EvmPooledMemory
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
         if (value.PaddingLength > 0)
         {
-            ClearPadding(_memory, intLocation + value.Span.Length, value.PaddingLength);
+            ClearPadding(_memory!, intLocation + value.Span.Length, value.PaddingLength);
         }
 
         return true;

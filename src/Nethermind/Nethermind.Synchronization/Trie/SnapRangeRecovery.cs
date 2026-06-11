@@ -45,7 +45,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
         try
         {
-            Task<IOwnedReadOnlyList<(TreePath, byte[])>>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
+            Task<IOwnedReadOnlyList<(TreePath, byte[])>?>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
                 .Select((_) =>
                 {
                     return peerPool.AllocateAndRun(async (peer) =>
@@ -53,7 +53,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                             if (peer == null) return null;
                             try
                             {
-                                IOwnedReadOnlyList<(TreePath, byte[])> result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
+                                IOwnedReadOnlyList<(TreePath, byte[])>? result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
                                     fullPath,
                                     cts.Token);
                                 if (result is not null) return result;
@@ -93,7 +93,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         ValueHash256 queryPath,
         CancellationToken cancellationToken)
     {
-        if (!peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer snapProtocol)) return null;
+        if (!peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snapProtocol)) return null;
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.
@@ -228,7 +228,11 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             }
             else if (node.IsExtension)
             {
-                checkStack.Push((currentPath.Append(node.Key), node.GetChildHash(1)));
+                Hash256? childHash = node.GetChildHash(1);
+                if (childHash is not null)
+                {
+                    checkStack.Push((currentPath.Append(node.Key), childHash));
+                }
             }
             else if (node.IsLeaf)
             {

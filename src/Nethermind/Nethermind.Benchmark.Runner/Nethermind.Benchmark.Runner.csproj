@@ -5,6 +5,7 @@
     <TieredPGO>true</TieredPGO>
     <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
     <ServerGarbageCollection>true</ServerGarbageCollection>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>

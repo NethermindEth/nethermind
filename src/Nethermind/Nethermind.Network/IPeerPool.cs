@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
@@ -31,12 +32,12 @@ public interface IPeerPool : IStoppableService
     }
 
     Peer GetOrAdd(Node node);
-    bool TryGet(PublicKey id, out Peer peer);
-    bool TryRemove(PublicKey id, out Peer removed);
+    bool TryGet(PublicKey id, [NotNullWhen(true)] out Peer? peer);
+    bool TryRemove(PublicKey id, [NotNullWhen(true)] out Peer? removed);
     Peer Replace(ISession session);
 
-    event EventHandler<PeerEventArgs> PeerAdded;
-    event EventHandler<PeerEventArgs> PeerRemoved;
+    event EventHandler<PeerEventArgs>? PeerAdded;
+    event EventHandler<PeerEventArgs>? PeerRemoved;
 
     void Start();
 }

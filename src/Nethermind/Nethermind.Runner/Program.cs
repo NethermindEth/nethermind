@@ -79,7 +79,7 @@ catch (Exception ex)
 {
     ILogger criticalLogger = GetCriticalLogger();
 
-    ex = ex is AggregateException aex ? aex.InnerException : ex;
+    ex = ex is AggregateException aex ? aex.InnerException ?? ex : ex;
 
     criticalLogger.Error($"{unhandledError}.", ex);
 
@@ -264,7 +264,8 @@ void AddConfigurationOptions(Command command)
 {
     static Option CreateOption<T>(Type configType, string name, string? alias)
     {
-        string category = ConfigExtensions.GetCategoryName(configType);
+        string category = ConfigExtensions.GetCategoryName(configType)
+            ?? throw new InvalidOperationException($"Config category not found for {configType.FullName}.");
         alias = string.IsNullOrWhiteSpace(alias) ? name : alias;
 
         return new Option<T>($"--{category}.{name}", $"--{category}-{alias}".ToLowerInvariant());
@@ -486,7 +487,7 @@ RootCommand CreateRootCommand()
 
     rootCommand.Description = "Nethermind Ethereum execution client";
 
-    VersionOption versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
+    VersionOption? versionOption = rootCommand.Children.OfType<VersionOption>().SingleOrDefault();
 
     if (versionOption is not null)
     {

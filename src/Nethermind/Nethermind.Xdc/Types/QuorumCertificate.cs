@@ -11,7 +11,7 @@ public class QuorumCertificate(BlockRoundInfo proposedBlockInfo, Signature[]? si
 {
     private static readonly QuorumCertificateDecoder _decoder = new();
     public BlockRoundInfo ProposedBlockInfo { get; set; } = proposedBlockInfo;
-    public Signature[] Signatures { get; set; } = signatures;
+    public Signature[] Signatures { get; set; } = signatures ?? [];
     public ulong GapNumber { get; set; } = gapNumber;
 
     protected override void Encode(ref KeccakRlpWriter writer) =>

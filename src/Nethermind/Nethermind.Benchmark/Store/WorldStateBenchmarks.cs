@@ -19,8 +19,8 @@ namespace Nethermind.Benchmarks.Store;
 
 public class WorldStateBenchmarks
 {
-    private IContainer _container;
-    private IWorldState _globalWorldState;
+    private IContainer _container = null!;
+    private IWorldState _globalWorldState = null!;
 
     private const int _accountCount = 1024 * 4;
     private const int _contractCount = 128;
@@ -28,13 +28,13 @@ public class WorldStateBenchmarks
     private const int _bigContractSlotsCount = 1024 * 4;
     private const int _loopSize = 1024 * 10;
 
-    private Address[] _accounts;
-    private Address[] _contracts;
-    private (Address Account, UInt256 Slot)[] _slots;
-    private Address _bigContract;
-    private UInt256[] _bigContractSlots;
+    private Address[] _accounts = null!;
+    private Address[] _contracts = null!;
+    private (Address Account, UInt256 Slot)[] _slots = null!;
+    private Address _bigContract = null!;
+    private UInt256[] _bigContractSlots = null!;
     private IReleaseSpec _releaseSpec = new Prague();
-    private BlockHeader _baseBlock;
+    private BlockHeader _baseBlock = null!;
 
     [GlobalSetup]
     public void Setup()

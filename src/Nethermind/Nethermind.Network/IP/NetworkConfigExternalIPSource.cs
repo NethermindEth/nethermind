@@ -13,11 +13,11 @@ namespace Nethermind.Network.IP
         private readonly INetworkConfig _config = config;
         private readonly ILogger _logger = logManager.GetClassLogger<NetworkConfigExternalIPSource>();
 
-        public Task<(bool, IPAddress)> TryGetIP()
+        public Task<(bool, IPAddress?)> TryGetIP()
         {
             if (_config.ExternalIp is not null)
             {
-                bool result = IPAddress.TryParse(_config.ExternalIp, out IPAddress ipAddress);
+                bool result = IPAddress.TryParse(_config.ExternalIp, out IPAddress? ipAddress);
 
                 if (result)
                 {
@@ -31,7 +31,7 @@ namespace Nethermind.Network.IP
                 return Task.FromResult((result, ipAddress));
             }
 
-            return Task.FromResult((false, (IPAddress)null));
+            return Task.FromResult<(bool, IPAddress?)>((false, null));
         }
     }
 }

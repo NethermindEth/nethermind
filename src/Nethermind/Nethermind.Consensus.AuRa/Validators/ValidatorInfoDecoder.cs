@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             int i = 0;
             while (decoderContext.Position < addressesCheck)
             {
-                addresses[i++] = decoderContext.DecodeAddress();
+                addresses[i++] = decoderContext.DecodeAddressNonNull();
             }
             decoderContext.Check(addressesCheck);
             decoderContext.Check(check);

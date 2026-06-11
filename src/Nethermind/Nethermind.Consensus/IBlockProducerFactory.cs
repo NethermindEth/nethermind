@@ -8,9 +8,9 @@ public interface IBlockProducerFactory
     /// <summary>
     /// Creates a block producer.
     /// </summary>
-    /// <param name="additionalTxSource">Optional parameter. If present this transaction source should be used before any other transaction sources, except consensus ones. Plugin still should use their own transaction sources.</param>
+    /// <returns>A block producer, or <c>null</c> when the consensus engine does not provide one.</returns>
     /// <remarks>
     /// Can be called many times, with different parameters, each time should create a new instance. Example usage in MEV plugin.
     /// </remarks>
-    IBlockProducer InitBlockProducer();
+    IBlockProducer? InitBlockProducer();
 }

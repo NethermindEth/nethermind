@@ -32,7 +32,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
         foreach (StorageCell storageCell in accessedStorageCells)
         {
-            if (!dictionary.TryGetValue(storageCell.Address, out ISet<UInt256> set))
+            if (!dictionary.TryGetValue(storageCell.Address, out ISet<UInt256>? set))
             {
                 dictionary[storageCell.Address] = set = new HashSet<UInt256>();
             }
@@ -43,7 +43,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
         for (int i = 0; i < addressesToOptimize.Length; i++)
         {
             Address address = addressesToOptimize[i];
-            if (dictionary.TryGetValue(address, out ISet<UInt256> set) && set.Count == 0)
+            if (dictionary.TryGetValue(address, out ISet<UInt256>? set) && set.Count == 0)
             {
                 dictionary.Remove(address);
             }

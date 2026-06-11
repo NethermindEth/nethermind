@@ -284,6 +284,7 @@ public partial class BlockAccessListManager(
             _currentGeneratedBlockAccessList,
             RegisterGeneratedSlice);
 
+    [MemberNotNull(nameof(_txProcessorWithWorldStateManager), nameof(_gasRemaining), nameof(_blockExecutionContext))]
     private void CheckInitialized()
     {
         if (_txProcessorWithWorldStateManager is null) ThrowNotInitialized(nameof(_txProcessorWithWorldStateManager));

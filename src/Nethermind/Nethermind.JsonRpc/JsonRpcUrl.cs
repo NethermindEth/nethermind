@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc
 
         public bool IsModuleEnabled(string moduleName) => EnabledModules.Contains(moduleName);
 
-        public bool Equals(JsonRpcUrl other)
+        public bool Equals(JsonRpcUrl? other)
         {
             if (other is null)
                 return false;
@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc
                        StringComparer.OrdinalIgnoreCase);
         }
 
-        public override bool Equals(object other)
+        public override bool Equals(object? other)
         {
             if (other is null)
                 return false;
@@ -108,4 +108,3 @@ namespace Nethermind.JsonRpc
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
     }
 }
-

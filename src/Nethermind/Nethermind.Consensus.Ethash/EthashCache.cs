@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.Ethash
 
         private readonly ArrayPool<Bucket> _arrayPool = ArrayPool<Bucket>.Create(1024 * 1024 * 2, 50);
 
-        private Bucket[] Data { get; set; }
+        private Bucket[]? Data { get; set; }
 
         public uint Size { get; set; }
 
@@ -65,12 +65,13 @@ namespace Nethermind.Consensus.Ethash
             uint cachePageCount = cacheSize / Ethash.HashBytes;
             Size = cachePageCount * Ethash.HashBytes;
 
-            Data = _arrayPool.Rent((int)cachePageCount);
-            Data[0] = MemoryMarshal.Cast<uint, Bucket>(Keccak512.ComputeToUInts(seed))[0];
+            Bucket[] data = _arrayPool.Rent((int)cachePageCount);
+            Data = data;
+            data[0] = MemoryMarshal.Cast<uint, Bucket>(Keccak512.ComputeToUInts(seed))[0];
 
             for (uint i = 1; i < cachePageCount; i++)
             {
-                Keccak512.ComputeUIntsToUInts(Data[i - 1].AsUInts(), Data[i].AsUInts());
+                Keccak512.ComputeUIntsToUInts(data[i - 1].AsUInts(), data[i].AsUInts());
             }
 
             // http://www.hashcash.org/papers/memohash.pdf
@@ -79,10 +80,10 @@ namespace Nethermind.Consensus.Ethash
             {
                 for (int i = 0; i < cachePageCount; i++)
                 {
-                    uint v = Data[i].Item0 % cachePageCount;
+                    uint v = data[i].Item0 % cachePageCount;
                     long page = (i - 1 + cachePageCount) % cachePageCount;
-                    Data[i] = Bucket.Xor(Data[page], Data[v]);
-                    Span<uint> bucketAsUInts = Data[i].AsUInts();
+                    data[i] = Bucket.Xor(data[page], data[v]);
+                    Span<uint> bucketAsUInts = data[i].AsUInts();
                     Keccak512.ComputeUIntsToUInts(bucketAsUInts, bucketAsUInts);
                 }
             }
@@ -92,9 +93,10 @@ namespace Nethermind.Consensus.Ethash
         {
             uint n = Size / Ethash.HashBytes;
             int r = Ethash.HashBytes / Ethash.WordBytes;
+            Bucket[] data = Data ?? throw new ObjectDisposedException(nameof(EthashCache));
 
             uint[] mixInts = new uint[Ethash.HashBytes / Ethash.WordBytes];
-            Data[i % n].AsUInts().CopyTo(mixInts);
+            data[i % n].AsUInts().CopyTo(mixInts);
 
             mixInts[0] = i ^ mixInts[0];
             Keccak512.ComputeUIntsToUInts(mixInts, mixInts);
@@ -102,7 +104,7 @@ namespace Nethermind.Consensus.Ethash
             for (uint j = 0; j < Ethash.DataSetParents; j++)
             {
                 ulong cacheIndex = Ethash.Fnv(i ^ j, mixInts[j % r]);
-                Ethash.Fnv(mixInts, MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref Data[cacheIndex % n], 1)));
+                Ethash.Fnv(mixInts, MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref data[cacheIndex % n], 1)));
             }
 
             Keccak512.ComputeUIntsToUInts(mixInts, mixInts);
@@ -120,7 +122,12 @@ namespace Nethermind.Consensus.Ethash
 
             isDisposed = true;
 
-            Bucket[] data = Data;
+            Bucket[]? data = Data;
+            if (data is null)
+            {
+                return;
+            }
+
             Data = null;
             _arrayPool.Return(data);
         }

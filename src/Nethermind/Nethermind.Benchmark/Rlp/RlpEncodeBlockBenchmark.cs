@@ -17,7 +17,7 @@ namespace Nethermind.Benchmarks.Rlp
     {
         private static BlockDecoder _blockDecoder = new();
 
-        private static Block _block;
+        private static Block _block = null!;
 
         private Block[] _scenarios;
 

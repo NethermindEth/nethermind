@@ -24,7 +24,7 @@ public class XdcConsensusContext : IXdcConsensusContext
     public QuorumCertificate HighestQC { get; set; }
     public QuorumCertificate? LockQC { get; set; }
     public TimeoutCertificate HighestTC { get; set; }
-    public BlockRoundInfo HighestCommitBlock { get; set; }
+    public BlockRoundInfo? HighestCommitBlock { get; set; }
 
     public event EventHandler<NewRoundEventArgs>? NewRoundSetEvent;
 

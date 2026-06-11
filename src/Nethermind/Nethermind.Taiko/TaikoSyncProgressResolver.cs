@@ -59,5 +59,5 @@ public sealed class TaikoSyncProgressResolver(
     // when Difficulty carries the per-block zk-gas value.
     public UInt256? GetTotalDifficulty(Hash256 blockHash) => UInt256.Zero;
     public void RecalculateProgressPointers() => inner.RecalculateProgressPointers();
-    public (ulong BlockNumber, Hash256 BlockHash) SyncPivot => inner.SyncPivot;
+    public (ulong BlockNumber, Hash256? BlockHash) SyncPivot => inner.SyncPivot;
 }

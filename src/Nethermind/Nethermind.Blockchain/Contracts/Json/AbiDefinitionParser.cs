@@ -19,17 +19,19 @@ namespace Nethermind.Blockchain.Contracts.Json
         {
         }
 
-        public AbiDefinition Parse(string json, string name = null)
+        public AbiDefinition Parse(string json, string? name = null)
         {
-            AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(json, SourceGenerationContext.Default.AbiDefinition);
-            definition.Name = name;
+            AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(json, SourceGenerationContext.Default.AbiDefinition)
+                ?? throw new JsonException("ABI definition could not be deserialized.");
+            definition.Name = name ?? string.Empty;
             return definition;
         }
 
         public AbiDefinition Parse(Type type)
         {
             using Stream reader = LoadResource(type);
-            AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(reader, SourceGenerationContext.Default.AbiDefinition);
+            AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(reader, SourceGenerationContext.Default.AbiDefinition)
+                ?? throw new JsonException("ABI definition could not be deserialized.");
             definition.Name = type.Name;
             return definition;
         }
@@ -47,7 +49,7 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         private static Stream LoadResource(Type type)
         {
-            string jsonResource = type.FullName.Replace("+", ".") + ".json";
+            string jsonResource = type.FullName!.Replace("+", ".") + ".json";
 #if DEBUG
             string[] names = type.Assembly.GetManifestResourceNames();
 #endif

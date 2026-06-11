@@ -60,7 +60,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
             for (int i = 0; i < _pendingEntries.Count; i++)
             {
                 PathWithAccount account = _pendingEntries[i];
-                if (account.Path <= upperBound)
+                if (account.Path <= upperBound && account.Account is not null)
                 {
                     if (_enableDoubleWriteCheck && _reader.GetAccountRaw(account.Path) is not null)
                         throw new Exception($"Double account flat write. {account.Path}");

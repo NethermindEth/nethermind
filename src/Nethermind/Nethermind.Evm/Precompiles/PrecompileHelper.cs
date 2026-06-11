@@ -21,7 +21,7 @@ public static class PrecompileHelper
         string name = _names.GetOrAdd(type, t =>
         {
             PropertyInfo? prop = t.GetProperty(nameof(IPrecompile.Name), BindingFlags.Static | BindingFlags.Public);
-            return prop is null ? string.Empty : prop.GetValue(null) as string;
+            return prop is null ? string.Empty : prop.GetValue(null) as string ?? string.Empty;
         });
 
         return name;

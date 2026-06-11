@@ -75,22 +75,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     ILogManager? logManager) : IVirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
+    private readonly ValueHash256 _chainId = ((UInt256)(specProvider ?? throw new ArgumentNullException(nameof(specProvider))).ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<VmState<TGasPolicy>> _stateStack = new();
 
-    protected IWorldState _worldState;
+    protected IWorldState _worldState = null!;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
 
     protected ITxTracer _txTracer = NullTxTracer.Instance;
 
-    private ICodeInfoRepository _codeInfoRepository;
+    private ICodeInfoRepository _codeInfoRepository = null!;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
-    protected VmState<TGasPolicy> _currentState;
+    protected VmState<TGasPolicy> _currentState = null!;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
 
@@ -101,7 +101,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
-    public object ReturnData { get; set; }
+    public object? ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
 
@@ -225,7 +225,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
                         if (terminate)
                         {
-                            _currentState = null;
+                            _currentState = null!;
                             return substate;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
@@ -241,7 +241,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
-                    _currentState = null;
+                    _currentState = null!;
                     return substate;
                 }
 
@@ -324,7 +324,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)
             {
-                _currentState = null;
+                _currentState = null!;
                 return failSubstate;
             }
         }
@@ -717,7 +717,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _stateStack.Push(_currentState);
 
         // Transition to the next call frame's state provided by the call result.
-        _currentState = callResult.StateToExecute;
+        _currentState = callResult.StateToExecute!;
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
@@ -1052,7 +1052,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
         {
-            if (_logger.IsError) LogMissingDependency(precompile, exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
+            if (_logger.IsError) LogMissingDependency(precompile, (exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException)!);
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
@@ -1371,7 +1371,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     Revert:
         // Return a CallResult indicating a revert.
-        return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
+        return new CallResult((byte[])ReturnData!, null, shouldRevert: true, exceptionType);
     ReturnFailure:
         // EIP-8037: write gas back to state on failure so RestoreChildStateGasOnHalt
         // can read accumulated StateGasUsed/StateGasSpill from the child frame.

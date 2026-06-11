@@ -11,11 +11,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         [JsonPropertyName("method")]
         [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string MethodName { get; set; }
+        public string? MethodName { get; set; }
 
         [JsonPropertyOrder(2)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public JsonRpcSubscriptionResult Params { get; set; }
+        public JsonRpcSubscriptionResult? Params { get; set; }
 
         [JsonPropertyOrder(3)]
         [JsonConverter(typeof(JsonRpcIdConverter))]
@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         [JsonPropertyOrder(2)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public new JsonRpcSubscriptionResult<T> Params { get; set; }
+        public new JsonRpcSubscriptionResult<T>? Params { get; set; }
 
         internal override void WriteTo(Utf8JsonWriter writer, JsonSerializerOptions options)
         {
@@ -80,9 +80,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void WriteParams(Utf8JsonWriter writer, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
-            writer.WriteString("subscription"u8, Params.Subscription);
+            JsonRpcSubscriptionResult<T> @params = Params!;
+            writer.WriteString("subscription"u8, @params.Subscription);
 
-            T result = Params.Result;
+            T result = @params.Result;
             if (result is null)
             {
                 writer.WriteEndObject();

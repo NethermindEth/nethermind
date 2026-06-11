@@ -8,8 +8,8 @@ namespace Nethermind.Benchmarks.Core
 {
     public class FromHexBenchmarks
     {
-        private byte[] _hex;
-        private byte[] _bytes;
+        private byte[] _hex = null!;
+        private byte[] _bytes = null!;
 
         [Params(32, 64, 128, 256, 512, 1024)]
         public int ByteLength;

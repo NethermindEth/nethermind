@@ -35,7 +35,7 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
                 throw new JsonException("Expected start of object");
             }
 
-            GethLikeTxTrace trace = null;
+            GethLikeTxTrace? trace = null;
             Hash256? txHash = null;
 
             while (reader.Read())

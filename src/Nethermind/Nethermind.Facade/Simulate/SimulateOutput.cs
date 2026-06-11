@@ -13,5 +13,5 @@ public class SimulateOutput<TTrace>
     public bool IsInvalidInput { get; set; }
     public TransactionResult TransactionResult { get; set; }
 
-    public IReadOnlyList<SimulateBlockResult<TTrace>> Items { get; init; }
+    public IReadOnlyList<SimulateBlockResult<TTrace>> Items { get; init; } = [];
 }

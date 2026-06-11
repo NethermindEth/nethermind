@@ -36,7 +36,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
 
-        Hash256 currentHash = startingNodeHash;
+        Hash256? currentHash = startingNodeHash;
         TreePath currentPath = startingPath;
         TreePath queryPath = new(fullPath, 64);
 
@@ -51,8 +51,9 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
         do
         {
             // In case of deeper node that already exist.
-            byte[]? nodeRlp = nodeStorage.Get(address, currentPath, currentHash);
-            nodeRlp ??= await FetchRlp(rootHash, address, currentPath, currentHash, cts.Token);
+            Hash256 hash = currentHash;
+            byte[]? nodeRlp = nodeStorage.Get(address, currentPath, hash);
+            nodeRlp ??= await FetchRlp(rootHash, address, currentPath, hash, cts.Token);
 
             if (nodeRlp is null)
             {
@@ -130,7 +131,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 return data[0].ToArray();
             }
         }
-        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer))
+        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer? snapSyncPeer))
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via snap");
             PathGroup group;

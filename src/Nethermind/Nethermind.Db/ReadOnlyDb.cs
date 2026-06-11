@@ -29,15 +29,15 @@ namespace Nethermind.Db
             _memDb.Set(key, value, flags);
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
         {
             get
             {
-                KeyValuePair<byte[], byte[]>[]? result = wrappedDb[keys];
-                KeyValuePair<byte[], byte[]>[]? memResult = _memDb[keys];
+                KeyValuePair<byte[], byte[]?>[] result = wrappedDb[keys];
+                KeyValuePair<byte[], byte[]?>[] memResult = _memDb[keys];
                 for (int i = 0; i < memResult.Length; i++)
                 {
-                    KeyValuePair<byte[], byte[]> memValue = memResult[i];
+                    KeyValuePair<byte[], byte[]?> memValue = memResult[i];
                     if (memValue.Value is not null)
                     {
                         result[i] = memValue;

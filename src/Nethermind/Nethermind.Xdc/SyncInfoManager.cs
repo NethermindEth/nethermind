@@ -81,7 +81,7 @@ internal class SyncInfoManager(
         }
     }
 
-    public bool VerifySyncInfo(SyncInfo syncInfo, [NotNullWhen(false)] out string error)
+    public bool VerifySyncInfo(SyncInfo syncInfo, [NotNullWhen(false)] out string? error)
     {
         if (xdcContext.HighestQC.ProposedBlockInfo.Round >= syncInfo.HighestQuorumCert.ProposedBlockInfo.Round &&
             xdcContext.HighestTC is not null && xdcContext.HighestTC?.Round >= syncInfo.HighestTimeoutCert.Round)
@@ -93,6 +93,7 @@ internal class SyncInfoManager(
         if (!qcManager.VerifyCertificate(syncInfo.HighestQuorumCert, out error) ||
             !timeoutManager.VerifyTimeoutCertificate(syncInfo.HighestTimeoutCert, out error))
         {
+            error ??= "SyncInfo contains invalid certificates.";
             return false;
         }
         return true;

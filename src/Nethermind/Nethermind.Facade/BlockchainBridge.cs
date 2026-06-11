@@ -82,7 +82,7 @@ namespace Nethermind.Facade
             [NotNullWhen(true)] out Block? block,
             [NotNullWhen(true)] out TxReceipt[]? receipts)
         {
-            Hash256 blockHash = receiptStorage.FindBlockHash(txHash);
+            Hash256? blockHash = receiptStorage.FindBlockHash(txHash);
             if (blockHash is not null)
             {
                 block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
@@ -124,7 +124,7 @@ namespace Nethermind.Facade
             {
                 TransactionForRpcContext extraData = new(
                     chainId: specProvider.ChainId,
-                    blockHash: block.Hash,
+                    blockHash: block.Hash!,
                     blockNumber: block.Number,
                     txIndex: txReceipt!.Index,
                     blockTimestamp: block.Timestamp,
@@ -183,7 +183,7 @@ namespace Nethermind.Facade
             {
                 Error = result.GetErrorMessage(tracer.Error),
                 GasSpent = tracer.GasSpent,
-                OutputData = tracer.ReturnValue,
+                OutputData = tracer.ReturnValue ?? [],
                 InputError = !result.TransactionExecuted,
                 ExecutionReverted = result.EvmExceptionType == EvmExceptionType.Revert,
             };
@@ -272,7 +272,7 @@ namespace Nethermind.Facade
             {
                 Error = error,
                 GasSpent = estimate,
-                OutputData = estimateGasTracer.ReturnValue,
+                OutputData = estimateGasTracer.ReturnValue ?? [],
                 InputError = !executionReverted && error is not null && (error != probeError),
                 ExecutionReverted = executionReverted
             };
@@ -356,7 +356,7 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = outputTracer.GasSpent,
                 OperationGas = outputTracer.OperationGas,
-                OutputData = outputTracer.ReturnValue,
+                OutputData = outputTracer.ReturnValue ?? [],
                 InputError = !result.TransactionExecuted,
                 ExecutionReverted = executionReverted,
                 AccessList = accessTracer.AccessList,
@@ -368,17 +368,18 @@ namespace Nethermind.Facade
             int idx;
             if (!optimize)
             {
-                buffer[0] = header.GasBeneficiary;
+                buffer[0] = header.GasBeneficiary ?? Address.Zero;
                 idx = 1;
             }
             else
             {
                 // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
                 // so excluding them keeps the returned access list minimal.
-                UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
-                buffer[0] = tx.SenderAddress;
-                buffer[1] = tx.GetRecipient(senderNonce);
-                buffer[2] = header.GasBeneficiary;
+                Address senderAddress = tx.SenderAddress ?? Address.Zero;
+                UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, senderAddress) : UInt256.Zero;
+                buffer[0] = senderAddress;
+                buffer[1] = tx.GetRecipient(senderNonce) ?? Address.Zero;
+                buffer[2] = header.GasBeneficiary ?? Address.Zero;
                 idx = 3;
             }
 
@@ -498,7 +499,7 @@ namespace Nethermind.Facade
             BlockHeader toBlock,
             CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
 
-        public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
+        public bool TryGetLogs(int filterId, [NotNullWhen(true)] out IEnumerable<FilterLog>? filterLogs, CancellationToken cancellationToken = default)
         {
             LogFilter? filter;
             filterLogs = null;

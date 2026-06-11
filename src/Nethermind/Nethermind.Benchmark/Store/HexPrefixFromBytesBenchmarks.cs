@@ -10,7 +10,7 @@ namespace Nethermind.Benchmarks.Store
 {
     public class HexPrefixFromBytesBenchmarks
     {
-        private byte[] _a;
+        private byte[] _a = null!;
 
         private byte[][] _scenarios = new byte[][]
         {

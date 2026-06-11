@@ -78,13 +78,13 @@ namespace Nethermind.Network
             rlpxHost.SessionDisconnected += _onSessionDisconnected;
         }
 
-        private void SessionCreated(object sender, SessionEventArgs e)
+        private void SessionCreated(object? sender, SessionEventArgs e)
         {
             _sessions.TryAdd(e.Session.SessionId, e.Session);
             e.Session.Initialized += _onSessionInitialized;
         }
 
-        private void SessionDisconnected(object sender, ISession session, DisconnectEventArgs e)
+        private void SessionDisconnected(object? sender, ISession session, DisconnectEventArgs e)
         {
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
@@ -112,16 +112,16 @@ namespace Nethermind.Network
                 }
             }
 
-            PublicKey sessionKey = session.Node?.Id;
+            PublicKey? sessionKey = session.Node?.Id;
             if (sessionKey is not null && sessionKey != handlerKey)
             {
-                _txPool.RemovePeer(session.Node.Id);
+                _txPool.RemovePeer(sessionKey);
             }
         }
 
-        private void SessionInitialized(object sender, EventArgs e)
+        private void SessionInitialized(object? sender, EventArgs e)
         {
-            ISession session = (ISession)sender;
+            ISession session = (ISession)sender!;
             InitProtocol(session, Protocol.P2P, session.P2PVersion);
         }
 
@@ -279,7 +279,7 @@ namespace Nethermind.Network
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))
                 {
-                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
+                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? handlerDictionary))
                     {
                         foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
                         {

@@ -67,12 +67,12 @@ namespace Nethermind.Blockchain.Contracts
             try
             {
                 _transactionProcessor.Execute(transaction, header, tracer);
-                result = tracer.ReturnValue;
+                result = tracer.ReturnValue ?? [];
                 return tracer.StatusCode == StatusCode.Success;
             }
             catch (Exception)
             {
-                result = null;
+                result = [];
                 return false;
             }
         }
@@ -109,7 +109,7 @@ namespace Nethermind.Blockchain.Contracts
                 return true;
             }
 
-            result = null;
+            result = [];
             return false;
         }
 

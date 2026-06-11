@@ -178,7 +178,7 @@ public class AdminRpcModule : IAdminRpcModule
 
         try
         {
-            ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
+            ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient!, subscriptionName, args));
             return successfulResult;
         }
         catch (KeyNotFoundException)
@@ -197,13 +197,13 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<bool> admin_unsubscribe(string subscriptionId)
     {
-        bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
+        bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient!, subscriptionId);
         return unsubscribed
             ? ResultWrapper<bool>.Success(true)
             : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
     }
 
-    public JsonRpcContext Context { get; set; }
+    public JsonRpcContext Context { get; set; } = null!;
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() => _jsonRpcConfig.BuildTimeoutCancellationToken();
 

@@ -94,7 +94,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
         ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-        ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
+        ArrayPoolList<TxReceipt[]?> txReceipts = new(hashes.Length);
         bool lastBlockIncomplete = false;
 
         try
@@ -211,14 +211,14 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         }
     }
 
-    public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+    public override async Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
     {
         if (blockHashes.Count == 0)
         {
-            return ArrayPoolList<TxReceipt[]>.Empty();
+            return ArrayPoolList<TxReceipt[]?>.Empty();
         }
 
-        return await _nodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]>, Hash256, TxReceipt[]>(
+        return await NodeStats.RunSizeAndLatencyRequestSizer<IOwnedReadOnlyList<TxReceipt[]?>, Hash256, TxReceipt[]?>(
             RequestType.Receipts,
             blockHashes,
             async clampedHashes =>
@@ -228,9 +228,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             });
     }
 
-    private async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendGetReceiptsWithPaging(IOwnedReadOnlyList<Hash256> blockHashes, CancellationToken token)
+    private async Task<(IOwnedReadOnlyList<TxReceipt[]?>, long)> SendGetReceiptsWithPaging(IOwnedReadOnlyList<Hash256> blockHashes, CancellationToken token)
     {
-        ArrayPoolList<TxReceipt[]> aggregated = new(blockHashes.Count);
+        ArrayPoolList<TxReceipt[]?> aggregated = new(blockHashes.Count);
         ArrayPoolList<TxReceipt>? partialReceipts = null;
         ulong partialReceiptsGas = 0;
         ulong partialReceiptsLogsGas = 0;
@@ -481,9 +481,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         return (response, (ulong)request.ResponseSize);
     }
 
-    private readonly struct ReceiptsResponse(IOwnedReadOnlyList<TxReceipt[]> txReceipts, bool lastBlockIncomplete)
+    private readonly struct ReceiptsResponse(IOwnedReadOnlyList<TxReceipt[]?> txReceipts, bool lastBlockIncomplete)
     {
-        public IOwnedReadOnlyList<TxReceipt[]> TxReceipts { get; } = txReceipts;
+        public IOwnedReadOnlyList<TxReceipt[]?> TxReceipts { get; } = txReceipts;
 
         public bool LastBlockIncomplete { get; } = lastBlockIncomplete;
     }

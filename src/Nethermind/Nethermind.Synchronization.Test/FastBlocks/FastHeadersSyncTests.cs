@@ -592,7 +592,19 @@ public class FastHeadersSyncTests
                 }
             if (!useNulls)
                 list = list.Where(h => h is not null).ToList();
-            batch.Response = list.ToPooledList();
+            if (useNulls)
+            {
+                batch.Response = (IOwnedReadOnlyList<BlockHeader>)(object)list.ToPooledList<BlockHeader?>();
+                return;
+            }
+
+            ArrayPoolList<BlockHeader> response = new(list.Count);
+            foreach (BlockHeader? header in list)
+            {
+                response.Add(header!);
+            }
+
+            batch.Response = response;
         }
 
         FillBatch(firstBatch!, lowestInserted - (ulong)firstBatch!.RequestSize, false);
@@ -639,13 +651,13 @@ public class FastHeadersSyncTests
 
         void FillBatch(HeadersSyncBatch batch)
         {
-            List<BlockHeader?> list = new(batch.RequestSize);
+            List<BlockHeader> list = new(batch.RequestSize);
             ulong current = batch.StartNumber;
             for (int j = 0; j < batch.RequestSize; j++, current++)
             {
                 list.Add(peerChain.FindBlock(current, BlockTreeLookupOptions.None)!.Header);
             }
-            batch.Response = list.ToPooledList();
+            batch.Response = list.ToPooledList<BlockHeader>();
         }
 
         using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
@@ -808,7 +820,7 @@ public class FastHeadersSyncTests
         BlockHeader randomBlockHeader = Build.A.BlockHeader.WithNumber(999999).TestObject;
         await foreach (HeadersSyncBatch headersSyncBatch in batchToProcess.Reader.ReadAllAsync())
         {
-            headersSyncBatch.Response = new ArrayPoolList<BlockHeader?>(1) { randomBlockHeader };
+            headersSyncBatch.Response = new ArrayPoolList<BlockHeader>(1) { randomBlockHeader };
             feed.HandleResponse(headersSyncBatch);
         }
 

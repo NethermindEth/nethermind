@@ -14,7 +14,7 @@ public static class TracerExtensions
     public static CancellationBlockTracer WithCancellation(this IBlockTracer blockTracer, CancellationToken cancellationToken) =>
         new(blockTracer, cancellationToken);
 
-    public static T? GetTracer<T>(this ITxTracer txTracer)
+    public static T? GetTracer<T>(this ITxTracer? txTracer)
         where T : class, ITxTracer
     {
         if (txTracer is null)

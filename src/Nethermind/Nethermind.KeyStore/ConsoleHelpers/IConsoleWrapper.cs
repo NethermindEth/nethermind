@@ -7,7 +7,7 @@ namespace Nethermind.KeyStore.ConsoleHelpers
 {
     public interface IConsoleWrapper
     {
-        void WriteLine(string message = null);
+        void WriteLine(string? message = null);
 
         ConsoleKeyInfo ReadKey(bool intercept);
 

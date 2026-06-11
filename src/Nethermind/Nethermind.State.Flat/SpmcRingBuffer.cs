@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Threading;
 
@@ -93,7 +94,7 @@ public sealed class SpmcRingBuffer<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryDequeue(out T item)
+    public bool TryDequeue([MaybeNullWhen(false)] out T item)
     {
         while (true)
         {

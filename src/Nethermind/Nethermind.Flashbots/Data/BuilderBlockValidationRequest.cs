@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
@@ -17,18 +18,18 @@ public class BuilderBlockValidationRequest(
 {
     [JsonRequired]
     [JsonPropertyName("message")]
-    public BidTrace Message { get; set; } = message;
+    public BidTrace Message { get; set; } = message ?? throw new JsonException("message must not be null");
 
     [JsonRequired]
     [JsonPropertyName("execution_payload")]
-    public RExecutionPayloadV3 ExecutionPayload { get; set; } = executionPayload;
+    public RExecutionPayloadV3 ExecutionPayload { get; set; } = executionPayload ?? throw new JsonException("execution_payload must not be null");
 
     [JsonRequired]
     [JsonPropertyName("blobs_bundle")]
-    public BlobsBundleV1 BlobsBundle { get; set; } = blobsBundle;
+    public BlobsBundleV1 BlobsBundle { get; set; } = blobsBundle ?? throw new JsonException("blobs_bundle must not be null");
 
     [JsonPropertyName("signature")]
-    public byte[] Signature { get; set; } = signature;
+    public byte[]? Signature { get; set; } = signature;
 
     [JsonRequired]
     [JsonPropertyName("registered_gas_limit")]
@@ -40,5 +41,5 @@ public class BuilderBlockValidationRequest(
     /// </summary>
     [JsonRequired]
     [JsonPropertyName("parent_beacon_block_root")]
-    public Hash256? ParentBeaconBlockRoot { get; set; } = parentBeaconBlockRoot;
+    public Hash256 ParentBeaconBlockRoot { get; set; } = parentBeaconBlockRoot ?? throw new JsonException("parent_beacon_block_root must not be null");
 }

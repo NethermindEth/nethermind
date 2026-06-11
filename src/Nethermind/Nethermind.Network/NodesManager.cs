@@ -61,12 +61,16 @@ public abstract class NodesManager(string path, ILogger logger)
         }
 
         // Create the directory if needed
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        string? directoryName = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directoryName))
+        {
+            Directory.CreateDirectory(directoryName);
+        }
 
         if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path)}");
 
         using Stream actualNodes = File.Create(path);
-        using Stream embeddedNodes = typeof(NodesManager).Assembly.GetManifestResourceStream(resource);
+        using Stream? embeddedNodes = typeof(NodesManager).Assembly.GetManifestResourceStream(resource);
 
         if (embeddedNodes is null)
         {

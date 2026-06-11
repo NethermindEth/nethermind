@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
 
@@ -21,13 +22,10 @@ public class XdcHeaderValidator(
     ISpecProvider specProvider,
     ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
-        ArgumentNullException.ThrowIfNull(parent);
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
-        if (parent is not XdcBlockHeader parentXdcHeader)
-            throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {parent.GetType().Name}.", nameof(parent));
 
         if (xdcHeader.Validator is null || xdcHeader.Validator.Length == 0)
         {
@@ -39,11 +37,6 @@ public class XdcHeaderValidator(
         if (extraFields is null)
         {
             error = "Header ExtraData doesn't contain required consensus data.";
-            return false;
-        }
-
-        if (!quorumCertificateManager.VerifyCertificate(extraFields.QuorumCert, parentXdcHeader, out error))
-        {
             return false;
         }
 
@@ -63,6 +56,24 @@ public class XdcHeaderValidator(
         {
             error = "Cannot contain uncles.";
             return false;
+        }
+
+        if (typeof(TOrphaned) != typeof(OnFlag))
+        {
+            ArgumentNullException.ThrowIfNull(parent);
+            if (parent is not XdcBlockHeader parentXdcHeader)
+                throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {parent.GetType().Name}.", nameof(parent));
+
+            if (extraFields.QuorumCert is not { } quorumCert)
+            {
+                error = "Header ExtraData doesn't contain a quorum certificate.";
+                return false;
+            }
+
+            if (!quorumCertificateManager.VerifyCertificate(quorumCert, parentXdcHeader, out error))
+            {
+                return false;
+            }
         }
 
         if (!base.Validate<TOrphaned>(header, parent, isUncle, out error))

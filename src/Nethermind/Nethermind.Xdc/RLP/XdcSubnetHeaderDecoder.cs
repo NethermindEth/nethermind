@@ -11,15 +11,23 @@ namespace Nethermind.Xdc.RLP;
 public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlockHeader>
 {
     protected override XdcSubnetBlockHeader CreateHeader(
-        Hash256? parentHash,
-        Hash256? unclesHash,
-        Address? beneficiary,
+        Hash256 parentHash,
+        Hash256 unclesHash,
+        Address beneficiary,
         UInt256 difficulty,
         ulong number,
         ulong gasLimit,
         ulong timestamp,
         byte[]? extraData)
-        => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+        => new(
+            parentHash,
+            unclesHash,
+            beneficiary,
+            difficulty,
+            number,
+            gasLimit,
+            timestamp,
+            extraData ?? []);
 
     protected override void DecodeHeaderSpecificFields(ref RlpReader decoderContext, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
     {
@@ -42,29 +50,29 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
     {
         if (!IsForSealing(rlpBehaviors))
         {
-            writer.Encode(header.Validator);
+            writer.Encode(header.Validator ?? []);
         }
 
-        writer.Encode(header.Validators);
+        writer.Encode(header.Validators ?? []);
 
         if (!IsForSealing(rlpBehaviors))
         {
-            writer.Encode(header.NextValidators);
+            writer.Encode(header.NextValidators ?? []);
         }
 
-        writer.Encode(header.Penalties);
+        writer.Encode(header.Penalties ?? []);
     }
 
     protected override int GetHeaderSpecificContentLength(XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         int len = 0
-            + Rlp.LengthOf(header.Validators)
-            + Rlp.LengthOf(header.Penalties);
+            + Rlp.LengthOf(header.Validators ?? [])
+            + Rlp.LengthOf(header.Penalties ?? []);
 
         if (!IsForSealing(rlpBehaviors))
         {
-            len += Rlp.LengthOf(header.Validator);
-            len += Rlp.LengthOf(header.NextValidators);
+            len += Rlp.LengthOf(header.Validator ?? []);
+            len += Rlp.LengthOf(header.NextValidators ?? []);
         }
 
         return len;

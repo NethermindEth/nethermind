@@ -11,8 +11,16 @@ namespace Nethermind.Blockchain.Find
     public static class IBlockFinderExtensions
     {
         public static BlockHeader? FindParentHeader(
-            this IBlockFinder finder, BlockHeader header, BlockTreeLookupOptions options) =>
-            finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
+            this IBlockFinder finder, BlockHeader header, BlockTreeLookupOptions options)
+        {
+            if (header.ParentHash is null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
+            }
+
+            return finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
+        }
 
         public static Block? FindParent(this IBlockFinder finder, Block block, BlockTreeLookupOptions options)
         {

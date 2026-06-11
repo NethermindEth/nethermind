@@ -9,5 +9,5 @@ public class TransactionWithSourceDetails
 {
     public bool HadGasLimitInRequest;
     public bool HadNonceInRequest;
-    public Transaction Transaction { get; set; }
+    public Transaction Transaction { get; set; } = null!;
 }

@@ -43,9 +43,20 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _channelHandlerContext.Channel.Returns(_channel);
 
             _handshakeService = Substitute.For<IHandshakeService>();
-            _handshakeService.Auth(Arg.Any<PublicKey>(), Arg.Any<EncryptionHandshake>()).Returns(_authPacket);
-            _handshakeService.Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>()).Returns(_ackPacket).AndDoes(static ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
-            _handshakeService.When(static s => s.Agree(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>())).Do(static ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
+            _handshakeService.Auth(Arg.Any<PublicKey>(), Arg.Any<EncryptionHandshake>()).Returns(_authPacket).AndDoes(static ci =>
+                ci.Arg<EncryptionHandshake>().RemoteNodeId = ci.Arg<PublicKey>());
+            _handshakeService.Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>()).Returns(_ackPacket).AndDoes(static ci =>
+            {
+                EncryptionHandshake handshake = ci.Arg<EncryptionHandshake>();
+                handshake.RemoteNodeId = NetTestVectors.StaticKeyA.PublicKey;
+                handshake.Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
+            });
+            _handshakeService.When(static s => s.Agree(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>())).Do(static ci =>
+            {
+                EncryptionHandshake handshake = ci.Arg<EncryptionHandshake>();
+                handshake.RemoteNodeId = NetTestVectors.StaticKeyB.PublicKey;
+                handshake.Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
+            });
 
             _logger = LimboLogs.Instance;
             _session.RemoteNodeId.Returns(NetTestVectors.StaticKeyB.PublicKey);

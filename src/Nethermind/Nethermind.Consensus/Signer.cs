@@ -44,7 +44,8 @@ namespace Nethermind.Consensus
                 signature = null!;
                 return false;
             }
-            byte[] rs = SecP256k1.SignCompact(message.Bytes, _key.KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, _key.KeyBytes, out int v)
+                ?? throw new InvalidOperationException("Failed to sign the message.");
             signature = new Signature(rs, v);
             return true;
         }

@@ -232,6 +232,8 @@ public ref struct RlpReader
         return new Hash256(keccakSpan);
     }
 
+    public Hash256 DecodeKeccakNonNull() => DecodeKeccak() ?? ThrowNullDecodedValue<Hash256>();
+
     public ValueHash256? DecodeValueKeccak()
     {
         int prefix = ReadByte();
@@ -293,6 +295,8 @@ public ref struct RlpReader
         theSpan.CopyTo(keccakBytes[(32 - theSpan.Length)..]);
         return new Hash256(keccakBytes);
     }
+
+    public Hash256 DecodeZeroPrefixKeccakNonNull() => DecodeZeroPrefixKeccak() ?? ThrowNullDecodedValue<Hash256>();
 
     public void DecodeKeccakStructRef(out Hash256StructRef keccak)
     {
@@ -382,6 +386,8 @@ public ref struct RlpReader
 
         return new Address(Read(20));
     }
+
+    public Address DecodeAddressNonNull() => DecodeAddress() ?? ThrowNullDecodedValue<Address>();
 
     public void DecodeAddressStructRef(out AddressStructRef address)
     {
@@ -928,8 +934,8 @@ public ref struct RlpReader
     /// consensus-relevant decoding bug (see the EIP-7928 BAL decoder). Value-type arrays must therefore use
     /// <see cref="RlpDecoder{T}.DecodeArray"/>, which decodes every element and rejects <c>0xc0</c>.
     /// </remarks>
-    public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, bool allowNulls = false, T defaultElement = default, RlpLimit? limit = null)
-        where T : class?
+    public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, bool allowNulls = false, T? defaultElement = default, RlpLimit? limit = null)
+        where T : class
     {
         decoder ??= Rlp.GetDecoder<T>()
             ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
@@ -945,12 +951,12 @@ public ref struct RlpReader
                 if (!allowNulls)
                     RlpHelpers.ThrowNullArrayElement(i);
 
-                result[i] = defaultElement;
+                result[i] = defaultElement!;
                 Position++;
             }
             else
             {
-                result[i] = decoder.Decode(ref this);
+                result[i] = decoder.Decode(ref this)!;
 
                 if (!allowNulls && result[i] is null)
                     RlpHelpers.ThrowNullArrayElement(i);
@@ -965,7 +971,7 @@ public ref struct RlpReader
         return result;
     }
 
-    public T[] DecodeArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+    public T[] DecodeArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
     {
         int positionCheck = ReadSequenceLength() + Position;
         int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
@@ -975,12 +981,12 @@ public ref struct RlpReader
         {
             if (PeekByte() == Rlp.OfEmptyList[0])
             {
-                result[i] = defaultElement;
+                result[i] = defaultElement!;
                 Position++;
             }
             else
             {
-                result[i] = decodeItem(ref this);
+                result[i] = decodeItem(ref this)!;
             }
         }
 
@@ -992,7 +998,7 @@ public ref struct RlpReader
         return result;
     }
 
-    public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+    public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
     {
         int positionCheck = ReadSequenceLength() + Position;
         int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
@@ -1005,12 +1011,12 @@ public ref struct RlpReader
             {
                 if (PeekByte() == Rlp.OfEmptyList[0])
                 {
-                    result[i] = defaultElement;
+                    result[i] = defaultElement!;
                     Position++;
                 }
                 else
                 {
-                    result[i] = decodeItem(ref this);
+                    result[i] = decodeItem(ref this)!;
                 }
             }
 
@@ -1036,6 +1042,9 @@ public ref struct RlpReader
     public readonly bool IsNextItemEmptyByteArray() => PeekByte() is Rlp.EmptyByteArrayByte;
 
     public readonly bool IsNextItemEmptyList() => PeekByte() is Rlp.EmptyListByte;
+
+    [DoesNotReturn, StackTraceHidden]
+    private static T ThrowNullDecodedValue<T>() => throw new RlpException($"{typeof(T).Name} decoded as null");
 
     [DoesNotReturn, StackTraceHidden]
     private readonly void ThrowKeccakDecodeException(int prefix)

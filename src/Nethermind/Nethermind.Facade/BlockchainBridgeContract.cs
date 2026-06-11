@@ -26,7 +26,8 @@ namespace Nethermind.Facade
             public override object[] Call(CallInfo callInfo)
             {
                 Transaction transaction = GenerateTransaction(callInfo);
-                CallOutput result = _blockchainBridge.Call(callInfo.ParentHeader, transaction);
+                BlockHeader parentHeader = callInfo.ParentHeader ?? throw new ArgumentNullException(nameof(callInfo.ParentHeader));
+                CallOutput result = _blockchainBridge.Call(parentHeader, transaction);
                 if (!string.IsNullOrEmpty(result.Error))
                 {
                     throw new AbiException(result.Error);

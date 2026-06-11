@@ -40,7 +40,7 @@ namespace Nethermind.HealthChecks
             _timer.Elapsed += CheckDiskSpace;
         }
 
-        private void CheckDiskSpace(object sender, EventArgs e)
+        private void CheckDiskSpace(object? sender, EventArgs e)
         {
             for (int index = 0; index < _drives.Length; index++)
             {

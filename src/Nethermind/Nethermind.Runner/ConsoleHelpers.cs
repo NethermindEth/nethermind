@@ -12,9 +12,9 @@ namespace Nethermind.Runner;
 
 public static class ConsoleHelpers
 {
-    private static LineInterceptingTextWriter _interceptingWriter;
+    private static LineInterceptingTextWriter? _interceptingWriter;
     public static event EventHandler<string>? LineWritten;
-    public static string[] GetRecentMessages() => _interceptingWriter.GetRecentMessages();
+    public static string[] GetRecentMessages() => _interceptingWriter?.GetRecentMessages() ?? [];
 
     public static void EnableConsoleColorOutput()
     {

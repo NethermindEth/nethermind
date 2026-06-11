@@ -40,7 +40,7 @@ public class P2PProtocolHandler(
     /// </summary>
     public static readonly long BaseProtocolMaxMsgSize = 2.KiB;
 
-    private TaskCompletionSource<Packet> _pongCompletionSource;
+    private TaskCompletionSource<Packet>? _pongCompletionSource;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
     private readonly List<Capability> _agreedCapabilities = [];
@@ -62,7 +62,7 @@ public class P2PProtocolHandler(
 
     public int ListenPort { get; } = session.LocalPort;
     private readonly PublicKey _localNodeId = enode.PublicKey;
-    private string RemoteClientId { get; set; }
+    private string RemoteClientId { get; set; } = null!;
 
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
     public bool HasAgreedCapability(Capability capability) => _agreedCapabilities.Contains(capability);
@@ -355,7 +355,7 @@ public class P2PProtocolHandler(
     public async Task<bool> SendPing()
     {
         TaskCompletionSource<Packet> newSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource<Packet> previousSource =
+        TaskCompletionSource<Packet>? previousSource =
             Interlocked.CompareExchange(ref _pongCompletionSource, newSource, null);
 
         if (previousSource is not null)

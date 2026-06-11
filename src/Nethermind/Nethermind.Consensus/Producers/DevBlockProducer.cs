@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.Producers
             BlockTree.NewHeadBlock += OnNewHeadBlock;
         }
 
-        private void OnNewHeadBlock(object sender, BlockEventArgs e)
+        private void OnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             if (_blocksConfig.RandomizedBlocks)
             {

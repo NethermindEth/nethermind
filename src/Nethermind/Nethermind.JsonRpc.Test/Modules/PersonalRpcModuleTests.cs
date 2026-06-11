@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IKeyStore keyStore = Substitute.For<IKeyStore>();
             keyStore.GetKey(address, Arg.Any<SecureString>())
-                .Returns<(PrivateKey, Result)>(ci => ci.Arg<SecureString>().Unsecure() == correctPassphrase
+                .Returns<(PrivateKey?, Result)>(ci => ci.Arg<SecureString>().Unsecure() == correctPassphrase
                     ? (new PrivateKey(privateKeyHex), Result.Success)
                     : (null!, Result.Fail("authentication failed")));
 

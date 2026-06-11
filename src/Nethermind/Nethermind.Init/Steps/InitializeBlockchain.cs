@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
@@ -51,7 +52,8 @@ namespace Nethermind.Init.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
             // TODO: can take the tx sender from plugin here maybe
-            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
+            IWallet wallet = getApi.Wallet ?? throw new InvalidOperationException("Wallet has not been initialized.");
+            ITxSigner txSigner = new WalletTxSigner(wallet, getApi.SpecProvider!.ChainId);
             TxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper);
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, _api.NonceManager!, getApi.EthereumEcdsa!);

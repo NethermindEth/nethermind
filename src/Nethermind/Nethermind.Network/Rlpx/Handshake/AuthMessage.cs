@@ -7,7 +7,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 {
     public class AuthMessage : AuthMessageBase
     {
-        public Hash256 EphemeralPublicHash { get; set; }
+        public Hash256 EphemeralPublicHash { get; set; } = null!;
         public bool IsTokenUsed { get; set; }
     }
 }

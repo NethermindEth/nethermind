@@ -99,7 +99,7 @@ public sealed class TxValidator : ITxValidator
         IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
-        _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
+        _validators.TryGetByTxType(transaction.Type, out ITxValidator? validator)
             ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
@@ -236,11 +236,12 @@ public sealed class BlobFieldsTxValidator : ITxValidator
 
         for (int i = 0; i < blobCount; i++)
         {
-            switch (transaction.BlobVersionedHashes[i])
+            byte[]? blobVersionedHash = transaction.BlobVersionedHashes[i];
+            switch (blobVersionedHash)
             {
                 case null: return TxErrorMessages.MissingBlobVersionedHash;
                 case { Length: not Eip4844Constants.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
-                case { Length: Eip4844Constants.BytesPerBlobVersionedHash } when transaction.BlobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
+                case { Length: Eip4844Constants.BytesPerBlobVersionedHash } when blobVersionedHash[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
             }
         }
 
@@ -305,9 +306,25 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
         {
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
+            byte[]?[]? hashes = transaction.BlobVersionedHashes;
+            if (hashes is null || hashes.Length != wrapper.Blobs.Length)
+            {
+                return TxErrorMessages.InvalidBlobDataSize;
+            }
 
-            return (transaction.BlobVersionedHashes?.Length ?? 0) != wrapper.Blobs.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
-                transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+            byte[][] blobVersionedHashes = new byte[hashes.Length][];
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                if (hashes[i] is not { } hash)
+                {
+                    return TxErrorMessages.InvalidBlobHashes;
+                }
+
+                blobVersionedHashes[i] = hash;
+            }
+
+            return !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+                !proofsManager.ValidateHashes(wrapper, blobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
         }

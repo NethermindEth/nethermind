@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Taiko.TaikoSpec;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Taiko;
 
@@ -38,7 +39,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         if (header.UnclesHash != Keccak.OfAnEmptySequenceRlp)
         {

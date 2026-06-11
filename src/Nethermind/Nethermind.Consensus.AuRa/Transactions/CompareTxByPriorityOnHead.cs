@@ -16,6 +16,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-        protected override BlockHeader BlockHeader => _blockTree.Head.Header;
+        protected override BlockHeader BlockHeader => _blockTree.Head!.Header;
     }
 }

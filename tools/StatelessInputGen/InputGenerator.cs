@@ -107,6 +107,12 @@ internal static class InputGenerator
                 IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!;
                 RlpReader blockContext = new(rlp);
                 block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+                if (block is null)
+                {
+                    AnsiConsole.MarkupLine($"[red]Block not found[/]");
+                    return;
+                }
+
                 blockContext.Check(rlp.Length);
 
                 string blockNumber = EnsureBlockParamIsNumber(blockParam, block);

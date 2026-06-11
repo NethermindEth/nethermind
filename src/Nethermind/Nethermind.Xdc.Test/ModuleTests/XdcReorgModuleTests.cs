@@ -20,7 +20,7 @@ internal class XdcReorgModuleTests
         // Simulate timeout to make block rounds non-consecutive preventing finalization
         blockChain.XdcContext.SetNewRound(blockChain.XdcContext.CurrentRound + 1);
         await blockChain.AddBlocks(2);
-        BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock;
+        BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock!;
         Assert.That(finalizedBlockInfo.Round, Is.EqualTo(blockChain.XdcContext.CurrentRound - 3 - 1 - 2)); // Finalization is 3 round behind current plus 1 round timeout plus 2 rounds of blocks added
 
         BlockHeader? finalizedBlock = blockChain.BlockTree.FindHeader(finalizedBlockInfo.Hash);
@@ -37,7 +37,7 @@ internal class XdcReorgModuleTests
         ulong startRound = blockChain.XdcContext.CurrentRound;
         await blockChain.AddBlocks(10);
 
-        BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock;
+        BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock!;
         Assert.That(finalizedBlockInfo.Round, Is.EqualTo(blockChain.XdcContext.CurrentRound - 3)); // Finalization is 3 rounds behind
 
         XdcBlockHeader? finalizedBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(finalizedBlockInfo.Hash)!;
@@ -64,7 +64,7 @@ internal class XdcReorgModuleTests
         Assert.That(blockChain.BlockTree.Head!.Hash, Is.EqualTo(forkParent.Hash!));
         //The new fork head should commit it's grandparent as finalized
         // The new fork head should commit it's grandparent as finalized
-        Assert.That(blockChain.XdcContext.HighestCommitBlock.Hash, Is.EqualTo(blockChain.BlockTree.FindHeader(forkParent.ParentHash!)!.ParentHash!));
+        Assert.That(blockChain.XdcContext.HighestCommitBlock!.Hash, Is.EqualTo(blockChain.BlockTree.FindHeader(forkParent.ParentHash!)!.ParentHash!));
         //Our lock QC should be parent of the fork head
         // Our lock QC should be parent of the fork head
         Assert.That(blockChain.XdcContext.LockQC!.ProposedBlockInfo.Hash, Is.EqualTo(forkParent.ParentHash!));
@@ -78,7 +78,7 @@ internal class XdcReorgModuleTests
         using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create();
         ulong startRound = blockChain.XdcContext.CurrentRound;
         await blockChain.AddBlocks(number);
-        BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock;
+        BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock!;
         Assert.That(finalizedBlockInfo.Round, Is.EqualTo(blockChain.XdcContext.CurrentRound - 3)); // Finalization is 3 rounds behind
 
         BlockHeader finalizedBlock = blockChain.BlockTree.FindHeader(finalizedBlockInfo.Hash)!;
@@ -106,7 +106,7 @@ internal class XdcReorgModuleTests
         Assert.That(snapshotBeforeReorg.HeaderHash, Is.EqualTo(originalChainGapBlock.Hash!));
 
 
-        BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock;
+        BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock!;
         Assert.That(finalizedBlockInfo.Round, Is.EqualTo(blockChain.XdcContext.CurrentRound - 3)); // Finalization is 3 rounds behind
 
         XdcBlockHeader finalizedBlock = (XdcBlockHeader)blockChain.BlockTree.FindHeader(finalizedBlockInfo.Hash)!;

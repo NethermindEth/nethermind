@@ -15,12 +15,12 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Hash256 RootHash { get; set; }
+        public Hash256 RootHash { get; set; } = null!;
 
         /// <summary>
         /// Accounts of the storage tries to serve
         /// </summary>
-        public IOwnedReadOnlyList<PathWithAccount> Accounts { get; set; }
+        public IOwnedReadOnlyList<PathWithAccount> Accounts { get; set; } = null!;
 
         /// <summary>
         /// Account hash of the first to retrieve

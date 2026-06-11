@@ -43,7 +43,7 @@ public class ValidateSubmissionHandler(
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IHeaderValidator _headerValidator = headerValidator;
     private readonly IBlockValidator _blockValidator = blockValidator;
-    private readonly ILogger _logger = logManager!.GetClassLogger<ValidateSubmissionHandler>();
+    private readonly ILogger _logger = logManager.GetClassLogger<ValidateSubmissionHandler>();
     private readonly IFlashbotsConfig _flashbotsConfig = flashbotsConfig;
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly IEthereumEcdsa _ethereumEcdsa = ethereumEcdsa;
@@ -52,11 +52,6 @@ public class ValidateSubmissionHandler(
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
         ExecutionPayloadV3 payload = request.ExecutionPayload.ToExecutionPayloadV3();
-
-        if (request.ParentBeaconBlockRoot is null)
-        {
-            return FlashbotsResult.Invalid("Parent beacon block root must be set in the request");
-        }
 
         payload.ParentBeaconBlockRoot = request.ParentBeaconBlockRoot;
 
@@ -181,7 +176,13 @@ public class ValidateSubmissionHandler(
 
     private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, ulong registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
     {
-        BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (block.ParentHash is not { } parentHash)
+        {
+            error = "Block parent hash must be set before payload validation";
+            return false;
+        }
+
+        BlockHeader? parentHeader = _blockTree.FindHeader(parentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
 
         if (parentHeader is null)
         {
@@ -240,7 +241,7 @@ public class ValidateSubmissionHandler(
 
         if (ValidateProposerPayment(expectedProfit, useBalanceDiffProfit, feeRecipientBalanceAfter, amtBeforeOrWithdrawn)) return true;
 
-        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockReceiptsTracer.TxReceipts, out error))
+        if (!ValidateProcessedBlock(block, feeRecipient, expectedProfit, blockReceiptsTracer.ToReceiptArray(), out error))
         {
             return false;
         }

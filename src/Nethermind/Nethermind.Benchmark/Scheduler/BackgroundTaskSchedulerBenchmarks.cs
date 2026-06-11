@@ -157,7 +157,7 @@ public class BackgroundTaskSchedulerBenchmarks
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs([]));
 
         public void RaiseBlockProcessed() =>
-            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(null!, null!));
+            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(new Block(new BlockHeader()), []));
     }
 
     /// <summary>

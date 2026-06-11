@@ -64,7 +64,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     }
 
     public bool IsStatic(NetworkNode node) =>
-        _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) &&
+        _nodes.TryGetValue(node.NodeId, out NetworkNode? staticNode) &&
         string.Equals(staticNode.Host, node.Host, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)

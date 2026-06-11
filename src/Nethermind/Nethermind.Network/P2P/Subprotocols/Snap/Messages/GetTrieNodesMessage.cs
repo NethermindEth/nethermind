@@ -14,12 +14,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Hash256 RootHash { get; set; }
+        public Hash256 RootHash { get; set; } = null!;
 
         /// <summary>
         /// Trie paths to retrieve the nodes for, grouped by account
         /// </summary>
-        public IOwnedReadOnlyList<PathGroup> Paths { get; set; }
+        public IOwnedReadOnlyList<PathGroup>? Paths { get; set; }
 
         /// <summary>
         /// Soft limit at which to stop returning data

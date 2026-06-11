@@ -22,7 +22,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
     private Address[] GetPreviousPenalties(Hash256 currentHash, IXdcReleaseSpec spec, ulong limit)
     {
-        EpochSwitchInfo currentEpochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHash);
+        EpochSwitchInfo? currentEpochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(currentHash);
         if (currentEpochSwitchInfo is null) return [];
 
         if (limit == 0) return currentEpochSwitchInfo.Penalties;
@@ -30,10 +30,10 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         ulong epochNumber = spec.SwitchEpoch + currentEpochSwitchInfo.EpochSwitchBlockInfo.Round / spec.EpochLength;
         if (epochNumber < limit) return [];
 
-        BlockRoundInfo results = epochSwitchManager.GetBlockByEpochNumber(epochNumber - limit);
+        BlockRoundInfo? results = epochSwitchManager.GetBlockByEpochNumber(epochNumber - limit);
         if (results is null) return [];
 
-        XdcBlockHeader header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
+        XdcBlockHeader? header = (XdcBlockHeader?)tree.FindHeader(results.Hash, results.BlockNumber);
         if (header?.PenaltiesAddress is null) return [];
 
         return [.. header.PenaltiesAddress];
@@ -49,24 +49,27 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         Hash256 currentHash = parentHash;
         while (parentNumber > 0)
         {
-            XdcBlockHeader parentHeader = (XdcBlockHeader)tree.FindHeader(currentHash, parentNumber);
-            if (parentHeader is null) return [];
+            XdcBlockHeader parentHeader = (XdcBlockHeader?)tree.FindHeader(currentHash, parentNumber)
+                ?? throw new InvalidOperationException($"Header not found for block {parentNumber}.");
 
             bool isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
             if (isEpochSwitch)
                 break;
 
-            Address miner = parentHeader.Beneficiary;
-            minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
+            Address miner = parentHeader.Beneficiary ?? throw new InvalidOperationException($"Beneficiary is missing for block {parentHeader.Number}.");
+            minerStatistics[miner] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
 
             parentNumber--;
-            currentHash = parentHeader.ParentHash;
+            currentHash = parentHeader.ParentHash ?? throw new InvalidOperationException($"Parent hash is missing for block {parentHeader.Number}.");
             listBlockHash.Add(currentHash);
         }
 
-        XdcBlockHeader header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
-        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
-        Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
+        XdcBlockHeader header = (XdcBlockHeader?)tree.FindHeader(parentHash, number - 1)
+            ?? throw new InvalidOperationException($"Header not found for block {number - 1}.");
+        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header);
+        EpochSwitchInfo epochInfo = epochSwitchManager.GetEpochSwitchInfo(parentHash)
+            ?? throw new InvalidOperationException($"Epoch switch info not found for block {parentHash}.");
+        Address[] preMasternodes = epochInfo.Masternodes;
         HashSet<Address> penalties = [];
 
         int minMinerBlockPerEpoch = currentSpec.IsTipUpgradePenaltyEnabled
@@ -109,8 +112,13 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     {
                         Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
                         tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
-                        Address fromSigner = tx.SenderAddress;
 
+                        if (tx.SenderAddress is null)
+                        {
+                            continue;
+                        }
+
+                        Address fromSigner = tx.SenderAddress;
                         if (blockHashes.Contains(signedBlockHash))
                             penComebacks.Remove(fromSigner);
                     }
@@ -159,6 +167,11 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     {
                         Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
                         tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
+                        if (tx.SenderAddress is null)
+                        {
+                            continue;
+                        }
+
                         Address fromSigner = tx.SenderAddress;
                         if (blockHashes.Contains(signedBlockHash))
                         {

@@ -302,7 +302,7 @@ namespace Nethermind.Synchronization
             WireFeedWithModeSelector(oldBlockAccessListsComponent.Feed);
         }
 
-        public void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
+        public void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed) where T : class
         {
             if (feed is null) return;
             SyncModeSelector.Changed += ((sender, args) =>
@@ -509,7 +509,11 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .SingleInstance();
     }
 
-    private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch> => serviceCollection
+    private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection)
+        where TBatch : class
+        where TFeed : class, ISyncFeed<TBatch>
+        where TDownloader : class, ISyncDownloader<TBatch>
+        where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch> => serviceCollection
             .AddSingleton<ISyncFeed<TBatch>, TFeed>()
             .AddSingleton<SyncFeedComponent<TBatch>>()
             .AddSingleton<ISyncDownloader<TBatch>, TDownloader>()

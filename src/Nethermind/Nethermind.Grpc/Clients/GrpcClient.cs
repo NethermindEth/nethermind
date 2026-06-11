@@ -17,8 +17,8 @@ namespace Nethermind.Grpc.Clients
         private int _retry;
         private bool _connected;
         private readonly ILogger _logger;
-        private Channel _channel;
-        private NethermindService.NethermindServiceClient _client;
+        private Channel? _channel;
+        private NethermindService.NethermindServiceClient? _client;
         private readonly string _address;
 #nullable enable
         private CancellationTokenSource? _cts = new();
@@ -81,11 +81,11 @@ namespace Nethermind.Grpc.Clients
             return _channel?.ShutdownAsync() ?? Task.CompletedTask;
         }
 
-        public async Task<string> QueryAsync(IEnumerable<string> args)
+        public async Task<string> QueryAsync(IEnumerable<string>? args)
         {
             try
             {
-                if (!_connected)
+                if (!_connected || _client is null)
                 {
                     return string.Empty;
                 }
@@ -105,13 +105,13 @@ namespace Nethermind.Grpc.Clients
             }
         }
 
-        public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, IEnumerable<string> args,
+        public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, IEnumerable<string>? args,
             CancellationToken? token = null)
         {
             CancellationToken cancellationToken = token ?? CancellationToken.None;
             try
             {
-                if (!_connected)
+                if (!_connected || _client is null)
                 {
                     return;
                 }

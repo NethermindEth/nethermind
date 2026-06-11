@@ -34,12 +34,12 @@ public class StateSyncAllocationStrategyTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.Node.Returns(node);
         syncPeer.ProtocolVersion.Returns((byte)version);
-        syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>()).Returns(
+        syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer?>()).Returns(
             x =>
             {
                 if (hasSnap)
                 {
-                    x[1] = new object();
+                    x[1] = Substitute.For<ISnapSyncPeer>();
                     return true;
                 }
 

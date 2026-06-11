@@ -8,6 +8,6 @@ namespace Nethermind.KeyStore
 {
     public interface IPasswordProvider
     {
-        SecureString GetPassword(Address address);
+        SecureString? GetPassword(Address address);
     }
 }

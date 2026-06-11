@@ -17,13 +17,13 @@ internal class XdcSealer(ISigner signer, ILogManager logManager) : ISealer
 {
     private static readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
     private readonly ILogger _logger = logManager.GetClassLogger<XdcSealer>();
-    public Address Address => signer.Address;
+    public Address Address => signer.Address!;
 
     public bool CanSeal(ulong blockNumber, Hash256 parentHash) =>
         //We might want to add more logic here in the future
         true;
 
-    public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
+    public Task<Block?> SealBlock(Block block, CancellationToken cancellationToken)
     {
         if (block.Header is not XdcBlockHeader xdcBlockHeader)
             throw new ArgumentException("Only XDC headers are supported.");
@@ -35,11 +35,11 @@ internal class XdcSealer(ISigner signer, ILogManager logManager) : ISealer
         if (!signer.TrySign(in hash, out Signature signature))
         {
             if (_logger.IsWarn) _logger.Warn($"XDC signer {signer.Address} could not sign block {block.Number} — skipping seal.");
-            return Task.FromResult<Block>(null);
+            return Task.FromResult<Block?>(null);
         }
         xdcBlockHeader.Validator = signature.BytesWithRecovery;
 
         xdcBlockHeader.Hash = xdcBlockHeader.CalculateHash().ToHash256();
-        return Task.FromResult(block);
+        return Task.FromResult<Block?>(block);
     }
 }

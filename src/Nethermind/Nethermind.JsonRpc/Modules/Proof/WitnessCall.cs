@@ -40,7 +40,7 @@ internal sealed class WitnessCall(
             return ResultWrapper<CallResultWithProof>.Fail(searchResult);
         }
 
-        BlockHeader sourceHeader = searchResult.Object;
+        BlockHeader sourceHeader = searchResult.Object!;
 
         // Genesis has no parent header to walk back from; the witness machinery requires that.
         if (sourceHeader.Number == 0)

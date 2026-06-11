@@ -23,8 +23,9 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
 
     public void Insert(BlockHeader header)
     {
-        _headerDict[header.Hash!] = header;
-        InsertBlockNumber(header.Hash, header.Number);
+        Hash256 hash = header.Hash ?? throw new InvalidOperationException("Cannot cache a header without a calculated hash.");
+        _headerDict[hash] = header;
+        InsertBlockNumber(hash, header.Number);
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)

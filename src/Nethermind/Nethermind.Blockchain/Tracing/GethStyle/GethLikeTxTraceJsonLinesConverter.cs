@@ -42,7 +42,7 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WriteNumberValue(value.ProgramCounter);
 
         writer.WritePropertyName("op");
-        writer.WriteNumberValue((byte)value.OpcodeRaw);
+        writer.WriteNumberValue((byte)value.OpcodeRaw.GetValueOrDefault());
 
         writer.WritePropertyName("gas");
         writer.WriteStringValue($"0x{value.Gas:x}");
@@ -53,9 +53,9 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(value.MemorySize ?? 0UL);
 
-        if ((value.Memory?.Length ?? 0) != 0)
+        if (value.Memory is { Length: > 0 } memoryItems)
         {
-            string memory = string.Concat(value.Memory);
+            string memory = string.Concat(memoryItems);
 
             writer.WritePropertyName("memory");
             writer.WriteStringValue($"0x{memory}");

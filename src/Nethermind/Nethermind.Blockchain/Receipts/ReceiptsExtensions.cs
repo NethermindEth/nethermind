@@ -9,7 +9,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public static class ReceiptsExtensions
     {
-        public static TxReceipt ForTransaction(this TxReceipt[] receipts, Hash256 txHash)
+        public static TxReceipt? ForTransaction(this TxReceipt[] receipts, Hash256 txHash)
             => receipts.FirstOrDefault(r => r.TxHash == txHash);
 
 

@@ -25,7 +25,7 @@ public interface ITrieWarmer
 
     public bool PushAddressJob(
         IAddressWarmer scope,
-        Address? path,
+        Address path,
         int sequenceId);
 
     void OnEnterScope();

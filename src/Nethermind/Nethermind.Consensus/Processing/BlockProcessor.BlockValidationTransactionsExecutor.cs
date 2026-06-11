@@ -57,7 +57,7 @@ public partial class BlockProcessor
             Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
             Metrics.PublishBlockGasPriceGauges();
 
-            return [.. receiptsTracer.TxReceipts];
+            return receiptsTracer.ToReceiptArray();
 
             [DebuggerHidden]
             [DoesNotReturn]
@@ -78,7 +78,7 @@ public partial class BlockProcessor
                 StopTxTimer(index, txStart);
             }
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
-            _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+            _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.GetReceipt(index)));
         }
 
         public void SetupTxTimingMetrics(Block block)

@@ -7,6 +7,6 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
 public class NativePrestateTracerDiffMode
 {
-    public Dictionary<AddressAsKey, NativePrestateTracerAccount> pre { get; init; }
-    public Dictionary<AddressAsKey, NativePrestateTracerAccount> post { get; init; }
+    public Dictionary<AddressAsKey, NativePrestateTracerAccount> pre { get; init; } = null!;
+    public Dictionary<AddressAsKey, NativePrestateTracerAccount> post { get; init; } = null!;
 }

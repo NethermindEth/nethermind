@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -28,5 +29,5 @@ public interface IWithdrawalValidator
     /// <c>true</c> if <see cref="Block.Withdrawals"/> are not <c>null</c> when EIP-4895 is activated;
     /// otherwise, <c>false</c>.
     /// </returns>
-    bool ValidateWithdrawals(Block block, out string? error);
+    bool ValidateWithdrawals(Block block, [NotNullWhen(false)] out string? error);
 }

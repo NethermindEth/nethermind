@@ -44,20 +44,28 @@ public class HealthCheckJsonRpcConfigurer(
                     setup.SetHeaderText("Nethermind Node Health");
                     if (healthChecksConfig.WebhooksEnabled)
                     {
-                        setup.AddWebhookNotification("webhook",
-                            uri: healthChecksConfig.WebhooksUri,
-                            payload: healthChecksConfig.WebhooksPayload,
-                            restorePayload: healthChecksConfig.WebhooksRestorePayload,
-                            customDescriptionFunc: (livenessName, report) =>
-                            {
-                                string description = report.Entries["node-health"].Description;
+                        string? webhooksUri = healthChecksConfig.WebhooksUri;
+                        if (string.IsNullOrWhiteSpace(webhooksUri))
+                        {
+                            if (_logger.IsWarn) _logger.Warn("HealthChecks webhooks are enabled but no webhook URI is configured.");
+                        }
+                        else
+                        {
+                            setup.AddWebhookNotification("webhook",
+                                uri: webhooksUri,
+                                payload: healthChecksConfig.WebhooksPayload,
+                                restorePayload: healthChecksConfig.WebhooksRestorePayload,
+                                customDescriptionFunc: (livenessName, report) =>
+                                {
+                                    string description = report.Entries["node-health"].Description ?? string.Empty;
 
-                                string hostname = Dns.GetHostName();
+                                    string hostname = Dns.GetHostName();
 
-                                HealthChecksWebhookInfo info = new(description, ipResolver, metricsConfig, hostname);
-                                return info.GetFullInfo();
-                            }
-                        );
+                                    HealthChecksWebhookInfo info = new(description, ipResolver, metricsConfig, hostname);
+                                    return info.GetFullInfo();
+                                }
+                            );
+                        }
                     }
                 })
                 .AddInMemoryStorage();

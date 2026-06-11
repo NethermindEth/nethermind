@@ -11,6 +11,6 @@ namespace Nethermind.KeyStore.ConsoleHelpers
 
         public void Write(string message) => Console.Write(message);
 
-        public void WriteLine(string message = null) => Console.WriteLine(message);
+        public void WriteLine(string? message = null) => Console.WriteLine(message);
     }
 }

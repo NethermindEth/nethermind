@@ -62,7 +62,7 @@ internal class ProposedBlockTests
         BlockHeader? parentOfHead = blockChain.BlockTree.FindHeader(head.ParentHash!);
         BlockHeader? grandParentOfHead = blockChain.BlockTree.FindHeader(parentOfHead!.ParentHash!);
 
-        Assert.That(grandParentOfHead!.Hash!, Is.EqualTo(blockChain.XdcContext.HighestCommitBlock.Hash));
+        Assert.That(grandParentOfHead!.Hash!, Is.EqualTo(blockChain.XdcContext.HighestCommitBlock!.Hash));
     }
 
     [Test]
@@ -78,7 +78,7 @@ internal class ProposedBlockTests
 
         await blockChain.SimulateVoting();
 
-        BlockRoundInfo beforeTimeoutFinalized = blockChain.XdcContext.HighestCommitBlock;
+        BlockRoundInfo beforeTimeoutFinalized = blockChain.XdcContext.HighestCommitBlock!;
         QuorumCertificate beforeTimeoutQC = blockChain.XdcContext.HighestQC;
 
         //Simulate timeout
@@ -166,7 +166,7 @@ internal class ProposedBlockTests
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
             Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(startBlock.Number + i));
             Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber, Is.EqualTo(startBlock.Number + i));
-            Assert.That(blockChain.XdcContext.HighestCommitBlock.BlockNumber, Is.EqualTo(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2UL));
+            Assert.That(blockChain.XdcContext.HighestCommitBlock!.BlockNumber, Is.EqualTo(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2UL));
         }
     }
 

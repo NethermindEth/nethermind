@@ -66,8 +66,8 @@ namespace Nethermind.Blockchain.Receipts
 
             _migratedBlockNumber = Get(MigrationBlockNumberKey, ulong.MaxValue);
 
-            KeyValuePair<byte[], byte[]>? firstValue = _receiptsDb.GetAll().FirstOrDefault();
-            _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
+            KeyValuePair<byte[], byte[]> firstValue = _receiptsDb.GetAll().FirstOrDefault();
+            _legacyHashKey = firstValue.Key is not null && firstValue.Key.Length == Hash256.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
         }
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Receipts
                 // Delete old tx index
                 if (_receiptConfig.TxLookupLimit > 0ul && newMain.Number > _receiptConfig.TxLookupLimit.Value)
                 {
-                    Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
+                    Block? newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx is not null)
                     {
                         RemoveBlockTx(newOldTx);
@@ -94,9 +94,9 @@ namespace Nethermind.Blockchain.Receipts
             });
         }
 
-        public Hash256 FindBlockHash(Hash256 txHash)
+        public Hash256? FindBlockHash(Hash256 txHash)
         {
-            byte[] blockHashData = _transactionDb.Get(txHash);
+            byte[]? blockHashData = _transactionDb.Get(txHash);
             if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
@@ -106,7 +106,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         // Find receipt stored with old - obsolete format.
-        private TxReceipt FindReceiptObsolete(Hash256 hash)
+        private TxReceipt? FindReceiptObsolete(Hash256 hash)
         {
             Span<byte> receiptData = _defaultColumn.GetSpan(hash);
             try
@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private TxReceipt DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)
+        private TxReceipt? DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)
         {
             if (!receiptData.IsNullOrEmpty())
             {
@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain.Receipts
                 return [];
             }
 
-            Hash256 blockHash = block.Hash;
+            Hash256 blockHash = block.Hash!;
             if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? receipts))
             {
                 return receipts ?? [];
@@ -218,7 +218,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
-            if (_receiptsCache.TryGet(blockHash, out TxReceipt[] receipts))
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? receipts))
             {
                 iterator = new ReceiptsIterator(receipts);
                 return true;
@@ -296,7 +296,7 @@ namespace Nethermind.Blockchain.Receipts
 
             _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
 
-            _receiptsCache.Set(block.Hash, txReceipts);
+            _receiptsCache.Set(block.Hash!, txReceipts);
 
             if (ensureCanonical)
             {
@@ -342,10 +342,10 @@ namespace Nethermind.Blockchain.Receipts
 
         public void RemoveReceipts(Block block)
         {
-            _receiptsCache.Delete(block.Hash);
+            _receiptsCache.Delete(block.Hash!);
 
             Span<byte> blockNumPrefixed = stackalloc byte[40];
-            GetBlockNumPrefixedKey(block.Number, block.Hash, blockNumPrefixed);
+            GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
             _receiptsDb.Remove(blockNumPrefixed);
 
             RemoveBlockTx(block);
@@ -356,7 +356,10 @@ namespace Nethermind.Blockchain.Receipts
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {
-                writeBatch[tx.Hash.Bytes] = null;
+                if (tx.Hash is not null)
+                {
+                    writeBatch[tx.Hash.Bytes] = null;
+                }
             }
         }
 
@@ -366,8 +369,9 @@ namespace Nethermind.Blockchain.Receipts
 
             lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;
 
-            if (_receiptConfig.TxLookupLimit == ulong.MaxValue) return;
-            if (_receiptConfig.TxLookupLimit != 0ul && lastBlockNumber.Value >= _receiptConfig.TxLookupLimit.Value && block.Number <= lastBlockNumber.Value - _receiptConfig.TxLookupLimit.Value) return;
+            ulong? txLookupLimit = _receiptConfig.TxLookupLimit;
+            if (txLookupLimit == ulong.MaxValue) return;
+            if (txLookupLimit is > 0ul && lastBlockNumber.Value >= txLookupLimit.Value && block.Number <= lastBlockNumber.Value - txLookupLimit.Value) return;
             if (_receiptConfig.CompactTxIndex)
             {
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;
@@ -380,7 +384,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             else
             {
-                byte[] blockHash = block.Hash.BytesToArray();
+                byte[] blockHash = block.Hash!.BytesToArray();
                 foreach (Transaction tx in block.Transactions)
                 {
                     tx.Hash ??= tx.CalculateHash();

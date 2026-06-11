@@ -54,7 +54,8 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
-            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes)
+                ?? throw new RlpException("Unexpected RLP null while decoding receipt log entry.");
         }
 
         txReceipt.Logs = entries;
@@ -109,16 +110,22 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
     private static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (int i = 0; i < item.Logs.Length; i++)
+        LogEntry[] logs = item.Logs ?? [];
+        for (int i = 0; i < logs.Length; i++)
         {
-            logsLength += Rlp.LengthOf(item.Logs[i]);
+            logsLength += Rlp.LengthOf(logs[i]);
         }
 
         return logsLength;
     }
 
-    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item is null)
+        {
+            return Rlp.OfEmptyList.Length;
+        }
+
         (int total, _) = GetContentLength(item, rlpBehaviors);
         return Rlp.LengthOfSequence(total);
     }
@@ -152,7 +159,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         writer.Encode(item.GasUsedTotal);
 
         writer.StartSequence(logsLength);
-        LogEntry[] logs = item.Logs;
+        LogEntry[] logs = item.Logs ?? [];
         for (int i = 0; i < logs.Length; i++)
         {
             LogEntryDecoder.Instance.Encode(ref writer, logs[i]);

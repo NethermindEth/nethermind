@@ -36,9 +36,9 @@ public class FullStateFinder(
         // to be important
         // we want to avoid a scenario where state is not found even as it is just near head or best suggested
 
-        Block head = _blockTree.Head;
-        BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
-        BlockHeader bestSuggested = initialBestSuggested;
+        Block? head = _blockTree.Head;
+        BlockHeader? initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
+        BlockHeader? bestSuggested = initialBestSuggested;
 
         ulong bestFullState = 0;
         if (head is not null)
@@ -73,20 +73,21 @@ public class FullStateFinder(
             if (lookback > maxLookupBack) maxLookupBack = lookback;
         }
 
+        BlockHeader? currentHeader = startHeader;
         for (ulong i = 0; i < maxLookupBack; i++)
         {
-            if (startHeader is null)
+            if (currentHeader is null)
             {
                 break;
             }
 
-            if (IsFullySynced(startHeader))
+            if (IsFullySynced(currentHeader))
             {
-                bestFullState = startHeader.Number;
+                bestFullState = currentHeader.Number;
                 break;
             }
 
-            startHeader = _blockTree.FindParentHeader(startHeader!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            currentHeader = _blockTree.FindParentHeader(currentHeader, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         return bestFullState;

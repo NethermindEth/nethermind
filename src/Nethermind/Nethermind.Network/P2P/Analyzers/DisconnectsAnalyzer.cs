@@ -54,7 +54,7 @@ namespace Nethermind.Network.P2P.Analyzers
             return this;
         }
 
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
             ConcurrentDictionary<DisconnectCategory, int> localCopy = _disconnects;
             _disconnects = ReferenceEquals(_disconnects, _disconnectsA) ? _disconnectsB : _disconnectsA;

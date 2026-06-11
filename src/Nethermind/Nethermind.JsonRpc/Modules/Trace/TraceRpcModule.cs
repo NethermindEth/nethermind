@@ -175,7 +175,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
                     IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(env.Component, block, new(parityTypes));
-                    return new ParityTxTraceFromReplay(result.SingleOrDefault());
+                    return new ParityTxTraceFromReplay(result.Single());
                 });
         }
 
@@ -197,15 +197,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash!));
             if (parentSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(parentSearch);
             }
 
-            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object!))
             {
-                return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
+                return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object!);
             }
 
             BlockHeader parentHeader = parentSearch.Object!;
@@ -238,15 +238,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash!));
             if (parentSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(parentSearch);
             }
 
-            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object!))
             {
-                return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(parentSearch.Object);
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(parentSearch.Object!);
             }
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
@@ -324,7 +324,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return false;
             }
 
-            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash!));
             if (parentSearch.IsError)
             {
                 if (_logger.IsWarn) _logger.Warn($"trace_filter stream truncated: parent lookup error for block {block.Header.Number}");
@@ -355,15 +355,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
             }
-            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash!));
             if (parentSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
             }
 
-            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object!))
             {
-                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object!);
             }
 
             if (!TryResolveForkSpec(fork, out IReleaseSpec? forkSpec, out ResultWrapper<IEnumerable<ParityTxTraceFromStore>>? forkError))
@@ -432,15 +432,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
-            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash!));
             if (parentSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
             }
 
-            if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
+            if (!blockchainBridge.HasStateForBlock(parentSearch.Object!))
             {
-                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object!);
             }
 
             BlockHeader parentHeader = parentSearch.Object!;

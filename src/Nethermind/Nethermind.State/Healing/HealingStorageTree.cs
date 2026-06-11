@@ -11,7 +11,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public sealed class HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery) : StorageTree(trieStore, rootHash, logManager)
+public sealed class HealingStorageTree(IScopedTrieStore trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery) : StorageTree(trieStore, rootHash, logManager)
 {
     private readonly INodeStorage _nodeStorage = nodeStorage;
     private readonly Address _address = address;

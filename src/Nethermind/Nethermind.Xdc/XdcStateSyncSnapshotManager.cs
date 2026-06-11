@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -38,7 +39,9 @@ public class XdcStateSyncSnapshotManager(
 
         while (!_epochSwitchManager.IsEpochSwitchAtBlock(epochSwitchHeader))
         {
-            epochSwitchHeader = (XdcBlockHeader)_blockTree.FindHeader(epochSwitchHeader.ParentHash);
+            Hash256 parentHash = epochSwitchHeader.ParentHash ?? throw new InvalidOperationException($"Parent hash is missing for block {epochSwitchHeader.Number}.");
+            epochSwitchHeader = (XdcBlockHeader?)_blockTree.FindHeader(parentHash)
+                ?? throw new InvalidOperationException($"Parent header {parentHash} not found.");
         }
 
         ulong gapBlockNum = Math.Max(
@@ -48,12 +51,12 @@ public class XdcStateSyncSnapshotManager(
 
         if (gapBlockNum + spec.Gap == spec.SwitchBlock)
         {
-            XdcBlockHeader checkpointHeader = (XdcBlockHeader)_blockTree.FindHeader(spec.SwitchBlock);
-            XdcBlockHeader gapBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
+            XdcBlockHeader? checkpointHeader = (XdcBlockHeader?)_blockTree.FindHeader(spec.SwitchBlock);
+            XdcBlockHeader? gapBlockHeader = (XdcBlockHeader?)_blockTree.FindHeader(gapBlockNum);
             if (checkpointHeader is null || gapBlockHeader is null)
                 throw new InvalidOperationException($"Switch block {spec.SwitchBlock} or gap block {gapBlockNum} not found in block tree");
 
-            Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, checkpointHeader.ExtraData.ParseV1Masternodes());
+            Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash ?? throw new InvalidOperationException($"Header hash is missing for block {gapBlockHeader.Number}."), checkpointHeader.ExtraData.ParseV1Masternodes());
             _snapshotManager.StoreSnapshot(snapshot);
 
             gapBlockNum += spec.EpochLength;
@@ -69,7 +72,8 @@ public class XdcStateSyncSnapshotManager(
 
         for (int i = 0; i < count; i++)
         {
-            gapBlockHeaders[i] = (XdcBlockHeader)_blockTree.FindHeader(gapBlockNum);
+            gapBlockHeaders[i] = (XdcBlockHeader?)_blockTree.FindHeader(gapBlockNum)
+                ?? throw new InvalidOperationException($"Gap block {gapBlockNum} not found.");
             gapBlockNum += spec.EpochLength;
         }
 
@@ -80,7 +84,7 @@ public class XdcStateSyncSnapshotManager(
     public void StoreSnapshot(XdcBlockHeader gapBlockHeader)
     {
         Address[] candidates = _masternodeVotingContract.GetCandidatesByStake(gapBlockHeader);
-        Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, candidates);
+        Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash ?? throw new InvalidOperationException($"Header hash is missing for block {gapBlockHeader.Number}."), candidates);
         _snapshotManager.StoreSnapshot(snapshot);
     }
 }

@@ -10,8 +10,8 @@ namespace Nethermind.Network.P2P.EventArg
     public class P2PProtocolInitializedEventArgs(IProtocolHandler handler) : ProtocolInitializedEventArgs(handler)
     {
         public byte P2PVersion { get; set; }
-        public string ClientId { get; set; }
-        public IReadOnlyList<Capability> Capabilities { get; set; }
+        public string ClientId { get; set; } = null!;
+        public IReadOnlyList<Capability> Capabilities { get; set; } = [];
         public int ListenPort { get; set; }
     }
 }

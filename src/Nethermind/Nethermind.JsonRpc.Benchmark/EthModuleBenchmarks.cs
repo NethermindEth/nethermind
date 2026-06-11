@@ -36,9 +36,9 @@ namespace Nethermind.JsonRpc.Benchmark
 {
     public class EthModuleBenchmarks
     {
-        private EthRpcModule _ethModule;
-        private IContainer _container;
-        private HeadBlockSignal _headBlockSignal;
+        private EthRpcModule _ethModule = null!;
+        private IContainer _container = null!;
+        private HeadBlockSignal _headBlockSignal = null!;
 
         [GlobalSetup]
         public void GlobalSetup()

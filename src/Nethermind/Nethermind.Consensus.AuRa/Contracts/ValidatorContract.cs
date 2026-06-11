@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
@@ -28,7 +29,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Get current validator set (last enacted or initial if no changes ever made)
         /// function getValidators() constant returns (address[] _validators);
         /// </summary>
-        Address[] GetValidators(BlockHeader parentHeader);
+        Address[] GetValidators(BlockHeader? parentHeader);
 
         /// <summary>
         /// Issue this log event to signal a desired change in validator set.
@@ -43,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// signal will not be recognized.
         /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
         /// </summary>
-        bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses);
+        bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, [NotNullWhen(true)] out Address[]? addresses);
 
         void EnsureSystemAccount();
     }
@@ -85,7 +86,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// Get current validator set (last enacted or initial if no changes ever made)
         /// function getValidators() constant returns (address[] _validators);
         /// </summary>
-        public Address[] GetValidators(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetValidators), Address.Zero);
+        public Address[] GetValidators(BlockHeader? parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetValidators), Address.Zero);
 
         internal const string InitiateChange = nameof(InitiateChange);
 
@@ -102,13 +103,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// signal will not be recognized.
         /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
         /// </summary>
-        public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
+        public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, [NotNullWhen(true)] out Address[]? addresses)
         {
-            LogEntry logEntry = GetSearchLogEntry(InitiateChange, blockHeader.ParentHash);
-            if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry,
+            LogEntry logEntry = GetSearchLogEntry(InitiateChange, blockHeader.ParentHash!);
+            if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry? foundEntry,
                 logsFindOrder: FindOrder.Ascending /* tracing forwards, parity inconsistency issue */))
             {
-                addresses = DecodeAddresses(foundEntry.Data);
+                addresses = DecodeAddresses(foundEntry!.Data);
                 return true;
             }
 

@@ -31,12 +31,18 @@ namespace Nethermind.Consensus.Rewards
 
             BlockHeader blockHeader = block.Header;
             UInt256 mainReward = blockReward + (uint)block.Uncles.Length * (blockReward >> 5);
-            rewards[0] = new BlockReward(blockHeader.Beneficiary, mainReward);
+            rewards[0] = new BlockReward(
+                blockHeader.Beneficiary ?? throw new InvalidOperationException("Block beneficiary is required to calculate rewards."),
+                mainReward);
 
             for (int i = 0; i < block.Uncles.Length; i++)
             {
-                UInt256 uncleReward = GetUncleReward(blockReward, blockHeader, block.Uncles[i]);
-                rewards[i + 1] = new BlockReward(block.Uncles[i].Beneficiary, uncleReward, BlockRewardType.Uncle);
+                BlockHeader uncle = block.Uncles[i];
+                UInt256 uncleReward = GetUncleReward(blockReward, blockHeader, uncle);
+                rewards[i + 1] = new BlockReward(
+                    uncle.Beneficiary ?? throw new InvalidOperationException("Uncle beneficiary is required to calculate rewards."),
+                    uncleReward,
+                    BlockRewardType.Uncle);
             }
 
             return rewards;

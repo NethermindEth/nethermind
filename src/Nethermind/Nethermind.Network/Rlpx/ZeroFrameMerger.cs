@@ -65,10 +65,13 @@ namespace Nethermind.Network.Rlpx
                 ReadChunk(input, frame);
             }
 
-            if (!_zeroPacket.Content.IsWritable())
+            ZeroPacket zeroPacket = _zeroPacket
+                ?? throw new InvalidOperationException("Cannot merge a frame without an in-progress packet");
+
+            if (!zeroPacket.Content.IsWritable())
             {
                 input.SkipBytes(frame.Padding);
-                output.Add(_zeroPacket);
+                output.Add(zeroPacket);
                 _zeroPacket = null;
 
                 if (input.IsReadable())
@@ -79,7 +82,12 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame) => input.ReadBytes(_zeroPacket.Content, frame.Size);
+        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
+        {
+            ZeroPacket zeroPacket = _zeroPacket
+                ?? throw new InvalidOperationException("Cannot read a continuation chunk without an in-progress packet");
+            input.ReadBytes(zeroPacket.Content, frame.Size);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)

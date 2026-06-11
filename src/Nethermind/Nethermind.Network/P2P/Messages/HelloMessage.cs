@@ -12,10 +12,10 @@ namespace Nethermind.Network.P2P.Messages
         public override string Protocol => "p2p";
         public override int PacketType => P2PMessageCode.Hello;
         public byte P2PVersion { get; set; }
-        public string ClientId { get; set; }
+        public string ClientId { get; set; } = null!;
         public int ListenPort { get; set; }
-        public PublicKey NodeId { get; set; }
-        public IOwnedReadOnlyList<Capability> Capabilities { get; set; }
+        public PublicKey NodeId { get; set; } = null!;
+        public IOwnedReadOnlyList<Capability> Capabilities { get; set; } = ArrayPoolList<Capability>.Empty();
 
         public override string ToString() => $"Hello({ClientId}, {string.Join(", ", Capabilities)})";
 

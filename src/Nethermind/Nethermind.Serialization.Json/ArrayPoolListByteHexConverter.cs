@@ -16,7 +16,7 @@ namespace Nethermind.Serialization.Json;
 public sealed class ArrayPoolListByteHexConverter : JsonConverter<ArrayPoolList<byte>>
 {
     public override ArrayPoolList<byte> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        ByteArrayConverter.ConvertToArrayPoolList(ref reader);
+        ByteArrayConverter.ConvertToArrayPoolList(ref reader) ?? new ArrayPoolList<byte>(0, 0);
 
     public override void Write(Utf8JsonWriter writer, ArrayPoolList<byte> value, JsonSerializerOptions options) =>
         ByteArrayConverter.Convert(writer, value.AsSpan(), skipLeadingZeros: false);

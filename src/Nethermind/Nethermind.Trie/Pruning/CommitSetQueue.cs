@@ -69,7 +69,7 @@ public class CommitSetQueue
                 return false;
             }
 
-            blockCommitSet = _queue.Min;
+            blockCommitSet = _queue.Min!;
             _queue.Remove(blockCommitSet);
             return true;
         }
@@ -97,7 +97,7 @@ public class CommitSetQueue
             ArrayPoolListRef<BlockCommitSet> result = new();
             while (_queue.Count > 0)
             {
-                BlockCommitSet min = _queue.Min;
+                BlockCommitSet min = _queue.Min!;
                 if (min.BlockNumber > blockNumber) break;
                 result.Add(min);
                 _queue.Remove(min);

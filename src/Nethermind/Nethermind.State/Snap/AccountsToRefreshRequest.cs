@@ -12,9 +12,9 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Hash256 RootHash { get; set; }
+        public Hash256 RootHash { get; set; } = null!;
 
-        public IOwnedReadOnlyList<AccountWithStorageStartingHash> Paths { get; set; }
+        public IOwnedReadOnlyList<AccountWithStorageStartingHash> Paths { get; set; } = null!;
 
         public override string ToString() => $"AccountsToRefreshRequest: ({RootHash}, {Paths.Count})";
 
@@ -23,7 +23,7 @@ namespace Nethermind.State.Snap
 
     public class AccountWithStorageStartingHash
     {
-        public PathWithAccount PathAndAccount { get; set; }
+        public PathWithAccount PathAndAccount { get; set; } = null!;
         public ValueHash256 StorageStartingHash { get; set; }
         public ValueHash256 StorageHashLimit { get; set; }
     }

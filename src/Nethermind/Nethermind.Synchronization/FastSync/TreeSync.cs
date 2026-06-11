@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.FastSync
         public const int AlreadySavedCapacity = MemorySizes.MiB;
         public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
 
-        private const StateSyncBatch EmptyBatch = null;
+        private const StateSyncBatch? EmptyBatch = null;
 
         private static readonly AccountDecoder AccountDecoder = new();
 
@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.FastSync
 
             _logger = logManager?.GetClassLogger<TreeSync>() ?? throw new ArgumentNullException(nameof(logManager));
 
-            byte[] progress = _codeDb.Get(_fastSyncProgressKey);
+            byte[]? progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.NetworkId, progress);
             _pendingItems = new PendingSyncItems(syncConfig.SnapSync);
             _branchProgress = new BranchProgress(0, _logger);
@@ -392,7 +392,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             _stateSyncPivot.UpdateHeaderForcefully();
 
-            BlockHeader headerForState = _stateSyncPivot.GetPivotHeader();
+            BlockHeader? headerForState = _stateSyncPivot.GetPivotHeader();
 
             if (headerForState is null)
             {
@@ -560,7 +560,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            if (_previouslyPendingItems.TryRemove(syncItem.Key, out byte[] responseBytes))
+            if (_previouslyPendingItems.TryRemove(syncItem.Key, out byte[]? responseBytes))
             {
                 if (_logger.IsTrace) _logger.Trace($"Using cache for key {syncItem.Key}");
                 int invalidNodes = 0;
@@ -579,7 +579,7 @@ namespace Nethermind.Synchronization.FastSync
             List<DependentItem> nodesToSave = [];
             lock (_dependencies)
             {
-                if (_dependencies.TryGetValue(key, out HashSet<DependentItem> value))
+                if (_dependencies.TryGetValue(key, out HashSet<DependentItem>? value))
                 {
                     HashSet<DependentItem> dependentItems = value;
 
@@ -616,7 +616,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
-            _newPendingItems.TryRemove(syncItem.Key, out byte[] _);
+            _newPendingItems.TryRemove(syncItem.Key, out _);
             if (syncItem.IsRoot)
             {
                 if (!VerifyStorageUpdated(syncItem, data))
@@ -993,7 +993,7 @@ namespace Nethermind.Synchronization.FastSync
                     value = new HashSet<DependentItem>(DependentItemComparer.Instance);
                 }
 
-                value.Add(dependentItem);
+                value!.Add(dependentItem);
             }
         }
 

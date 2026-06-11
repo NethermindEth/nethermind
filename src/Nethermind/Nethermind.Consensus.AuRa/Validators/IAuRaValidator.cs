@@ -8,7 +8,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public interface IAuRaValidator
     {
-        Address[] Validators { get; }
+        Address[]? Validators { get; }
         void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None);
         void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
     }

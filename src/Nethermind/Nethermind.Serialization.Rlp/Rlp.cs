@@ -53,7 +53,7 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp() => RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+        static Rlp() => RegisterDecoders(typeof(Rlp).Assembly);
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
@@ -80,7 +80,7 @@ namespace Nethermind.Serialization.Rlp
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
             _decodersSnapshot = null;
-            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+            RegisterDecoders(typeof(Rlp).Assembly);
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
 
@@ -93,19 +93,22 @@ namespace Nethermind.Serialization.Rlp
 
         public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false);
 
+        [return: MaybeNull]
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => Decode<T>(oldRlp.Bytes.AsSpan(), rlpBehaviors);
 
+        [return: MaybeNull]
         public static T Decode<T>(byte[]? bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => Decode<T>((bytes ?? []).AsSpan(), rlpBehaviors);
 
+        [return: MaybeNull]
         public static T Decode<T>(Span<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             RlpReader reader = new(bytes);
             return Decode<T>(ref reader, rlpBehaviors);
         }
 
-        public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
+        public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder? value) ? value as IRlpDecoder<T> : null;
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
@@ -126,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
                 result = new(length);
                 for (int i = 0; i < length; i++)
                 {
-                    result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
+                    result.Add(rlpDecoder.DecodeGuardNotNull(ref decoderContext, rlpBehaviors));
                 }
 
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -217,17 +220,19 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Error decoding {typeof(T).Name}.", e);
             }
 
-            return result;
+            return result!;
         }
 
-        public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => item is Rlp rlp
+        public static Rlp Encode<T>(T? item, RlpBehaviors behaviors = RlpBehaviors.None)
+            => item is null
+                ? OfEmptyList
+                : item is Rlp rlp
                 ? rlp
                 : GetDecoder<T>() is { } rlpDecoder
                     ? rlpDecoder.Encode(item, behaviors)
                     : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
-        public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static Rlp Encode<T>(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
             => items is []
                 ? OfEmptyList
                 : GetDecoder<T>() is { } rlpDecoder
@@ -259,9 +264,9 @@ namespace Nethermind.Serialization.Rlp
             return buffer;
         }
 
-        public static Rlp Encode(Transaction transaction) => Encode(transaction, false);
+        public static Rlp Encode(Transaction? transaction) => Encode(transaction, false);
 
-        public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
+        public static Rlp Encode(Transaction? transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
             TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
 
         public static Rlp Encode(int value)
@@ -670,7 +675,7 @@ namespace Nethermind.Serialization.Rlp
             return LengthOfSequence(contentLength);
         }
 
-        public static int LengthOf(byte[][]? arrays)
+        public static int LengthOf(byte[]?[]? arrays)
         {
             int contentLength = 0;
             if (arrays is null)
@@ -678,7 +683,7 @@ namespace Nethermind.Serialization.Rlp
                 return LengthOfNull;
             }
 
-            foreach (byte[] item in arrays)
+            foreach (byte[]? item in arrays)
             {
                 contentLength += Rlp.LengthOf(item);
             }
@@ -711,7 +716,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(in ValueHash256? item) => item is null ? 1 : 33;
 
-        public static int LengthOf(Hash256[] keccaks, bool includeLengthOfSequenceStart = false)
+        public static int LengthOf(Hash256[]? keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
 
@@ -723,7 +728,7 @@ namespace Nethermind.Serialization.Rlp
             return value;
         }
 
-        public static int LengthOf(ValueHash256[] keccaks, bool includeLengthOfSequenceStart = false)
+        public static int LengthOf(ValueHash256[]? keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
 
@@ -735,7 +740,7 @@ namespace Nethermind.Serialization.Rlp
             return value;
         }
 
-        public static int LengthOf(IReadOnlyList<Hash256> keccaks, bool includeLengthOfSequenceStart = false)
+        public static int LengthOf(IReadOnlyList<Hash256>? keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Count * LengthOfKeccakRlp ?? 0;
 
@@ -747,7 +752,7 @@ namespace Nethermind.Serialization.Rlp
             return value;
         }
 
-        public static int LengthOf(IReadOnlyList<ValueHash256> keccaks, bool includeLengthOfSequenceStart = false)
+        public static int LengthOf(IReadOnlyList<ValueHash256>? keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Count * LengthOfKeccakRlp ?? 0;
 
@@ -812,7 +817,7 @@ namespace Nethermind.Serialization.Rlp
             return LengthOfLength(length) + 1 + length;
         }
 
-        public static int LengthOf(string value)
+        public static int LengthOf(string? value)
         {
             if (string.IsNullOrEmpty(value))
             {
@@ -838,9 +843,9 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(bool value) => 1;
 
-        public static int LengthOf(LogEntry item) => LogEntryDecoder.Instance.GetLength(item, RlpBehaviors.None);
+        public static int LengthOf(LogEntry? item) => LogEntryDecoder.Instance.GetLength(item, RlpBehaviors.None);
 
-        public static int LengthOf(BlockInfo item) => BlockInfoDecoder.Instance.GetLength(item, RlpBehaviors.None);
+        public static int LengthOf(BlockInfo? item) => BlockInfoDecoder.Instance.GetLength(item, RlpBehaviors.None);
 
         [AttributeUsage(AttributeTargets.Class)]
         public class SkipGlobalRegistration : Attribute;
@@ -943,7 +948,7 @@ namespace Nethermind.Serialization.Rlp
 
         public bool Equals(RlpDecoderKey other) => _type == other._type && _key.Equals(other._key);
 
-        public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
+        public override bool Equals(object? obj) => obj is RlpDecoderKey key && Equals(key);
 
         public static bool operator ==(RlpDecoderKey left, RlpDecoderKey right) => left.Equals(right);
 

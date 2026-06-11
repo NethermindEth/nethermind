@@ -102,13 +102,13 @@ internal class MasternodeVotingContract(
         IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
         using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
         IWorldState worldState = source.WorldState;
-        ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));
+        ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress!, slot));
         UInt256 length = new(storageCell);
         Address[] candidates = new Address[(ulong)length];
         for (int i = 0; i < length; i++)
         {
             UInt256 key = CalculateArrayKey(slot, (ulong)i, 1);
-            candidates[i] = new Address(worldState.Get(new StorageCell(ContractAddress, key)));
+            candidates[i] = new Address(worldState.Get(new StorageCell(ContractAddress!, key)));
         }
         return candidates;
     }

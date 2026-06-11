@@ -618,12 +618,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> headers = blockTree.FindHeaders(block0.Hash, 2, 0, false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headers.Count, Is.EqualTo(2));
-            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
-            Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
+            Assert.That(headers[0]!.Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[1]!.Hash, Is.EqualTo(block1.Hash));
         }
     }
 
@@ -638,12 +638,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 1, false);
+        using IOwnedReadOnlyList<BlockHeader?> headers = blockTree.FindHeaders(block0.Hash, 2, 1, false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headers.Count, Is.EqualTo(2));
-            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
-            Assert.That(headers[1].Hash, Is.EqualTo(block2.Hash));
+            Assert.That(headers[0]!.Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[1]!.Hash, Is.EqualTo(block2.Hash));
         }
     }
 
@@ -662,12 +662,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block3);
         AddToMain(blockTree, block4);
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block2.Hash, 2, 0, true);
+        using IOwnedReadOnlyList<BlockHeader?> headers = blockTree.FindHeaders(block2.Hash, 2, 0, true);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headers.Count, Is.EqualTo(2));
-            Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
-            Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
+            Assert.That(headers[0]!.Hash, Is.EqualTo(block2.Hash));
+            Assert.That(headers[1]!.Hash, Is.EqualTo(block1.Hash));
         }
     }
 
@@ -682,12 +682,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block2.Hash, 2, 1, true);
+        using IOwnedReadOnlyList<BlockHeader?> headers = blockTree.FindHeaders(block2.Hash, 2, 1, true);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headers.Count, Is.EqualTo(2));
-            Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
-            Assert.That(headers[1].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[0]!.Hash, Is.EqualTo(block2.Hash));
+            Assert.That(headers[1]!.Hash, Is.EqualTo(block0.Hash));
         }
     }
 
@@ -702,11 +702,11 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 1, true);
+        using IOwnedReadOnlyList<BlockHeader?> headers = blockTree.FindHeaders(block0.Hash, 2, 1, true);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headers.Count, Is.EqualTo(2));
-            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[0]!.Hash, Is.EqualTo(block0.Hash));
             Assert.That(headers[1], Is.Null);
         }
     }
@@ -722,11 +722,11 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headers.Count, Is.EqualTo(100));
-            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[0]!.Hash, Is.EqualTo(block0.Hash));
             Assert.That(headers[3], Is.Null);
 
             Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
@@ -744,11 +744,11 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headers.Count, Is.EqualTo(100));
-            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[0]!.Hash, Is.EqualTo(block0.Hash));
             Assert.That(headers[3], Is.Null);
 
             Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
@@ -767,13 +767,13 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         int length = 256;
-        using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blocks.Count, Is.EqualTo(length));
-            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
-            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
-            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
+            Assert.That(blocks[0]!.CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1]!.CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[2]!.CalculateHash(), Is.EqualTo(block2.Hash));
         }
     }
 
@@ -789,12 +789,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         int length = 2;
-        using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block1.Hash, length, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> blocks = blockTree.FindHeaders(block1.Hash, length, 0, false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blocks.Count, Is.EqualTo(length));
-            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block1.Hash));
-            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
+            Assert.That(blocks[0]!.CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[1]!.CalculateHash(), Is.EqualTo(block2.Hash));
         }
     }
 
@@ -810,13 +810,13 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         int length = 3;
-        using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blocks.Count, Is.EqualTo(length));
-            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
-            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
-            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
+            Assert.That(blocks[0]!.CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1]!.CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[2]!.CalculateHash(), Is.EqualTo(block2.Hash));
         }
     }
 
@@ -831,13 +831,13 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block2.Hash, 3, 0, true);
+        using IOwnedReadOnlyList<BlockHeader?> blocks = blockTree.FindHeaders(block2.Hash, 3, 0, true);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blocks.Count, Is.EqualTo(3));
 
-            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block2.Hash));
-            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[0]!.CalculateHash(), Is.EqualTo(block2.Hash));
+            Assert.That(blocks[2]!.CalculateHash(), Is.EqualTo(block0.Hash));
         }
     }
 
@@ -853,7 +853,7 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, 0, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> blocks = blockTree.FindHeaders(block0.Hash, 0, 0, false);
         Assert.That(blocks.Count, Is.EqualTo(0));
     }
 
@@ -868,7 +868,7 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block2.Hash, 1, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> blocks = blockTree.FindHeaders(block2.Hash, 1, 0, false);
         Assert.That(blocks.Count, Is.EqualTo(1));
     }
 
@@ -883,12 +883,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, 2, 1, false);
+        using IOwnedReadOnlyList<BlockHeader?> blocks = blockTree.FindHeaders(block0.Hash, 2, 1, false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blocks.Count, Is.EqualTo(2), "length");
-            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
-            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
+            Assert.That(blocks[0]!.CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1]!.CalculateHash(), Is.EqualTo(block2.Hash));
         }
     }
 
@@ -903,7 +903,7 @@ public class BlockTreeTests
         AddToMain(blockTree, block1);
         AddToMain(blockTree, block2);
 
-        using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, 4, 0, false);
+        using IOwnedReadOnlyList<BlockHeader?> blocks = blockTree.FindHeaders(block0.Hash, 4, 0, false);
         Assert.That(blocks.Count, Is.EqualTo(4));
         Assert.That(blocks[3], Is.Null);
     }
@@ -2265,7 +2265,7 @@ public class BlockTreeTests
         public bool PreventsAcceptingNewBlocks => true;
         public ulong StartLevelInclusive => 0;
         public ulong EndLevelExclusive => 3;
-        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
+        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             if (_wait)
             {
@@ -2285,7 +2285,7 @@ public class BlockTreeTests
             Task.FromResult(BlockVisitOutcome.None);
 
         public Task<LevelVisitOutcome> VisitLevelEnd(
-            ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
+            ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
             Task.FromResult(LevelVisitOutcome.None);
     }
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -23,7 +22,7 @@ public class BlockRangeUpdateMessageSerializer :
     }
 
     public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
+        byteBuffer.DeserializeRlp(Deserialize) ?? throw new RlpException("Block range update message decoding returned null.");
 
     private static BlockRangeUpdateMessage Deserialize(ref RlpReader ctx)
     {
@@ -33,7 +32,7 @@ public class BlockRangeUpdateMessageSerializer :
         {
             EarliestBlock = ctx.DecodeULong(),
             LatestBlock = ctx.DecodeULong(),
-            LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
+            LatestBlockHash = ctx.DecodeKeccakNonNull()
         };
     }
 

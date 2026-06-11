@@ -23,7 +23,7 @@ namespace Nethermind.State.Snap
 
         public static bool operator !=(PathWithStorageSlot left, PathWithStorageSlot right) => !left.Equals(in right);
 
-        public override bool Equals(object obj) => obj is PathWithStorageSlot pws && Equals(in pws);
+        public override bool Equals(object? obj) => obj is PathWithStorageSlot pws && Equals(in pws);
 
         public override int GetHashCode() => throw new NotImplementedException();
     }

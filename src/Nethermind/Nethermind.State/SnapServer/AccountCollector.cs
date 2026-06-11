@@ -24,9 +24,8 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
         }
 
         RlpReader ctx = new(value.AsSpan());
-        Account accnt = AccountDecoder.Instance.Decode(ref ctx);
+        Account? accnt = AccountDecoder.Instance.Decode(ref ctx);
         Accounts.Add(new PathWithAccount(path, accnt));
         return 32 + AccountDecoder.Slim.GetLength(accnt);
     }
 }
-

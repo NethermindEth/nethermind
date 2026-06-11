@@ -7,8 +7,8 @@ namespace Nethermind.Network.Rlpx.Handshake
 {
     public class AckMessage : MessageBase
     {
-        public PublicKey EphemeralPublicKey { get; set; }
-        public byte[] Nonce { get; set; }
+        public PublicKey EphemeralPublicKey { get; set; } = null!;
+        public byte[] Nonce { get; set; } = null!;
         public bool IsTokenUsed { get; set; }
     }
 }

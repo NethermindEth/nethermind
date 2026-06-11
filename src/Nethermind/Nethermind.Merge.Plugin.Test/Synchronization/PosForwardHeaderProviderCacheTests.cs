@@ -65,7 +65,7 @@ public class PosForwardHeaderProviderCacheTests
     [TearDown]
     public void TearDown() => _provider.UnsubscribeForTest();
 
-    private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(ulong skip = 0, ulong max = Requested) =>
+    private Task<IOwnedReadOnlyList<BlockHeader>?> Get(ulong skip = 0, ulong max = Requested) =>
         _provider.GetBlockHeaders(skip, max, CancellationToken.None);
 
     private void RaiseMainChainUpdate(params Block[] blocks)
@@ -78,11 +78,11 @@ public class PosForwardHeaderProviderCacheTests
     private void AssertChainLevelCalls(int expected) =>
         _chainLevelHelper.ReceivedWithAnyArgs(expected).GetNextHeaders(default, default, default);
 
-    private async Task ExpectCalls(int expected, Action<IOwnedReadOnlyList<BlockHeader?>> between, ulong firstSkip = 0, ulong firstMax = Requested, ulong secondSkip = 0, ulong secondMax = Requested)
+    private async Task ExpectCalls(int expected, Action<IOwnedReadOnlyList<BlockHeader>> between, ulong firstSkip = 0, ulong firstMax = Requested, ulong secondSkip = 0, ulong secondMax = Requested)
     {
-        using IOwnedReadOnlyList<BlockHeader?>? first = await Get(firstSkip, firstMax);
+        using IOwnedReadOnlyList<BlockHeader>? first = await Get(firstSkip, firstMax);
         between(first!);
-        using IOwnedReadOnlyList<BlockHeader?>? _ = await Get(secondSkip, secondMax);
+        using IOwnedReadOnlyList<BlockHeader>? _ = await Get(secondSkip, secondMax);
         AssertChainLevelCalls(expected);
     }
 
@@ -121,14 +121,14 @@ public class PosForwardHeaderProviderCacheTests
         _chainLevelHelper.GetNextHeaders(default, default, default).ReturnsForAnyArgs(_ => BuildSequentialHeaders(start: cacheStart, count: CachedBatchSize));
         _blockTree.BestKnownNumber.Returns(cacheStart);
 
-        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
+        using IOwnedReadOnlyList<BlockHeader>? first = await Get();
 
         Block belowBlock = Build.A.Block.WithNumber(cacheStart - 5).WithDifficulty(2).TestObject;
         Block insideBlock = Build.A.Block.WithNumber(cacheStart + 3).WithDifficulty(2).TestObject;
         Assert.That(insideBlock.Header.Hash, Is.Not.EqualTo(first![3]!.Hash));
         RaiseMainChainUpdate(belowBlock, insideBlock);
 
-        using IOwnedReadOnlyList<BlockHeader?>? _ = await Get();
+        using IOwnedReadOnlyList<BlockHeader>? _ = await Get();
         AssertChainLevelCalls(2);
     }
 
@@ -149,12 +149,12 @@ public class PosForwardHeaderProviderCacheTests
     [Test]
     public async Task Cached_slice_advances_with_best_known_number()
     {
-        using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
+        using IOwnedReadOnlyList<BlockHeader>? first = await Get();
         Assert.That(first!.Count, Is.EqualTo(Requested));
         Assert.That(first[0]!.Number, Is.EqualTo(0));
 
         _blockTree.BestKnownNumber.Returns(20UL);
-        using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
+        using IOwnedReadOnlyList<BlockHeader>? second = await Get();
 
         Assert.That(second!.Count, Is.EqualTo(Requested));
         Assert.That(second[0]!.Number, Is.EqualTo(20));

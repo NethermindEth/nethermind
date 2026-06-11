@@ -192,7 +192,7 @@ namespace Nethermind.Trie
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 if (output[i] is null) continue;
-                TrieNode child = output[i];
+                TrieNode child = output[i]!;
                 path.SetLast(i);
                 child.ResolveKey(nodeResolver, ref path);
                 TNodeContext childContext = nodeContext.Add((byte)i);
@@ -226,7 +226,7 @@ namespace Nethermind.Trie
             {
                 if (output[i] is null) continue;
                 handledChild++;
-                TrieNode child = output[i];
+                TrieNode child = output[i]!;
                 path.SetLast(i);
                 child.ResolveKey(trieNodeResolver, ref path);
                 TNodeContext childContext = nodeContext.Add((byte)i);
@@ -251,7 +251,7 @@ namespace Nethermind.Trie
 
             for (int i = 0; i < tasks.Count; i++)
             {
-                actualSubtreeSize += tasks[i].Result;
+                actualSubtreeSize += tasks[i]!.Result;
             }
 
             return actualSubtreeSize;

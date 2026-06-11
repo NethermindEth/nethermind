@@ -18,9 +18,9 @@ namespace Nethermind.Stats.Model
     /// </summary>
     public sealed class Node : IFormattable, IEquatable<Node>
     {
-        private string _clientId;
-        private string _paddedHost;
-        private string _paddedPort;
+        private string? _clientId;
+        private string? _paddedHost;
+        private string? _paddedPort;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -35,8 +35,8 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host => _host ??= FormatHost(Address?.Address);
-        private string _host;
+        public string Host => _host ??= FormatHost(Address.Address);
+        private string? _host;
 
         /// <summary>
         /// Port part of the network node.
@@ -46,7 +46,7 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Network address of the node.
         /// </summary>
-        public IPEndPoint Address { get; private set; }
+        public IPEndPoint Address { get; private set; } = null!;
 
         /// <summary>
         /// We use bootnodes to bootstrap the discovery process.
@@ -61,7 +61,7 @@ namespace Nethermind.Stats.Model
         public bool IsTrusted { get; set; }
 
 
-        public string ClientId
+        public string? ClientId
         {
             get => _clientId;
             set
@@ -76,9 +76,9 @@ namespace Nethermind.Stats.Model
 
         public NodeClientType ClientType { get; private set; } = NodeClientType.Unknown;
 
-        public string EthDetails { get; set; }
+        public string? EthDetails { get; set; }
         public long CurrentReputation { get; set; }
-        public string Enr { get; set; }
+        public string? Enr { get; set; }
 
         public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
@@ -107,11 +107,11 @@ namespace Nethermind.Stats.Model
         public static bool TryFromDiscoveryEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
             => TryFromEnrEndpoint(enr, enr.DiscoveryIp, enr.DiscoveryPort, out node);
 
-        private static bool TryFromEnrEndpoint(NodeRecord enr, IPAddress ip, int? port, [MaybeNullWhen(false)] out Node node)
+        private static bool TryFromEnrEndpoint(NodeRecord enr, IPAddress? ip, int? port, [MaybeNullWhen(false)] out Node node)
         {
             node = null;
 
-            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            PublicKey? key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
             if (key is null || ip is null || port is null || port.Value == 0 || (uint)port.Value > ushort.MaxValue)
             {
                 return false;
@@ -142,7 +142,7 @@ namespace Nethermind.Stats.Model
         private static string[] CreateCommonPortStrings()
         {
             string[] ports = new string[100];
-            for (int i = 0; ports.Length < 100; i++)
+            for (int i = 0; i < ports.Length; i++)
             {
                 ports[i] = (i + 30300).ToString().PadLeft(5, ' ');
             }
@@ -177,7 +177,7 @@ namespace Nethermind.Stats.Model
 
         private static IPEndPoint GetIPEndPoint(string host, int port) => new(IPAddress.Parse(host), port);
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(this, obj))
             {
@@ -196,9 +196,9 @@ namespace Nethermind.Stats.Model
 
         public override string ToString() => ToString(Format.WithPublicKey);
 
-        public string ToString(string format) => ToString(format, null);
+        public string ToString(string? format) => ToString(format, null);
 
-        public string ToString(string format, IFormatProvider formatProvider) => format switch
+        public string ToString(string? format, IFormatProvider? formatProvider) => format switch
         {
             Format.Short => $"{Host}:{Port}",
             Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
@@ -209,7 +209,7 @@ namespace Nethermind.Stats.Model
             _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
         };
 
-        public bool Equals(Node other)
+        public bool Equals(Node? other)
         {
             if (ReferenceEquals(this, other)) return true;
             if (other is null) return false;
@@ -217,7 +217,7 @@ namespace Nethermind.Stats.Model
             return Id.Equals(other.Id);
         }
 
-        public static bool operator ==(Node a, Node b)
+        public static bool operator ==(Node? a, Node? b)
         {
             if (ReferenceEquals(a, b)) return true;
 
@@ -229,7 +229,7 @@ namespace Nethermind.Stats.Model
             return a.Id.Equals(b.Id);
         }
 
-        public static bool operator !=(Node a, Node b) => !(a == b);
+        public static bool operator !=(Node? a, Node? b) => !(a == b);
 
         // Dynamically generates regex pattern from NodeClientType enum values (excluding Unknown).
         // Pattern structure: (ClientName|OtherClient|...)
@@ -270,7 +270,7 @@ namespace Nethermind.Stats.Model
                         .OrderByDescending(name => name.Length))),
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        public static NodeClientType RecognizeClientType(string clientId)
+        public static NodeClientType RecognizeClientType(string? clientId)
         {
             if (clientId is null)
             {

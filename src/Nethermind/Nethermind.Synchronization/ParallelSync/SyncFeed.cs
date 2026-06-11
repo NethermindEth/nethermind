@@ -8,11 +8,11 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public abstract class SyncFeed<T> : ISyncFeed<T>
+    public abstract class SyncFeed<T> : ISyncFeed<T> where T : class
     {
         private TaskCompletionSource? _taskCompletionSource = null;
-        public abstract Task<T> PrepareRequest(CancellationToken token = default);
-        public abstract SyncResponseHandlingResult HandleResponse(T response, PeerInfo peer = null);
+        public abstract Task<T?> PrepareRequest(CancellationToken token = default);
+        public abstract SyncResponseHandlingResult HandleResponse(T response, PeerInfo? peer = null);
         public abstract bool IsMultiFeed { get; }
         public abstract AllocationContexts Contexts { get; }
         public SyncFeedState CurrentState { get; private set; }

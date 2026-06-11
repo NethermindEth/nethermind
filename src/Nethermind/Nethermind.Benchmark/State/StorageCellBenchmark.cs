@@ -12,7 +12,7 @@ namespace Nethermind.Benchmarks.State
 {
     public class StorageCellBenchmark
     {
-        private static IStorageTracer _tracer;
+        private static IStorageTracer _tracer = null!;
         private static StorageCell _cell = new(Address.SystemUser, new UInt256(1, 2, 3, 4));
 
         private const int OperationsPerInvoke = 1000;

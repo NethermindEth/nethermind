@@ -29,11 +29,13 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
         TruncateToMaxSize();
     }
 
-    public IEnumerable<Block> GetAll() => blockDb.GetAllValues(true).Select(bytes =>
-    {
-        RlpReader ctx = new(((byte[]?)bytes ?? []));
-        return _blockDecoder.Decode(ref ctx);
-    });
+    public IEnumerable<Block> GetAll() => blockDb.GetAllValues(true)
+        .Select(bytes =>
+        {
+            RlpReader ctx = new(((byte[]?)bytes ?? []));
+            return _blockDecoder.Decode(ref ctx);
+        })
+        .Where(static block => block is not null)!;
 
     private void TruncateToMaxSize()
     {
@@ -42,7 +44,7 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
         {
             foreach (Block blockToDelete in GetAll().Take(toDelete))
             {
-                Delete(blockToDelete.Number, blockToDelete.Hash);
+                Delete(blockToDelete.Number, blockToDelete.Hash!);
             }
         }
     }

@@ -415,16 +415,17 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         {
             ISyncPeerPool syncPeerPool = SyncPeerPool;
             ((SyncPeerMock)syncPeer).Disconnected += (_, _) => syncPeerPool.RemovePeer(syncPeer);
+            string clientId = syncPeer.ClientId!;
 
-            _logger.Info($"PEER ADDED {syncPeer.ClientId}");
-            _peers.TryAdd(syncPeer.ClientId, syncPeer);
+            _logger.Info($"PEER ADDED {clientId}");
+            _peers.TryAdd(clientId, syncPeer);
             SyncPeerPool.AddPeer(syncPeer);
             return this;
         }
 
         public SyncingContext AfterPeerIsRemoved(ISyncPeer syncPeer)
         {
-            _peers.Remove(syncPeer.ClientId);
+            _peers.Remove(syncPeer.ClientId!);
             SyncPeerPool.RemovePeer(syncPeer);
             return this;
         }

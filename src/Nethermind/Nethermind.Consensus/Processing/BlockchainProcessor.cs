@@ -120,7 +120,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e) => _lastProcessedBlock = DateTime.UtcNow;
 
-    private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
+    private void OnNewBestBlock(object? sender, BlockEventArgs blockEventArgs)
     {
         ProcessingOptions options = ProcessingOptions.None;
         if (_options.StoreReceiptsByDefault)
@@ -372,20 +372,24 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
-        while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out BlockRef blockRef))
+        while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out BlockRef? blockRef))
         {
             try
             {
-                if (blockRef.IsInDb || blockRef.Block is null)
+                if (blockRef is null)
+                {
+                    throw new InvalidOperationException("Block processing expects only resolved blocks");
+                }
+
+                if (blockRef.IsInDb || blockRef.Block is not { } block)
                 {
                     ThrowIncorrectBlockReference(blockRef);
                 }
 
-                Block block = blockRef.Block;
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
+                Block? processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
 
                 if (processedBlock is null)
                 {
@@ -415,7 +419,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void NotifyFailedOrSkipped(BlockRef blockRef, Block block, string error)
+        void NotifyFailedOrSkipped(BlockRef blockRef, Block block, string? error)
         {
             if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
             BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
@@ -738,15 +742,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             if (isTrace) TraceParentSearch(toBeProcessed);
 
-            toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
+            Block? parentBlock = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
 
-            if (isTrace) TraceParentBlock(toBeProcessed);
+            if (isTrace) TraceParentBlock(parentBlock);
 
-            if (toBeProcessed is null)
+            if (parentBlock is null)
             {
                 if (_logger.IsDebug) DebugParentNotFound(suggestedBlock);
                 break;
             }
+
+            toBeProcessed = parentBlock;
 
             // We only walk back far enough to find a base block that still has state: those are the blocks
             // that actually need (re)processing. Blocks deeper than that already have state and must not be
@@ -767,7 +773,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             TraceBranchingPoint(branchingPoint);
         }
 
-        Hash256 stateRoot = branchingPoint?.StateRoot;
+        Hash256? stateRoot = branchingPoint?.StateRoot;
         if (isTrace) TraceStateRootLookup(stateRoot);
 
         if (blocksToBeAddedToMain.Count > 1)
@@ -808,14 +814,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceProcessingBlock(Block suggestedBlock, Block toBeProcessed)
-            => _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
+            => _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed.ToString(Block.Format.Short)}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceParentSearch(Block toBeProcessed)
             => _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceParentBlock(Block toBeProcessed)
+        void TraceParentBlock(Block? toBeProcessed)
             => _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -832,7 +838,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         /* a bit hacky way to get the invalid branch out of the processing loop */
         if (suggestedBlock.Number != 0 &&
-            !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
+            (suggestedBlock.ParentHash is null || !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash)))
         {
             if (_logger.IsDebug) LogUnknownParentBlock(suggestedBlock);
             return false;

@@ -38,9 +38,9 @@ public class OptimismEngineRpcModule(
         return ResultWrapper<OptimismGetPayloadV3Result?>.From(result, result.Data is null ? null : new OptimismGetPayloadV3Result(result.Data));
     }
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, Hash256[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(OptimismExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes,
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(OptimismExecutionPayloadV3 executionPayload, Hash256[] blobVersionedHashes,
         Hash256? parentBeaconBlockRoot, byte[][]? executionRequests) => _engineRpcModule.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
 
     public async Task<ResultWrapper<OptimismGetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)

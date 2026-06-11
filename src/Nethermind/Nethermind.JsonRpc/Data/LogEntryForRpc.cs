@@ -29,13 +29,13 @@ namespace Nethermind.JsonRpc.Data
         public bool? Removed { get; set; }
         public long? LogIndex { get; set; }
         public long? TransactionIndex { get; set; }
-        public Hash256 TransactionHash { get; set; }
-        public Hash256 BlockHash { get; set; }
+        public Hash256? TransactionHash { get; set; }
+        public Hash256? BlockHash { get; set; }
         public ulong? BlockNumber { get; set; }
         public ulong? BlockTimestamp { get; set; }
-        public Address Address { get; set; }
-        public byte[] Data { get; set; }
-        public Hash256[] Topics { get; set; }
+        public Address Address { get; set; } = null!;
+        public byte[] Data { get; set; } = [];
+        public Hash256[] Topics { get; set; } = [];
 
         public LogEntry ToLogEntry() => new(Address, Data, Topics);
     }

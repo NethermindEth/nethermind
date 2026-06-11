@@ -10,7 +10,7 @@ namespace Nethermind.Benchmarks.Core
     {
         const int Capacity = 16;
         private object _object = new();
-        private LruCache<int, object> shared;
+        private LruCache<int, object> shared = null!;
 
         [GlobalSetup]
         public void Setup() => shared = new LruCache<int, object>(Capacity, Capacity, string.Empty);

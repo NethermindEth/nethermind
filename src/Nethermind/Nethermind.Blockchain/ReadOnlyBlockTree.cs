@@ -22,9 +22,9 @@ namespace Nethermind.Blockchain
 
         public ulong NetworkId => _wrapped.NetworkId;
         public ulong ChainId => _wrapped.ChainId;
-        public BlockHeader Genesis => _wrapped.Genesis;
-        public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
-        public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
+        public BlockHeader? Genesis => _wrapped.Genesis;
+        public BlockHeader? BestSuggestedHeader => _wrapped.BestSuggestedHeader;
+        public BlockHeader? BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
         public BlockHeader? LowestInsertedHeader
         {
             get => _wrapped.LowestInsertedHeader;
@@ -44,19 +44,19 @@ namespace Nethermind.Blockchain
             set => _wrapped.LowestInsertedBeaconHeader = value;
         }
 
-        public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
+        public Block? BestSuggestedBody => _wrapped.BestSuggestedBody;
         public ulong BestKnownNumber => _wrapped.BestKnownNumber;
         public ulong BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
-        public Block Head => _wrapped.Head;
+        public Block? Head => _wrapped.Head;
         public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
-        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(ulong number, Hash256 blockHash) => _wrapped.GetInfo(number, blockHash);
+        public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash) => _wrapped.GetInfo(number, blockHash);
         public bool CanAcceptNewBlocks { get; } = false;
 
         public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
             => _wrapped.Accept(blockTreeVisitor, cancellationToken);
 
-        public ChainLevelInfo FindLevel(ulong number) => _wrapped.FindLevel(number);
-        public BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
+        public ChainLevelInfo? FindLevel(ulong number) => _wrapped.FindLevel(number);
+        public BlockInfo? FindCanonicalBlockInfo(ulong blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
 
         public void BulkInsertHeader(IReadOnlyList<BlockHeader> headers,
             BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
@@ -79,11 +79,11 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestHeader(BlockHeader header) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestHeader)} calls");
 
-        public Hash256 HeadHash => _wrapped.HeadHash;
-        public Hash256 GenesisHash => _wrapped.GenesisHash;
-        public Hash256 PendingHash => _wrapped.PendingHash;
-        public Hash256 FinalizedHash => _wrapped.FinalizedHash;
-        public Hash256 SafeHash => _wrapped.SafeHash;
+        public Hash256? HeadHash => _wrapped.HeadHash;
+        public Hash256? GenesisHash => _wrapped.GenesisHash;
+        public Hash256? PendingHash => _wrapped.PendingHash;
+        public Hash256? FinalizedHash => _wrapped.FinalizedHash;
+        public Hash256? SafeHash => _wrapped.SafeHash;
         public ulong LastFinalizedBlockLevel => _wrapped.LastFinalizedBlockLevel;
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized
@@ -92,22 +92,22 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
-        public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
+        public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
 
         public bool HasBlock(ulong blockNumber, Hash256 blockHash) => _wrapped.HasBlock(blockNumber, blockHash);
 
-        public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
+        public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 
-        public BlockHeader FindHeader(ulong blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);
-        public Hash256 FindBlockHash(ulong blockNumber) => _wrapped.FindBlockHash(blockNumber);
+        public BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);
+        public Hash256? FindBlockHash(ulong blockNumber) => _wrapped.FindBlockHash(blockNumber);
 
         public bool IsMainChain(BlockHeader blockHeader) => _wrapped.IsMainChain(blockHeader);
 
-        public Hash256 FindHash(ulong blockNumber) => _wrapped.FindHash(blockNumber);
+        public Hash256? FindHash(ulong blockNumber) => _wrapped.FindHash(blockNumber);
 
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        public IOwnedReadOnlyList<BlockHeader?> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
-        public Block FindBlock(ulong blockNumber, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockNumber, options);
+        public Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockNumber, options);
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
 
@@ -115,7 +115,7 @@ namespace Nethermind.Blockchain
 
         public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => _wrapped.IsMainChain(blockHash, throwOnMissingHash);
 
-        public BlockHeader FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();
+        public BlockHeader? FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();
 
         public bool IsKnownBlock(ulong number, Hash256 blockHash) => _wrapped.IsKnownBlock(number, blockHash);
 
@@ -200,7 +200,7 @@ namespace Nethermind.Blockchain
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
         public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, ulong clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
         public void RecalculateTreeLevels() => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(RecalculateTreeLevels)} calls");
-        public (ulong BlockNumber, Hash256 BlockHash) SyncPivot
+        public (ulong BlockNumber, Hash256? BlockHash) SyncPivot
         {
             get => _wrapped.SyncPivot;
             set { }

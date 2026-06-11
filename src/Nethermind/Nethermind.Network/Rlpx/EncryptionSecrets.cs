@@ -7,10 +7,10 @@ namespace Nethermind.Network.Rlpx
 {
     public class EncryptionSecrets
     {
-        public KeccakHash EgressMac { get; set; }
-        public KeccakHash IngressMac { get; set; }
-        public byte[] AesSecret { get; set; }
-        public byte[] MacSecret { get; set; }
+        public KeccakHash EgressMac { get; set; } = null!;
+        public KeccakHash IngressMac { get; set; } = null!;
+        public byte[] AesSecret { get; set; } = null!;
+        public byte[] MacSecret { get; set; } = null!;
         //        public byte[] Token { get; set; }
     }
 }

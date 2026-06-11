@@ -18,7 +18,7 @@ namespace Nethermind.Consensus
 
         public Address Address => Address.Zero;
 
-        public Task<Block> SealBlock(Block? block, CancellationToken cancellationToken) => Task.FromResult(block);
+        public Task<Block?> SealBlock(Block block, CancellationToken cancellationToken) => Task.FromResult<Block?>(block);
 
         public bool CanSeal(ulong blockNumber, Hash256? parentHash) => true;
 

@@ -133,6 +133,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(clParameters.SystemConfigProxy);
             IL2Api l2Api = new L2Api(_api.Context.Resolve<IRpcModuleFactory<IOptimismEthRpcModule>>().Create(), opEngine, systemConfigDeriver, _api.LogManager);
             IExecutionEngineManager executionEngineManager = new ExecutionEngineManager(l2Api, _api.LogManager);
+            Block genesis = _api.ChainSpec.Genesis ?? throw new InvalidOperationException("Chain spec genesis is missing.");
 
             _cl = new OptimismCL(
                 decodingPipeline,
@@ -146,7 +147,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 clParameters,
                 (await _api.IpResolver.Resolve()).ExternalIp,
                 _api.SpecProvider.ChainId,
-                _api.ChainSpec.Genesis.Timestamp,
+                genesis.Timestamp,
                 // Logging
                 _api.LogManager
             );

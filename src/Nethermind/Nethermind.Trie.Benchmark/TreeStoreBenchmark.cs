@@ -1,6 +1,8 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -45,23 +47,21 @@ namespace Nethermind.Trie.Benchmark
         // [ParamsSource(nameof(Inputs))]
         // public Param Input { get; set; }
 
-        private IKeyValueStore _whateverDb = new MemDb();
+        private readonly IKeyValueStoreWithBatching _whateverDb = new MemDb();
 
-        private ILogManager _logManager = new OneLoggerLogManager(NullLogger.Instance);
+        private readonly ILogManager _logManager = new OneLoggerLogManager(NullLogger.Instance);
 
         [Benchmark]
         public TrieStore Trie_committer_with_one_node()
         {
-            TrieNode trieNode = new(NodeType.Unknown); // 56B
+            TrieNode trieNode = new(NodeType.Leaf, new byte[7]);
+            TreePath emptyPath = TreePath.Empty;
+            trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
 
-            ITrieNodeCache trieNodeCache = new TrieNodeCache(_logManager);
-            TrieStore treeStore = new(
-                trieNodeCache,
-                _whateverDb,
-                new DepthAndMemoryBased(128, 1.MB),
-                No.Persistence,
-                _logManager);
-            treeStore.CommitOneNode(1234, new NodeCommitInfo(trieNode));
+            TrieStore treeStore = TestTrieStoreFactory.Build(_whateverDb, No.Pruning, No.Persistence, _logManager);
+            using IBlockCommitter _ = treeStore.BeginBlockCommit(1234);
+            using ICommitter committer = treeStore.GetTrieStore(null).BeginCommit(trieNode);
+            committer.CommitNode(ref emptyPath, trieNode);
             return treeStore;
         }
     }
