@@ -54,6 +54,9 @@ public class StateSyncRunner(
                 }
 
                 await RunStateSyncRounds(token);
+
+                if (syncConfig.StaticSnapPivot && _logger.IsInfo)
+                    _logger.Info($"StaticSnapPivot: state sync complete at block {syncConfig.PivotNumber} - node is idle (no further sync without a consensus client). Set Sync.ExitOnSynced=true to exit on completion.");
             }
             finally
             {
@@ -122,7 +125,9 @@ public class StateSyncRunner(
     {
         await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
 
-        ulong totalSyncLag = (ulong)syncConfig.StateMinDistanceFromHead + (ulong)syncConfig.HeaderStateDistance;
+        if (syncConfig.StaticSnapPivot) return;
+
+        ulong totalSyncLag = syncConfig.StateMinDistanceFromHead + syncConfig.HeaderStateDistance;
 
         while (!token.IsCancellationRequested)
         {
