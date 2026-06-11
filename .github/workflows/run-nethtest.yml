@@ -139,6 +139,13 @@ jobs:
                 # ~5k tests even at 2 workers), so larger jobs trip the 16 GB runner limit.
                 if run_sequential; then
                   emit "$type" sequential full '' false false 4 8
+                  # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
+                  # unfiltered, so the Amsterdam parallel/batch-read variant classes also
+                  # ran under the default (patricia) layout — including parallel-full,
+                  # which is the production configuration. Mirror that coverage here.
+                  emit "$type" parallel amsterdam '' true false 1 8
+                  emit "$type" batchread amsterdam '' false true 4 2
+                  emit "$type" parallelfull amsterdam '' true true 1 8
                 fi
                 if run_flat; then
                   # Engine tests under the flat in-memory backend are the heaviest
