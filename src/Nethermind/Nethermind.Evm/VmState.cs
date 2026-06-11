@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -50,10 +49,6 @@ public class VmState<TGasPolicy> : IDisposable
     private ExecutionEnvironment? _env;
     private StackAccessTracker _accessTracker;
     private Snapshot _snapshot;
-    private AddressAsKey _lastSLoadAddress;
-    private UInt256 _lastSLoadIndex;
-    private UInt256 _lastSLoadValue;
-    private bool _hasLastSLoad;
 
     /// <summary>
     /// Rent a top level <see cref="VmState{TGasPolicy}"/>.
@@ -151,7 +146,6 @@ public class VmState<TGasPolicy> : IDisposable
         IsStatic = isStatic;
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-        _hasLastSLoad = false;
 
         if (!_isDisposed)
         {
@@ -182,31 +176,6 @@ public class VmState<TGasPolicy> : IDisposable
     public ref EvmPooledMemory Memory => ref _memory;
     public ref readonly Snapshot Snapshot => ref _snapshot;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool TryGetLastSLoad(Address address, in UInt256 index, out UInt256 value)
-    {
-        if (_hasLastSLoad && _lastSLoadAddress.Equals((AddressAsKey)address) && _lastSLoadIndex == index)
-        {
-            value = _lastSLoadValue;
-            return true;
-        }
-
-        value = default;
-        return false;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void SetLastSLoad(Address address, in UInt256 index, ReadOnlySpan<byte> value)
-    {
-        _lastSLoadAddress = address;
-        _lastSLoadIndex = index;
-        _lastSLoadValue = value.IsEmpty ? UInt256.Zero : new UInt256(value, isBigEndian: true);
-        _hasLastSLoad = true;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void ClearLastSLoad() => _hasLastSLoad = false;
-
     public void Dispose()
     {
         if (_isDisposed)
@@ -233,7 +202,6 @@ public class VmState<TGasPolicy> : IDisposable
         if (!IsTopLevel) _env?.Dispose();
         _env = null;
         _snapshot = default;
-        _hasLastSLoad = false;
         StateGasRefundPending = 0;
         StateGasRefundAdvanced = 0;
 
@@ -321,7 +289,6 @@ public class VmState<TGasPolicy> : IDisposable
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         parentState.Refund += Refund;
-        parentState.ClearLastSLoad();
         _canRestore = false; // we can't restore if we committed
     }
 }

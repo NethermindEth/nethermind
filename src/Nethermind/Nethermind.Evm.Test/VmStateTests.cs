@@ -6,7 +6,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -58,52 +57,6 @@ namespace Nethermind.Evm.Test
             vmState.AccessTracker.WarmUp(storageCell);
             vmState.AccessTracker.WarmUp(storageCell);
             Assert.That(vmState.AccessTracker.IsCold(storageCell), Is.False);
-        }
-
-        [Test]
-        public void Last_sload_cache_matches_same_account_and_slot_only()
-        {
-            using VmState<EthereumGasPolicy> vmState = CreateEvmState();
-            UInt256 slot = new(1);
-            UInt256 otherSlot = new(2);
-            byte[] valueBytes = [42];
-
-            vmState.SetLastSLoad(TestItem.AddressA, in slot, valueBytes);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(vmState.TryGetLastSLoad(TestItem.AddressA, in slot, out UInt256 value), Is.True);
-                Assert.That(value, Is.EqualTo((UInt256)42));
-                Assert.That(vmState.TryGetLastSLoad(TestItem.AddressB, in slot, out _), Is.False);
-                Assert.That(vmState.TryGetLastSLoad(TestItem.AddressA, in otherSlot, out _), Is.False);
-            }
-        }
-
-        [Test]
-        public void Last_sload_cache_can_be_cleared()
-        {
-            using VmState<EthereumGasPolicy> vmState = CreateEvmState();
-            UInt256 slot = new(1);
-
-            vmState.SetLastSLoad(TestItem.AddressA, in slot, [42]);
-            vmState.ClearLastSLoad();
-
-            Assert.That(vmState.TryGetLastSLoad(TestItem.AddressA, in slot, out _), Is.False);
-        }
-
-        [Test]
-        public void Commit_to_parent_clears_parent_last_sload_cache()
-        {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            UInt256 slot = new(1);
-            parentVmState.SetLastSLoad(TestItem.AddressA, in slot, [42]);
-
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
-            {
-                vmState.CommitToParent(parentVmState);
-            }
-
-            Assert.That(parentVmState.TryGetLastSLoad(TestItem.AddressA, in slot, out _), Is.False);
         }
 
         [Test]

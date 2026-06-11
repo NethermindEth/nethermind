@@ -378,7 +378,6 @@ public static partial class EvmInstructions
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
-        vmState.ClearLastSLoad();
 
         // Charge gas based on whether this is a cold or warm storage access.
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
@@ -493,7 +492,6 @@ public static partial class EvmInstructions
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
-        vmState.ClearLastSLoad();
 
         // Charge gas based on whether this is a cold or warm storage access.
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
@@ -653,30 +651,17 @@ public static partial class EvmInstructions
         // Pop the key from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
-        VmState<TGasPolicy> vmState = vm.VmState;
-        Address executingAccount = vmState.Env.ExecutingAccount;
-        bool canUseLastSLoad = !TTracingInst.IsActive && !vm.TxTracer.IsTracingStorage;
-        if (canUseLastSLoad && vmState.TryGetLastSLoad(executingAccount, in result, out UInt256 cachedValue))
-        {
-            if (spec.UseHotAndColdStorage && !TGasPolicy.UpdateGas(ref gas, GasCostOf.WarmStateRead))
-                goto OutOfGas;
-
-            return stack.PushUInt256<TTracingInst>(in cachedValue);
-        }
-
+        // Construct the storage cell for the executing account.
+        Address executingAccount = vm.VmState.Env.ExecutingAccount;
         StorageCell storageCell = new(executingAccount, in result);
 
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
         // Retrieve the persistent storage value and push it onto the stack.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
-        if (canUseLastSLoad && pushResult == EvmExceptionType.None)
-        {
-            vmState.SetLastSLoad(executingAccount, in result, value);
-        }
 
         // Log the storage load operation if tracing is enabled.
         if (vm.TxTracer.IsTracingStorage)
