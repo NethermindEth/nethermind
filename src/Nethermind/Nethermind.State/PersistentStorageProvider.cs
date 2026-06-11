@@ -33,6 +33,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
+    private StorageCell _lastReadStorageCell;
+    private byte[]? _lastReadValue;
 
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
@@ -55,7 +57,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope)
+    {
+        ClearCurrentValueCache();
+        _currentScope = scope;
+    }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
@@ -68,8 +74,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
+    {
+        if (_lastReadValue is not null && _lastReadStorageCell.Equals(in storageCell))
+        {
+            return _lastReadValue;
+        }
+
+        byte[] value = TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+        _lastReadStorageCell = storageCell;
+        _lastReadValue = value;
+
+        return value;
+    }
+
+    protected override void ClearCurrentValueCache() => _lastReadValue = null;
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -260,7 +279,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    public void ClearStorageMap() => _storages.Clear();
+    public void ClearStorageMap()
+    {
+        ClearCurrentValueCache();
+        _storages.Clear();
+    }
 
     private PerContractState GetOrCreateStorage(Address address)
     {
@@ -275,7 +298,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             LoadFromTree(in storageCell);
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
+    private byte[] LoadFromTree(in StorageCell storageCell) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
@@ -469,7 +492,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
         }
 
-        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+        public byte[] LoadFromTree(in StorageCell storageCell)
         {
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
