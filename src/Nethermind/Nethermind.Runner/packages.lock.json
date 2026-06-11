@@ -595,6 +595,13 @@
           "Nethermind.Crypto": "[1.39.0-unstable, )"
         }
       },
+      "nethermind.beaconchain": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Init": "[1.39.0-unstable, )",
+          "Nethermind.Merge.Plugin": "[1.39.0-unstable, )"
+        }
+      },
       "nethermind.blockchain": {
         "type": "Project",
         "dependencies": {
