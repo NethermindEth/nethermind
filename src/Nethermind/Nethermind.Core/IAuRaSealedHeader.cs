@@ -5,16 +5,9 @@ namespace Nethermind.Core;
 
 /// <summary>
 /// Marker + accessor contract for headers carrying an AuRa <c>step</c> + <c>signature</c> seal.
-/// Implemented by <c>AuRaBlockHeader</c> in the AuRa plugin so core code (RPC formatters,
-/// BlockProcessor, sync server, test comparators) can interrogate the seal via a pattern
-/// match without taking a hard dependency on the AuRa assembly.
+/// Implemented by <c>AuRaBlockHeader</c> in the AuRa plugin so core code can interrogate the seal
+/// via a pattern match without referencing the AuRa assembly.
 /// </summary>
-/// <remarks>
-/// The factory side — constructing an AuRa header or upgrading a base one — still flows through
-/// <see cref="AuRaBlockHeaderHandler"/> because <c>HeaderDecoder</c> and <c>ChainSpecLoader</c>
-/// need a way to materialise the subclass without a plugin reference. The static handler is
-/// the residual seam; this interface covers everything else.
-/// </remarks>
 public interface IAuRaSealedHeader
 {
     /// <summary>AuRa step number (analogous to Ethash <c>nonce</c>). Null while the seal is partial.</summary>

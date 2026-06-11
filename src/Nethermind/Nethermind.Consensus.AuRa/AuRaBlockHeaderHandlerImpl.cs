@@ -3,24 +3,22 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa;
 
 /// <summary>
-/// Test-only bridge: registers a delegate with <see cref="AuRaBlockHeaderHandler"/> so core test
-/// builders can stamp an AuRa seal onto a base <see cref="BlockHeader"/> without taking a
-/// dependency on this plugin. Production code constructs <see cref="AuRaBlockHeader"/> directly.
+/// Wires the AuRa plugin's <see cref="AuRaBlockHeader"/> subclass into the static
+/// <see cref="AuRaBlockHeaderHandler"/> slot so <c>HeaderDecoder</c> (in Nethermind.Serialization.Rlp)
+/// and core test builders can materialise the subclass without referencing this plugin.
 /// </summary>
-/// <remarks>
-/// Registration runs in a <see cref="ModuleInitializerAttribute">module initializer</see>, so any
-/// assembly that references <c>Nethermind.Consensus.AuRa</c> wires the handler at load time.
-/// </remarks>
 internal sealed class AuRaBlockHeaderHandlerImpl : IAuRaBlockHeaderHandler
 {
     public static readonly AuRaBlockHeaderHandlerImpl Instance = new();
 
-#pragma warning disable CA2255 // ModuleInitializer is the documented mechanism for guaranteed
-    // load-time registration of an inter-assembly bridge.
+    // Register at assembly-load time: HeaderDecoder may be invoked before any DI module runs
+    // (e.g. RLP-decoding a header on the receive path), so DI-time registration would be too late.
+#pragma warning disable CA2255
     [ModuleInitializer]
     internal static void Register() => AuRaBlockHeaderHandler.Register(Instance);
 #pragma warning restore CA2255
