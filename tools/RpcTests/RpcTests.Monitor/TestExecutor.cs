@@ -25,15 +25,20 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
         Console.WriteLine($"{test.Definition.FilePath} @ {test.RecentBlock}/{test.Head.Number}\n{request.ToCompactString()}\n");
 
         JsonNode? expectedStatic = test.Definition.Response?.Compile(test);
-        JsonNode actual = await SendAsync(args.TargetUrl, request, ct);
-        JsonNode expected = expectedStatic ?? await SendAsync(args.ReferenceUrl!, request, ct);
 
+        // retry refence node, but require testee to reply on the first attempt
+        JsonNode[] requests = await Task.WhenAll(
+            SendOnceAsync(args.TargetUrl, request, ct),
+            expectedStatic is null ? SendRetryAsync(args.ReferenceUrl!, request, ct) : Task.FromResult(expectedStatic)
+        );
+
+        JsonNode actual = requests[0], expected = requests[1];
         return ResponseComparer.Compare(actual, expected, isStatic: expectedStatic is not null)
             ? null
             : new TestFailure(test, request, actual, expected);
     }
 
-    private async Task<JsonNode> SendAsync(Uri url, JsonNode requestData, CancellationToken ct)
+    private async Task<JsonNode> SendRetryAsync(Uri url, JsonNode requestData, CancellationToken ct)
     {
         const int maxAttempts = 3;
         for (int attempt = 1; ; attempt++)
