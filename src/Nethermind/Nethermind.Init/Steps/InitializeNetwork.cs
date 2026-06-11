@@ -10,6 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -98,6 +99,14 @@ public class InitializeNetwork : IStep
     private async Task Initialize(CancellationToken cancellationToken)
     {
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+
+        if (_syncConfig.StaticSnapPivot)
+        {
+            if (!_syncConfig.SnapSync)
+                throw new InvalidConfigurationException("Sync.StaticSnapPivot requires Sync.SnapSync to be enabled.", -1);
+            if (_syncConfig.PivotNumber <= 0 || string.IsNullOrWhiteSpace(_syncConfig.PivotHash))
+                throw new InvalidConfigurationException("Sync.StaticSnapPivot requires Sync.PivotNumber and Sync.PivotHash to be set to the target (frozen) pivot block.", -1);
+        }
 
         if (_networkConfig.DiagTracerEnabled)
         {
