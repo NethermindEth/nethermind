@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
@@ -40,8 +40,6 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
     /// <summary>Sentinel for "no tag has been written yet" (one past the max byte value).</summary>
     private const int NoTagYet = 256;
 
-    private const int InitialCapacity = 16;
-
     private ref TWriter _writer;
     private readonly long _baseOffset;
     private long _writtenBeforeValue;
@@ -49,7 +47,7 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
     private int _count;
     /// <summary>Most recently written tag (<see cref="NoTagYet"/> before the first write).</summary>
     private int _lastTag;
-    private long[]? _ends;
+    private NativeMemoryList<long>? _ends;
 
     public HsstDenseByteIndexBuilder(ref TWriter writer)
     {
@@ -59,10 +57,7 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
         _lastTag = NoTagYet;
     }
 
-    public void Dispose()
-    {
-        if (_ends is not null) { ArrayPool<long>.Shared.Return(_ends); _ends = null; }
-    }
+    public void Dispose() => _ends?.Dispose();
 
     /// <summary>
     /// Begin writing a value. After writing the value bytes, call
@@ -88,9 +83,11 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
         {
             // First write fixes the array size; values are streamed high-tag → low-tag,
             // so the highest tag has prevEnd = 0 and lives at offset 0 in the data section.
+            // Count == _count so the indexer covers [0, _count); every slot is written before
+            // Build emits (gap-fill below + below-range fill in Build), so the uninitialised
+            // backing is fully overwritten.
             _count = tag + 1;
-            EnsureCapacity(_count);
-            _ends![tag] = _writer.Written - _baseOffset;
+            _ends = new NativeMemoryList<long>(_count, _count) { [tag] = _writer.Written - _baseOffset };
             _lastTag = tag;
             return;
         }
@@ -107,23 +104,6 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
             _ends![i] = gapEnd;
         _ends![tag] = _writer.Written - _baseOffset;
         _lastTag = tag;
-    }
-
-    private void EnsureCapacity(int needed)
-    {
-        int current = _ends?.Length ?? 0;
-        if (needed <= current) return;
-
-        int newCap = current == 0 ? InitialCapacity : current * 2;
-        if (newCap < needed) newCap = needed;
-
-        long[] newEnds = ArrayPool<long>.Shared.Rent(newCap);
-        if (_ends is not null)
-        {
-            Array.Copy(_ends, newEnds, _count);
-            ArrayPool<long>.Shared.Return(_ends);
-        }
-        _ends = newEnds;
     }
 
     /// <summary>Convenience: write a tag/value pair in one call.</summary>
