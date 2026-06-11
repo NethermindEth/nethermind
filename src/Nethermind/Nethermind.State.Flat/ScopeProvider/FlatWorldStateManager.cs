@@ -24,8 +24,10 @@ public class FlatWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
     ILogManager logManager)
-    : IWorldStateManager
+    : IWorldStateManager, IDisposable
 {
+    // Created here rather than via DI so the manager owns its lifecycle; Dispose must
+    // tear it down so the FlatScopeProvider's WarmReadPool threads join on shutdown.
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
         flatDbManager,
@@ -84,4 +86,6 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public void Dispose() => _mainWorldState.Dispose();
 }

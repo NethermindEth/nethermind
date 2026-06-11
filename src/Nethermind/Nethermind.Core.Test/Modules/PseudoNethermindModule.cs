@@ -67,6 +67,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             {
                 // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
+                // Default of -1 → 4 × ProcessorCount (cap 64) reader threads per blockchain;
+                // tests spin up many in-process, so cap concurrency to limit thread fan-out.
+                flatDbConfig.WarmReadConcurrency = 2;
             })
 
             // Rpc
