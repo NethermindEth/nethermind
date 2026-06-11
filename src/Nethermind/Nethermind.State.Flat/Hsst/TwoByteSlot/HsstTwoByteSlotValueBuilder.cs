@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
@@ -41,9 +41,9 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
     private readonly int _maxDataBytes;
     private int _count;
     private int _valueBytes;
-    private uint[]? _starts;
-    private byte[]? _keys;
-    private byte[]? _values;
+    private readonly NativeMemoryList<uint> _starts;
+    private readonly NativeMemoryList<byte> _keys;
+    private readonly NativeMemoryList<byte> _values;
 
     /// <param name="writer">Destination writer; receives one TwoByteSlot value HSST blob.</param>
     /// <param name="offsetSize">On-disk offset width: <c>2</c> (u16, <see cref="IndexType.TwoByteSlotValue"/>,
@@ -55,13 +55,16 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         _maxDataBytes = (1 << (8 * offsetSize)) - 1;
         _count = 0;
         _valueBytes = 0;
+        _starts = new NativeMemoryList<uint>(InitialCapacity);
+        _keys = new NativeMemoryList<byte>(InitialCapacity * KeyLength);
+        _values = new NativeMemoryList<byte>(InitialValueCapacity);
     }
 
     public void Dispose()
     {
-        if (_starts is not null) { ArrayPool<uint>.Shared.Return(_starts); _starts = null; }
-        if (_keys is not null) { ArrayPool<byte>.Shared.Return(_keys); _keys = null; }
-        if (_values is not null) { ArrayPool<byte>.Shared.Return(_values); _values = null; }
+        _starts.Dispose();
+        _keys.Dispose();
+        _values.Dispose();
     }
 
     /// <summary>
@@ -83,11 +86,12 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         if (key.Length != KeyLength)
             throw new ArgumentException($"TwoByteSlotValue requires {KeyLength}-byte keys; got length {key.Length}", nameof(key));
 
-        EnsureKeysCapacity(_count + 1);
+        if (_count >= MaxEntries)
+            throw new InvalidOperationException($"TwoByteSlotValue entry count exceeded {MaxEntries}");
 
         if (_count > 0)
         {
-            ReadOnlySpan<byte> prev = _keys.AsSpan((_count - 1) * KeyLength, KeyLength);
+            ReadOnlySpan<byte> prev = _keys.AsSpan().Slice((_count - 1) * KeyLength, KeyLength);
             if (key.SequenceCompareTo(prev) <= 0)
                 throw new ArgumentException($"Keys must be strictly ascending; got 0x{key[0]:X2}{key[1]:X2} after 0x{prev[0]:X2}{prev[1]:X2}", nameof(key));
         }
@@ -96,58 +100,13 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         if ((ulong)newTotal > (ulong)_maxDataBytes)
             throw new InvalidOperationException($"TwoByteSlotValue values would exceed {_maxDataBytes} bytes at entry {_count}");
 
-        _starts![_count] = (uint)_valueBytes;
-        key.CopyTo(_keys.AsSpan(_count * KeyLength, KeyLength));
-
+        _starts.Add((uint)_valueBytes);
+        _keys.AddRange(key);
         if (value.Length > 0)
-        {
-            EnsureValuesCapacity(_valueBytes + value.Length);
-            value.CopyTo(_values.AsSpan(_valueBytes, value.Length));
-        }
+            _values.AddRange(value);
 
         _valueBytes = (int)newTotal;
         _count++;
-    }
-
-    private void EnsureKeysCapacity(int needed)
-    {
-        int current = _starts?.Length ?? 0;
-        if (needed <= current) return;
-
-        int newCap = current == 0 ? InitialCapacity : current * 2;
-        if (newCap < needed) newCap = needed;
-        if (newCap > MaxEntries) newCap = MaxEntries;
-        if (needed > newCap)
-            throw new InvalidOperationException($"TwoByteSlotValue entry count exceeded {MaxEntries}");
-
-        uint[] newStarts = ArrayPool<uint>.Shared.Rent(newCap);
-        byte[] newKeys = ArrayPool<byte>.Shared.Rent(newCap * KeyLength);
-        if (_starts is not null)
-        {
-            Array.Copy(_starts, newStarts, _count);
-            Array.Copy(_keys!, newKeys, _count * KeyLength);
-            ArrayPool<uint>.Shared.Return(_starts);
-            ArrayPool<byte>.Shared.Return(_keys!);
-        }
-        _starts = newStarts;
-        _keys = newKeys;
-    }
-
-    private void EnsureValuesCapacity(int needed)
-    {
-        int current = _values?.Length ?? 0;
-        if (needed <= current) return;
-
-        int newCap = current == 0 ? InitialValueCapacity : current * 2;
-        if (newCap < needed) newCap = needed;
-
-        byte[] newValues = ArrayPool<byte>.Shared.Rent(newCap);
-        if (_values is not null)
-        {
-            Array.Copy(_values, newValues, _valueBytes);
-            ArrayPool<byte>.Shared.Return(_values);
-        }
-        _values = newValues;
     }
 
     /// <summary>
@@ -180,7 +139,7 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         // (BE) during build for the strict-ascending compare in Add().
         int keysBytes = n * KeyLength;
         Span<byte> keysSpan = _writer.GetSpan(keysBytes);
-        HsstTwoByteSlotKeys.CopyLogicalToStored(_keys.AsSpan(0, keysBytes), keysSpan);
+        CopyLogicalToStored(_keys.AsSpan()[..keysBytes], keysSpan);
         _writer.Advance(keysBytes);
 
         // Offsets: N − 1 LE values of width offsetSize (Offset_1..Offset_{N-1}); Offset_0 is omitted.
@@ -191,7 +150,7 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
             Span<byte> scratch = stackalloc byte[4];
             for (int i = 1; i < n; i++)
             {
-                BinaryPrimitives.WriteUInt32LittleEndian(scratch, _starts![i]);
+                BinaryPrimitives.WriteUInt32LittleEndian(scratch, _starts[i]);
                 scratch[.._offsetSize].CopyTo(offsetsSpan[((i - 1) * _offsetSize)..]);
             }
             _writer.Advance(offsetsBytes);
@@ -201,8 +160,24 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         if (_valueBytes > 0)
         {
             Span<byte> valuesSpan = _writer.GetSpan(_valueBytes);
-            _values.AsSpan(0, _valueBytes).CopyTo(valuesSpan);
+            _values.AsSpan()[.._valueBytes].CopyTo(valuesSpan);
             _writer.Advance(_valueBytes);
+        }
+    }
+
+    /// <summary>
+    /// Copy <paramref name="logicalKeys"/> (BE-stored, used during build) into
+    /// <paramref name="storedKeys"/> as the on-disk LE-stored convention, byte-swapping each
+    /// 2-byte pair so a native u16 load on a stored key recovers the BE numeric value (lets
+    /// SIMD floor scans compare numerically — see <see cref="UniformKeySearch.LowerBound2LE"/>).
+    /// </summary>
+    private static void CopyLogicalToStored(scoped ReadOnlySpan<byte> logicalKeys, Span<byte> storedKeys)
+    {
+        int n = logicalKeys.Length / 2;
+        for (int i = 0; i < n; i++)
+        {
+            storedKeys[i * 2 + 0] = logicalKeys[i * 2 + 1];
+            storedKeys[i * 2 + 1] = logicalKeys[i * 2 + 0];
         }
     }
 }
