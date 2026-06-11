@@ -252,7 +252,7 @@ public class PersistedSnapshotCompactor(
         StateId to = snapshots[^1].To;
 
         // Open one WholeReadSession per source for the whole compaction. Every column
-        // helper inside NWayMergeSnapshotsWithViews reads through these views — one mmap +
+        // helper inside NWayMergeSnapshots reads through these views — one mmap +
         // MADV_NORMAL on open and one MADV_DONTNEED on close per source, regardless of
         // how many columns we walk. ForgetTracker after the merge cleans the page-tracker
         // side; AdviseDontNeed on session dispose handles the page cache. The ref_ids
@@ -299,7 +299,7 @@ public class PersistedSnapshotCompactor(
             using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
             {
                 long sw = Stopwatch.GetTimestamp();
-                PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<ArenaBufferWriter>(
+                PersistedSnapshotMerger.NWayMergeSnapshots<ArenaBufferWriter, WholeReadSessionView, WholeReadSessionReader, NoOpPin>(
                     views, ref arenaWriter.GetWriter(), mergedBloom);
 
                 long len = arenaWriter.GetWriter().Written;

@@ -61,7 +61,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
                 views[i] = sessionArr[i].GetView();
             }
-            PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<PooledByteBufferWriter.Writer>(
+            PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSessionView, WholeReadSessionReader, NoOpPin>(
                 views, ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());
         }
         finally
