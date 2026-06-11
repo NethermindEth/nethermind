@@ -265,6 +265,21 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         .Op(Instruction.STOP)
         .Done;
 
+    private static byte[] BuildOutOfGasMidBlock()
+    {
+        // ~2000 in-block ops behind a tx gas limit (set in the runner) that cannot cover
+        // them: the charge-refused first block must die metered at the exact per-op point.
+        byte[] code = new byte[2001];
+        code[0] = (byte)Instruction.PUSH0;
+        for (int i = 1; i < 2000; i++)
+        {
+            code[i] = (byte)Instruction.DUP1;
+        }
+
+        code[2000] = (byte)Instruction.STOP;
+        return code;
+    }
+
     public static IEnumerable<TestCaseData> DifferentialCases()
     {
         yield return new TestCaseData(s_arithmeticChain) { TestName = "ArithmeticChain" };
@@ -277,6 +292,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(s_truncatedTrailingPush2) { TestName = "TruncatedTrailingPush2" };
         yield return new TestCaseData(s_deepStackToTheLimit) { TestName = "DeepStackToTheLimit" };
         yield return new TestCaseData(s_solidityExampleCall) { TestName = "SolidityExampleCreateAndCall" };
+        yield return new TestCaseData(BuildOutOfGasMidBlock()) { TestName = "OutOfGasInsideMeteredBlock" };
     }
 
     [Test]

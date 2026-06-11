@@ -502,7 +502,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             // Reached a block-charging entry or a boundary op: hand back to the stream loop,
             // which re-evaluates the charge (and so whether metering must continue).
-            return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered: false, exceptionType);
+            return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, Metered: false, Exception: exceptionType);
         }
     }
 }
