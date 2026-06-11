@@ -19,11 +19,11 @@ namespace Nethermind.Evm.Test;
 /// Every scenario runs both fused (receipt-only tracer) and unfused (instruction/storage/access
 /// tracing active, which disables fusion) and must produce identical gas, status, and output:
 /// warm same-cell runs, chained cold reads, tier transitions, and out-of-gas inside a run.
-/// Gas constants are for Berlin: cold SLOAD 2100, warm 100.
+/// Gas constants are for Berlin: cold SLOAD 2100, warm 100. <see cref="SLoadFusionPreBerlinTests"/>
+/// pins the flat pre-hot-cold pricing branch of the fused per-op cost.
 /// </remarks>
-public class SLoadFusionTests : VirtualMachineTestsBase
+public abstract class SLoadFusionTestsBase : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
     protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
     protected override TestAllTracerWithOutput CreateTracer()
@@ -57,7 +57,7 @@ public class SLoadFusionTests : VirtualMachineTestsBase
         }
     }
 
-    private (long GasSpent, byte StatusCode, byte[]? Output) Run(bool traced, long gasLimit, byte[] code)
+    protected (long GasSpent, byte StatusCode, byte[]? Output) Run(bool traced, long gasLimit, byte[] code)
     {
         if (traced)
         {
@@ -71,7 +71,7 @@ public class SLoadFusionTests : VirtualMachineTestsBase
         return (tracer.GasSpent, tracer.StatusCode, tracer.ReturnValue);
     }
 
-    private static byte[] SLoadRun(int count)
+    protected static byte[] SLoadRun(int count)
     {
         Prepare prepare = Prepare.EvmCode.PushData(0);
         for (int i = 0; i < count; i++)
@@ -80,6 +80,11 @@ public class SLoadFusionTests : VirtualMachineTestsBase
         }
         return prepare.Done;
     }
+}
+
+public class SLoadFusionTests : SLoadFusionTestsBase
+{
+    protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
 
     [TestCase(false)]
     [TestCase(true)]
@@ -88,8 +93,11 @@ public class SLoadFusionTests : VirtualMachineTestsBase
         // SLOAD(0) -> 0, so each following SLOAD re-reads warm slot 0.
         (long gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(5));
 
-        Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 4 * GasCostOf.WarmStateRead));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 4 * GasCostOf.WarmStateRead));
+        }
     }
 
     [TestCase(false)]
@@ -105,8 +113,11 @@ public class SLoadFusionTests : VirtualMachineTestsBase
         // Chain: slot0(cold)->1, slot1(cold)->2, slot2(cold)->3, slot3(cold)->0, slot0(warm)->1, slot1(warm)->2.
         (long gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(6));
 
-        Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3 + 4 * GasCostOf.ColdSLoad + 2 * GasCostOf.WarmStateRead));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3 + 4 * GasCostOf.ColdSLoad + 2 * GasCostOf.WarmStateRead));
+        }
     }
 
     [TestCase(false)]
@@ -134,13 +145,16 @@ public class SLoadFusionTests : VirtualMachineTestsBase
 
         (long gasSpent, byte statusCode, byte[]? output) = Run(traced, 100000, code);
 
-        Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
         byte[] expected = new byte[32];
         expected[31] = 5;
-        Assert.That(output, Is.EqualTo(expected));
-        Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3
-            + 2 * GasCostOf.ColdSLoad + 2 * GasCostOf.WarmStateRead
-            + 3 + GasCostOf.VeryLow + GasCostOf.Memory + 3 + 3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(output, Is.EqualTo(expected));
+            Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3
+                + 2 * GasCostOf.ColdSLoad + 2 * GasCostOf.WarmStateRead
+                + 3 + GasCostOf.VeryLow + GasCostOf.Memory + 3 + 3));
+        }
     }
 
     [TestCase(false)]
@@ -151,8 +165,11 @@ public class SLoadFusionTests : VirtualMachineTestsBase
         long gasLimit = GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 250;
         (long gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(10));
 
-        Assert.That(statusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(gasSpent, Is.EqualTo(gasLimit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(gasSpent, Is.EqualTo(gasLimit));
+        }
     }
 
     [TestCase(false)]
@@ -161,8 +178,11 @@ public class SLoadFusionTests : VirtualMachineTestsBase
     {
         (long gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(3));
 
-        Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 2 * GasCostOf.WarmStateRead));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 2 * GasCostOf.WarmStateRead));
+        }
     }
 
     [TestCase(false)]
@@ -172,7 +192,47 @@ public class SLoadFusionTests : VirtualMachineTestsBase
         long gasLimit = GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 4 * GasCostOf.WarmStateRead;
         (long gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(5));
 
-        Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(gasSpent, Is.EqualTo(gasLimit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(gasSpent, Is.EqualTo(gasLimit));
+        }
+    }
+}
+
+/// <summary>
+/// Pins the fused per-op cost on a pre-hot-cold fork (Istanbul: flat EIP-1884 SLOAD of 800),
+/// covering the <c>UseHotAndColdStorage == false</c> branch of the fused pricing.
+/// </summary>
+public class SLoadFusionPreBerlinTests : SLoadFusionTestsBase
+{
+    protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Same_cell_run_charges_flat_sload_cost_per_op(bool traced)
+    {
+        (long gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(gasSpent, Is.EqualTo(GasCostOf.Transaction + 3 + 5 * GasCostOf.SLoadEip1884));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Out_of_gas_inside_flat_priced_run_fails_at_the_same_op(bool traced)
+    {
+        // Two 800-gas reads fit after PUSH(3); the third does not.
+        long gasLimit = GasCostOf.Transaction + 3 + 2 * GasCostOf.SLoadEip1884 + 400;
+        (long gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(gasSpent, Is.EqualTo(gasLimit));
+        }
     }
 }
