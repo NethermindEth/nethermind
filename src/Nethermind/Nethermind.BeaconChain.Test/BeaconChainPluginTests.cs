@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -22,6 +23,7 @@ public class BeaconChainPluginTests
             .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton(Substitute.For<IEngineRpcModule>()) // registered by MergePlugin in production
+            .AddSingleton<ITimestamper>(Timestamper.Default) // registered by NethermindModule in production
             .AddSingleton<IDbFactory, MemDbFactory>();
 
         using IContainer container = builder.Build();
@@ -30,6 +32,8 @@ public class BeaconChainPluginTests
         {
             Assert.That(container.Resolve<BeaconChainService>(), Is.Not.Null);
             Assert.That(container.Resolve<IColumnsDb<BeaconChainDbColumns>>(), Is.Not.Null);
+            // Pulls the whole P2P graph: peer pool -> peer manager -> libp2p host -> status/metadata sources.
+            Assert.That(container.Resolve<RangeSync>(), Is.Not.Null);
             Assert.That(new BeaconChainPlugin(new BeaconChainConfig()).Enabled, Is.False);
             Assert.That(new BeaconChainPlugin(new BeaconChainConfig { Enabled = true }).Enabled, Is.True);
         });

@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -63,6 +64,13 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconChainStore>()
             .AddSingleton<PubkeyCache>()
             .AddSingleton<CheckpointSync>()
+            .AddSingleton<BeaconChainStatusHolder>()
+            .Bind<IBeaconChainStatusSource, BeaconChainStatusHolder>()
+            .AddSingleton<LocalMetadataSource>()
+            .AddSingleton<BeaconP2P>()
+            .AddSingleton<PeerManager>()
+            .Bind<IBeaconSyncPeerPool, PeerManager>()
+            .AddSingleton<RangeSync>()
             .AddSingleton<ExternalClDetector>()
             .AddSingleton<EngineDriver>()
             .Bind<INewPayloadNotifier, EngineDriver>()
