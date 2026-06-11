@@ -85,28 +85,7 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
-    /// <summary>Bitwise AND over UInt256 for the fused-const path.</summary>
-    public struct OpAndFused : IOpMath2Param
-    {
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a & b;
-    }
 
-    /// <summary>Bitwise OR over UInt256 for the fused-const path.</summary>
-    public struct OpOrFused : IOpMath2Param
-    {
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a | b;
-    }
 
-    /// <summary>Bitwise XOR over UInt256 for the fused-const path.</summary>
-    public struct OpXorFused : IOpMath2Param
-    {
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a ^ b;
-    }
 
-    /// <summary>Equality over UInt256 for the fused-const path.</summary>
-    public struct OpEqFused : IOpMath2Param
-    {
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => result = a == b ? UInt256.One : default;
-    }
 }

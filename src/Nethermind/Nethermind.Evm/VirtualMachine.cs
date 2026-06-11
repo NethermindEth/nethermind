@@ -1248,28 +1248,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Specs whose dispatch flags match a known tip fork run a specialized loop; custom
         // chains and historical forks keep the generic function-pointer table path.
         int fingerprint = EvmSpecFingerprint.Compute(Spec);
+        bool specialized = fingerprint == s_osakaDispatchFingerprint || fingerprint == s_cancunDispatchFingerprint;
+        if (specialized && StreamInterpreter.Enabled && !TTracingInst.IsActive
+            && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
+        {
+            // The stream executor is fork-agnostic within the specialized fingerprints (its
+            // in-block op set assumes Shanghai+ semantics, which both share).
+            return RunStream<TCancelable>(stream, ref stack, ref gas);
+        }
+
         if (fingerprint == s_osakaDispatchFingerprint)
-        {
-            if (StreamInterpreter.Enabled && !TTracingInst.IsActive
-                && VmState.Env.CodeInfo.GetOrBuildStream() is { } osakaStream)
-            {
-                return RunStream<TCancelable>(osakaStream, ref stack, ref gas);
-            }
-
             return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
-        }
-
         if (fingerprint == s_cancunDispatchFingerprint)
-        {
-            if (StreamInterpreter.Enabled && !TTracingInst.IsActive
-                && VmState.Env.CodeInfo.GetOrBuildStream() is { } cancunStream)
-            {
-                return RunStream<TCancelable>(cancunStream, ref stack, ref gas);
-            }
-
             return RunByteCodeCore<TTracingInst, TCancelable, CancunEvmSpec>(ref stack, ref gas);
-        }
-
         return RunByteCodeCore<TTracingInst, TCancelable, GenericEvmSpec>(ref stack, ref gas);
     }
 
@@ -1322,8 +1313,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
                 // Call gas policy hook before instruction execution.
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
-                if (StreamInterpreter.Diagnose)
-                    StreamInterpreter.Log("/tmp/diag-loop.log", callDepth, programCounter, instruction, TGasPolicy.GetRemainingGas(in gas));
 
                 // If tracing is enabled, start an instruction trace.
                 if (TTracingInst.IsActive)

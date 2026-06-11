@@ -23,10 +23,9 @@ public static class StreamInterpreter
         Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
 
     /// <summary>
-    /// Folds PUSH+op pairs into single const-op entries at analysis time; off by default —
-    /// measured net-negative inside the switch-based executor (the per-op pair check and the
-    /// doubled dispatch switch cost more than the saved dispatches). Kept for the
-    /// direct-threading executor where fusion economics work.
+    /// Folds PUSH+op pairs into single const-op entries (virtual opcodes) at analysis time;
+    /// off by default for staged rollout — measured ahead of the unfused stream on both the
+    /// jump-heavy and straight-line local workloads and on the node A/B.
     /// </summary>
     public static bool FusionEnabled =
         Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM_FUSION") == "1";
@@ -36,13 +35,6 @@ public static class StreamInterpreter
     /// Unsynchronized — an approximate count is enough.
     /// </summary>
     public static long FramesExecuted;
-
-    // TEMPORARY divergence diagnostics — remove before merge.
-    internal static readonly bool Diagnose =
-        Environment.GetEnvironmentVariable("NETHERMIND_STREAM_DIAG") == "1";
-
-    internal static void Log(string file, int depth, int pc, Instruction instruction, long gas)
-        => System.IO.File.AppendAllText(file, $"{depth} {pc} {instruction} {gas}\n");
 }
 
 public unsafe partial class VirtualMachine<TGasPolicy>
@@ -63,6 +55,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// per-op interpretation exactly.
     /// </remarks>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private CallResult RunStream<TCancelable>(
         InstructionStream stream,
         scoped ref EvmStack stack,
@@ -142,8 +135,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         ThrowStreamOperationCanceledException();
 
                     TGasPolicy.OnBeforeInstructionTrace(in gas, entry.Pc, instruction, callDepth);
-                    if (StreamInterpreter.Diagnose)
-                        StreamInterpreter.Log("/tmp/diag-stream.log", callDepth, entry.Pc, instruction, TGasPolicy.GetRemainingGas(in gas));
                     opCodeCount += 1 + ((byte)entry.Kind & 1);
 
                     // One switch for plain in-block ops AND fused pairs (virtual opcodes):
@@ -342,8 +333,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ThrowStreamOperationCanceledException();
 
                 TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
-                if (StreamInterpreter.Diagnose)
-                    StreamInterpreter.Log("/tmp/diag-stream.log", callDepth, programCounter, instruction, TGasPolicy.GetRemainingGas(in gas));
                 programCounter++;
                 opCodeCount++;
 
@@ -462,7 +451,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         bool Metered,
         EvmExceptionType Exception);
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
     private MeteredResult RunMeteredSegment<TCancelable>(
         InstructionStream stream,
         scoped ref EvmStack stack,
@@ -494,8 +483,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 throw new OperationCanceledException("Cancellation Requested");
 
             TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
-            if (StreamInterpreter.Diagnose)
-                StreamInterpreter.Log("/tmp/diag-stream.log", callDepth, programCounter, instruction, TGasPolicy.GetRemainingGas(in gas));
             programCounter++;
             opCodeCount++;
 

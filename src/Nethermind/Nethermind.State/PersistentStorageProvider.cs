@@ -51,8 +51,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
-        _lastStorageAddress = null;
-        _lastStorage = null;
+            _lastStorageAddress = null;
+            _lastStorage = null;
             _toUpdateRoots.Clear();
         }
     }

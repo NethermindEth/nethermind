@@ -98,19 +98,21 @@ public static class FusedOpcode
 /// </summary>
 public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushort blockIndex, byte advance, ulong operand)
 {
+    // Hot-first layout: the dispatch fields read every iteration live in the first 8 bytes
+    // (one 64-bit load); Operand is loaded lazily by the cases that need it.
+    /// <summary>For a fused pair: the second op's opcode (the push survives as <see cref="Operand"/>).</summary>
+    public readonly byte Opcode = opcode;
+    public readonly StreamOpKind Kind = kind;
+    /// <summary>Total code bytes this entry covers (opcode + immediates; both for a fused pair).</summary>
+    public readonly byte Advance = advance;
+    /// <summary>For block-charging kinds: index into <see cref="InstructionStream.BlockGas"/>.</summary>
+    public readonly ushort BlockIndex = blockIndex;
+    public readonly ushort Pc = pc;
     /// <summary>Pre-decoded immediate of an in-block PUSH: the value itself for widths up to
     /// 8 bytes, or an index into <see cref="InstructionStream.Constants"/> for wider pushes
     /// (the push width is derivable from <see cref="Advance"/>). For a fused pair this is the
     /// pushed constant the op consumes.</summary>
     public readonly ulong Operand = operand;
-    /// <summary>For block-charging kinds: index into <see cref="InstructionStream.BlockGas"/>.</summary>
-    public readonly ushort BlockIndex = blockIndex;
-    public readonly ushort Pc = pc;
-    /// <summary>For a fused pair: the second op's opcode (the push survives as <see cref="Operand"/>).</summary>
-    public readonly byte Opcode = opcode;
-    /// <summary>Total code bytes this entry covers (opcode + immediates; both for a fused pair).</summary>
-    public readonly byte Advance = advance;
-    public readonly StreamOpKind Kind = kind;
 }
 
 /// <summary>
@@ -140,6 +142,10 @@ public sealed class InstructionStream
     /// <summary>Entry-index sentinel for program counters that are not an entry start.</summary>
     public const ushort InvalidEntry = ushort.MaxValue;
 
+    /// <summary>The fusion setting this stream was built under; the CodeInfo cache rebuilds
+    /// on mismatch instead of serving a stale fusion decision.</summary>
+    public readonly bool BuiltWithFusion;
+
     public readonly StreamOp[] Ops;
     public readonly long[] BlockGas;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
@@ -151,8 +157,9 @@ public sealed class InstructionStream
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
 
-    private InstructionStream(StreamOp[] ops, long[] blockGas, UInt256[] constants, ushort[] pcToEntry)
+    private InstructionStream(StreamOp[] ops, long[] blockGas, UInt256[] constants, ushort[] pcToEntry, bool builtWithFusion)
     {
+        BuiltWithFusion = builtWithFusion;
         Ops = ops;
         BlockGas = blockGas;
         Constants = constants;
@@ -170,9 +177,11 @@ public sealed class InstructionStream
         if (code.Length == 0 || code.Length >= ushort.MaxValue)
             return null;
 
+        bool fusionEnabled = StreamInterpreter.FusionEnabled;
+
         List<StreamOp> ops = new(code.Length / 2);
         List<long> blockGas = new(code.Length / 16);
-        List<UInt256> constants = [];
+        List<UInt256> constants = new(code.Length / 32);
         ushort[] pcToEntry = new ushort[code.Length + 1];
         pcToEntry.AsSpan().Fill(InvalidEntry);
 
@@ -195,7 +204,7 @@ public sealed class InstructionStream
             }
             else if (TryGetInBlockCost(instruction, out long cost) && pc + immediates < code.Length)
             {
-                if (StreamInterpreter.FusionEnabled && openBlock >= 0
+                if (fusionEnabled && openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -295,7 +304,7 @@ public sealed class InstructionStream
             }
         }
 
-        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry);
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry, fusionEnabled);
     }
 
     /// <summary>
@@ -372,11 +381,16 @@ public sealed class InstructionStream
 
     private static ulong ReadImmediate(ReadOnlySpan<byte> immediates)
     {
-        Span<byte> padded = stackalloc byte[sizeof(ulong)];
-        immediates.CopyTo(padded.Slice(sizeof(ulong) - immediates.Length));
-        return BinaryPrimitives.ReadUInt64BigEndian(padded);
+        ulong result = 0;
+        for (int i = 0; i < immediates.Length; i++)
+        {
+            result = (result << 8) | immediates[i];
+        }
+
+        return result;
     }
 
+    [System.Runtime.CompilerServices.SkipLocalsInit]
     private static UInt256 ReadWideImmediate(ReadOnlySpan<byte> immediates)
     {
         Span<byte> padded = stackalloc byte[32];

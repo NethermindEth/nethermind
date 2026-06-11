@@ -60,12 +60,15 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     /// </summary>
     /// <remarks>
     /// Benign race: concurrent first callers may build twice; one immutable instance wins the
-    /// CAS and is the only one ever published.
+    /// publication race. A cached stream built under a different fusion setting is rebuilt,
+    /// so flipping <see cref="StreamInterpreter.FusionEnabled"/> mid-process (differential
+    /// tests do) never serves a stale fusion decision.
     /// </remarks>
     public InstructionStream? GetOrBuildStream()
     {
+        bool fusion = StreamInterpreter.FusionEnabled;
         InstructionStream? stream = Volatile.Read(ref _stream);
-        if (stream is not null)
+        if (stream is not null && stream.BuiltWithFusion == fusion)
             return stream;
         if (IsEmpty || IsPrecompile)
             return null;
@@ -74,7 +77,8 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         if (stream is null)
             return null;
 
-        return Interlocked.CompareExchange(ref _stream, stream, null) ?? stream;
+        Volatile.Write(ref _stream, stream);
+        return stream;
     }
 
     /// <summary>
