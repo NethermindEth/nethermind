@@ -150,11 +150,19 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // EIP-8037: the static-context violation is raised only after the regular and state CREATE
-        // gas has been charged (matching execution-specs `generic_create`). The consumed state gas
-        // is then returned to the parent's reservoir when this frame halts (RestoreChildStateGasOnHalt),
-        // so it is neither charged to the sender nor counted in block regular gas.
+        // gas has been charged AND the 63/64 child-frame gas has been reserved, matching the
+        // reference `generic_create` (charge regular -> charge state -> reserve create-message gas
+        // -> raise WriteInStaticContext). The reserved gas leaves gas_left so the sender pays it,
+        // but it is excluded from the block regular-gas dimension because the init-code frame never
+        // runs; the charged state gas is likewise returned to the parent reservoir on the halt
+        // (RestoreChildStateGasOnHalt). Without this, the whole forwarded frame is mis-counted as
+        // block regular gas.
         if (TEip8037.IsActive && vm.VmState.IsStatic)
         {
+            long staticGasAvailable = TGasPolicy.GetRemainingGas(in gas);
+            long reservedChildGas = spec.Use63Over64Rule ? staticGasAvailable - staticGasAvailable / 64L : staticGasAvailable;
+            TGasPolicy.UpdateGas(ref gas, reservedChildGas);
+            TGasPolicy.ExcludeReservedGasFromBlockRegular(ref gas, reservedChildGas);
             goto StaticCallViolation;
         }
 

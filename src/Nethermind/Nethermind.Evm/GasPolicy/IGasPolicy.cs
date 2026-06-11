@@ -45,6 +45,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // Calculate8037BlockRegularGas subtraction.
     static virtual long GetStateGasSpillRefunded(in TSelf gas) => 0;
 
+    // EIP-8037: regular gas that was reserved for a child frame which never executes because the
+    // reserving op (CREATE/CREATE2) raises an exceptional halt (a static-context violation) after
+    // the reservation. The sender still pays it (it left gas_left), but the reference excludes it
+    // from the block regular-gas dimension because no frame did regular work with it. No-op for
+    // single-dimensional gas policies.
+    static virtual void ExcludeReservedGasFromBlockRegular(ref TSelf gas, long amount) { }
+
     static abstract void Consume(ref TSelf gas, long cost);
     static abstract bool ConsumeSelfDestructGas(ref TSelf gas);
     static abstract void ConsumeCodeDeposit(ref TSelf gas, long cost);
