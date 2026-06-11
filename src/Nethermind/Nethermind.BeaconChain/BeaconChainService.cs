@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -27,6 +28,7 @@ public sealed class BeaconChainService(
     BeaconChainStore store,
     PubkeyCache pubkeyCache,
     CheckpointSync checkpointSync,
+    ExternalClDetector externalClDetector,
     ILogManager logManager) : IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconChainService>();
@@ -36,6 +38,14 @@ public sealed class BeaconChainService(
     {
         try
         {
+            externalClDetector.ExternalClDetected += Stop;
+            // Detection may have fired before we subscribed.
+            if (config.DisableOnExternalCl && externalClDetector.IsExternalClDetected)
+            {
+                Stop();
+                return;
+            }
+
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {config.CheckpointSyncUrl}");
             await InitializeAnchorAsync(_cancellationTokenSource.Token);
         }
@@ -84,5 +94,9 @@ public sealed class BeaconChainService(
     /// <summary>Permanently stops the driver, e.g. when an external consensus client takes over.</summary>
     public void Stop() => _cancellationTokenSource.Cancel();
 
-    public void Dispose() => _cancellationTokenSource.Dispose();
+    public void Dispose()
+    {
+        externalClDetector.ExternalClDetected -= Stop;
+        _cancellationTokenSource.Dispose();
+    }
 }

@@ -6,6 +6,8 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test;
@@ -19,6 +21,7 @@ public class BeaconChainPluginTests
             .AddModule(new BeaconChainModule())
             .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton(Substitute.For<IEngineRpcModule>()) // registered by MergePlugin in production
             .AddSingleton<IDbFactory, MemDbFactory>();
 
         using IContainer container = builder.Build();

@@ -4,7 +4,9 @@
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using System;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
@@ -12,6 +14,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
@@ -55,7 +59,7 @@ public class CheckpointSyncTests
         PubkeyCache pubkeyCache = new();
         stopwatch.Restart();
         using (CheckpointSync offlineSync = new(offlineConfig, BeaconChainSpec.Mainnet, store, logManager))
-        using (BeaconChainService service = new(offlineConfig, store, pubkeyCache, offlineSync, logManager))
+        using (BeaconChainService service = new(offlineConfig, store, pubkeyCache, offlineSync, CreateDetector(logManager), logManager))
         {
             await service.Start();
         }
@@ -66,11 +70,14 @@ public class CheckpointSyncTests
         // Third start loads the persisted pubkey cache instead of rebuilding it.
         PubkeyCache reloadedCache = new();
         using (CheckpointSync offlineSync = new(offlineConfig, BeaconChainSpec.Mainnet, store, logManager))
-        using (BeaconChainService service = new(offlineConfig, store, reloadedCache, offlineSync, logManager))
+        using (BeaconChainService service = new(offlineConfig, store, reloadedCache, offlineSync, CreateDetector(logManager), logManager))
         {
             await service.Start();
         }
 
         Assert.That(reloadedCache.Count, Is.EqualTo(anchor.State.Validators!.Length));
     }
+
+    private static ExternalClDetector CreateDetector(ILogManager logManager) =>
+        new(new BeaconChainConfig(), new Lazy<IEngineRpcModule>(Substitute.For<IEngineRpcModule>()), logManager);
 }
