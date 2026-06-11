@@ -34,9 +34,9 @@ public class StateOverridesTests
 
     private static IEnumerable<TestCaseData> ValidNonceCases() =>
     [
-        new TestCaseData((UInt256)ulong.MaxValue).SetName("ulong_max"),
-        new TestCaseData((UInt256)ulong.MaxValue - 1).SetName("ulong_max_minus_one"),
-        new TestCaseData(UInt256.Zero).SetName("zero"),
+        new TestCaseData(ulong.MaxValue).SetName("ulong_max"),
+        new TestCaseData(ulong.MaxValue - 1).SetName("ulong_max_minus_one"),
+        new TestCaseData(0ul).SetName("zero"),
     ];
 
     [TestCaseSource(nameof(ValidNonceCases))]

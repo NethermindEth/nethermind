@@ -51,10 +51,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (spec.IsEip8037Enabled)
         {
+            ulong reservoir = Math.Min(gasLimit, intrinsicGas.StateReservoir);
             return new EthereumGasPolicy
             {
-                Value = gasLimit - intrinsicGas.StateReservoir,
-                StateReservoir = intrinsicGas.StateReservoir,
+                Value = gasLimit - reservoir,
+                StateReservoir = reservoir,
                 StateGasUsed = intrinsicGas.StateGasUsed,
                 StateGasSpill = 0,
             };
@@ -128,11 +129,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         ulong spillAmount = stateGasCost - gas.StateReservoir;
-        if (!UpdateGas(ref gas, spillAmount))
+        if (GetRemainingGas(in gas) < spillAmount)
         {
             return false;
         }
 
+        Consume(ref gas, spillAmount);
         gas.StateReservoir = 0;
         gas.StateGasUsed += stateGasCost;
         gas.StateGasSpill += spillAmount;

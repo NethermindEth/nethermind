@@ -834,7 +834,10 @@ internal class TransactionProcessorEip7702Tests
             .Done;
         yield return new TestCaseData(
             callOpcode,
-            34550ul,
+            GasCostOf.Transaction
+            + GasCostOf.WarmStateRead
+            + GasCostOf.ColdAccountAccess
+            + GasCostOf.VeryLow * 7,
             true,
             100_000ul,
             false
