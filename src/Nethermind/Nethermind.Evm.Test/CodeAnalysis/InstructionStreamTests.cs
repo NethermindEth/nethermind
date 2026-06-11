@@ -29,7 +29,7 @@ public class InstructionStreamTests
             (byte)Instruction.STOP,
         ];
 
-        InstructionStream stream = InstructionStream.TryBuild(code)!;
+        InstructionStream stream = BuildWithFusion(code);
 
         Assert.That(stream, Is.Not.Null);
         Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
@@ -103,7 +103,7 @@ public class InstructionStreamTests
             (byte)Instruction.ADD,
         ];
 
-        InstructionStream stream = InstructionStream.TryBuild(code)!;
+        InstructionStream stream = BuildWithFusion(code);
 
         Assert.That(stream.PcToEntry[0], Is.EqualTo(0), "PUSH3 opens the block as its first entry");
         Assert.That(stream.Ops[0].Operand, Is.EqualTo(0x010203UL), "PUSH3 immediates are pre-decoded big-endian");
@@ -146,6 +146,20 @@ public class InstructionStreamTests
     [TestCase(Instruction.EXP, TestName = "Exp_DynamicGas")]
     public void TryGetInBlockCost_ForExcludedOp_ReturnsFalse(Instruction instruction)
         => Assert.That(InstructionStream.TryGetInBlockCost(instruction, out _), Is.False);
+
+    private static InstructionStream BuildWithFusion(byte[] code)
+    {
+        bool fusionBefore = StreamInterpreter.FusionEnabled;
+        StreamInterpreter.FusionEnabled = true;
+        try
+        {
+            return InstructionStream.TryBuild(code)!;
+        }
+        finally
+        {
+            StreamInterpreter.FusionEnabled = fusionBefore;
+        }
+    }
 }
 
 [TestFixture]
@@ -291,11 +305,27 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         long framesBefore = StreamInterpreter.FramesExecuted;
         ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
 
+        Setup();
+        bool fusionBefore = StreamInterpreter.FusionEnabled;
+        StreamInterpreter.FusionEnabled = true;
+        ReceiptCaptureTracer streamedFused;
+        try
+        {
+            streamedFused = RunWithInterpreter(code, useStream: true);
+        }
+        finally
+        {
+            StreamInterpreter.FusionEnabled = fusionBefore;
+        }
+
         Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore),
             "the stream interpreter did not engage — this differential proved nothing");
         Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "success/failure must match");
         Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas must match to the unit");
         Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
+        Assert.That(streamedFused.StatusCode, Is.EqualTo(baseline.StatusCode), "fused: success/failure must match");
+        Assert.That(streamedFused.GasSpent, Is.EqualTo(baseline.GasSpent), "fused: gas must match to the unit");
+        Assert.That(streamedFused.Output, Is.EqualTo(baseline.Output), "fused: return data must match");
     }
 
     private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream)

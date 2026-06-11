@@ -30,6 +30,62 @@ public enum StreamOpKind : byte
 }
 
 /// <summary>
+/// Virtual opcodes for fused PUSH+op pairs, placed in byte values the EVM does not define
+/// (0x0C..0x0F and 0x21..0x2F gaps). Only the analyzer creates entries with these values; a
+/// future fork defining one of them would surface as a boundary op (the in-block set is
+/// explicit), and the fingerprint gate keeps new forks off the stream until reviewed.
+/// </summary>
+public static class FusedOpcode
+{
+    public const byte Add = 0x0C;
+    public const byte Sub = 0x0D;
+    public const byte Mul = 0x0E;
+    public const byte Div = 0x0F;
+    public const byte SDiv = 0x21;
+    public const byte Mod = 0x22;
+    public const byte SMod = 0x23;
+    public const byte Lt = 0x24;
+    public const byte Gt = 0x25;
+    public const byte SLt = 0x26;
+    public const byte SGt = 0x27;
+    public const byte Eq = 0x28;
+    public const byte And = 0x29;
+    public const byte Or = 0x2A;
+    public const byte Xor = 0x2B;
+    public const byte Shl = 0x2C;
+    public const byte Shr = 0x2D;
+
+    /// <summary>
+    /// Binary ops whose first operand is the stack top — a preceding in-block PUSH constant
+    /// folds into them. Must match the executor's fused cases exactly.
+    /// </summary>
+    public static bool TryMap(Instruction instruction, out byte fused)
+    {
+        switch (instruction)
+        {
+            case Instruction.ADD: fused = Add; return true;
+            case Instruction.SUB: fused = Sub; return true;
+            case Instruction.MUL: fused = Mul; return true;
+            case Instruction.DIV: fused = Div; return true;
+            case Instruction.SDIV: fused = SDiv; return true;
+            case Instruction.MOD: fused = Mod; return true;
+            case Instruction.SMOD: fused = SMod; return true;
+            case Instruction.LT: fused = Lt; return true;
+            case Instruction.GT: fused = Gt; return true;
+            case Instruction.SLT: fused = SLt; return true;
+            case Instruction.SGT: fused = SGt; return true;
+            case Instruction.EQ: fused = Eq; return true;
+            case Instruction.AND: fused = And; return true;
+            case Instruction.OR: fused = Or; return true;
+            case Instruction.XOR: fused = Xor; return true;
+            case Instruction.SHL: fused = Shl; return true;
+            case Instruction.SHR: fused = Shr; return true;
+            default: fused = 0; return false;
+        }
+    }
+}
+
+/// <summary>
 /// One pre-decoded instruction (or fused PUSH+op pair) of an <see cref="InstructionStream"/>.
 /// </summary>
 public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushort blockIndex, byte advance, ulong operand)
@@ -122,16 +178,31 @@ public sealed class InstructionStream
             }
             else if (TryGetInBlockCost(instruction, out long cost) && pc + immediates < code.Length)
             {
-                if (openBlock >= 0 && IsConstFusable(instruction) && TryTakePrecedingPush(ops, out StreamOp push))
+                if (StreamInterpreter.FusionEnabled && openBlock >= 0
+                    && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
+                    && TryTakePrecedingPush(ops, out StreamOp push))
                 {
-                    // The pair becomes one entry: the push survives as the operand, the pc map
-                    // forgets this op's own start (nothing can land inside a pair).
+                    // The pair becomes one entry under a virtual opcode: the pushed constant
+                    // always lives in the pool (one indexed load at execution, no per-width
+                    // branching), and the pc map forgets this op's own start (nothing can
+                    // land inside a pair).
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
+                    ulong poolIndex;
+                    if ((Instruction)push.Opcode is >= Instruction.PUSH9 and <= Instruction.PUSH32)
+                    {
+                        poolIndex = push.Operand;
+                    }
+                    else
+                    {
+                        constants.Add(push.Operand);
+                        poolIndex = (ulong)(constants.Count - 1);
+                    }
+
                     StreamOpKind fusedKind = push.Kind == StreamOpKind.BlockFirst
                         ? StreamOpKind.FusedBlockFirst
                         : StreamOpKind.FusedInBlock;
-                    ops[^1] = new StreamOp((byte)instruction, fusedKind, push.Pc, push.BlockIndex, (byte)(push.Advance + size), push.Operand);
+                    ops[^1] = new StreamOp(fusedOpcode, fusedKind, push.Pc, push.BlockIndex, (byte)(push.Advance + size), poolIndex);
                 }
                 else
                 {
@@ -224,17 +295,6 @@ public sealed class InstructionStream
                 return false;
         }
     }
-
-    /// <summary>
-    /// Binary ops whose first operand is the stack top — a preceding in-block PUSH constant
-    /// folds into them as a fused pair. Must match the executor's fused switch exactly.
-    /// </summary>
-    public static bool IsConstFusable(Instruction instruction)
-        => instruction is Instruction.ADD or Instruction.SUB or Instruction.MUL or Instruction.DIV
-            or Instruction.SDIV or Instruction.MOD or Instruction.SMOD
-            or Instruction.LT or Instruction.GT or Instruction.SLT or Instruction.SGT
-            or Instruction.EQ or Instruction.AND or Instruction.OR or Instruction.XOR
-            or Instruction.SHL or Instruction.SHR;
 
     private static bool TryTakePrecedingPush(List<StreamOp> ops, out StreamOp push)
     {
