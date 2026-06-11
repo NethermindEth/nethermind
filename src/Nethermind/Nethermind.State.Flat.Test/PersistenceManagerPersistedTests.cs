@@ -46,7 +46,6 @@ public class PersistenceManagerPersistedTests
         _ = new PersistedSnapshotCompactor(
             repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
             LimboLogs.Instance,
-            minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -74,7 +73,6 @@ public class PersistenceManagerPersistedTests
         _ = new PersistedSnapshotCompactor(
             repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
             LimboLogs.Instance,
-            minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2);
 
         // Persist snapshots at various block heights

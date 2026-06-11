@@ -16,8 +16,8 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Logarithmic compaction for the persisted snapshots, parameterised with a
-/// <c>[minCompactSize, maxCompactSize]</c> band. A single instance is wired over the
+/// Logarithmic compaction for the persisted snapshots, bounded above by a
+/// <c>maxCompactSize</c> ceiling. A single instance is wired over the
 /// repository. <see cref="DoCompactSnapshot"/> compacts a block's natural power-of-2 window —
 /// the sub-<c>CompactSize</c> intermediates and the <c>&gt;CompactSize</c> hierarchical
 /// merges; <see cref="DoCompactPersistable"/> produces the <c>CompactSize</c>-wide
@@ -31,12 +31,10 @@ public class PersistedSnapshotCompactor(
     IFlatDbConfig config,
     ICompactionSchedule schedule,
     ILogManager logManager,
-    int minCompactSize,
     int maxCompactSize) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly ICompactionSchedule _schedule = schedule;
-    private readonly int _minCompactSize = Math.Max(minCompactSize, 2);
     private readonly int _maxCompactSize = maxCompactSize;
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
@@ -182,19 +180,18 @@ public class PersistedSnapshotCompactor(
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Does nothing when the block's window is below <c>minCompactSize</c>, or exactly
+    /// Does nothing when the block's window is a single snapshot (nothing to merge), or exactly
     /// <c>CompactSize</c> — that window is the persistable's, produced by
     /// <see cref="DoCompactPersistable"/>.
     /// </remarks>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
-        if (_maxCompactSize < _minCompactSize) return;
-
         long blockNumber = snapshotTo.BlockNumber;
         if (blockNumber == 0) return;
 
         int alignment = (int)Math.Min(_schedule.GetHierarchicalCompactSize(blockNumber), _maxCompactSize);
-        if (alignment < _minCompactSize) return;
+        // A size-1 window is just the base snapshot — nothing to merge.
+        if (alignment <= 1) return;
         // The CompactSize-wide window is the persistable's — see DoCompactPersistable.
         if (alignment == _compactSize) return;
 

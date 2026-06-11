@@ -398,11 +398,10 @@ public class PersistedSnapshotRepositoryTests
         repo.LoadFromCatalog();
 
         const int n = 8;
-        IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+        IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
         PersistedSnapshotCompactor compactor = new(
             repo, arena, config, ScheduleHelper.CreateWithOffset(config, 0),
             Nethermind.Logging.LimboLogs.Instance,
-            minCompactSize: config.CompactSize * 2,
             maxCompactSize: config.PersistedSnapshotMaxCompactSize);
 
         StateId[] states = new StateId[n + 1];
@@ -542,12 +541,12 @@ public class PersistedSnapshotRepositoryTests
                 repo.ConvertSnapshotToPersistedSnapshot(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
             PersistedSnapshotCompactor compactor = new(
                 repo, arena1, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
                 Nethermind.Logging.LimboLogs.Instance,
-                minCompactSize: 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize);
             compactor.DoCompactPersistable(ids[4]);  // persistable at To=4 covering (0, 4]
         }
 
@@ -619,12 +618,12 @@ public class PersistedSnapshotRepositoryTests
                 repo.ConvertSnapshotToPersistedSnapshot(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
             PersistedSnapshotCompactor compactor = new(
                 repo, arena1, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
                 Nethermind.Logging.LimboLogs.Instance,
-                minCompactSize: 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize);
             compactor.DoCompactPersistable(ids[4]);
 
             Assert.That(repo.SnapshotCount, Is.EqualTo(5), "session 1 must hold 4 bases + 1 persistable");
@@ -681,12 +680,12 @@ public class PersistedSnapshotRepositoryTests
             // Throw in two persistables (CompactSize=8) at boundaries 8 and 16 so the
             // catalog has multi-bucket entries that exercise the bucket-routing branch
             // in the parallel LoadSnapshot.
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 8, MinCompactSize = 2 };
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 8 };
             PersistedSnapshotCompactor compactor = new(
                 repo, arena1, config,
                 ScheduleHelper.CreateWithOffset(config, 0),
                 Nethermind.Logging.LimboLogs.Instance,
-                minCompactSize: 2, maxCompactSize: config.PersistedSnapshotMaxCompactSize);
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize);
             compactor.DoCompactPersistable(ids[8]);
             compactor.DoCompactPersistable(ids[16]);
         }
