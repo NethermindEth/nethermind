@@ -116,8 +116,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
         {
             batch = await peer.RequestBlocksByRangeAsync(startSlot, count, token);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
+            // Includes per-request timeouts, which cancel the request without cancelling the sync.
             peer.ReportFailure($"Blocks-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
             return null;
         }

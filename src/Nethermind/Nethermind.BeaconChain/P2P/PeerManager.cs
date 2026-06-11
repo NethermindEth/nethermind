@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
@@ -16,10 +17,10 @@ using ILogger = Nethermind.Logging.ILogger;
 namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>
-/// Maintains connections to the configured static peers: dials them, exchanges <c>status</c> and
-/// <c>ping</c> periodically, and prunes peers on a fork digest mismatch or repeated failures.
+/// Maintains connections to the configured static peers and to peers discovered via discv5: dials
+/// them, exchanges <c>status</c> and <c>ping</c> periodically, and prunes peers on a fork digest
+/// mismatch or repeated failures.
 /// </summary>
-/// <remarks>Discovery-based peer acquisition arrives with discv5 in a later milestone.</remarks>
 public class PeerManager(
     BeaconP2P p2p,
     IBeaconChainConfig config,
@@ -28,9 +29,13 @@ public class PeerManager(
 {
     private const int MaxConsecutiveFailures = 3;
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DialTimeout = TimeSpan.FromSeconds(10);
 
     private readonly ILogger _logger = logManager.GetClassLogger<PeerManager>();
     private readonly ConcurrentDictionary<string, ManagedPeer> _peers = new();
+
+    /// <summary>The number of connected, status-exchanged peers.</summary>
+    public int PeerCount => _peers.Count;
 
     public async Task Run(CancellationToken token)
     {
@@ -40,7 +45,7 @@ public class PeerManager(
             {
                 await RunMaintenanceRoundAsync(token);
             }
-            catch (Exception e) when (e is not OperationCanceledException)
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 if (_logger.IsError) _logger.Error("Beacon chain peer maintenance failed.", e);
             }
@@ -81,10 +86,32 @@ public class PeerManager(
         return best;
     }
 
+    /// <summary>Dials a discovered peer (bounded by <see cref="DialTimeout"/>) and adds it to the pool when the status exchange succeeds.</summary>
+    /// <returns><c>true</c> when the peer is (already) connected and on our fork.</returns>
+    public async Task<bool> TryAddPeerAsync(string address, CancellationToken token)
+    {
+        if (_peers.ContainsKey(address))
+        {
+            return true;
+        }
+
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        cts.CancelAfter(DialTimeout);
+        try
+        {
+            return await ConnectAsync(address, cts.Token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Dialing beacon chain peer {address} timed out");
+            return false;
+        }
+    }
+
     private string[] StaticPeerAddresses() =>
         config.StaticPeers?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
-    private async Task ConnectAsync(string address, CancellationToken token)
+    private async Task<bool> ConnectAsync(string address, CancellationToken token)
     {
         try
         {
@@ -92,15 +119,17 @@ public class PeerManager(
             ManagedPeer peer = new(this, p2p, address, session);
             if (!await UpdateStatusAsync(peer, token))
             {
-                return;
+                return false;
             }
 
             _peers[address] = peer;
             if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} (head slot {peer.HeadSlot})");
+            return true;
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
             if (_logger.IsDebug) _logger.Debug($"Failed to connect to beacon chain peer {address}: {e.Message}");
+            return false;
         }
     }
 
@@ -116,7 +145,7 @@ public class PeerManager(
             await p2p.PingAsync(peer.Session, token);
             peer.ConsecutiveFailures = 0;
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
             peer.ConsecutiveFailures++;
             if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({peer.ConsecutiveFailures}/{MaxConsecutiveFailures}): {e.Message}");
@@ -150,7 +179,7 @@ public class PeerManager(
         {
             await peer.Session.DisconnectAsync();
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
             if (_logger.IsTrace) _logger.Trace($"Disconnect from {peer.Id} failed: {e.Message}");
         }
@@ -174,6 +203,9 @@ public class PeerManager(
 
         public Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
             p2p.RequestBlocksByRangeAsync(Session, startSlot, count, token);
+
+        public Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
+            p2p.RequestBlocksByRootAsync(Session, roots, token);
 
         public void ReportFailure(string reason)
         {

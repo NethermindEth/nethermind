@@ -23,7 +23,7 @@ namespace Nethermind.BeaconChain.Engine;
 /// trips external-CL detection. The orchestrator serializes all calls (they run on the slot
 /// worker); only the last-status properties are meant to be read concurrently.
 /// </remarks>
-public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager) : INewPayloadNotifier
+public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager) : IEngineDriver
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EngineDriver>();
 

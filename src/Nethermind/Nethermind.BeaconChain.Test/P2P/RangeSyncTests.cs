@@ -75,6 +75,9 @@ public class RangeSyncTests
             return Task.FromResult<IReadOnlyList<SignedBeaconBlock>>(handler(startSlot, count));
         }
 
+        public Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<SignedBeaconBlock>>([]);
+
         public void ReportFailure(string reason) => Failures++;
     }
 

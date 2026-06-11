@@ -97,6 +97,39 @@ public sealed class ForkChoiceRunner
     /// <inheritdoc cref="ProtoArrayForkChoice.GetBlockSlot"/>
     public ulong? GetBlockSlot(Hash256 blockRoot) => _protoArray.GetBlockSlot(blockRoot);
 
+    /// <inheritdoc cref="ProtoArrayForkChoice.GetExecutionBlockHash"/>
+    public Hash256? GetExecutionBlockHash(Hash256 blockRoot) => _protoArray.GetExecutionBlockHash(blockRoot);
+
+    /// <inheritdoc cref="ProtoArrayForkChoice.EnumerateAncestorNodes"/>
+    public IEnumerable<ProtoNode> EnumerateAncestors(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
+
+    /// <summary>
+    /// Prunes fork-choice state below the finalized checkpoint: the proto-array block tree (subject
+    /// to its prune threshold) and the cached checkpoint states and justified balances of epochs
+    /// before the finalized one.
+    /// </summary>
+    public void Prune()
+    {
+        CheckpointRef finalized = _store.FinalizedCheckpoint;
+        _protoArray.MaybePrune(finalized.Root);
+        PruneCheckpointCache(_checkpointStates, finalized.Epoch);
+        PruneCheckpointCache(_justifiedBalances, finalized.Epoch);
+    }
+
+    private static void PruneCheckpointCache<TValue>(Dictionary<CheckpointRef, TValue> cache, ulong finalizedEpoch)
+    {
+        List<CheckpointRef>? stale = null;
+        foreach (CheckpointRef checkpoint in cache.Keys)
+        {
+            if (checkpoint.Epoch < finalizedEpoch) (stale ??= []).Add(checkpoint);
+        }
+
+        if (stale is not null)
+        {
+            foreach (CheckpointRef checkpoint in stale) cache.Remove(checkpoint);
+        }
+    }
+
     /// <summary>
     /// The spec's <c>on_tick</c>: advances the store to <paramref name="time"/> (seconds), resetting
     /// the proposer boost and pulling up unrealized checkpoints at every slot/epoch boundary

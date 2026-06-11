@@ -171,6 +171,13 @@ public sealed class ProtoArrayForkChoice
     public ExecutionStatus? GetBlockExecutionStatus(Hash256 blockRoot) =>
         _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].ExecutionStatus : null;
 
+    /// <summary>The execution payload block hash of <paramref name="blockRoot"/>, or <c>null</c> when the block is unknown or pre-merge.</summary>
+    public Hash256? GetExecutionBlockHash(Hash256 blockRoot) =>
+        _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].ExecutionBlockHash : null;
+
+    /// <inheritdoc cref="ProtoArray.EnumerateAncestorNodes"/>
+    public IEnumerable<ProtoNode> EnumerateAncestorNodes(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
+
     /// <inheritdoc cref="VoteTrackerList.LatestMessage"/>
     public (Hash256 BlockRoot, ulong TargetEpoch)? LatestMessage(ulong validatorIndex) => _votes.LatestMessage(validatorIndex);
 

@@ -28,11 +28,13 @@ public sealed class BeaconChainService(
     BeaconChainStore store,
     PubkeyCache pubkeyCache,
     CheckpointSync checkpointSync,
+    BeaconSyncOrchestrator orchestrator,
     ExternalClDetector externalClDetector,
     ILogManager logManager) : IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconChainService>();
     private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private volatile bool _disposed;
 
     public async Task Start()
     {
@@ -47,7 +49,14 @@ public sealed class BeaconChainService(
             }
 
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {config.CheckpointSyncUrl}");
-            await InitializeAnchorAsync(_cancellationTokenSource.Token);
+            (BeaconStateFulu state, SignedBeaconBlock? block, Hash256 blockRoot) = await InitializeAnchorAsync(_cancellationTokenSource.Token);
+            if (block is null)
+            {
+                if (_logger.IsWarn) _logger.Warn("Anchor block is unavailable (state-file-only bootstrap); the sync orchestrator cannot start.");
+                return;
+            }
+
+            await orchestrator.RunAsync(state, block, blockRoot, _cancellationTokenSource.Token);
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
         {
@@ -58,9 +67,11 @@ public sealed class BeaconChainService(
         }
     }
 
-    private async Task InitializeAnchorAsync(CancellationToken cancellationToken)
+    private async Task<(BeaconStateFulu State, SignedBeaconBlock? Block, Hash256 BlockRoot)> InitializeAnchorAsync(CancellationToken cancellationToken)
     {
         BeaconStateFulu state;
+        SignedBeaconBlock? block;
+        Hash256 blockRoot;
         if (store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot))
         {
             if (_logger.IsInfo) _logger.Info($"Resuming from persisted anchor slot {anchorSlot} (block {anchorRoot})");
@@ -70,12 +81,21 @@ public sealed class BeaconChainService(
             }
 
             BeaconStateFulu.Decode(stateSsz, out state);
+            blockRoot = anchorRoot;
+            store.TryGetBlock(anchorRoot, out block);
         }
         else
         {
-            state = (await checkpointSync.RunAsync(cancellationToken)).State;
+            CheckpointAnchor anchor = await checkpointSync.RunAsync(cancellationToken);
+            (state, block, blockRoot) = (anchor.State, anchor.Block, anchor.BlockRoot);
         }
 
+        InitializePubkeyCache(state);
+        return (state, block, blockRoot);
+    }
+
+    private void InitializePubkeyCache(BeaconStateFulu state)
+    {
         Validator[] validators = state.Validators!;
         Stopwatch stopwatch = Stopwatch.StartNew();
         if (pubkeyCache.TryLoad(store, validators))
@@ -92,10 +112,26 @@ public sealed class BeaconChainService(
     }
 
     /// <summary>Permanently stops the driver, e.g. when an external consensus client takes over.</summary>
-    public void Stop() => _cancellationTokenSource.Cancel();
+    public void Stop()
+    {
+        if (!_disposed)
+        {
+            _cancellationTokenSource.Cancel();
+        }
+    }
 
+    /// <remarks>Idempotent: the service is disposed both via the plugin dispose stack and as a container-owned singleton.</remarks>
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        // Cancel before the rest of the node tears down, so the driver unwinds from its own token
+        // instead of surfacing secondary cancellations (e.g. engine internals going away) as errors.
+        Stop();
+        _disposed = true;
         externalClDetector.ExternalClDetected -= Stop;
         _cancellationTokenSource.Dispose();
     }

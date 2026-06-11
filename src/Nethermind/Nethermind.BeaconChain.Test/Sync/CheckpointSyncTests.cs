@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -59,7 +63,7 @@ public class CheckpointSyncTests
         PubkeyCache pubkeyCache = new();
         stopwatch.Restart();
         using (CheckpointSync offlineSync = new(offlineConfig, BeaconChainSpec.Mainnet, store, logManager))
-        using (BeaconChainService service = new(offlineConfig, store, pubkeyCache, offlineSync, CreateDetector(logManager), logManager))
+        using (BeaconChainService service = new(offlineConfig, store, pubkeyCache, offlineSync, CreateOrchestrator(offlineConfig, store, logManager), CreateDetector(logManager), logManager))
         {
             await service.Start();
         }
@@ -70,7 +74,7 @@ public class CheckpointSyncTests
         // Third start loads the persisted pubkey cache instead of rebuilding it.
         PubkeyCache reloadedCache = new();
         using (CheckpointSync offlineSync = new(offlineConfig, BeaconChainSpec.Mainnet, store, logManager))
-        using (BeaconChainService service = new(offlineConfig, store, reloadedCache, offlineSync, CreateDetector(logManager), logManager))
+        using (BeaconChainService service = new(offlineConfig, store, reloadedCache, offlineSync, CreateOrchestrator(offlineConfig, store, logManager), CreateDetector(logManager), logManager))
         {
             await service.Start();
         }
@@ -80,4 +84,29 @@ public class CheckpointSyncTests
 
     private static ExternalClDetector CreateDetector(ILogManager logManager) =>
         new(new BeaconChainConfig(), new Lazy<IEngineRpcModule>(Substitute.For<IEngineRpcModule>()), logManager);
+
+    /// <summary>An orchestrator without the P2P components: its run fails fast, after the anchor and pubkey-cache init this test asserts on.</summary>
+    private static BeaconSyncOrchestrator CreateOrchestrator(IBeaconChainConfig config, BeaconChainStore store, ILogManager logManager)
+    {
+        EngineDriver engine = new(CreateDetector(logManager), logManager);
+        SlotClock slotClock = new(BeaconChainSpec.Mainnet, Timestamper.Default);
+        NoPeers pool = new();
+        return new BeaconSyncOrchestrator(
+            config,
+            BeaconChainSpec.Mainnet,
+            store,
+            new BlockImporterFactory(BeaconChainSpec.Mainnet, store, new PubkeyCache(), engine, config, logManager),
+            engine,
+            pool,
+            new RangeSync(pool, logManager),
+            slotClock,
+            new GossipRouter(BeaconChainSpec.Mainnet, slotClock, logManager),
+            new BeaconChainStatusHolder(BeaconChainSpec.Mainnet, Timestamper.Default),
+            logManager);
+    }
+
+    private sealed class NoPeers : IBeaconSyncPeerPool
+    {
+        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => [];
+    }
 }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.P2P;
 
@@ -17,6 +18,8 @@ public interface IBeaconSyncPeer
     ulong HeadSlot { get; }
 
     Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token);
+
+    Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token);
 
     /// <summary>Records a protocol violation or failure; repeated reports get the peer pruned.</summary>
     void ReportFailure(string reason);

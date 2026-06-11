@@ -9,6 +9,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -70,13 +71,17 @@ public class BeaconChainModule : Module
             .AddSingleton<LocalMetadataSource>()
             .AddSingleton<SlotClock>()
             .AddSingleton<BeaconP2P>()
+            .AddSingleton<BeaconDiscovery>()
             .AddSingleton<GossipRouter>()
             .AddSingleton<PeerManager>()
             .Bind<IBeaconSyncPeerPool, PeerManager>()
             .AddSingleton<RangeSync>()
+            .AddSingleton<BeaconSyncOrchestrator>()
+            .AddSingleton<IBlockImporterFactory, BlockImporterFactory>()
             .AddSingleton<ExternalClDetector>()
             .AddSingleton<EngineDriver>()
             .Bind<INewPayloadNotifier, EngineDriver>()
+            .Bind<IEngineDriver, EngineDriver>()
             .AddDecorator<IEngineRpcModule, ExternalClInterceptingEngineRpcModule>()
             .AddColumnDatabase<BeaconChainDbColumns>("beaconChain")
             ;

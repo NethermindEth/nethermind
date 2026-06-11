@@ -55,6 +55,8 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
         return true;
     }
 
+    public void DeleteBlock(Hash256 root) => _blocks.Remove(root.Bytes);
+
     public void SetCanonicalRoot(ulong slot, Hash256 root)
     {
         Span<byte> key = stackalloc byte[sizeof(ulong)];
