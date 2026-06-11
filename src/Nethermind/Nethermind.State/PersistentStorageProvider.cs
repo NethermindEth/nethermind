@@ -78,11 +78,27 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
+    /// <summary>
+    /// Whether reads register journal entries (JustCache) and originals eagerly. Storage
+    /// tracers need the per-round read journal for ReportStorageRead, so transaction
+    /// processing turns this off only when the tracer does not trace storage; originals for
+    /// written cells are then registered lazily from <see cref="PerContractState"/> block
+    /// state on the first <see cref="GetOriginal"/>.
+    /// </summary>
+    internal bool JournalReads = true;
+
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            // SSTORE always reads the slot before asking for the original, so the block
+            // state holds the committed value even when reads skipped the journal.
+            if (JournalReads || !GetOrCreateStorage(storageCell.Address).TryGetBefore(in storageCell, out value))
+            {
+                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            }
+
+            PushToRegistryOnly(storageCell, value);
         }
 
         if (_transactionChangesSnapshots.TryPeek(out int snapshot))
@@ -503,8 +519,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
+            if (!storageCell.IsHash && _provider.JournalReads) _provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
+        }
+
+        /// <summary>
+        /// The committed (pre-block-change) value of a slot already loaded this block; feeds
+        /// the lazy original registration when reads skip the journal.
+        /// </summary>
+        public bool TryGetBefore(in StorageCell storageCell, out byte[] before)
+        {
+            ref StorageChangeTrace trace = ref BlockChange.GetValueRefOrNullRef(storageCell.Index);
+            if (Unsafe.IsNullRef(ref trace))
+            {
+                before = null!;
+                return false;
+            }
+
+            before = trace.Before;
+            return true;
         }
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)

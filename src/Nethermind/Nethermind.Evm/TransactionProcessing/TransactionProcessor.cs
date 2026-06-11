@@ -154,9 +154,19 @@ namespace Nethermind.Evm.TransactionProcessing
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
             }
 
-            TransactionResult result = Execute(tx, tracer, opts);
-            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
-            return result;
+            // Storage tracers consume the per-round read journal (ReportStorageRead at
+            // commit); everyone else skips the per-SLOAD registration entirely.
+            WorldState.SetStorageReadJournaling(tracer.IsTracingStorage);
+            try
+            {
+                TransactionResult result = Execute(tx, tracer, opts);
+                if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
+                return result;
+            }
+            finally
+            {
+                WorldState.SetStorageReadJournaling(true);
+            }
         }
 
         protected TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)

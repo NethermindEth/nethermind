@@ -41,6 +41,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
 
     /// <summary>
+    /// Storage tracers need read-journal entries for ReportStorageRead; everyone else can
+    /// skip the per-SLOAD registration. Default no-op so only journaling-aware states opt in.
+    /// </summary>
+    void SetStorageReadJournaling(bool enabled) { }
+
+    /// <summary>
     /// Get the persistent storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
