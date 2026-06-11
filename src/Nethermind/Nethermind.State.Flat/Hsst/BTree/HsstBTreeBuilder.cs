@@ -11,24 +11,13 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Builds an HSST (Hierarchical Static Sorted Table) from key-value entries, which MUST be
-/// added in sorted key order (no internal sorting). The <c>keyFirst</c> constructor flag
-/// selects the data-region entry layout: <c>false</c> is key-after-value and supports the
-/// streaming <see cref="BeginValueWrite"/> / <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/>
-/// API; <c>true</c> is key-first and requires <see cref="Add(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte})"/>.
+/// Builds an HSST (Hierarchical Static Sorted Table) from key-value entries added in sorted key
+/// order (no internal sorting). The <c>keyFirst</c> ctor flag selects the data-region layout:
+/// <c>false</c> (key-after-value) supports streaming via <see cref="BeginValueWrite"/> /
+/// <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/>; <c>true</c> (key-first) requires
+/// <see cref="Add(System.ReadOnlySpan{byte},System.ReadOnlySpan{byte})"/>. Wire layout: see
+/// <c>Hsst/FORMAT.md</c> ("BTree" / "BTreeKeyFirst" variants).
 /// </summary>
-/// <remarks>
-/// Wire layout: see <c>Hsst/FORMAT.md</c>, "BTree variant" (<c>keyFirst = false</c>) and
-/// "BTreeKeyFirst variant" (<c>keyFirst = true</c>).
-/// <para>
-/// Memory: while the data section is being written, the only per-key state held in
-/// memory is one <c>long</c> per entry (the entry's index pointer target — MetadataStart
-/// in key-after-value mode, EntryStart in key-first mode). Separators and the previous
-/// key are not buffered — at <see cref="Build"/> time the index builder is handed a
-/// reader over the just-written data section and recomputes separators on-demand from
-/// the flushed bytes.
-/// </para>
-/// </remarks>
 public ref partial struct HsstBTreeBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
@@ -38,84 +27,49 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     private readonly bool _keyFirst;
     private int _keyLength;
 
-    // Root's common-key-prefix length, populated by BuildIndex (see HsstBTreeBuilder.Index.cs)
-    // for the trailer. Zero for empty HSSTs. Declared here so all instance fields live in one
-    // partial declaration (CS0282).
+    // Root's common-key-prefix length for the trailer, set by BuildIndex (HsstBTreeBuilder.Index.cs);
+    // 0 for empty HSSTs. Declared here so all instance fields live in one partial (CS0282).
     private int _rootPrefixLen;
 
-    // Ref to the caller's HsstBTreeBuilderBuffers. The caller owns and disposes the
-    // buffer; the builder holds a borrowed ref for the duration of the build.
-    // HsstBTreeBuilder is a ref struct so a ref field is allowed; HsstBTreeBuilderBuffers
-    // is not a ref struct so CS9050 doesn't apply.
+    // Borrowed ref to the caller-owned HsstBTreeBuilderBuffers (a ref field is allowed on this
+    // ref struct; HsstBTreeBuilderBuffers is not a ref struct so CS9050 doesn't apply).
     private readonly ref HsstBTreeBuilderBuffers _buffers;
 
-    // Global, build-wide entry count — incremented once per Add / FinishValueWrite.
-    // Doubles as the next entry's index, the upper bound of CommonPrefixArr's valid
-    // range, and the global FirstEntry / LastEntry value stamped on each per-entry
-    // <see cref="HsstIndexNodeInfo"/> descriptor.
+    // Build-wide entry count, incremented once per Add / FinishValueWrite. Also the next entry's
+    // index, the CommonPrefixArr valid-range bound, and the FirstEntry/LastEntry stamped on each
+    // per-entry <see cref="HsstIndexNodeInfo"/> descriptor.
     private int _entryCount;
 
-    // Count of trailing descriptors in <c>_buffers.CurrentLevel</c> that are still
-    // Entry-kind candidates for a page-local leaf wrap. Each Add pushes one Entry
-    // descriptor onto CurrentLevel and increments this counter;
-    // <see cref="MaybeEmitInlineLeaf"/> pops the trailing on-page run and replaces it
-    // with a single leaf descriptor; <see cref="FlushPendingAsEntries"/> and
-    // <see cref="FinalizePendingNotOnCurrentPage"/> simply drop entries from the
-    // pending count (the descriptors stay in place, now sealed as direct Entry
-    // children of whatever intermediate the index-build phase puts above them).
+    // Trailing <c>_buffers.CurrentLevel</c> descriptors still eligible for a page-local leaf wrap.
+    // <see cref="MaybeEmitInlineLeaf"/> wraps the on-page run; <see cref="FlushPendingAsEntries"/> /
+    // <see cref="FinalizePendingNotOnCurrentPage"/> just drop the count (descriptors stay in place,
+    // sealed as direct Entry children of the intermediate above).
     private int _pendingCount;
 
-    // Set the first time <see cref="MaybeEmitInlineLeaf"/> actually writes a leaf node
-    // (and stays set for the rest of the build). Lets <see cref="Build"/>'s
-    // single-entry-HSST post-process distinguish a lone Entry descriptor (no leaf
-    // ever wrapped — needs wrapping to keep rootSize in the u16 trailer) from a
-    // lone Leaf descriptor (already bounded, no action).
+    // True once <see cref="MaybeEmitInlineLeaf"/> has written a leaf. Lets <see cref="Build"/>'s
+    // single-entry post-process tell a lone unwrapped Entry (needs wrapping for the u16 rootSize)
+    // from an already-bounded Leaf.
     private bool _hasEmittedLeaf;
 
-    // Writer's page index (writer.Written / PageLayout.PageSize) at the last
-    // observation point. Used by MaybeFlushBeforeEntry to gate the
-    // FinalizePendingNotOnCurrentPage call — entries can only become stranded on a
-    // prior page when the writer's own page index has advanced, and Add() is the
-    // only path that mutates the writer between consecutive Adds, so the gate is
-    // safe.
+    // Writer page index at the last observation. MaybeFlushBeforeEntry gates
+    // FinalizePendingNotOnCurrentPage on it — entries can only strand once the writer page advances,
+    // and only Add mutates the writer between consecutive Adds, so the cached value is safe.
     private long _lastWriterPage;
 
     /// <summary>
-    /// Create a builder that writes via <paramref name="writer"/> and uses
-    /// <paramref name="buffers"/> as its working storage. The caller owns the
-    /// buffer's lifetime — allocate one (typically via
-    /// <c>using HsstBTreeBuilderBuffers.Container buffers = new(expectedKeyCount);</c>,
-    /// then pass <c>ref buffers.Buffers</c>) and dispose it after the build.
+    /// Create a builder writing via <paramref name="writer"/> with caller-owned
+    /// <paramref name="buffers"/> as scratch (typically <c>using HsstBTreeBuilderBuffers.Container
+    /// buffers = new(expectedKeyCount)</c>, then pass <c>ref buffers.Buffers</c>); the caller
+    /// disposes it.
     /// </summary>
     /// <remarks>
-    /// The trailing [RootSize u16][KeyLength u8][IndexType u8] is appended in <see cref="Build"/>.
-    /// <para>
-    /// <paramref name="buffers"/> is reset for this build via
-    /// <see cref="HsstBTreeBuilderBuffers.ResetForBuild"/>, so the same buffer can be
-    /// passed to back-to-back builds — the entry-positions list, common-prefix array,
-    /// leaf-first-keys, level lists, value scratch, segment tree, and DFS stack stay
-    /// rented across invocations.
-    /// </para>
-    /// <para>
-    /// <paramref name="keyLength"/> declares the fixed key length (0–255) every entry must use;
-    /// all keys in a single HSST must be exactly this many bytes. Pass -1 to defer the
-    /// declaration to the first <see cref="Add"/>/<see cref="FinishValueWrite"/>
-    /// call, which then locks the length for the rest of the build. The fixed length is
-    /// recorded once in the trailer (single KeyLength:u8 byte before the IndexType byte)
-    /// rather than per-entry, and the builder rejects mismatches at build time so readers
-    /// can rely on the trailer value.
-    /// </para>
-    /// <para>
-    /// <paramref name="expectedKeyCount"/> sizes the entry-positions buffer up front;
-    /// pass an estimate when known to avoid resize allocations. The buffer still grows on demand.
-    /// </para>
-    /// <para>
-    /// When <paramref name="keyFirst"/> is true, the data-region entries are written
-    /// key-first (<c>[FullKey][LEB128][Value]</c>) and the trailer carries
-    /// <see cref="IndexType.BTreeKeyFirst"/>; <see cref="BeginValueWrite"/> is rejected
-    /// because the value length must be known up front, so callers must use
-    /// <see cref="Add"/>.
-    /// </para>
+    /// <paramref name="buffers"/> is reset per build (<see cref="HsstBTreeBuilderBuffers.ResetForBuild"/>)
+    /// so it can be reused across back-to-back builds. <paramref name="keyLength"/> is the fixed key
+    /// length (0–255) every entry must use, recorded once in the trailer; pass -1 to lock it from the
+    /// first <see cref="Add"/>/<see cref="FinishValueWrite"/>, after which mismatches are rejected.
+    /// <paramref name="expectedKeyCount"/> pre-sizes the buffers (they still grow on demand).
+    /// <paramref name="keyFirst"/> selects the key-first layout (trailer
+    /// <see cref="IndexType.BTreeKeyFirst"/>) and makes <see cref="BeginValueWrite"/> throw.
     /// </remarks>
     public HsstBTreeBuilder(ref TWriter writer, ref HsstBTreeBuilderBuffers buffers, int keyLength, int expectedKeyCount = 16, bool keyFirst = false)
     {
@@ -145,43 +99,30 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             buffers.PrevKeyBuf.EnsureCapacity(keyLength);
     }
 
-    /// <summary>
-    /// No-op: the caller owns and disposes the <see cref="HsstBTreeBuilderBuffers"/>
-    /// passed to the constructor. Kept so existing <c>using HsstBTreeBuilder&lt;…&gt;</c>
-    /// call sites compile unchanged.
-    /// </summary>
+    /// <summary>No-op: the caller owns and disposes the <see cref="HsstBTreeBuilderBuffers"/>; kept so <c>using</c> call sites compile.</summary>
     public void Dispose() { }
 
     /// <summary>
-    /// Begin writing a value. Returns ref to the shared writer and snapshots Written.
-    /// Close the entry with <see cref="FinishValueWrite(ReadOnlySpan{byte}, long)"/>, which
-    /// documents the leading-padding / page-alignment handling.
-    ///
-    /// Not supported in key-first mode (the value length must be known when the entry
-    /// is laid down). Callers in key-first mode must use <see cref="Add"/>.
+    /// Begin a streaming value: snapshots Written and returns the shared writer. Close with
+    /// <see cref="FinishValueWrite(ReadOnlySpan{byte}, long)"/>. Rejected in key-first mode (the
+    /// value length must be known up front) — use <see cref="Add"/>.
     /// </summary>
     public ref TWriter BeginValueWrite()
     {
         if (_keyFirst)
             throw new InvalidOperationException("Key-first BTree requires Add(key, value); BeginValueWrite/FinishValueWrite streaming is not supported.");
-        // Trigger 1: a streaming value is about to flow and will straddle pages, so seal any
-        // pending leaf now to keep it colocated with its entries.
+        // Trigger 1: seal any pending leaf before a streaming value straddles pages, keeping it
+        // colocated with its entries.
         MaybeEmitInlineLeaf();
         _writtenBeforeValue = _writer.Written;
         return ref _writer;
     }
 
     /// <summary>
-    /// Finish value write with an explicit value length. <paramref name="valueLength"/>
-    /// is the number of bytes the caller wrote into the writer between the matching
-    /// <see cref="BeginValueWrite"/> snapshot and now that should be treated as the
-    /// value. The writer may have been advanced past <paramref name="valueLength"/>
-    /// bytes — any leading bytes between the snapshot and
-    /// <c>(Written − valueLength)</c> are treated as padding and become inert gap
-    /// data that no index entry points at. Use this to keep a value from crossing a
-    /// 4 KiB page boundary by padding ahead of it.
-    /// Key must be greater than previous key (sorted order).
-    /// Not supported in key-first mode — use <see cref="Add"/>.
+    /// Finish a streaming value of <paramref name="valueLength"/> bytes, counted back from the
+    /// current Written; any earlier bytes since <see cref="BeginValueWrite"/> are inert padding
+    /// (e.g. to keep the value off a page boundary). <paramref name="key"/> must exceed the previous
+    /// key. Rejected in key-first mode — use <see cref="Add"/>.
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength)
     {
@@ -200,15 +141,12 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             valueLength <= _writer.Written - _writtenBeforeValue,
             "valueLength exceeds bytes written since BeginValueWrite");
 
-        // metadataPos is relative to the data section start (== _baseOffset). The byte at
-        // this position is the entry's leading flag byte (NodeKind = Entry); the BTree
-        // reader's dispatch loop reads it first to recognize the entry before decoding the
-        // value/LEB128 that follow.
+        // metadataPos (relative to _baseOffset) is the entry's flag byte; the reader reads it first
+        // to recognize the entry before decoding the value/LEB128.
         long metadataPos = _writer.Written - _baseOffset;
 
-        // Single GetSpan/Advance for the post-value [FlagByte][LEB128][FullKey] trailer.
-        // Value bytes were streamed in via the caller's BeginValueWrite snapshot and are
-        // already on the writer; this trailer is bounded by 1 + 10 + key.Length.
+        // Single GetSpan/Advance for the post-value [FlagByte][LEB128][FullKey] trailer; the value
+        // bytes were already streamed in via the BeginValueWrite snapshot.
         int lebSize = Leb128.EncodedSize(valueLength);
         int trailerLen = 1 + lebSize + key.Length;
         Span<byte> dest = _writer.GetSpan(trailerLen);
@@ -217,23 +155,16 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         if (key.Length > 0) key.CopyTo(dest.Slice(1 + lebSize, key.Length));
         _writer.Advance(trailerLen);
 
-        // No precomputed LCP available on this path — EmitEntryBookkeeping will compute
-        // it from PrevKeyBuf. The one-call Add path forwards its own
-        // MaybeFlushBeforeEntry-derived LCP into EmitEntryBookkeeping instead.
+        // No precomputed LCP on this path — EmitEntryBookkeeping derives it from PrevKeyBuf.
         EmitEntryBookkeeping(ref _buffers, key, metadataPos, precomputedLcp: -1);
     }
 
     /// <summary>
-    /// Convenience: add key-value pair in one call. Attempts to keep the entry
-    /// (key + LEB128 + value) on a single <see cref="PageLayout.PageSize"/> page
-    /// via a small leading zero pad when the writer is mid-page; if the pad would
-    /// exceed <see cref="PageLayout.PadThreshold"/> or the entry is larger than
-    /// one page, the entry is written without alignment.
-    /// In key-after-value mode the layout written is <c>[Value][LEB128 ValueLength][FullKey]</c>
-    /// and the recorded entry position aims at the LEB128 byte (MetadataStart).
-    /// In key-first mode (<c>keyFirst = true</c> at construction) the layout is
-    /// <c>[FullKey][LEB128 ValueLength][Value]</c> and the recorded entry position aims at
-    /// FullKey byte 0 (EntryStart).
+    /// Add a key-value pair in one call. Best-effort keeps the entry on a single
+    /// <see cref="PageLayout.PageSize"/> page via a small leading pad (skipped if it would exceed
+    /// <see cref="PageLayout.PadThreshold"/> or the entry is larger than a page). Layout is
+    /// <c>[Value][LEB128][FullKey]</c> (recorded position = MetadataStart) in key-after-value mode,
+    /// or <c>[FullKey][LEB128][Value]</c> (recorded position = EntryStart) in key-first mode.
     /// </summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
@@ -241,8 +172,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         // +1 for the leading per-entry flag byte.
         int lebSize = Leb128.EncodedSize((long)value.Length);
         long entryLen = 1L + key.Length + lebSize + value.Length;
-        // LCP against the prior key, forwarded into EmitEntryBookkeeping so the per-key
-        // LCP loop runs once per Add.
+        // LCP vs the prior key, forwarded into EmitEntryBookkeeping so the LCP loop runs once.
         int lcp = MaybeFlushBeforeEntry(ref bufs, key, entryLen);
         // Best-effort page alignment; the entry lands unaligned when it can't be padded.
         TryAlign(entryLen);
@@ -255,10 +185,8 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         else if (key.Length != _keyLength)
             throw new ArgumentException($"key length {key.Length} != declared keyLength {_keyLength}", nameof(key));
 
-        // Single GetSpan + Advance per entry. The pre-pad has already run via TryAlign
-        // above, so the reserved slice starts at the post-pad writer position. Entry
-        // bytes are laid down via local offsets into <c>dest</c>, then a single
-        // <c>Advance(totalLen)</c> commits the whole record at once.
+        // Single GetSpan + Advance per entry; TryAlign's pre-pad has already run, so the slice
+        // starts at the post-pad position. Bytes are laid down by local offset, then committed at once.
         int totalLen = 1 + key.Length + lebSize + value.Length;
         long entryStart = _writer.Written - _baseOffset;
         Span<byte> dest = _writer.GetSpan(totalLen);
@@ -266,9 +194,8 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         long entryPos;
         if (_keyFirst)
         {
-            // Entry layout: [FlagByte=Entry][FullKey][LEB128 ValueLength][Value]. EntryStart =
-            // FlagByte position; the BTree reader's dispatch loop reads the flag byte first
-            // to recognize the entry, then walks forward past the key + LEB128 to the value.
+            // [FlagByte=Entry][FullKey][LEB128][Value]; EntryStart = flag-byte position. The reader
+            // reads the flag, then walks past key + LEB128 to the value.
             dest[0] = (byte)BTreeNodeKind.Entry;
             int off = 1;
             if (key.Length > 0) key.CopyTo(dest.Slice(off, key.Length));
@@ -280,10 +207,8 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         }
         else
         {
-            // Entry layout: [Value][FlagByte=Entry][LEB128 ValueLength][FullKey]. MetadataStart
-            // = the FlagByte position (== entryStart + value.Length, expressed relative to the
-            // data-section start at _baseOffset); the BTree reader recovers ValueStart from
-            // MetadataStart - ValueLength.
+            // [Value][FlagByte=Entry][LEB128][FullKey]; MetadataStart = flag-byte position
+            // (= entryStart + value.Length); the reader recovers ValueStart = MetadataStart - ValueLength.
             int off = 0;
             if (value.Length > 0) value.CopyTo(dest.Slice(off, value.Length));
             off += value.Length;
@@ -316,32 +241,24 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     }
 
     /// <summary>
-    /// Per-entry bookkeeping shared by the buffered <see cref="Add"/> path and the
-    /// streaming <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> path: push the
-    /// entry's index pointer (MetadataStart in key-after-value mode, EntryStart in key-first
-    /// mode) and first-key onto the level-0 lists, then record the LCP / PendingMaxSepLen and
-    /// refresh PrevKeyBuf. <paramref name="precomputedLcp"/> is the LCP against
-    /// <c>PrevKeyBuf</c> when the caller already has it (<see cref="Add"/> forwards the value from
-    /// <see cref="MaybeFlushBeforeEntry"/>); <c>-1</c> recomputes it from prev/current keys.
-    /// <paramref name="bufs"/> is the same ref the caller already resolved, threaded through to
-    /// avoid re-resolving the <c>_buffers</c> branch on every Add.
+    /// Per-entry bookkeeping shared by <see cref="Add"/> and the streaming
+    /// <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> path: push the entry's index
+    /// pointer + first-key onto the level-0 lists, then update LCP / PendingMaxSepLen / PrevKeyBuf.
+    /// <paramref name="precomputedLcp"/> is the LCP vs <c>PrevKeyBuf</c> (<c>-1</c> = recompute);
+    /// <paramref name="bufs"/> is the caller's already-resolved ref.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EmitEntryBookkeeping(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, long entryPos, int precomputedLcp)
     {
-        // Push the per-entry descriptor and its first-key directly onto the level-0
-        // lists. FirstEntry == LastEntry == entryIdx tags the descriptor with its
-        // global entry index — used by WriteIndexNode / ChooseIntermediateChildCount
-        // to look up CommonPrefixArr[FirstEntry] when this descriptor (or its
-        // enclosing leaf) becomes a child of an intermediate node.
+        // Push the per-entry descriptor (FirstEntry == LastEntry == entryIdx) and its first-key onto
+        // level 0; the index phase looks up CommonPrefixArr[FirstEntry] when this becomes a child.
         int entryIdx = _entryCount;
         bufs.CurrentLevel.Add(new HsstIndexNodeInfo(entryPos, entryIdx, entryIdx, prefixLen: 0));
         if (key.Length > 0) bufs.CurrentLevelFirstKeys.AddRange(key);
         _pendingCount++;
         _entryCount++;
 
-        // Record this entry's LCP against the previous entry's key in CommonPrefixArr
-        // (appended in order — Count == entryIdx before this Add).
+        // Record this entry's LCP vs the previous key (appended in entry order, Count == entryIdx).
         int cp = 0;
         if (entryIdx > 0 && _keyLength > 0)
         {
@@ -351,16 +268,15 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         }
         bufs.CommonPrefixArr.Add((byte)cp);
 
-        // Incremental update of PendingMaxSepLen so MaybeFlushBeforeEntry can skip its
-        // O(pending) scan: sepLen for an entry is min(cp + 1, keyLength), and we want the max
-        // over the pending range (rebuilt by FinalizePendingNotOnCurrentPage's partial-flush rescan).
+        // Track max sepLen = min(cp + 1, keyLength) over the pending range so MaybeFlushBeforeEntry
+        // skips an O(pending) scan (rebuilt by FinalizePendingNotOnCurrentPage's partial-flush rescan).
         if (_keyLength > 0)
         {
             byte sl = (byte)Math.Min(cp + 1, _keyLength);
             if (sl > bufs.PendingMaxSepLen) bufs.PendingMaxSepLen = sl;
         }
 
-        // Refresh PrevKeyBuf for the next entry's LCP: hold exactly this entry's key.
+        // Refresh PrevKeyBuf to this key for the next entry's LCP.
         if (_keyLength > 0 && key.Length == _keyLength)
         {
             bufs.PrevKeyBuf.Clear();
@@ -376,28 +292,21 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     /// </remarks>
     public unsafe void Build()
     {
-        // Trigger 3: flush any remaining unflushed entries so BuildIndex can skip its
-        // leaf phase entirely.
+        // Trigger 3: flush remaining entries so BuildIndex can skip its leaf phase.
         MaybeEmitInlineLeaf();
 
-        // Single-entry-HSST post-process: if the build holds exactly one entry and
-        // no leaf was ever written (e.g. the lone entry's value crossed pages, so
-        // the on-page filter dropped it from the pending count), the lone
-        // CurrentLevel descriptor is a direct Entry — BuildIndex's
-        // currentNative.Count == 1 early-return would mis-report rootSize as the
-        // entry record's full byte length (1 + keyLen + LEB128 + valueLen), which
-        // overflows the u16 trailer for large values. Wrap it in a 1-entry leaf so
-        // the root is a bounded node.
+        // Single-entry build with no leaf emitted (e.g. the lone value crossed pages, so the on-page
+        // filter dropped it from the pending count): the lone CurrentLevel descriptor is a direct
+        // Entry whose full record length would overflow the u16 rootSize trailer for large values —
+        // wrap it as a 1-entry leaf so the root is a bounded node.
         if (_entryCount == 1 && !_hasEmittedLeaf) WrapLoneEntryAsLeaf();
 
         long dataSectionSize = _writer.Written - _baseOffset;
         long absoluteIndexStart = dataSectionSize;
 
-        // No data-section reader needed: every descriptor in <c>CurrentLevel</c> carries
-        // its first-entry full key in the parallel <c>CurrentLevelFirstKeys</c> list,
-        // populated at descriptor-push time (MaybeEmitInlineLeaf, FlushPendingAsEntries,
-        // FinalizePendingNotOnCurrentPage). BuildIndex propagates first-keys as it walks
-        // up the tree, so no read-back is required.
+        // No data-section read-back: every descriptor carries its first-entry key in
+        // CurrentLevelFirstKeys (populated at push time), and BuildIndex propagates first-keys as it
+        // walks up the tree.
         int rootSize = BuildIndex(absoluteIndexStart);
         int rootPrefixLen = _rootPrefixLen;
 
@@ -406,12 +315,9 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         if ((uint)rootPrefixLen > byte.MaxValue)
             throw new InvalidOperationException($"Root prefix length {rootPrefixLen} exceeds u8 trailer field");
 
-        // Trailing layout: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
-        // IndexType is the last byte of the HSST. Empty builds (_keyLength still -1
-        // because no Add() / FinishValueWrite was called) record KeyLength = 0 and
-        // RootPrefixLen = 0; the reader never decodes any keys in that case.
-        // CopyRootPrefixBytes writes the prefix bytes directly into the head of the
-        // trailer span — no intermediate buffer needed.
+        // Trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8],
+        // IndexType last. Empty build (_keyLength still -1) records KeyLength = RootPrefixLen = 0;
+        // CopyRootPrefixBytes writes the prefix straight into the span head.
         int trailerKeyLength = _keyLength < 0 ? 0 : _keyLength;
         int trailerLen = 5 + rootPrefixLen;
         Span<byte> tail = _writer.GetSpan(trailerLen);
@@ -425,17 +331,14 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     }
 
     /// <summary>
-    /// Trigger 2 (page-boundary fit): flush the pending set as a leaf when the next entry plus that leaf would
-    /// straddle the current 4 KiB page. Returns the raw LCP between <paramref name="key"/> and PrevKeyBuf
-    /// (<c>-1</c> when no meaningful LCP exists) so the caller can thread it into EmitEntryBookkeeping.
+    /// Trigger 2 (page-boundary fit): flush the pending set as a leaf when the next entry plus that
+    /// leaf would straddle the current 4 KiB page. Returns the LCP between <paramref name="key"/> and
+    /// PrevKeyBuf (<c>-1</c> when none) so the caller can thread it into EmitEntryBookkeeping.
     /// </summary>
     private int MaybeFlushBeforeEntry(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, long entryLen)
     {
-        // Compute LCP once at the top; reused for the leaf-fit estimate below and
-        // returned for the caller to forward into EmitEntryBookkeeping. Uses PrevKeyBuf
-        // (set by the last EmitEntryBookkeeping) — survives flushes that clear the pending
-        // range, and stays valid even when the prior entry was stranded onto the
-        // previous page and sealed as a direct Entry descriptor.
+        // LCP computed once (reused for the leaf-fit estimate and returned). Uses PrevKeyBuf so it
+        // survives flushes that clear the pending range and a prior entry stranded onto a past page.
         int lcp = -1;
         if (_keyLength > 0 && key.Length == _keyLength && bufs.PrevKeyBuf.Count >= _keyLength)
         {
@@ -446,10 +349,8 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         if (pending < 1) return lcp;
         if (_keyLength <= 0) return lcp;
 
-        // Stranded-entry prune is only meaningful when the writer's page index
-        // has advanced since the last Add. Add() is the only thing that mutates
-        // the writer between Adds, so a cached _lastWriterPage is sufficient.
-        // FinalizePendingNotOnCurrentPage updates _lastWriterPage internally.
+        // Stranded-entry prune only matters when the writer page advanced since the last Add (only
+        // Add mutates the writer between Adds). FinalizePendingNotOnCurrentPage updates _lastWriterPage.
         long writerPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
         if (writerPage != _lastWriterPage)
         {
@@ -460,18 +361,12 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         int newSepLen = lcp >= 0 ? Math.Min(lcp + 1, _keyLength) : _keyLength;
 
-        // Max sep length over pending entries is maintained incrementally by
-        // EmitEntryBookkeeping (and rebuilt by FinalizePendingNotOnCurrentPage's
-        // partial-flush rescan).
+        // Max pending sep length is maintained incrementally by EmitEntryBookkeeping.
         int maxSepLen = bufs.PendingMaxSepLen;
         int maxSepWithNew = Math.Max(maxSepLen, newSepLen);
 
-        // Leaf-size upper bound matching the Variable-key layout written by
-        // BTreeNodeWriter: 12-byte header + 4 bytes/entry (u16 prefixArr +
-        // u16 offsetArr) + 2 bytes/entry value slot + per-entry tail bytes
-        // beyond the 2-byte prefix slot (so max(0, sepLen - 2)). Safe upper
-        // bound; tighter than the legacy formula that double-counted the
-        // 2-byte prefix.
+        // Variable-key leaf size upper bound (matches BTreeNodeWriter): 12B header + 4B/entry
+        // (u16 prefixArr + u16 offsetArr) + 2B/entry value slot + max(0, sepLen - 2) tail/entry.
         int estLeafTailPer = Math.Max(0, maxSepWithNew - 2);
         int estLeafPerEntry = 4 + PageLocalLeafValueSlotBytes + estLeafTailPer;
         int estLeaf = PageLocalLeafHeaderBytes + (pending + 1) * estLeafPerEntry;
@@ -480,32 +375,16 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         long remaining = PageLayout.PageSize - inPage;
         if (entryLen + estLeaf <= remaining) return lcp;
 
-        // Doesn't fit on the current page. Seal pending now and start fresh for
-        // the new entry. A multi-entry pending set goes out as a page-local leaf;
-        // a singleton goes out as a direct Entry descriptor via MaybeEmitInlineLeaf's
-        // singleton fast path (no leaf header + slot bytes spent on a degenerate
-        // 1-entry node).
-        // Edge case: the K-entry leaf itself may not fit (e.g., the previous entry
-        // was close to PageSize, leaving remaining < estLeafActual). Writing a
-        // cross-page leaf would spend a header + per-entry slot bytes on a node
-        // that loses the page-locality it exists to provide. Instead push each
-        // pending entry directly onto the next index level — the future
-        // intermediate node will point at the entries, saving the leaf entirely.
-        //
-        // No force-pad to the next page after the flush: the leaf-fit check above
-        // plus the page-prune at the top of MaybeFlushBeforeEntry (and at every
-        // other flush site) already handle the K=1 trap. If the next entry slips
-        // into the post-leaf slack, the next iteration's leaf-fit check will see
-        // remaining < estLeafActual and direct-flush the trapped entry instead
-        // of writing a cross-page 1-entry leaf.
+        // Doesn't fit: seal pending now. If even the current K-entry leaf won't fit in the page
+        // remainder (e.g. the prior entry left the page nearly full), don't write a cross-page leaf
+        // that loses the page-locality it exists for — drop the pending count so the entries become
+        // direct children of the future intermediate. No force-pad: the leaf-fit check plus the
+        // page-prune at the top handle the K=1 trap on the next iteration.
         int estLeafActualTailPer = Math.Max(0, maxSepLen - 2);
         int estLeafActualPerEntry = 4 + PageLocalLeafValueSlotBytes + estLeafActualTailPer;
         int estLeafActual = PageLocalLeafHeaderBytes + pending * estLeafActualPerEntry;
         if (estLeafActual > remaining)
         {
-            // Seal the trailing pending run in place: each pending descriptor is already an
-            // Entry-kind descriptor in CurrentLevel, so dropping the pending count makes the
-            // future intermediate node point at the entries directly (no cross-page leaf).
             _pendingCount = 0;
             _buffers.PendingMaxSepLen = 0;
         }
@@ -519,42 +398,27 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     private const int PageLocalLeafValueSlotBytes = 2;
 
     /// <summary>
-    /// Write a page-local leaf node into the data region for the trailing pending run
-    /// of Entry descriptors in <c>_buffers.CurrentLevel</c>, then pop those descriptors
-    /// and push the leaf descriptor in their place. Clears <see cref="_pendingCount"/>.
+    /// Wrap the trailing on-page pending run of Entry descriptors in <c>_buffers.CurrentLevel</c> as
+    /// one page-local leaf (popping them, pushing the leaf) and clear <see cref="_pendingCount"/>.
     /// No-op when nothing is pending.
     /// </summary>
     /// <remarks>
-    /// On-page filter: the pending run can span multiple writer pages if a streaming
-    /// value (<see cref="BeginValueWrite"/>) or a large Add advanced the writer past
-    /// a 4 KiB boundary while entries were still accumulating. The leaf wrap covers
-    /// only the contiguous on-current-page suffix — earlier pending descriptors stay
-    /// in <c>CurrentLevel</c> as sealed direct Entry children (no data movement,
-    /// just a counter drop) so the intermediate node above can point at them through
-    /// the reader's uniform flag-byte dispatch.
-    ///
-    /// Singleton fast path: when the on-page pending run is exactly one descriptor,
-    /// the leaf wrap is pure overhead (12-byte header + per-entry slot + tail key
-    /// bytes) — the lone Entry descriptor is already on <c>CurrentLevel</c>, so just
-    /// clear the pending counter. The single-entry-HSST corner case (where the lone
-    /// descriptor would otherwise become the root, and BuildIndex's
-    /// <c>currentNative.Count == 1</c> early-return would mis-report its unbounded
-    /// record length as rootSize) is handled separately in <see cref="Build"/>'s
-    /// post-process — see <see cref="WrapLoneEntryAsLeaf"/>.
+    /// Only the contiguous on-current-page suffix is wrapped — earlier pending descriptors (stranded
+    /// past a 4 KiB boundary by a streaming value or a large Add) stay in <c>CurrentLevel</c> as
+    /// sealed direct Entry children. A singleton on-page run skips the wrap (pure header + slot
+    /// overhead) and just clears the counter; the single-entry-HSST root case is handled separately
+    /// by <see cref="WrapLoneEntryAsLeaf"/>.
     /// </remarks>
     private void MaybeEmitInlineLeaf()
     {
         if (_pendingCount == 0) return;
 
-        // On-page filter: drop off-page pending entries from the count. They stay
-        // in CurrentLevel as sealed Entry descriptors — same shape they would have
-        // had under the legacy FinalizePendingNotOnCurrentPage → push path. Also
-        // refreshes _lastWriterPage so the next per-Add gate check is a single cmp.
+        // Drop off-page pending entries (they stay as sealed Entry descriptors); also refreshes
+        // _lastWriterPage so the next per-Add gate check is a single cmp.
         FinalizePendingNotOnCurrentPage();
         if (_pendingCount == 0) return;
 
-        // Singleton short-circuit: the lone Entry descriptor is already on
-        // CurrentLevel with its first-key in CurrentLevelFirstKeys; just seal.
+        // Singleton: the lone Entry descriptor is already on CurrentLevel — just seal.
         if (_pendingCount == 1)
         {
             _pendingCount = 0;
@@ -567,10 +431,8 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         ref HsstBTreeBuilderBuffers bufs = ref _buffers;
         int count = _pendingCount;
 
-        // The pending Entry descriptors are the trailing <c>count</c> slots of
-        // CurrentLevel; their first-keys are the trailing <c>count * _keyLength</c>
-        // bytes of CurrentLevelFirstKeys. Pass slices straight into WriteIndexNode —
-        // no per-entry stackalloc, no read-back from a shadow buffer.
+        // The pending descriptors and their first-keys are the trailing slices of CurrentLevel /
+        // CurrentLevelFirstKeys — pass them straight to WriteIndexNode (no per-entry stackalloc).
         Span<HsstIndexNodeInfo> currentLevelSpan = bufs.CurrentLevel.AsSpan();
         int childrenStart = currentLevelSpan.Length - count;
         ReadOnlySpan<HsstIndexNodeInfo> children = currentLevelSpan.Slice(childrenStart, count);
@@ -585,11 +447,8 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         WriteIndexNode(children, childFirstKeys, bufs.CommonPrefixArr.AsSpan(), out int leafPrefixLen);
 
-        // Pop the per-entry descriptors; push the leaf descriptor. CurrentLevelFirstKeys
-        // keeps the leftmost popped entry's key in place at offset <c>keysStart</c> —
-        // that block is the leaf's first-key, so a single Truncate to
-        // <c>(currentLevelSpan.Length - count + 1) * _keyLength</c> drops only the
-        // (count - 1) following key blocks; no copy needed.
+        // Pop the entry descriptors, push the leaf. The leftmost popped key is also the leaf's
+        // first-key, so a single Truncate keeps it and drops the (count - 1) following key blocks.
         bufs.CurrentLevel.Truncate(childrenStart);
         bufs.CurrentLevel.Add(new HsstIndexNodeInfo(nodeStart, firstEntryIdx, lastEntryIdx, leafPrefixLen));
         if (_keyLength > 0) bufs.CurrentLevelFirstKeys.Truncate(keysStart + _keyLength);
@@ -600,13 +459,10 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     }
 
     /// <summary>
-    /// Post-process called by <see cref="Build"/> for the single-entry HSST case
-    /// when no leaf has been emitted. Wraps the lone direct Entry descriptor sitting
-    /// in <c>CurrentLevel</c> as a 1-entry leaf node so the root is a bounded node
-    /// and <see cref="BuildIndex"/>'s single-root early-return reports a u16-fittable
-    /// rootSize. Unlike <see cref="MaybeEmitInlineLeaf"/>, this bypasses the on-page
-    /// filter — a cross-page leaf is acceptable here because the alternative (a
-    /// direct Entry root) would overflow the u16 trailer for any value past ~64 KiB.
+    /// Build-time post-process for a single-entry HSST with no leaf emitted: wrap the lone direct
+    /// Entry descriptor as a 1-entry leaf so the root is bounded (a direct Entry root overflows the
+    /// u16 rootSize trailer past ~64 KiB). Unlike <see cref="MaybeEmitInlineLeaf"/>, bypasses the
+    /// on-page filter — a cross-page leaf is acceptable here.
     /// </summary>
     private void WrapLoneEntryAsLeaf()
     {
@@ -625,34 +481,24 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         WriteIndexNode(children, childFirstKeys, bufs.CommonPrefixArr.AsSpan(), out int leafPrefixLen);
 
-        // Replace the lone Entry descriptor with the leaf descriptor. The lone
-        // first-key block in CurrentLevelFirstKeys is also the leaf's first-key,
-        // so it stays untouched.
+        // Replace the lone Entry with the leaf; its first-key block stays in place.
         bufs.CurrentLevel.Truncate(0);
         bufs.CurrentLevel.Add(new HsstIndexNodeInfo(nodeStart, firstEntryIdx, lastEntryIdx, leafPrefixLen));
         _hasEmittedLeaf = true;
     }
 
     /// <summary>
-    /// Trim the trailing pending run in <c>CurrentLevel</c> to only the descriptors
-    /// whose flag byte (= the key region) sits on the writer's current page. Older
-    /// pending descriptors are stranded on prior pages and can't share a page-local
-    /// leaf with anything on the writer's current page; they become sealed direct
-    /// Entry children of the intermediate above (no data movement — they're already
-    /// the right shape, just no longer counted as pending). Also refreshes
-    /// <see cref="_lastWriterPage"/> for the next per-Add gate check.
-    ///
-    /// Entries are written with monotonically increasing positions, so the stranded
-    /// descriptors form a contiguous prefix of the pending run — once the scan finds
-    /// one on the writer's current page, every later one is too.
+    /// Trim the pending run to descriptors whose flag byte sits on the writer's current page; older
+    /// (stranded) descriptors become sealed direct Entry children of the intermediate above (no data
+    /// movement). Refreshes <see cref="_lastWriterPage"/>. Positions are monotonic, so the stranded
+    /// descriptors form a contiguous prefix of the run.
     /// </summary>
     private void FinalizePendingNotOnCurrentPage()
     {
         long firstOffset = _writer.FirstOffset;
         long writerPage = (_writer.Written - firstOffset) / PageLayout.PageSize;
-        // Always publish writerPage — caller paths (BeginValueWrite, Build, and
-        // MaybeFlushBeforeEntry's now-gated path) rely on _lastWriterPage being
-        // current after this returns so the next per-Add gate check is a single cmp.
+        // Always publish writerPage so the next per-Add gate check is a single cmp (callers rely on
+        // _lastWriterPage being current after this returns).
         _lastWriterPage = writerPage;
         if (_pendingCount == 0) return;
 
@@ -674,11 +520,8 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         _pendingCount -= directCount;
 
-        // Recompute PendingMaxSepLen over the surviving pending range. The
-        // stranded descriptors that contributed to the previous max are gone,
-        // and the surviving entries' cp values in CommonPrefixArr are untouched.
-        // This rescan runs at most once per writer-page transition (and only when
-        // stranded entries existed); the per-Add scan it replaces is gone.
+        // Recompute PendingMaxSepLen over the surviving range (the stranded descriptors that may
+        // have held the previous max are gone). Runs at most once per writer-page transition.
         byte newMax = 0;
         if (_keyLength > 0)
         {
