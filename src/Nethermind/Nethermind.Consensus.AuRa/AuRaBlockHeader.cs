@@ -3,7 +3,9 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa;
 
@@ -21,20 +23,35 @@ public sealed class AuRaBlockHeader(
     ulong timestamp,
     byte[] extraData)
     : BlockHeader(parentHash!, unclesHash!, beneficiary!, in difficulty, number, gasLimit, timestamp, extraData),
-      IAuRaSealedHeader
+      IAuRaSealedHeader,
+      IHashResolver
 {
+    private static readonly AuRaHeaderDecoder _headerDecoder = new();
+
     /// <inheritdoc/>
-    public long? AuRaStep { get; set; }
+    public long AuRaStep { get; set; }
 
     /// <inheritdoc/>
     public byte[]? AuRaSignature { get; set; }
 
-    public override BlockHeader CloneForProcessing() => new AuRaBlockHeader(
-        ParentHash, UnclesHash, Beneficiary, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+    /// <inheritdoc/>
+    public ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
-        AuRaStep = AuRaStep,
-        AuRaSignature = AuRaSignature,
-    };
+        KeccakRlpStream rlpStream = new();
+        _headerDecoder.Encode(rlpStream, this, behaviors);
+        return rlpStream.GetValueHash();
+    }
+
+    public override BlockHeader CloneForProcessing()
+    {
+        AuRaBlockHeader clone = new(ParentHash, UnclesHash, Beneficiary, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+        {
+            AuRaStep = AuRaStep,
+            AuRaSignature = AuRaSignature,
+        };
+        CopyProcessingFields(this, clone);
+        return clone;
+    }
 
     /// <summary>Promote a base header to <see cref="AuRaBlockHeader"/>, copying every field. Returns the input unchanged if it's already an AuRa header.</summary>
     public static AuRaBlockHeader UpgradeFrom(BlockHeader src)

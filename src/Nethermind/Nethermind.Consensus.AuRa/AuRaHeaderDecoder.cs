@@ -1,0 +1,65 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+
+namespace Nethermind.Consensus.AuRa;
+
+/// <summary>
+/// Header decoder for AuRa chains, where the seal section carries <c>step</c> + <c>signature</c>
+/// instead of the Ethash <c>mixHash</c> + <c>nonce</c> pair.
+/// </summary>
+/// <remarks>
+/// Post-merge headers keep the Ethash/PoS seal shape, so on merged AuRa chains (e.g. Gnosis) both
+/// shapes coexist; a 32-byte seal item disambiguates. Registered by <see cref="AuRaModule"/> as both
+/// the global <see cref="BlockHeader"/> RLP decoder and the DI <see cref="IHeaderDecoder"/>.
+/// </remarks>
+public sealed class AuRaHeaderDecoder : HeaderDecoder
+{
+    protected override BlockHeader DecodeSealAndCreateHeader(
+        ref Rlp.ValueDecoderContext decoderContext,
+        Hash256? parentHash,
+        Hash256? unclesHash,
+        Address? beneficiary,
+        in UInt256 difficulty,
+        long number,
+        long gasLimit,
+        ulong timestamp,
+        byte[] extraData)
+    {
+        if (decoderContext.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
+        {
+            return base.DecodeSealAndCreateHeader(
+                ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData);
+        }
+
+        long step = (long)decoderContext.DecodeUInt256();
+        byte[] signature = decoderContext.DecodeByteArray();
+        return new AuRaBlockHeader(parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData)
+        {
+            AuRaStep = step,
+            AuRaSignature = signature,
+        };
+    }
+
+    protected override void EncodeSeal(RlpStream rlpStream, BlockHeader header)
+    {
+        if (header is AuRaBlockHeader aura)
+        {
+            rlpStream.Encode(aura.AuRaStep);
+            rlpStream.Encode(aura.AuRaSignature);
+        }
+        else
+        {
+            base.EncodeSeal(rlpStream, header);
+        }
+    }
+
+    protected override int GetSealLength(BlockHeader header) =>
+        header is AuRaBlockHeader aura
+            ? Rlp.LengthOf(aura.AuRaStep) + Rlp.LengthOf(aura.AuRaSignature)
+            : base.GetSealLength(header);
+}

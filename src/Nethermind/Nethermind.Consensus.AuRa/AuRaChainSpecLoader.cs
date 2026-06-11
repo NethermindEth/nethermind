@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa;
@@ -11,14 +13,29 @@ namespace Nethermind.Consensus.AuRa;
 /// </summary>
 public static class AuRaChainSpecLoader
 {
+    private static readonly EthereumJsonSerializer _jsonSerializer = new();
+
     public static void ProcessChainSpec(ChainSpec chainSpec)
     {
-        if (chainSpec.Genesis is null || chainSpec.GenesisAuRaSeal is null) return;
+        if (chainSpec.Genesis is null
+            || chainSpec.GenesisCustomSeal?.TryGetValue("authorityRound", out JsonElement sealJson) is not true)
+        {
+            return;
+        }
+
+        AuRaGenesisSealJson? seal = _jsonSerializer.Deserialize<AuRaGenesisSealJson>(sealJson.GetRawText());
+        if (seal?.Signature is null) return;
 
         AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(chainSpec.Genesis.Header);
-        upgraded.AuRaStep = chainSpec.GenesisAuRaSeal.Step;
-        upgraded.AuRaSignature = chainSpec.GenesisAuRaSeal.Signature;
+        upgraded.AuRaStep = seal.Step;
+        upgraded.AuRaSignature = seal.Signature;
 
         chainSpec.Genesis = chainSpec.Genesis.WithReplacedHeader(upgraded);
+    }
+
+    private sealed class AuRaGenesisSealJson
+    {
+        public long Step { get; set; }
+        public byte[]? Signature { get; set; }
     }
 }

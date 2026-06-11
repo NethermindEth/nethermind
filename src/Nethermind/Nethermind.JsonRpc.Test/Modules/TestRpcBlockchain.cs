@@ -29,6 +29,7 @@ using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Consensus.Rewards;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -211,6 +212,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                if (SealEngineType == Core.SealEngineType.AuRa) builder.AddModule(new AuRaHeaderModule());
                 configurer?.Invoke(builder);
             });
 

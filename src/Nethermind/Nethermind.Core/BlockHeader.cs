@@ -184,9 +184,35 @@ public class BlockHeader
     }
 
     /// <summary>
-    /// Skeleton copy carrying only the immutable consensus inputs; subclasses override to also
-    /// preserve subclass-specific seal fields (e.g. AuRa step + signature).
+    /// Copy carrying the consensus inputs needed to re-execute the block; execution outputs
+    /// (state root, gas used, logs bloom) are reset so processing recomputes them. Subclasses
+    /// override to also preserve subclass-specific seal fields (e.g. AuRa step + signature).
     /// </summary>
-    public virtual BlockHeader CloneForProcessing() =>
-        new(ParentHash!, UnclesHash!, Beneficiary!, Difficulty, Number, GasLimit, Timestamp, ExtraData);
+    public virtual BlockHeader CloneForProcessing()
+    {
+        BlockHeader clone = new(ParentHash!, UnclesHash!, Beneficiary!, Difficulty, Number, GasLimit, Timestamp, ExtraData);
+        CopyProcessingFields(this, clone);
+        return clone;
+    }
+
+    protected static void CopyProcessingFields(BlockHeader src, BlockHeader dst)
+    {
+        dst.Bloom = Bloom.Empty;
+        dst.Author = src.Author;
+        dst.Hash = src.Hash;
+        dst.MixHash = src.MixHash;
+        dst.Nonce = src.Nonce;
+        dst.TxRoot = src.TxRoot;
+        dst.TotalDifficulty = src.TotalDifficulty;
+        dst.ReceiptsRoot = src.ReceiptsRoot;
+        dst.BaseFeePerGas = src.BaseFeePerGas;
+        dst.WithdrawalsRoot = src.WithdrawalsRoot;
+        dst.RequestsHash = src.RequestsHash;
+        dst.IsPostMerge = src.IsPostMerge;
+        dst.ParentBeaconBlockRoot = src.ParentBeaconBlockRoot;
+        dst.SlotNumber = src.SlotNumber;
+        dst.BlockAccessListHash = src.BlockAccessListHash;
+        dst.BlobGasUsed = src.BlobGasUsed;
+        dst.ExcessBlobGas = src.ExcessBlobGas;
+    }
 }

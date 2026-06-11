@@ -23,7 +23,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
 {
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoder<BlockHeader>() ?? new HeaderDecoder();
     private readonly E2StoreReader _fileReader = e2;
 
     public long FirstBlock => _fileReader.First;

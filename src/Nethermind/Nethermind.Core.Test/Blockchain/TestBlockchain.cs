@@ -364,12 +364,6 @@ public class TestBlockchain : IDisposable
 
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
 
-            if (specProvider.SealEngine == Core.SealEngineType.AuRa
-                || testConfiguration.SealEngineType == Core.SealEngineType.AuRa)
-            {
-                genesisBlockBuilder.WithAura(0, new byte[65]);
-            }
-
             if (specProvider.GenesisSpec.IsEip4844Enabled)
             {
                 genesisBlockBuilder.WithBlobGasUsed(0);

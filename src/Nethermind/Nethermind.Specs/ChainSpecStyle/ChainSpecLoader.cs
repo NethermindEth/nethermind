@@ -332,8 +332,9 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
         Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
-        byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
-        long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
+        // Engine-specific seal sections are stashed raw; the owning consensus plugin (e.g. AuRa)
+        // upgrades Genesis.Header via its ChainSpec interceptor.
+        chainSpec.GenesisCustomSeal = chainSpecJson.Genesis.Seal?.CustomSealData;
 
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
@@ -353,13 +354,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
         chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
 
-        // Build a base BlockHeader unconditionally. AuRa-shape is determined by the presence of an
-        // explicit genesis signature in JSON; when present the data is stashed on the ChainSpec and
-        // the AuRa plugin's ChainSpec interceptor upgrades Genesis.Header to AuRaBlockHeader.
-        if (auRaSignature is not null)
-        {
-            chainSpec.GenesisAuRaSeal = new GenesisAuRaSeal(step ?? 0, auRaSignature);
-        }
         BlockHeader genesisHeader = new(parentHash, Keccak.OfAnEmptySequenceRlp, beneficiary, difficulty, 0, (long)gasLimit, timestamp, extraData);
 
         genesisHeader.Author = beneficiary;

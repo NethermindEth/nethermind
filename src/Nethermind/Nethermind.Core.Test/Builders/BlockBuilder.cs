@@ -221,14 +221,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithAura(long step, byte[]? signature = null)
-        {
-            IAuRaBlockHeaderHandler handler = AuRaTestSupport.EnsureRegistered();
-            BlockHeader auraHeader = handler.SetSeal(TestObjectInternal.Header, step, signature);
-            TestObjectInternal = TestObjectInternal.WithReplacedHeader(auraHeader);
-            return this;
-        }
-
         public BlockBuilder WithAuthor(Address? author)
         {
             TestObjectInternal.Header.Author = author;

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -81,7 +82,7 @@ public class BlockForRpc
         ParentHash = block.ParentHash;
         ReceiptsRoot = block.ReceiptsRoot;
         Sha3Uncles = block.UnclesHash;
-        Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
+        Size = (Rlp.GetDecoder<Block>() ?? _blockDecoder).GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
 

@@ -20,7 +20,7 @@ public class EraWriter : IDisposable
     private long _totalWritten;
     private readonly ArrayPoolList<long> _entryIndexes;
 
-    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoder<BlockHeader>() ?? new HeaderDecoder();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
 

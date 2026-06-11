@@ -173,13 +173,6 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithAura(long step, byte[]? signature = null)
-    {
-        IAuRaBlockHeaderHandler handler = AuRaTestSupport.EnsureRegistered();
-        TestObjectInternal = handler.SetSeal(TestObjectInternal, step, signature);
-        return this;
-    }
-
     public BlockHeaderBuilder WithWithdrawalsRoot(Hash256? root)
     {
         TestObjectInternal.WithdrawalsRoot = root;

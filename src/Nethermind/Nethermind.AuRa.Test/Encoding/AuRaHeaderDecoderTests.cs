@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -24,7 +25,7 @@ public class AuRaHeaderDecoderTests
             .WithAura(100000000, auRaSignature)
             .TestObject;
 
-        HeaderDecoder decoder = new();
+        AuRaHeaderDecoder decoder = new();
         Rlp rlp = decoder.Encode(header);
         Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
         BlockHeader? decoded = decoder.Decode(ref decoderContext);
@@ -47,7 +48,7 @@ public class AuRaHeaderDecoderTests
 
         BlockHeader original = Build.A.BlockHeader.WithAura(42, auRaSignature).TestObject;
 
-        HeaderDecoder decoder = new();
+        AuRaHeaderDecoder decoder = new();
         byte[] firstPass = decoder.Encode(original).Bytes;
 
         Rlp.ValueDecoderContext ctx = new(firstPass);
@@ -70,7 +71,7 @@ public class AuRaHeaderDecoderTests
         byte[] auRaSignature = new byte[64];
         BlockHeader header = Build.A.BlockHeader.WithAura(42, auRaSignature).TestObject;
 
-        HeaderDecoder decoder = new();
+        AuRaHeaderDecoder decoder = new();
         byte[] encoded = decoder.Encode(header).Bytes;
         Rlp.ValueDecoderContext ctx = new(encoded);
         ctx.ReadSequenceLength();
@@ -88,49 +89,48 @@ public class AuRaHeaderDecoderTests
     }
 
     /// <summary>
-    /// Regression guard for PR-#11938 review fix: between <c>AuRaBlockProducer.PrepareBlock</c>
-    /// (stamps step) and <c>AuRaSealer.SealBlock</c> (stamps signature) the header passes
-    /// through <c>BlockProcessor.PrepareBlockForProcessing</c>. That rebuild used to gate on
-    /// TryGetSeal (which requires both step + signature), so a step-only header was demoted
-    /// to plain <c>BlockHeader</c> and AuRaSealer then threw.
-    /// <see cref="AuRaSealedHeaderExtensions.CopyAuRaSeal"/> must preserve the partial seal.
+    /// On merged AuRa chains post-merge headers keep the Ethash/PoS seal shape; the AuRa decoder
+    /// must fall back to the base decoder and produce a plain <see cref="BlockHeader"/>.
     /// </summary>
     [Test]
-    public void CopyAuRaSeal_preserves_step_only_AuRa_header()
+    public void Decodes_PoS_shaped_header_as_base_header()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem.KeccakA).TestObject;
+
+        AuRaHeaderDecoder decoder = new();
+        byte[] encoded = decoder.Encode(header).Bytes;
+        Rlp.ValueDecoderContext ctx = new(encoded);
+        BlockHeader? decoded = decoder.Decode(ref ctx);
+
+        Assert.That(decoded, Is.Not.InstanceOf<AuRaBlockHeader>());
+        Assert.That(decoded!.MixHash, Is.EqualTo(header.MixHash), "mixHash");
+        Assert.That(decoded.Nonce, Is.EqualTo(header.Nonce), "nonce");
+    }
+
+    /// <summary>
+    /// Regression guard for PR-#11938 review fix: between <c>AuRaBlockProducer.PrepareBlock</c>
+    /// (stamps step) and <c>AuRaSealer.SealBlock</c> (stamps signature) the header passes
+    /// through <c>BlockProcessor.PrepareBlockForProcessing</c>. That rebuild used to demote a
+    /// step-only header to plain <c>BlockHeader</c>, and AuRaSealer then threw.
+    /// <see cref="AuRaBlockHeader.CloneForProcessing"/> must preserve the partial seal.
+    /// </summary>
+    [Test]
+    public void CloneForProcessing_preserves_step_only_AuRa_header()
     {
         AuRaBlockHeader src = (AuRaBlockHeader)Build.A.BlockHeader.WithAura(123, null).TestObject;
-        AuRaBlockHeader dst = (AuRaBlockHeader)Build.A.BlockHeader.WithAura(0, []).TestObject;
-        dst.AuRaStep = null;
-        dst.AuRaSignature = null;
 
-        AuRaSealedHeaderExtensions.CopyAuRaSeal(src, dst);
+        BlockHeader clone = src.CloneForProcessing();
 
-        Assert.That(dst.AuRaStep, Is.EqualTo(123L), "step copied");
-        Assert.That(dst.AuRaSignature, Is.Null, "null signature preserved");
+        Assert.That(clone, Is.InstanceOf<AuRaBlockHeader>(), "clone must carry the AuRa subclass");
+        AuRaBlockHeader auraClone = (AuRaBlockHeader)clone;
+        Assert.That(auraClone.AuRaStep, Is.EqualTo(123L), "step copied");
+        Assert.That(auraClone.AuRaSignature, Is.Null, "null signature preserved");
     }
 
     [Test]
-    public void CopyAuRaSeal_noop_when_either_header_is_not_AuRa()
+    public void TryGetAuRaSeal_distinguishes_subclass_from_base_BlockHeader()
     {
-        BlockHeader plain = Build.A.BlockHeader.TestObject;
-        AuRaBlockHeader aura = (AuRaBlockHeader)Build.A.BlockHeader.WithAura(7, new byte[64]).TestObject;
-
-        // plain → aura: nothing to copy from, dst step/sig must stay as initialized.
-        AuRaBlockHeader dstFromPlain = (AuRaBlockHeader)Build.A.BlockHeader.WithAura(0, []).TestObject;
-        dstFromPlain.AuRaStep = null;
-        dstFromPlain.AuRaSignature = null;
-        AuRaSealedHeaderExtensions.CopyAuRaSeal(plain, dstFromPlain);
-        Assert.That(dstFromPlain.AuRaStep, Is.Null, "no copy from non-AuRa source");
-
-        // aura → plain: dst can't hold seal, must remain plain BlockHeader (no throw).
-        BlockHeader dstPlain = Build.A.BlockHeader.TestObject;
-        Assert.DoesNotThrow(() => AuRaSealedHeaderExtensions.CopyAuRaSeal(aura, dstPlain));
-    }
-
-    [Test]
-    public void IsAuRa_distinguishes_subclass_from_base_BlockHeader()
-    {
-        Assert.That(Build.A.BlockHeader.TestObject.IsAuRa(), Is.False);
-        Assert.That(Build.A.BlockHeader.WithAura(0, []).TestObject.IsAuRa(), Is.True);
+        Assert.That(Build.A.BlockHeader.TestObject.TryGetAuRaSeal(out _, out _), Is.False);
+        Assert.That(Build.A.BlockHeader.WithAura(0, []).TestObject.TryGetAuRaSeal(out _, out _), Is.True);
     }
 }

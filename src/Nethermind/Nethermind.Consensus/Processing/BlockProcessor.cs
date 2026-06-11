@@ -294,7 +294,6 @@ public partial class BlockProcessor(
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
         BlockHeader headerForProcessing = bh.CloneForProcessing();
-        CopyHeaderForProcessing(bh, headerForProcessing);
 
         if (!ShouldComputeStateRoot(bh))
         {
@@ -305,27 +304,6 @@ public partial class BlockProcessor(
         block.BlockAccessList = suggestedBlock.BlockAccessList;
 
         return block;
-    }
-
-    private static void CopyHeaderForProcessing(BlockHeader src, BlockHeader dst)
-    {
-        dst.Bloom = Bloom.Empty;
-        dst.Author = src.Author;
-        dst.Hash = src.Hash;
-        dst.MixHash = src.MixHash;
-        dst.Nonce = src.Nonce;
-        dst.TxRoot = src.TxRoot;
-        dst.TotalDifficulty = src.TotalDifficulty;
-        dst.ReceiptsRoot = src.ReceiptsRoot;
-        dst.BaseFeePerGas = src.BaseFeePerGas;
-        dst.WithdrawalsRoot = src.WithdrawalsRoot;
-        dst.RequestsHash = src.RequestsHash;
-        dst.IsPostMerge = src.IsPostMerge;
-        dst.ParentBeaconBlockRoot = src.ParentBeaconBlockRoot;
-        dst.SlotNumber = src.SlotNumber;
-        dst.BlockAccessListHash = src.BlockAccessListHash;
-        dst.BlobGasUsed = src.BlobGasUsed;
-        dst.ExcessBlobGas = src.ExcessBlobGas;
     }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)

@@ -142,7 +142,7 @@ namespace Nethermind.AuRa.Test
         public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaChainSpecEngineParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
         {
             _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber(parentBlock.Number - 1).TestObject));
-            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.GetAuRaStep()!.Value, out _).Returns(isValidSealer);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.GetAuRaStepOrZero(), out _).Returns(isValidSealer);
 
             object cause = null;
 
@@ -243,7 +243,7 @@ namespace Nethermind.AuRa.Test
             ValueHash256 hash = block.CalculateValueHash(RlpBehaviors.ForSealing);
             bool signed = _wallet.TrySign(in hash, signedAddress, out Signature signature);
             Assert.That(signed, Is.True, "wallet should sign for unlocked test account");
-            block.AsAuRa().AuRaSignature = signature.BytesWithRecovery;
+            block.RequireAuRa().AuRaSignature = signature.BytesWithRecovery;
             _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), in hash).Returns(recoveredAddress);
 
             return _sealValidator.ValidateSeal(block, false);

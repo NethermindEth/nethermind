@@ -63,11 +63,11 @@ namespace Nethermind.Consensus.AuRa
         protected override void Load(ContainerBuilder builder)
         {
             base.Load(builder);
-            AuRaBlockHeaderHandlerImpl.Register();
             AuRaChainSpecEngineParameters specParam = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
             builder
+                .AddModule(new AuRaHeaderModule())
                 .Intercept<ChainSpec>(AuRaChainSpecLoader.ProcessChainSpec)
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
@@ -95,9 +95,6 @@ namespace Nethermind.Consensus.AuRa
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
 
-                // AuRa transaction processor (DI singleton + BAL pool workers). The subclass
-                // overrides CreateSystemTransactionProcessor so system-tx execution goes through
-                // AuRaSystemTransactionProcessor without an external factory.
                 .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
                 .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 

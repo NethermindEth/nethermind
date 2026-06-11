@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;

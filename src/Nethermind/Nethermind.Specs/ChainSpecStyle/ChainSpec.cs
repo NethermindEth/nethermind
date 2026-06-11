@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -84,13 +85,10 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? AmsterdamTimestamp { get; set; }
 
         /// <summary>
-        /// Raw AuRa genesis seal data parsed from <c>genesis.seal.authorityRound</c>. Null when the
-        /// chainspec is not AuRa-shaped at genesis. Applied to <see cref="Genesis"/> by the AuRa
-        /// plugin's ChainSpec interceptor — core doesn't act on it.
+        /// Raw engine-specific genesis seal sections (<c>genesis.seal.*</c>) other than the standard
+        /// <c>ethereum</c> one, keyed by engine name. Applied to <see cref="Genesis"/> by the owning
+        /// consensus plugin — core doesn't act on it.
         /// </summary>
-        public GenesisAuRaSeal? GenesisAuRaSeal { get; set; }
+        public Dictionary<string, JsonElement>? GenesisCustomSeal { get; set; }
     }
-
-    /// <summary>Raw AuRa genesis seal data: <c>step</c> + <c>signature</c>.</summary>
-    public sealed record GenesisAuRaSeal(long Step, byte[] Signature);
 }

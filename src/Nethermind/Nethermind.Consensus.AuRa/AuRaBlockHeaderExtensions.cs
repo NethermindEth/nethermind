@@ -9,14 +9,11 @@ namespace Nethermind.Consensus.AuRa;
 
 public static class AuRaBlockHeaderExtensions
 {
-    public static long? GetAuRaStep(this BlockHeader header) => (header as AuRaBlockHeader)?.AuRaStep;
+    public static long? GetAuRaStep(this BlockHeader header) => (header as IAuRaSealedHeader)?.AuRaStep;
 
-    public static long GetAuRaStepOrZero(this BlockHeader? header) => (header as AuRaBlockHeader)?.AuRaStep ?? 0;
+    public static long GetAuRaStepOrZero(this BlockHeader? header) => header?.GetAuRaStep() ?? 0;
 
-    public static byte[]? GetAuRaSignature(this BlockHeader header) => (header as AuRaBlockHeader)?.AuRaSignature;
-
-    /// <summary>Hard cast to the seal accessor; restricts callers to the interface so subclass-private state isn't reached for by accident.</summary>
-    public static IAuRaSealedHeader AsAuRa(this BlockHeader header) => (IAuRaSealedHeader)header;
+    public static byte[]? GetAuRaSignature(this BlockHeader header) => (header as IAuRaSealedHeader)?.AuRaSignature;
 
     /// <summary>Cast or throw a uniform <see cref="InvalidOperationException"/>; <paramref name="operation"/> defaults to the calling method.</summary>
     public static AuRaBlockHeader RequireAuRa(this BlockHeader header, [CallerMemberName] string? operation = null)
