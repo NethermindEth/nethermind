@@ -70,8 +70,8 @@ public sealed class IlCompiledCode
 
 /// <summary>
 /// IL-EVM tiering: counts executions per <see cref="CodeInfo"/> and, at the threshold, compiles
-/// the code's compilable blocks once. Experimental, off by default; enabled with
-/// NETHERMIND_ILEVM=1 (threshold override: NETHERMIND_ILEVM_THRESHOLD).
+/// the code's compilable blocks once. Experimental, off by default; enabled with the
+/// --Evm.IlEvm config option (threshold override: --Evm.IlEvmThreshold).
 ///
 /// Concurrency and lifetime contract:
 /// - The execution counter uses <see cref="Interlocked.Increment(ref int)"/>, so exactly one
@@ -87,11 +87,12 @@ public static class IlEvm
     /// <summary>Marks code analyzed with nothing worth compiling, so it is never re-analyzed.</summary>
     private static readonly object s_nothingToCompile = new();
 
-    // Volatile: set at startup from the environment, but tests (and any future admin-RPC
-    // toggle) write them at runtime from another thread than the executing EVM threads.
-    public static volatile bool Enabled = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM") == "1";
+    // Volatile: set at startup from IEvmConfig (InitializeBlockchain), but tests (and any
+    // future admin-RPC toggle) write them at runtime from another thread than the executing
+    // EVM threads.
+    public static volatile bool Enabled;
 
-    public static volatile int CompileThreshold = ParseThreshold();
+    public static volatile int CompileThreshold = 16;
 
     // Compile on the noticing thread instead of the thread pool. For tests and forced-on
     // consensus gates (NETHERMIND_ILEVM_SYNC=1), where executions must deterministically run
@@ -242,9 +243,4 @@ public static class IlEvm
             return s_nothingToCompile;
         }
     }
-
-    private static int ParseThreshold() =>
-        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_THRESHOLD"), out int threshold) && threshold > 0
-            ? threshold
-            : 16;
 }
