@@ -14,7 +14,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -60,36 +59,13 @@ public class WitnessGeneratingWorldState(
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
         if (_storageSlots.Count > 0)
         {
-            // State-trie capture: one MultiAccountProofCollector walk captures the state-trie nodes
-            // along the path to every touched account in a single pass. Each per-account
-            // AccountProofCollector walk below then re-traverses the state-trie path to reach the
-            // account leaf and capture its storage root — so the total state-trie traversal count
-            // is 1 (capture) + N (per-account re-walks). The dedup in the downstream PooledSet
-            // means the *output* is the same as a single-pass walk; the saving is in avoiding N
-            // separate capture passes (and N×state-trie-node RLP encodings) for shared-path nodes.
-            // TODO: fold the storage walks into the MultiAccountProofCollector pass — at the storage
-            // descent ctx.Storage is the account's full path commitment (keccak(address)), so
-            // per-account slot filtering is possible and the trie would be walked exactly once.
-            MultiAccountProofCollector stateCollector = new(_storageSlots);
-            stateReader.RunTreeVisitor(stateCollector, parentHeader);
-            foreach (byte[] node in stateCollector.Nodes)
+            // A single walk captures both the state-trie path to every touched account and, via the
+            // storage descent at each account leaf, the storage-trie path to every touched slot.
+            MultiAccountProofCollector collector = new(_storageSlots);
+            stateReader.RunTreeVisitor(collector, parentHeader);
+            foreach (byte[] node in collector.Nodes)
             {
                 stateNodes.Add(node);
-            }
-
-            foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> entry in _storageSlots)
-            {
-                if (entry.Value.Count == 0) continue;
-                AccountProofCollector storageCollector = new(entry.Key.Value, entry.Value);
-                stateReader.RunTreeVisitor(storageCollector, parentHeader);
-                (_, IReadOnlyList<byte[]>[] storageProofs) = storageCollector.GetRawResult();
-                foreach (IReadOnlyList<byte[]> slotProof in storageProofs)
-                {
-                    foreach (byte[] node in slotProof)
-                    {
-                        stateNodes.Add(node);
-                    }
-                }
             }
         }
 
