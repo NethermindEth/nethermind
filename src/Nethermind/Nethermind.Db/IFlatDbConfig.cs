@@ -31,6 +31,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Target block number to record for the rebuilt state. 0 means use the current head block.", DefaultValue = "0")]
     long RebuildTrieTargetBlockNumber { get; set; }
 
+    [ConfigItem(Description = "When set to a 0x-prefixed state root hash, rewrites the current head block so its StateRoot equals this hash (recompute block hash, re-point canonical chain + head/safe/finalized), then exits. Used after a trie rebuild that produced a new root. Null disables.", DefaultValue = "null")]
+    string? RewriteHeadStateRoot { get; set; }
+
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 

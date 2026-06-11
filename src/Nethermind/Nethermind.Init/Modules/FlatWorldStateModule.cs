@@ -112,6 +112,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<FlatTrieRebuilder>()
                 .AddStep(typeof(RebuildFlatTrie));
         }
+
+        if (!string.IsNullOrWhiteSpace(flatDbConfig.RewriteHeadStateRoot))
+        {
+            builder
+                .AddStep(typeof(RewriteHeadStateRoot));
+        }
     }
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule

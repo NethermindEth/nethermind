@@ -12,6 +12,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool RebuildTrieFromLeaves { get; set; } = false;
     public long RebuildTrieTargetBlockNumber { get; set; } = 0;
+    public string? RewriteHeadStateRoot { get; set; } = null;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
