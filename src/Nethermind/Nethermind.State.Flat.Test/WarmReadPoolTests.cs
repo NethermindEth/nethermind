@@ -99,4 +99,61 @@ public class WarmReadPoolTests
         pool.Dispose();
         Assert.Throws<ObjectDisposedException>(() => pool.Run(1, workers: 1, _ => { }, CancellationToken.None));
     }
+
+    [Test]
+    public void Concurrent_dispose_is_idempotent()
+    {
+        WarmReadPool pool = new(2);
+        pool.Run(10, workers: 2, _ => { }, CancellationToken.None);
+
+        Exception?[] errors = new Exception?[4];
+        Thread[] threads = new Thread[errors.Length];
+        for (int i = 0; i < threads.Length; i++)
+        {
+            int idx = i;
+            threads[i] = new Thread(() =>
+            {
+                try { pool.Dispose(); }
+                catch (Exception ex) { errors[idx] = ex; }
+            });
+        }
+        foreach (Thread t in threads) t.Start();
+        foreach (Thread t in threads) t.Join();
+
+        Assert.That(errors, Is.All.Null);
+    }
+
+    [Test]
+    public void Dispose_racing_in_flight_run_does_not_crash()
+    {
+        // Regression: Dispose released shutdown permits while a Run was still draining; an idle
+        // worker woke into the stale batch and double-signaled its depleted CountdownEvent,
+        // throwing on a background thread and killing the process.
+        for (int round = 0; round < 100; round++)
+        {
+            WarmReadPool pool = new(4);
+            using ManualResetEventSlim started = new();
+            Exception? runError = null;
+
+            Thread runner = new(() =>
+            {
+                try
+                {
+                    pool.Run(10_000, workers: 2, _ =>
+                    {
+                        started.Set();
+                        Thread.SpinWait(50);
+                    }, CancellationToken.None);
+                }
+                catch (ObjectDisposedException) { }
+                catch (Exception ex) { runError = ex; }
+            });
+            runner.Start();
+            started.Wait();
+            pool.Dispose();
+            runner.Join();
+
+            Assert.That(runError, Is.Null, $"round {round}");
+        }
+    }
 }

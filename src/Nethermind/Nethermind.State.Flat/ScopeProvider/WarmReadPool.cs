@@ -72,6 +72,8 @@ public sealed class WarmReadPool : IDisposable
 
         while (Interlocked.CompareExchange(ref _runInFlight, 1, 0) != 0)
         {
+            // Dispose acquires the sentinel and never releases it; bail out instead of spinning forever.
+            ObjectDisposedException.ThrowIf(_disposed, this);
             Thread.Yield();
         }
 
@@ -134,9 +136,14 @@ public sealed class WarmReadPool : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.CompareExchange(ref _disposed, true, false)) return;
         _disposalCts.Cancel();
+        // Acquire the run sentinel (never released) so the shutdown permits below cannot wake
+        // a worker into a stale batch and double-signal its depleted CountdownEvent.
+        while (Interlocked.CompareExchange(ref _runInFlight, 1, 0) != 0)
+        {
+            Thread.Yield();
+        }
         _workAvailable.Release(_threads.Length);
         foreach (Thread t in _threads) t.Join();
         _workAvailable.Dispose();

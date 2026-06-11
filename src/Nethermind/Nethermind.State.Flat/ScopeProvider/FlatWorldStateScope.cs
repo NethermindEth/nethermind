@@ -261,6 +261,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
+        // Read-only providers have no pool; sinks are only passed on the writable block-processing path.
+        if (_warmReadPool is null) return;
+
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -284,8 +287,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             foreach (UInt256 readKey in ac.StorageReads)
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
-
-        if (_warmReadPool is null) return;
 
         int workers = Math.Min(_warmReadPool.MaxConcurrency, Math.Max(1, idx / 64));
 
