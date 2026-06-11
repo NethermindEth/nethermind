@@ -9,21 +9,21 @@ namespace Nethermind.State.Flat.Test.Hsst;
 
 internal static class HsstTestUtil
 {
-    public delegate void BuildAction(ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder);
+    public delegate void BuildAction(ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder);
 
     /// <summary>
     /// Test helper: create a builder, execute <paramref name="buildAction"/>, dispose, and return the
     /// built HSST bytes. Defaults <paramref name="keyLength"/> to -1 ("infer from first key") — production
-    /// code must pass an explicit key length to <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>; tests
+    /// code must pass an explicit key length to <see cref="HsstBTreeBuilder{TWriter}"/>; tests
     /// using this helper rely on the builder picking up the length from the first
-    /// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.Add"/> call and validating that every subsequent
+    /// <see cref="HsstBTreeBuilder{TWriter}.Add"/> call and validating that every subsequent
     /// key matches.
     /// </summary>
     public static byte[] BuildToArray(BuildAction buildAction, int keyLength = -1, bool keyFirst = false)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
         using HsstBTreeBuilderBuffersContainer buffers = new();
-        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(ref pooled.GetWriter(), ref buffers.Buffers, keyLength, keyFirst: keyFirst);
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), ref buffers.Buffers, keyLength, keyFirst: keyFirst);
         try
         {
             buildAction(ref builder);

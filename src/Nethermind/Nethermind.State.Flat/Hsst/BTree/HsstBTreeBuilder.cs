@@ -29,10 +29,8 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// the flushed bytes.
 /// </para>
 /// </remarks>
-public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
-    where TWriter : IByteBufferWriterWithReader<TReader, TPin>
-    where TReader : IHsstByteReader<TPin>, allows ref struct
-    where TPin : struct, IBufferPin, allows ref struct
+public ref partial struct HsstBTreeBuilder<TWriter>
+    where TWriter : IByteBufferWriter
 {
     private ref TWriter _writer;
     private long _writtenBeforeValue;

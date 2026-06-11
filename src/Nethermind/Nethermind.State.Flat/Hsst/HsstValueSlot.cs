@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// (bits 3-4), so the format only encodes the four widths <c>{2, 3, 4, 6}</c>. The
 /// <see cref="MinBytesFor"/> helper rounds an arbitrary natural width up to the next
 /// supported value. Lives in its own non-generic class so callers outside
-/// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/>'s generic instantiation
+/// <see cref="HsstBTreeBuilder{TWriter}"/>'s generic instantiation
 /// (e.g. the leaf-boundary enumerator) can call it without specifying type arguments.
 /// </summary>
 internal static class HsstValueSlot

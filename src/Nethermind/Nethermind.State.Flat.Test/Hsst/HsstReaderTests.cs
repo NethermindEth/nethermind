@@ -46,7 +46,7 @@ public class HsstReaderTests
             return v;
         }
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             for (int i = 0; i < 32; i++)
                 builder.Add([0xA9, 0xFF, (byte)i], PageValue(0xA0 + i));
@@ -107,7 +107,7 @@ public class HsstReaderTests
         for (int i = 0; i < count; i++)
             entries[i] = ($"key_{i:D6}", $"val_{i:D6}");
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             foreach ((string key, string value) in entries)
                 builder.Add(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value));

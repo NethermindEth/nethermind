@@ -37,7 +37,7 @@ public class BTreeNodeTests
     [Test]
     public void NodeMetadata_ReadFromEnd_MinimalNode()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) => { });
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) => { });
 
         BTreeNodeReader index = ReadHsstRoot(data);
         Assert.That(index.EntryCount, Is.EqualTo(0));
@@ -47,7 +47,7 @@ public class BTreeNodeTests
     [Test]
     public void NodeMetadata_WithBaseOffset_ParsedCorrectly()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             for (int i = 0; i < 10; i++)
             {
@@ -64,7 +64,7 @@ public class BTreeNodeTests
     [Test]
     public void BTreeNode_EmptyIndex_HandlesCorrectly()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) => { });
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) => { });
 
         BTreeNodeReader index = ReadHsstRoot(data);
         Assert.That(index.EntryCount, Is.EqualTo(0));
@@ -74,7 +74,7 @@ public class BTreeNodeTests
     [Test]
     public void BTreeNode_SingleLeafNode_StructureValid()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             builder.Add([0x41, 0x42], [0x01, 0x02, 0x03]);
         });
@@ -380,7 +380,7 @@ public class BTreeNodeTests
         // first child is then itself a BTreeNode node (Intermediate kind),
         // not an Entry — that's the format-level signal of multi-level structure.
         const int count = 500;
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             for (int i = 0; i < count; i++)
             {
@@ -408,7 +408,7 @@ public class BTreeNodeTests
         // leaves and build a genuine multi-level index; with too few the HSST is a single
         // leaf and "via index" is vacuous (no index to traverse).
         const int count = 1000;
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             for (int i = 0; i < count; i++)
             {

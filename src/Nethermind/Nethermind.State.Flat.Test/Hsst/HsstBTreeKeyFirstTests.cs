@@ -19,7 +19,7 @@ public class HsstBTreeKeyFirstTests
     [Test]
     public void IndexType_Byte_Is_BTreeKeyFirst_At_Tail()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> b) =>
         {
             b.Add("key"u8, "value"u8);
         }, keyFirst: true);
@@ -32,7 +32,7 @@ public class HsstBTreeKeyFirstTests
     {
         using PooledByteBufferWriter pooled = new(1024);
         using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount: 4);
-        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder = new(
             ref pooled.GetWriter(), ref buffers.Buffers, keyLength: 4, expectedKeyCount: 4, keyFirst: true);
         try
         {
@@ -67,7 +67,7 @@ public class HsstBTreeKeyFirstTests
             [[11, 12, 13, 14, 15]],
         ];
 
-        byte[] outerBytes = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> outer) =>
+        byte[] outerBytes = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> outer) =>
         {
             using PooledByteBufferWriter staging = new(4096);
             for (int o = 0; o < outerKeys.Length; o++)

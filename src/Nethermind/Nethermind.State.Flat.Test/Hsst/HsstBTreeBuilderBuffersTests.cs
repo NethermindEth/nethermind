@@ -54,7 +54,7 @@ public class HsstBTreeBuilderBuffersTests
             buffers.Dispose();
         }
 
-        void BuildAll(ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder)
+        void BuildAll(ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder)
         {
             foreach ((byte[] k, byte[] v) in entries) builder.Add(k, v);
         }
@@ -63,7 +63,7 @@ public class HsstBTreeBuilderBuffersTests
     private static byte[] BuildWithBuffers(scoped ref HsstBTreeBuilderBuffers buffers, int keyLength, (byte[] Key, byte[] Value)[] entries)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
-        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder =
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder =
             new(ref pooled.GetWriter(), ref buffers, keyLength);
         try
         {
