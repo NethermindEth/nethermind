@@ -68,6 +68,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         StreamOp[] ops = stream.Ops;
         long[] blockGas = stream.BlockGas;
+        Nethermind.Int256.UInt256[] constants = stream.Constants;
         ushort[] pcToEntry = stream.PcToEntry;
         ref byte code = ref stack.Code;
         uint codeLength = (uint)stack.CodeLength;
@@ -109,7 +110,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (metered)
                     {
                         programCounter = entry.Pc;
-                        goto Metered;
+                        MeteredOutcome outcome = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, ref programCounter, ref opCodeCount, ref entryIndex, ref metered, ref exceptionType, callDepth);
+                        if (outcome == MeteredOutcome.Continue)
+                            continue;
+                        if (outcome == MeteredOutcome.OutOfGas)
+                        {
+                            OpCodeCount += opCodeCount;
+                            goto OutOfGas;
+                        }
+
+                        break;
                     }
 
                     if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
@@ -122,61 +132,67 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                     if (((byte)entry.Kind & 1) != 0)
                     {
-                        // Fused PUSH+op pair: the op consumes the pre-decoded constant in place.
+                        // Fused PUSH+op pair: the op consumes the pre-decoded constant in
+                        // place. Pushes wider than 8 bytes live in the constant pool; the
+                        // pair's Advance (push + immediates + op) tells the two apart.
+                        Nethermind.Int256.UInt256 inlineOperand = entry.Operand;
+                        ref readonly Nethermind.Int256.UInt256 fusedA = ref (entry.Advance > 10
+                            ? ref constants[(int)entry.Operand]
+                            : ref inlineOperand);
                         // MUST stay inline in the loop, same JIT constraint as the specialized
                         // dispatch switch in RunByteCodeCore.
                         switch (instruction)
                         {
                             case Instruction.ADD:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAdd>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAdd>(ref stack, in fusedA);
                                 break;
                             case Instruction.SUB:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSub>(ref stack, in fusedA);
                                 break;
                             case Instruction.MUL:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMul>(ref stack, in fusedA);
                                 break;
                             case Instruction.DIV:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpDiv>(ref stack, in fusedA);
                                 break;
                             case Instruction.SDIV:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSDiv>(ref stack, in fusedA);
                                 break;
                             case Instruction.MOD:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpMod>(ref stack, in fusedA);
                                 break;
                             case Instruction.SMOD:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSMod>(ref stack, in fusedA);
                                 break;
                             case Instruction.LT:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpLt>(ref stack, in fusedA);
                                 break;
                             case Instruction.GT:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpGt>(ref stack, in fusedA);
                                 break;
                             case Instruction.SLT:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSLt>(ref stack, in fusedA);
                                 break;
                             case Instruction.SGT:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, in fusedA);
                                 break;
                             case Instruction.EQ:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpEqFused>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpEqFused>(ref stack, in fusedA);
                                 break;
                             case Instruction.AND:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAndFused>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAndFused>(ref stack, in fusedA);
                                 break;
                             case Instruction.OR:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpOrFused>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpOrFused>(ref stack, in fusedA);
                                 break;
                             case Instruction.XOR:
-                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpXorFused>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpXorFused>(ref stack, in fusedA);
                                 break;
                             case Instruction.SHL:
-                                exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, in fusedA);
                                 break;
                             case Instruction.SHR:
-                                exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, entry.Operand);
+                                exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in fusedA);
                                 break;
                             default:
                                 exceptionType = EvmExceptionType.BadInstruction;
@@ -258,6 +274,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 // truncated trailing PUSH stays a boundary op).
                                 exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
                                 break;
+                            case >= Instruction.PUSH9 and <= Instruction.PUSH32:
+                                exceptionType = stack.PushUInt256<OffFlag>(in constants[(int)entry.Operand]);
+                                break;
                             case >= Instruction.DUP1 and <= Instruction.DUP8:
                                 exceptionType = stack.Dup<OffFlag>(instruction - Instruction.DUP1 + 1);
                                 break;
@@ -285,24 +304,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
                 }
 
-                // Boundary op: standard handler, standard epilogue.
+                // Boundary op: standard handler, standard epilogue, structured control
+                // flow only — backward gotos make the loop irreducible and the JIT stops
+                // optimizing the whole method.
                 programCounter = entry.Pc;
-                goto TableDispatch;
-
-            Metered:
-                // Metered micro-loop (label-driven): raw code, exact per-op gas and failure
-                // semantics. Runs until a block-charging entry (where the outer loop
-                // re-evaluates), the end of code, or a frame switch. Immune to fused-pair
-                // merging because it reads bytes.
-                if ((uint)programCounter >= codeLength)
-                {
-                    entryIndex = ops.Length;
-                    continue;
-                }
-
-                instruction = (Instruction)Unsafe.Add(ref code, programCounter);
-
-            TableDispatch:
                 if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
                     ThrowStreamOperationCanceledException();
 
@@ -340,35 +345,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 int landing = pcToEntry[programCounter];
-                if (landing != InstructionStream.InvalidEntry)
+                if (landing == InstructionStream.InvalidEntry)
                 {
-                    entryIndex = landing;
-                    if ((uint)entryIndex >= (uint)ops.Length)
-                        continue;
-
-                    // A fused table handler can land one instruction INTO a block, skipping
-                    // its charging entry — the rest of that block stays metered.
-                    StreamOpKind landingKind = ops[entryIndex].Kind;
-                    metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock;
-                    if (!metered)
-                        continue;
-
-                    goto Metered;
-                }
-
-                if (!metered)
-                {
-                    // Outside the metered micro-loop nothing may land between entries: jumps
-                    // land on JUMPDESTs and table-fused handlers land after the instructions
-                    // they consumed — fail loudly rather than silently fall off the stream as
-                    // an empty success.
+                    // Nothing may land between entries: jumps land on JUMPDESTs and
+                    // table-fused handlers land after the instructions they consumed — fail
+                    // loudly rather than silently fall off the stream as an empty success.
                     exceptionType = EvmExceptionType.InvalidJumpDestination;
                     break;
                 }
 
-                // Metered with an interior landing (inside a fused pair): keep stepping
-                // through raw code.
-                goto Metered;
+                entryIndex = landing;
+                if ((uint)entryIndex < (uint)ops.Length)
+                {
+                    // A fused table handler can land one instruction INTO a block, skipping
+                    // its charging entry — the rest of that block runs metered.
+                    StreamOpKind landingKind = ops[entryIndex].Kind;
+                    metered = landingKind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock;
+                }
             }
 
             OpCodeCount += opCodeCount;
@@ -413,5 +406,101 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         [DoesNotReturn]
         static void ThrowStreamOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
+    }
+
+    private enum MeteredOutcome : byte
+    {
+        /// <summary>Resume the stream loop at the updated entry index.</summary>
+        Continue,
+        /// <summary>Exit the stream loop (exception or frame switch recorded by the caller's refs).</summary>
+        BreakLoop,
+        /// <summary>Gas went negative; the caller takes its out-of-gas exit.</summary>
+        OutOfGas,
+    }
+
+    /// <summary>
+    /// Cold path: per-op metered execution over raw code for blocks whose precharge did not
+    /// fit the remaining gas or that were entered past their charging entry. Exact per-op gas
+    /// and failure semantics; immune to fused-pair merging because it reads bytes. Kept out
+    /// of <see cref="RunStream{TCancelable}"/> so the hot loop stays small and reducible.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private MeteredOutcome RunMeteredSegment<TCancelable>(
+        InstructionStream stream,
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas,
+        ref int programCounter,
+        ref int opCodeCount,
+        ref int entryIndex,
+        ref bool metered,
+        ref EvmExceptionType exceptionType,
+        int callDepth)
+        where TCancelable : struct, IFlag
+    {
+        StreamOp[] ops = stream.Ops;
+        ushort[] pcToEntry = stream.PcToEntry;
+        ref byte code = ref stack.Code;
+        uint codeLength = (uint)stack.CodeLength;
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeMethods = _opcodeMethods;
+
+        while (true)
+        {
+            if ((uint)programCounter >= codeLength)
+            {
+                entryIndex = ops.Length;
+                return MeteredOutcome.Continue;
+            }
+
+            Instruction instruction = (Instruction)Unsafe.Add(ref code, programCounter);
+
+            if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
+                throw new OperationCanceledException("Cancellation Requested");
+
+            TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, callDepth);
+            if (StreamInterpreter.Diagnose)
+                StreamInterpreter.Log("/tmp/diag-stream.log", callDepth, programCounter, instruction, TGasPolicy.GetRemainingGas(in gas));
+            programCounter++;
+            opCodeCount++;
+
+            exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
+
+            if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                return MeteredOutcome.OutOfGas;
+
+            TGasPolicy.OnAfterInstructionTrace(in gas);
+
+            if (exceptionType != EvmExceptionType.None)
+                return MeteredOutcome.BreakLoop;
+
+            if (ReturnData is not null)
+                return MeteredOutcome.BreakLoop;
+
+            if ((uint)programCounter >= (uint)pcToEntry.Length)
+            {
+                entryIndex = ops.Length;
+                return MeteredOutcome.Continue;
+            }
+
+            int landing = pcToEntry[programCounter];
+            if (landing == InstructionStream.InvalidEntry)
+            {
+                // Interior pc (inside a fused pair or instructions a table handler consumed):
+                // keep stepping through raw code.
+                continue;
+            }
+
+            entryIndex = landing;
+            if ((uint)entryIndex >= (uint)ops.Length)
+                return MeteredOutcome.Continue;
+
+            StreamOpKind kind = ops[entryIndex].Kind;
+            if (kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock)
+                continue;
+
+            // Reached a block-charging entry or a boundary op: hand back to the stream loop,
+            // which re-evaluates the charge (and so whether metering must continue).
+            metered = false;
+            return MeteredOutcome.Continue;
+        }
     }
 }

@@ -17,7 +17,7 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType FusedConstBinaryCore<TOpMath>(ref EvmStack stack, ulong operand)
+    internal static EvmExceptionType FusedConstBinaryCore<TOpMath>(ref EvmStack stack, in UInt256 a)
         where TOpMath : struct, IOpMath2Param
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
@@ -26,7 +26,6 @@ public static partial class EvmInstructions
         ref byte topRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
 
-        UInt256 a = operand;
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         TOpMath.Operation(in a, in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
@@ -39,7 +38,7 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, ulong operand)
+    internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, in UInt256 a)
         where TOpShift : struct, IOpShift
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
@@ -48,13 +47,13 @@ public static partial class EvmInstructions
         ref byte topRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
 
-        if (operand >= 256)
+        // Mirrors ShiftCore: amounts of 256 or more shift everything out.
+        if (!a.IsUint64 || a.u0 >= 256)
         {
             EvmStack.WriteUInt256ToSlot(ref topRef, in UInt256.Zero);
             return EvmExceptionType.None;
         }
 
-        UInt256 a = operand;
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         TOpShift.Operation(in a, in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);

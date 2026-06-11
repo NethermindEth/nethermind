@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -33,8 +34,10 @@ public enum StreamOpKind : byte
 /// </summary>
 public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushort blockIndex, byte advance, ulong operand)
 {
-    /// <summary>Pre-decoded immediate of an in-block PUSH1..PUSH8 (big-endian value); for a
-    /// fused pair this is the pushed constant the op consumes.</summary>
+    /// <summary>Pre-decoded immediate of an in-block PUSH: the value itself for widths up to
+    /// 8 bytes, or an index into <see cref="InstructionStream.Constants"/> for wider pushes
+    /// (the push width is derivable from <see cref="Advance"/>). For a fused pair this is the
+    /// pushed constant the op consumes.</summary>
     public readonly ulong Operand = operand;
     /// <summary>For block-charging kinds: index into <see cref="InstructionStream.BlockGas"/>.</summary>
     public readonly ushort BlockIndex = blockIndex;
@@ -75,14 +78,17 @@ public sealed class InstructionStream
 
     public readonly StreamOp[] Ops;
     public readonly long[] BlockGas;
+    /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
+    public readonly UInt256[] Constants;
     /// <summary>Entry index for every entry-start pc; <see cref="InvalidEntry"/> for immediate
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
 
-    private InstructionStream(StreamOp[] ops, long[] blockGas, ushort[] pcToEntry)
+    private InstructionStream(StreamOp[] ops, long[] blockGas, UInt256[] constants, ushort[] pcToEntry)
     {
         Ops = ops;
         BlockGas = blockGas;
+        Constants = constants;
         PcToEntry = pcToEntry;
     }
 
@@ -93,6 +99,7 @@ public sealed class InstructionStream
 
         List<StreamOp> ops = new(code.Length / 2);
         List<long> blockGas = new(code.Length / 16);
+        List<UInt256> constants = [];
         ushort[] pcToEntry = new ushort[code.Length + 1];
         pcToEntry.AsSpan().Fill(InvalidEntry);
 
@@ -128,9 +135,16 @@ public sealed class InstructionStream
                 }
                 else
                 {
-                    ulong operand = instruction is >= Instruction.PUSH1 and <= Instruction.PUSH8
-                        ? ReadImmediate(code.Slice(pc + 1, immediates))
-                        : 0;
+                    ulong operand = 0;
+                    if (instruction is >= Instruction.PUSH1 and <= Instruction.PUSH8)
+                    {
+                        operand = ReadImmediate(code.Slice(pc + 1, immediates));
+                    }
+                    else if (instruction is >= Instruction.PUSH9 and <= Instruction.PUSH32)
+                    {
+                        constants.Add(ReadWideImmediate(code.Slice(pc + 1, immediates)));
+                        operand = (ulong)(constants.Count - 1);
+                    }
 
                     StreamOpKind kind = StreamOpKind.InBlock;
                     if (openBlock < 0)
@@ -161,7 +175,7 @@ public sealed class InstructionStream
             return null;
 
         pcToEntry[code.Length] = (ushort)ops.Count;
-        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), pcToEntry);
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry);
     }
 
     /// <summary>
@@ -189,7 +203,7 @@ public sealed class InstructionStream
             case Instruction.SHL:
             case Instruction.SHR:
             case Instruction.PUSH1:
-            case >= Instruction.PUSH3 and <= Instruction.PUSH8:
+            case >= Instruction.PUSH3 and <= Instruction.PUSH32:
             case >= Instruction.DUP1 and <= Instruction.DUP8:
             case >= Instruction.SWAP1 and <= Instruction.SWAP8:
                 cost = GasCostOf.VeryLow;
@@ -231,7 +245,7 @@ public sealed class InstructionStream
         StreamOp last = ops[^1];
         if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
             return false;
-        if ((Instruction)last.Opcode is not (Instruction.PUSH1 or >= Instruction.PUSH3 and <= Instruction.PUSH8))
+        if ((Instruction)last.Opcode is not (Instruction.PUSH1 or >= Instruction.PUSH3 and <= Instruction.PUSH32))
             return false;
 
         push = last;
@@ -243,6 +257,14 @@ public sealed class InstructionStream
         Span<byte> padded = stackalloc byte[sizeof(ulong)];
         immediates.CopyTo(padded.Slice(sizeof(ulong) - immediates.Length));
         return BinaryPrimitives.ReadUInt64BigEndian(padded);
+    }
+
+    private static UInt256 ReadWideImmediate(ReadOnlySpan<byte> immediates)
+    {
+        Span<byte> padded = stackalloc byte[32];
+        padded.Clear();
+        immediates.CopyTo(padded.Slice(32 - immediates.Length));
+        return new UInt256(padded, isBigEndian: true);
     }
 
     private static int GetImmediateByteCount(Instruction instruction)

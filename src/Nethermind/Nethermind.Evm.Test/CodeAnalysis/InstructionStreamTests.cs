@@ -130,6 +130,7 @@ public class InstructionStreamTests
     [TestCase(Instruction.SHL, GasCostOf.VeryLow, TestName = "Shl")]
     [TestCase(Instruction.DUP8, GasCostOf.VeryLow, TestName = "Dup8")]
     [TestCase(Instruction.SWAP8, GasCostOf.VeryLow, TestName = "Swap8")]
+    [TestCase(Instruction.PUSH32, GasCostOf.VeryLow, TestName = "Push32_ViaConstantPool")]
     public void TryGetInBlockCost_ForStaticCostOp_MatchesGasCostOf(Instruction instruction, long expectedCost)
     {
         Assert.That(InstructionStream.TryGetInBlockCost(instruction, out long cost), Is.True);
@@ -139,7 +140,6 @@ public class InstructionStreamTests
     [TestCase(Instruction.PUSH2, TestName = "Push2_KeepsFusedTableHandler")]
     [TestCase(Instruction.DUP9, TestName = "Dup9_OutsideExecutorSwitch")]
     [TestCase(Instruction.SWAP9, TestName = "Swap9_OutsideExecutorSwitch")]
-    [TestCase(Instruction.PUSH9, TestName = "Push9_OutsideExecutorSwitch")]
     [TestCase(Instruction.MLOAD, TestName = "MLoad_DynamicMemoryGas")]
     [TestCase(Instruction.SLOAD, TestName = "SLoad_DynamicAccessGas")]
     [TestCase(Instruction.GAS, TestName = "Gas_MustObserveExactRemaining")]
