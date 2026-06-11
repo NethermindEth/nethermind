@@ -15,8 +15,7 @@ namespace Nethermind.Consensus.AuRa;
 /// <summary>
 /// AuRa-flavoured system transaction processor. Surfaces system-user reads to the BAL,
 /// materialises SYSTEM_ADDRESS on non-genesis system calls, and keeps EIP-158 disabled for
-/// system-tx state commits at genesis. Guarded by <c>SpecProvider.SealEngine == AuRa</c> so it
-/// falls back to base behaviour under non-AuRa test specs.
+/// system-tx state commits at genesis.
 /// </summary>
 public sealed class AuRaSystemTransactionProcessor<TGasPolicy>(
     ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
@@ -28,19 +27,15 @@ public sealed class AuRaSystemTransactionProcessor<TGasPolicy>(
     : SystemTransactionProcessor<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private readonly bool _isAura = specProvider?.SealEngine == SealEngineType.AuRa;
-
-    protected override bool ShouldSuppressSystemAccountReads(Transaction tx) =>
-        !_isAura && base.ShouldSuppressSystemAccountReads(tx);
+    protected override bool ShouldSuppressSystemAccountReads(Transaction tx) => false;
 
     protected override void OnBeforeSystemTransaction()
     {
-        if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
+        if (!VirtualMachine.BlockExecutionContext.IsGenesis)
         {
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
     }
 
-    protected override bool TreatAsGenesisForSpec(BlockHeader header) =>
-        !_isAura && base.TreatAsGenesisForSpec(header);
+    protected override bool TreatAsGenesisForSpec(BlockHeader header) => false;
 }

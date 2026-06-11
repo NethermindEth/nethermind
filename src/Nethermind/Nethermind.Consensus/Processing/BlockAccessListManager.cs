@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Processing;
 ///   * BlockAccessListManager.cs                       — lifecycle, per-tx hot path, fields
 ///   * BlockAccessListManager.Validation.cs            — incremental + per-tx 2D inclusion check
 ///   * BlockAccessListManager.StateChanges.cs          — ApplyStateChanges, SetBlockAccessList
-///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, AuRa, withdrawals, requests
+///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, withdrawals, requests
 ///   * BlockAccessListManager.TxProcessorPool.cs       — nested pool / processor / world-state types
 /// </summary>
 /// <remarks>
@@ -52,15 +52,15 @@ public partial class BlockAccessListManager(
     : IBlockAccessListManager, IDisposable
 {
     private readonly ITransactionProcessorFactory _transactionProcessorFactory =
-        transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>();
+        transactionProcessorFactory ??= new TransactionProcessorFactory<EthereumGasPolicy>();
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), witnessMode));
+            transactionProcessorFactory!, witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), witnessMode));
+            transactionProcessorFactory!, witnessMode));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;

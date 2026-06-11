@@ -412,7 +412,9 @@ public partial class EngineModuleTests
 
         if (customWithdrawalContractAddress is not null)
         {
-            expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress))]);
+            // The AuRa withdrawal-contract call runs as a system transaction, which surfaces
+            // SYSTEM_ADDRESS in the BAL on AuRa chains.
+            expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress)), new(Address.SystemUser)]);
         }
 
         ReadOnlyBlockAccessList expected = expectedBalBuilder.TestObject;
