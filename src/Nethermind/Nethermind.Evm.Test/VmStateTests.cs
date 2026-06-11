@@ -224,6 +224,7 @@ namespace Nethermind.Evm.Test
             parentVmState is null
                 ? VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromLong(10000),
                     ExecutionType.CALL,
+                    new EvmMemoryArena(),
                     RentExecutionEnvironment(),
                     new StackAccessTracker(),
                     Snapshot.Empty)
@@ -233,6 +234,7 @@ namespace Nethermind.Evm.Test
                     ExecutionType.CALL,
                     false,
                     false,
+                    new EvmMemoryArena(),
                     RentExecutionEnvironment(),
                     parentVmState.AccessTracker,
                     Snapshot.Empty);

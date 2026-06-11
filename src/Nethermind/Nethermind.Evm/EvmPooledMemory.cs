@@ -17,23 +17,17 @@ namespace Nethermind.Evm;
 /// transaction's <see cref="EvmMemoryArena"/>. Frame entry captures the arena cursor, frame
 /// exit releases it — no per-frame buffer rent, clear, or return.
 /// </summary>
-public struct EvmPooledMemory
+public struct EvmPooledMemory(EvmMemoryArena arena)
 {
     public const int WordSize = 32;
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
     internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
-    private EvmMemoryArena? _arena;
-    private int _base;
+    private EvmMemoryArena? _arena = arena;
+    private int _base = arena.Top;
     private ulong _lastZeroedSize;
 
     public ulong Size { get; private set; }
-
-    public EvmPooledMemory(EvmMemoryArena arena)
-    {
-        _arena = arena;
-        _base = arena.Top;
-    }
 
     public bool TrySaveWord(in UInt256 location, Span<byte> word)
     {

@@ -310,6 +310,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
         using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
             gas,
             ExecutionType.CALL,
+            new EvmMemoryArena(),
             env,
             in accessTracker,
             Snapshot.Empty);
