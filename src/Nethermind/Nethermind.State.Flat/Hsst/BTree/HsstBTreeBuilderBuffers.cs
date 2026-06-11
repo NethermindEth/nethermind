@@ -103,12 +103,33 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         PendingMaxSepLen = 0;
     }
 
+    /// <summary>Ensure <see cref="CommonPrefixArr"/> can hold the per-entry LCP for <paramref name="entryCount"/> entries.</summary>
+    internal void EnsureCommonPrefixCapacity(int entryCount) => EnsureSize(ref CommonPrefixArr, entryCount);
+
+    /// <summary>Ensure <see cref="PrevKeyBuf"/> can hold one <paramref name="keyLength"/>-byte key.</summary>
+    internal void EnsurePrevKeyCapacity(int keyLength) => EnsureSize(ref PrevKeyBuf, keyLength);
+
+    /// <summary>Ensure <see cref="ValueScratch"/> holds at least <paramref name="byteCount"/> bytes.</summary>
+    internal void EnsureValueScratchCapacity(int byteCount) => EnsureSize(ref ValueScratch, byteCount);
+
+    /// <summary>Ensure <see cref="RootFirstKey"/> holds the <paramref name="byteCount"/>-byte root first-key.</summary>
+    internal void EnsureRootFirstKeyCapacity(int byteCount) => EnsureSize(ref RootFirstKey, byteCount);
+
+    /// <summary>Ensure <see cref="IndexSepLengthsScratch"/> can hold <paramref name="count"/> separator lengths.</summary>
+    internal void EnsureIndexSepLengthsCapacity(int count) => EnsureSize(ref IndexSepLengthsScratch, count);
+
+    /// <summary>Ensure <see cref="IndexFirstSepScratch"/> holds the <paramref name="byteCount"/>-byte first separator.</summary>
+    internal void EnsureIndexFirstSepCapacity(int byteCount) => EnsureSize(ref IndexFirstSepScratch, byteCount);
+
+    /// <summary>Ensure <see cref="IndexSepBufScratch"/> holds a <paramref name="byteCount"/>-byte separator.</summary>
+    internal void EnsureIndexSepBufCapacity(int byteCount) => EnsureSize(ref IndexSepBufScratch, byteCount);
+
     /// <summary>
     /// Ensure <paramref name="slot"/> holds an array of at least <paramref name="minSize"/>
-    /// elements. Returns the existing array when already large enough; otherwise returns
-    /// the old one to the pool (if any) and rents a fresh one.
+    /// elements: keeps the existing array when already large enough, otherwise returns the
+    /// old one to the pool (if any) and rents a fresh one.
     /// </summary>
-    internal static void EnsureSize<T>(ref T[]? slot, int minSize)
+    private static void EnsureSize<T>(ref T[]? slot, int minSize)
     {
         if (slot is null || slot.Length < minSize)
         {

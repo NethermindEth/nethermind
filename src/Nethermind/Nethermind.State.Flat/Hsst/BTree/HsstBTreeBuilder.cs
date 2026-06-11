@@ -137,9 +137,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private static void PrimePerAddBuffers(ref HsstBTreeBuilderBuffers buffers, int expectedKeyCount, int keyLength)
     {
         int cpCap = Math.Max(expectedKeyCount, 64);
-        HsstBTreeBuilderBuffers.EnsureSize(ref buffers.CommonPrefixArr, cpCap);
+        buffers.EnsureCommonPrefixCapacity(cpCap);
         if (keyLength > 0)
-            HsstBTreeBuilderBuffers.EnsureSize(ref buffers.PrevKeyBuf, keyLength);
+            buffers.EnsurePrevKeyCapacity(keyLength);
     }
 
     /// <summary>
@@ -460,7 +460,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             byte[]? prev = bufs.PrevKeyBuf;
             if (prev is null || prev.Length < _keyLength)
             {
-                HsstBTreeBuilderBuffers.EnsureSize(ref bufs.PrevKeyBuf, _keyLength);
+                bufs.EnsurePrevKeyCapacity(_keyLength);
                 prev = bufs.PrevKeyBuf;
             }
             key.CopyTo(prev);
@@ -611,7 +611,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         int count = _pendingCount;
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, count * 8));
+        bufs.EnsureValueScratchCapacity(Math.Max(64, count * 8));
 
         // The pending Entry descriptors are the trailing <c>count</c> slots of
         // CurrentLevel; their first-keys are the trailing <c>count * _keyLength</c>
@@ -660,7 +660,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         Debug.Assert(bufs.CurrentLevel.Count == 1, "WrapLoneEntryAsLeaf expects a single descriptor on CurrentLevel.");
         Debug.Assert(_entryCount == 1, "WrapLoneEntryAsLeaf is only valid for single-entry builds.");
 
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, 8));
+        bufs.EnsureValueScratchCapacity(Math.Max(64, 8));
 
         long nodeStart = _writer.Written - _baseOffset;
         ReadOnlySpan<HsstIndexNodeInfo> children = bufs.CurrentLevel.AsSpan();
@@ -809,7 +809,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             return WriteEmptyIndexNode();
         }
 
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, MaxIntermediateEntries * 8));
+        bufs.EnsureValueScratchCapacity(Math.Max(64, MaxIntermediateEntries * 8));
         byte[] valueScratchArr = bufs.ValueScratch!;
         byte[] commonPrefixArr = bufs.CommonPrefixArr!;
 
@@ -912,7 +912,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private static void CaptureRootFirstKey(scoped ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> finalLevelKeys)
     {
         if (finalLevelKeys.Length == 0) return;
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.RootFirstKey, finalLevelKeys.Length);
+        bufs.EnsureRootFirstKeyCapacity(finalLevelKeys.Length);
         // finalLevelKeys.Length is one descriptor's worth of bytes (the root); copying
         // every byte is correct because RootFirstKey is sized to at least that span.
         finalLevelKeys.CopyTo(bufs.RootFirstKey);
@@ -984,7 +984,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // the child's own planner-picked prefix so the parent slot can hand the child
         // every byte of its CommonKeyPrefix at descent time. Backed by a pooled buffer
         // so back-to-back Builds reuse the rent.
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.IndexSepLengthsScratch, count);
+        bufs.EnsureIndexSepLengthsCapacity(count);
         Span<int> sepLengths = bufs.IndexSepLengthsScratch.AsSpan(0, count);
         for (int i = 0; i < count; i++)
         {
@@ -1111,8 +1111,8 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // re-stackallocating 510 bytes per ChooseIntermediateChildCount call.
         int commonLen = firstSepLen;
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.IndexFirstSepScratch, MaxKeyLen);
-        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.IndexSepBufScratch, MaxKeyLen);
+        bufs.EnsureIndexFirstSepCapacity(MaxKeyLen);
+        bufs.EnsureIndexSepBufCapacity(MaxKeyLen);
         Span<byte> firstSep = bufs.IndexFirstSepScratch.AsSpan(0, MaxKeyLen);
         Span<byte> sepBuf = bufs.IndexSepBufScratch.AsSpan(0, MaxKeyLen);
         if (firstSepLen > 0)
