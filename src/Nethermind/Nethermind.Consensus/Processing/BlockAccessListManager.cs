@@ -159,22 +159,23 @@ public partial class BlockAccessListManager(
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
 
-        // Only the parallel executor drains the hint; sequential execution contends with the warming reads.
-        if (BatchReadEnabled && ParallelExecutionEnabled && suggestedBlock.BlockAccessList is not null)
+        _balWarmupTask = StartBalReadWarmup(suggestedBlock);
+    }
+
+    // Only the parallel executor drains the hint; sequential execution contends with the warming reads.
+    private Task? StartBalReadWarmup(Block suggestedBlock)
+    {
+        if (!BatchReadEnabled || !ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null)
+            return null;
+
+        try
         {
-            try
-            {
-                _balWarmupTask = stateProvider.HintBal(suggestedBlock.BlockAccessList);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsDebug) _logger.Debug($"BAL read warming hint failed to start: {ex}");
-                _balWarmupTask = null;
-            }
+            return stateProvider.HintBal(suggestedBlock.BlockAccessList);
         }
-        else
+        catch (Exception ex)
         {
-            _balWarmupTask = null;
+            if (_logger.IsDebug) _logger.Debug($"BAL read warming hint failed to start: {ex}");
+            return null;
         }
     }
 
