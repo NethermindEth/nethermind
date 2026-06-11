@@ -434,12 +434,10 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
-                {
-                    error = BlockErrorMessages.InvalidSlotNumber;
-                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");
-                    return false;
-                }
+                // EIP-7843: the slot number is computed by the consensus layer and passed to the
+                // execution layer; the EL only checks for presence and does not impose any ordering
+                // (e.g. monotonicity) relative to the parent. See the eip7843_slotnum fixtures, which
+                // accept non-increasing slot numbers across consecutive blocks.
             }
             else
             {
