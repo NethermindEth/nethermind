@@ -102,6 +102,10 @@ public class PrewarmerScopeProvider(
 
         private StorageStridePrefetcher? GetOrCreateStridePrefetcher(Address address)
         {
+            // Past the scope's first block (token cancelled at flush/commit) a prefetcher could
+            // never engage; skip the detector entirely instead of feeding dead instances.
+            if (_prefetchCts.IsCancellationRequested) return null;
+
             AddressAsKey key = address;
             if (_stridePrefetchers.TryGetValue(key, out StorageStridePrefetcher? existing)) return existing;
             if (_stridePrefetchers.Count >= MaxStridePrefetchers) return null;
@@ -170,9 +174,15 @@ public class PrewarmerScopeProvider(
 
         private void StopStridePrefetchers()
         {
+            // Unconditional: the scope's parent anchor is only valid for the first block it
+            // processes, and sync batches push many blocks through one scope. Once anything has
+            // flushed or committed here, later blocks must not engage against the stale anchor —
+            // even when no prefetcher was created yet (a storage-free first block would otherwise
+            // leave the token live).
+            _prefetchCts.Cancel();
+
             if (!_stridePrefetchers.IsEmpty)
             {
-                _prefetchCts.Cancel();
                 foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
                 {
                     kv.Value.Dispose();

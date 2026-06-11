@@ -426,6 +426,56 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public async Task Test_StridePrefetcher_DoesNotEngageAfterFirstCommit()
+    {
+        UInt256 start = (UInt256)1 << 40; // Above the minimum engagement index.
+        UInt256 stride = 7;
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            // Sync batches process many blocks through one scope; the scope's parent anchor is
+            // only valid for the first of them. Simulate a first block that never touches
+            // storage, then a later block issuing a striding scan.
+            scope.Commit(1);
+
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+            UInt256 index = start;
+            for (int i = 0; i < 12; i++, index += stride)
+            {
+                storage.Get(in index);
+            }
+
+            // Prefetching here would publish values read at the stale anchor; the prefetcher
+            // must stay disengaged. Bounded poll because the correct outcome is that nothing
+            // ever appears.
+            StorageCell farCell = new(TestItem.AddressA, start + (stride * 100));
+            for (int i = 0; i < 60; i++)
+            {
+                Assert.That(caches.StorageCache.TryGetValue(in farCell, out _), Is.False,
+                    "Stride prefetcher engaged in a non-first block of a scope.");
+                await Task.Delay(5);
+            }
+        }
+    }
+
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
