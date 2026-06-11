@@ -9,31 +9,6 @@ using System.Runtime.InteropServices;
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// Receives eviction notifications surfaced by <see cref="PageResidencyTracker.TryTouch"/>.
-/// Implementations typically issue <c>madvise(MADV_DONTNEED)</c> on the evicted page so the
-/// kernel can drop it.
-/// </summary>
-public interface IPageEvictionHandler
-{
-    void OnPageEvicted(int arenaId, int pageIdx);
-}
-
-/// <summary>
-/// Outcome of a <see cref="PageResidencyTracker.TryTouch"/> call. Lets the caller distinguish
-/// "page is already cached residency-wise" (do nothing) from "page is newly tracked"
-/// (e.g. pre-fault it) and "page displaced an unrelated occupant" (drop the displaced page).
-/// </summary>
-public enum TouchOutcome
-{
-    /// <summary>The set already held this exact <c>(arenaId, pageIdx)</c>.</summary>
-    Hit,
-    /// <summary>The set had an empty way and now holds <c>(arenaId, pageIdx)</c>.</summary>
-    Inserted,
-    /// <summary>The set was full of unreferenced pages; the clock victim was displaced and the out parameters carry its key.</summary>
-    Evicted,
-}
-
-/// <summary>
 /// 8-way set-associative <em>clock</em> (second-chance) page residency tracker for arena-backed
 /// mmap regions. Each set occupies one 64-byte cache line (8 ways × 8 bytes); the slot value
 /// packs <c>(REF | VALID | arenaId | pageIdx)</c>:
@@ -62,6 +37,30 @@ public enum TouchOutcome
 /// </remarks>
 public sealed unsafe class PageResidencyTracker : IDisposable
 {
+    /// <summary>
+    /// Receives eviction notifications surfaced by <see cref="TryTouch"/>. Implementations
+    /// typically issue <c>madvise(MADV_DONTNEED)</c> on the evicted page so the kernel can drop it.
+    /// </summary>
+    public interface IPageEvictionHandler
+    {
+        void OnPageEvicted(int arenaId, int pageIdx);
+    }
+
+    /// <summary>
+    /// Outcome of a <see cref="TryTouch"/> call. Lets the caller distinguish "page is already
+    /// cached residency-wise" (do nothing) from "page is newly tracked" (e.g. pre-fault it) and
+    /// "page displaced an unrelated occupant" (drop the displaced page).
+    /// </summary>
+    public enum TouchOutcome
+    {
+        /// <summary>The set already held this exact <c>(arenaId, pageIdx)</c>.</summary>
+        Hit,
+        /// <summary>The set had an empty way and now holds <c>(arenaId, pageIdx)</c>.</summary>
+        Inserted,
+        /// <summary>The set was full of unreferenced pages; the clock victim was displaced and the out parameters carry its key.</summary>
+        Evicted,
+    }
+
     private const long RefBit = unchecked((long)0x8000_0000_0000_0000UL);
     private const long ValidBit = 0x4000_0000_0000_0000L;
     // Mask used to compare a slot against a packed key — strips REF, keeps VALID + arenaId + pageIdx.

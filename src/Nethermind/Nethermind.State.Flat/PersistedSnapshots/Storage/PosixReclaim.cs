@@ -5,19 +5,6 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
-/// <summary>Outcome of a <see cref="PosixReclaim.TryPunchHole"/> attempt.</summary>
-internal enum PunchHoleOutcome
-{
-    /// <summary>The range was hole-punched (or there was nothing to punch).</summary>
-    Done,
-
-    /// <summary>The filesystem/kernel permanently does not support hole-punching.</summary>
-    Unsupported,
-
-    /// <summary>A transient error — hole-punching may succeed on a later call.</summary>
-    Failed,
-}
-
 /// <summary>
 /// Thin fd-based wrappers over the Linux <c>fallocate</c> / <c>posix_fadvise</c> syscalls,
 /// used to reclaim disk blocks and OS file-cache pages of dead persisted-snapshot arena
@@ -26,6 +13,19 @@ internal enum PunchHoleOutcome
 /// </summary>
 internal static class PosixReclaim
 {
+    /// <summary>Outcome of a <see cref="TryPunchHole"/> attempt.</summary>
+    internal enum PunchHoleOutcome
+    {
+        /// <summary>The range was hole-punched (or there was nothing to punch).</summary>
+        Done,
+
+        /// <summary>The filesystem/kernel permanently does not support hole-punching.</summary>
+        Unsupported,
+
+        /// <summary>A transient error — hole-punching may succeed on a later call.</summary>
+        Failed,
+    }
+
     private const int FALLOC_FL_KEEP_SIZE = 0x01;
     private const int FALLOC_FL_PUNCH_HOLE = 0x02;
     private const int POSIX_FADV_DONTNEED = 4;

@@ -33,13 +33,13 @@ public class PageResidencyTrackerTests
         try { Directory.Delete(_tempDir, recursive: true); } catch { /* best-effort */ }
     }
 
-    private sealed class RecordingHandler : IPageEvictionHandler
+    private sealed class RecordingHandler : PageResidencyTracker.IPageEvictionHandler
     {
         public readonly List<(int arena, int page)> Evictions = [];
         public void OnPageEvicted(int arenaId, int pageIdx) => Evictions.Add((arenaId, pageIdx));
     }
 
-    private sealed class NoopHandler : IPageEvictionHandler
+    private sealed class NoopHandler : PageResidencyTracker.IPageEvictionHandler
     {
         public static readonly NoopHandler Instance = new();
         public void OnPageEvicted(int arenaId, int pageIdx) { }
@@ -54,7 +54,7 @@ public class PageResidencyTrackerTests
     /// small file-backed <see cref="ArenaFile"/> in <paramref name="tempDir"/> so the
     /// non-nullable contract on <see cref="ArenaReservation"/> is satisfied.
     /// </summary>
-    private sealed class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler, string tempDir) : IArenaManager, IDisposable
+    private sealed class StubArenaManager(PageResidencyTracker tracker, PageResidencyTracker.IPageEvictionHandler handler, string tempDir) : IArenaManager, IDisposable
     {
         private readonly Dictionary<int, ArenaFile> _files = [];
 
@@ -92,9 +92,9 @@ public class PageResidencyTrackerTests
     /// key into <paramref name="handler"/>, mirroring what <see cref="ArenaByteReader"/>
     /// does in production now that eviction dispatch lives at the call site.
     /// </summary>
-    private static void Touch(PageResidencyTracker tracker, int arenaId, int pageIdx, IPageEvictionHandler? handler = null)
+    private static void Touch(PageResidencyTracker tracker, int arenaId, int pageIdx, PageResidencyTracker.IPageEvictionHandler? handler = null)
     {
-        if (tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx) == TouchOutcome.Evicted)
+        if (tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx) == PageResidencyTracker.TouchOutcome.Evicted)
             handler?.OnPageEvicted(evictedArenaId, evictedPageIdx);
     }
 
@@ -139,18 +139,18 @@ public class PageResidencyTrackerTests
         PageResidencyTracker tracker = new(OneSetCapacity);
 
         // Empty set: Inserted, no displaced key.
-        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
+        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
 
         // Re-touching the same key: Hit.
-        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Hit));
+        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
 
         // Fill the remaining 7 ways — all Inserted.
         for (int i = 1; i < Ways; i++)
-            Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
+            Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
 
         // Set is full and every way has REF=1. The 9th touch's clock pass clears all 8 REF
         // bits, then wraps back to way 0 and evicts (0, 0) — the first inserted key.
-        Assert.That(tracker.TryTouch(0, Ways, out int evictedArenaId, out int evictedPageIdx), Is.EqualTo(TouchOutcome.Evicted));
+        Assert.That(tracker.TryTouch(0, Ways, out int evictedArenaId, out int evictedPageIdx), Is.EqualTo(PageResidencyTracker.TouchOutcome.Evicted));
         Assert.That(evictedArenaId, Is.EqualTo(0));
         Assert.That(evictedPageIdx, Is.EqualTo(0));
     }
@@ -299,7 +299,7 @@ public class PageResidencyTrackerTests
         {
             Assert.That(disabled.MetadataBytes, Is.EqualTo(0));
             Assert.That(disabled.ResidentBytes, Is.EqualTo(0));
-            Assert.That(disabled.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Hit));
+            Assert.That(disabled.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
             Assert.That(disabled.ResidentBytes, Is.EqualTo(0));
         }
 
@@ -308,20 +308,20 @@ public class PageResidencyTrackerTests
         Assert.That(tracker.ResidentBytes, Is.EqualTo(0));
 
         // Inserted: +1 page.
-        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
+        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo(pageSize));
 
         // Hit: unchanged.
-        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(TouchOutcome.Hit));
+        Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
         Assert.That(tracker.ResidentBytes, Is.EqualTo(pageSize));
 
         // Fill the rest of the set.
         for (int i = 1; i < Ways; i++)
-            Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
+            Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo((long)Ways * pageSize));
 
         // Eviction: net zero (one in, one out).
-        Assert.That(tracker.TryTouch(0, Ways, out _, out _), Is.EqualTo(TouchOutcome.Evicted));
+        Assert.That(tracker.TryTouch(0, Ways, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Evicted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo((long)Ways * pageSize));
 
         // Bounds invariant: continued streaming inserts never exceed the capacity ceiling.
@@ -340,7 +340,7 @@ public class PageResidencyTrackerTests
 
         // Re-inserting into the freed slot restores occupancy without raising the GC-reported
         // high-water mark — only the counter changes; pressure already covered this level.
-        Assert.That(tracker.TryTouch(0, presentKey, out _, out _), Is.EqualTo(TouchOutcome.Inserted));
+        Assert.That(tracker.TryTouch(0, presentKey, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo(beforeForget));
 
         // Dispose releases the reported pressure (cannot observe GC pressure directly, but

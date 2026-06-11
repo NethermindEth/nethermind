@@ -202,8 +202,8 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// <c>[offset, offset + size)</c>, freeing the dead range's disk blocks without
     /// changing the file length. Punched pages read back as zero through the mmap.
     /// </summary>
-    /// <returns>The <see cref="PunchHoleOutcome"/> reported by the kernel.</returns>
-    internal PunchHoleOutcome PunchHole(long offset, long size) =>
+    /// <returns>The <see cref="PosixReclaim.PunchHoleOutcome"/> reported by the kernel.</returns>
+    internal PosixReclaim.PunchHoleOutcome PunchHole(long offset, long size) =>
         PosixReclaim.TryPunchHole((int)_handle.DangerousGetHandle(), offset, size);
 
     /// <summary>

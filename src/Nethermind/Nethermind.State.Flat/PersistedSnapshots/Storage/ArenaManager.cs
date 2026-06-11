@@ -261,14 +261,14 @@ public sealed class ArenaManager : IArenaManager
     public bool TryPunchHole(ArenaFile file, long offset, long size)
     {
         if (!_punchHoleOnReclaim || Volatile.Read(ref _punchHoleSupported) == 0) return false;
-        PunchHoleOutcome outcome = file.PunchHole(offset, size);
-        if (outcome == PunchHoleOutcome.Unsupported)
+        PosixReclaim.PunchHoleOutcome outcome = file.PunchHole(offset, size);
+        if (outcome == PosixReclaim.PunchHoleOutcome.Unsupported)
         {
             // First permanent "unsupported" from the kernel — stop trying on every later cleanup.
             Volatile.Write(ref _punchHoleSupported, 0);
             Metrics.PersistedSnapshotPunchHoleEnabled = 0L;
         }
-        return outcome == PunchHoleOutcome.Done;
+        return outcome == PosixReclaim.PunchHoleOutcome.Done;
     }
 
     /// <summary>
