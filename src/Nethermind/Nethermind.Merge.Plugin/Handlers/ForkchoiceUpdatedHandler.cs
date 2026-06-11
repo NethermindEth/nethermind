@@ -142,6 +142,12 @@ public class ForkchoiceUpdatedHandler(
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
+            // The head header is not resolvable yet (e.g. no peers right after a restart), but the forkchoice
+            // state must still be recorded so that StartingSyncPivotUpdater can derive a fresh pivot from the
+            // finalized hash once peers appear, instead of waiting forever for an FCU with a resolvable head.
+            blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+            blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+
             if (_logger.IsInfo) _logger.Info($"Syncing Unknown ForkChoiceState head hash Request: {simpleRequestStr}.");
             return ForkchoiceUpdatedV1Result.Syncing;
         }
