@@ -82,7 +82,6 @@ namespace Nethermind.Evm.Benchmark
 
             _stateProvider = TestWorldStateFactory.CreateForTest();
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
-            _stateProvider.Commit(_spec);
             EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
             _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
             _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(header, _spec));
