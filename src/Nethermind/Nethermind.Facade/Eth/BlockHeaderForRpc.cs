@@ -20,21 +20,20 @@ public class BlockHeaderForRpc
     [SkipLocalsInit]
     public BlockHeaderForRpc(BlockHeader header, ISpecProvider? specProvider = null)
     {
-        bool isAuRaBlock = header.TryGetAuRaSeal(out long auRaStep, out byte[]? auRaSignature);
         Number = header.Number;
         Hash = header.Hash;
         ParentHash = header.ParentHash;
-        if (!isAuRaBlock)
+        if (header is IAuRaSealedHeader aura)
+        {
+            Author = header.Author;
+            Step = aura.AuRaStep;
+            Signature = aura.AuRaSignature;
+        }
+        else
         {
             MixHash = header.MixHash;
             Nonce = new byte[8];
             BinaryPrimitives.WriteUInt64BigEndian(Nonce, header.Nonce);
-        }
-        else
-        {
-            Author = header.Author;
-            Step = auRaStep;
-            Signature = auRaSignature;
         }
         Sha3Uncles = header.UnclesHash;
         LogsBloom = header.Bloom;

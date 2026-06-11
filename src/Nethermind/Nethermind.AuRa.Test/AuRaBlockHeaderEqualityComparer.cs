@@ -22,10 +22,11 @@ public sealed class AuRaBlockHeaderEqualityComparer(bool compareHash = true) : I
         if (!_baseComparer.Equals(actual, expected)) return false;
         if (actual is null || expected is null) return true;
 
-        bool actualHasSeal = actual.TryGetAuRaSeal(out long actualStep, out byte[]? actualSig);
-        bool expectedHasSeal = expected.TryGetAuRaSeal(out long expectedStep, out byte[]? expectedSig);
-        if (actualHasSeal != expectedHasSeal) return false;
-        return !actualHasSeal || (actualStep == expectedStep && BytesEqual(actualSig, expectedSig));
+        IAuRaSealedHeader? actualSeal = actual as IAuRaSealedHeader;
+        IAuRaSealedHeader? expectedSeal = expected as IAuRaSealedHeader;
+        if ((actualSeal is null) != (expectedSeal is null)) return false;
+        return actualSeal is null
+            || (actualSeal.AuRaStep == expectedSeal!.AuRaStep && BytesEqual(actualSeal.AuRaSignature, expectedSeal.AuRaSignature));
     }
 
     public int GetHashCode(BlockHeader obj) => 0;

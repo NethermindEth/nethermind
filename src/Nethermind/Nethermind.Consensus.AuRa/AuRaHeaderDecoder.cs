@@ -14,8 +14,8 @@ namespace Nethermind.Consensus.AuRa;
 /// </summary>
 /// <remarks>
 /// Post-merge headers keep the Ethash/PoS seal shape, so on merged AuRa chains (e.g. Gnosis) both
-/// shapes coexist; a 32-byte seal item disambiguates. Registered by <see cref="AuRaModule"/> as both
-/// the global <see cref="BlockHeader"/> RLP decoder and the DI <see cref="IHeaderDecoder"/>.
+/// shapes coexist; a 32-byte seal item disambiguates. Registered by <see cref="AuRaHeaderModule"/>
+/// as both the global <see cref="BlockHeader"/> RLP decoder and the DI <see cref="IHeaderDecoder"/>.
 /// </remarks>
 public sealed class AuRaHeaderDecoder : HeaderDecoder
 {

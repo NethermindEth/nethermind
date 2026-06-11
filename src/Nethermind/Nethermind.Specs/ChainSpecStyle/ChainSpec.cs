@@ -89,6 +89,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// <c>ethereum</c> one, keyed by engine name. Applied to <see cref="Genesis"/> by the owning
         /// consensus plugin — core doesn't act on it.
         /// </summary>
-        public Dictionary<string, JsonElement>? GenesisCustomSeal { get; set; }
+        public Dictionary<string, JsonElement>? CustomSeal { get; set; }
     }
 }

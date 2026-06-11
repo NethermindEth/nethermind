@@ -344,11 +344,6 @@ namespace Nethermind.Synchronization
 
             sb.Append($", sent by {syncPeer:s}");
 
-            if (block.Header is not null && block.Header.TryGetAuRaSeal(out long auraStep, out _))
-            {
-                sb.Append($", with AuRa step {auraStep}");
-            }
-
             if (_logger.IsDebug)
             {
                 sb.Append($", with difficulty {block.Difficulty}/{block.TotalDifficulty}");

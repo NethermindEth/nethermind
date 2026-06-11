@@ -18,7 +18,7 @@ public static class AuRaChainSpecLoader
     public static void ProcessChainSpec(ChainSpec chainSpec)
     {
         if (chainSpec.Genesis is null
-            || chainSpec.GenesisCustomSeal?.TryGetValue("authorityRound", out JsonElement sealJson) is not true)
+            || chainSpec.CustomSeal?.TryGetValue("authorityRound", out JsonElement sealJson) is not true)
         {
             return;
         }

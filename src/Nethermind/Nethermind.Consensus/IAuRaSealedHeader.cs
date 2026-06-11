@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-
 namespace Nethermind.Consensus;
 
 /// <summary>
@@ -12,25 +10,8 @@ namespace Nethermind.Consensus;
 /// </summary>
 public interface IAuRaSealedHeader
 {
-    long AuRaStep { get; set; }
+    long AuRaStep { get; }
 
     /// <summary>The sealer's signature; null until the block is sealed.</summary>
-    byte[]? AuRaSignature { get; set; }
-}
-
-public static class AuRaSealedHeaderExtensions
-{
-    public static bool TryGetAuRaSeal(this BlockHeader header, out long step, out byte[]? signature)
-    {
-        if (header is IAuRaSealedHeader aura)
-        {
-            step = aura.AuRaStep;
-            signature = aura.AuRaSignature;
-            return true;
-        }
-
-        step = 0;
-        signature = null;
-        return false;
-    }
+    byte[]? AuRaSignature { get; }
 }

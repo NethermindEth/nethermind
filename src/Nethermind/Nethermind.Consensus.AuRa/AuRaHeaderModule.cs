@@ -4,7 +4,6 @@
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 

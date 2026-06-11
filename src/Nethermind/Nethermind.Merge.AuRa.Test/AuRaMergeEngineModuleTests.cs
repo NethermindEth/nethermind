@@ -32,6 +32,7 @@ using Nethermind.TxPool;
 using Nethermind.AuRa.Test;
 using NSubstitute;
 using NUnit.Framework;
+using Builders = Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -163,7 +164,6 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                         provider.SealEngine = SealEngineType;
                     return specProvider;
                 })
-                // Genesis is exempt from AuRa seal validation, so no seal needs to be stamped here.
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                 // as normally, test blockchain don't use INethermindApi at all.
@@ -201,10 +201,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         protected override ChainSpec CreateChainSpec()
         {
             ChainSpec baseChainSpec = base.CreateChainSpec();
-            // Stamp an AuRa seal on the genesis so its runtime type is AuRaBlockHeader. AuRa
-            // validators pattern-match parents on this subclass, and the base helper builds a
-            // plain BlockHeader. Genesis hash is downstream of these bytes — change with care.
-            baseChainSpec.Genesis = Core.Test.Builders.Build.A.Block
+            baseChainSpec.Genesis = Builders.Build.A.Block
                 .WithDifficulty(0)
                 .WithAura(0, new byte[65])
                 .TestObject;

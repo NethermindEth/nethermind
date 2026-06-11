@@ -334,7 +334,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
         // Engine-specific seal sections are stashed raw; the owning consensus plugin (e.g. AuRa)
         // upgrades Genesis.Header via its ChainSpec interceptor.
-        chainSpec.GenesisCustomSeal = chainSpecJson.Genesis.Seal?.CustomSealData;
+        chainSpec.CustomSeal = chainSpecJson.Genesis.Seal?.CustomSeal;
 
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;

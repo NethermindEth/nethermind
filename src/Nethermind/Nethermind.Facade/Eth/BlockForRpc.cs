@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Frozen;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,14 +20,33 @@ namespace Nethermind.Facade.Eth;
 
 public class BlockForRpc
 {
-    private static readonly BlockDecoder _blockDecoder = new();
+    private static IRlpDecoder<Block> _blockDecoder = new BlockDecoder();
+    private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decodersSnapshot;
+
+    /// <summary>
+    /// Registry-backed decoder for the <c>size</c> field, cached against the registry snapshot so
+    /// a consensus plugin's decoder replacement (e.g. AuRa) is picked up without a per-call lookup.
+    /// </summary>
+    private static IRlpDecoder<Block> BlockDecoder
+    {
+        get
+        {
+            FrozenDictionary<RlpDecoderKey, IRlpDecoder> snapshot = Rlp.Decoders;
+            if (!ReferenceEquals(_decodersSnapshot, snapshot))
+            {
+                _blockDecoder = Rlp.GetDecoder<Block>() ?? new BlockDecoder();
+                _decodersSnapshot = snapshot;
+            }
+
+            return _blockDecoder;
+        }
+    }
 
     public BlockForRpc() { }
 
     [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
     {
-        bool isAuRaBlock = block.Header.TryGetAuRaSeal(out long auRaStep, out byte[]? auRaSignature);
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;
@@ -34,17 +54,17 @@ public class BlockForRpc
         Hash = block.Hash;
         LogsBloom = block.Bloom;
         Miner = block.Beneficiary;
-        if (!isAuRaBlock)
+        if (block.Header is IAuRaSealedHeader aura)
+        {
+            Author = block.Author;
+            Step = aura.AuRaStep;
+            Signature = aura.AuRaSignature;
+        }
+        else
         {
             MixHash = block.MixHash;
             Nonce = new byte[8];
             BinaryPrimitives.WriteUInt64BigEndian(Nonce, block.Nonce);
-        }
-        else
-        {
-            Author = block.Author;
-            Step = auRaStep;
-            Signature = auRaSignature;
         }
 
         if (specProvider is not null)
@@ -82,7 +102,7 @@ public class BlockForRpc
         ParentHash = block.ParentHash;
         ReceiptsRoot = block.ReceiptsRoot;
         Sha3Uncles = block.UnclesHash;
-        Size = (Rlp.GetDecoder<Block>() ?? _blockDecoder).GetLength(block, RlpBehaviors.None);
+        Size = BlockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
 

@@ -13,6 +13,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         /// <summary>Engine-specific seal sections (e.g. <c>authorityRound</c>), parsed by the owning consensus plugin.</summary>
         [JsonExtensionData]
-        public Dictionary<string, JsonElement> CustomSealData { get; set; }
+        public Dictionary<string, JsonElement> CustomSeal { get; set; }
     }
 }
