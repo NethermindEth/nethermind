@@ -117,7 +117,18 @@ public class StartingSyncPivotUpdater : IDisposable
 
         if (potentialPivotData is null)
         {
-            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0)
+            {
+                Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
+                if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
+                {
+                    _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+                }
+                else
+                {
+                    _logger.Info($"Known finalized block hash {finalizedBlockHash}, but cannot resolve its block number yet ({_syncPeerPool.InitializedPeersCount} peers available) [{_maxAttempts - _attemptsLeft}s]");
+                }
+            }
             return false;
         }
 
