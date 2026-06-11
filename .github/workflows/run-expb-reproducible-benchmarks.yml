@@ -603,6 +603,9 @@ jobs:
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
+          # Bench branch only: enable the stream interpreter in the client container
+          "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.NETHERMIND_EVM_STREAM = \"1\"" "${RENDERED_CONFIG_FILE}"
+
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
@@ -1668,6 +1671,9 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          # Bench branch only: enable the stream interpreter in the client container
+          "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.NETHERMIND_EVM_STREAM = \"1\"" "${RENDERED_CONFIG_FILE}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
