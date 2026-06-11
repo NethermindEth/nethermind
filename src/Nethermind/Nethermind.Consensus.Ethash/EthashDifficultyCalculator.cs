@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.Ethash
                 return BigInteger.Zero;
             }
             exponent -= 2;
-            int exp = exponent > 2000 ? 2000 : (int)exponent;
+            int exp = exponent > 256 ? 256 : (int)exponent;
             return BigInteger.Pow(2, exp);
         }
     }

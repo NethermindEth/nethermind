@@ -316,9 +316,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         () =>
                         {
                             SyncProgressResolver.FindBestHeader().Returns(MidWayToPivot.Number);
-                            SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(0);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0UL);
+                            SyncProgressResolver.FindBestFullState().Returns(0UL);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0UL);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "behind the pivot in fast sync";
