@@ -31,9 +31,6 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// </remarks>
 public static class EpochProcessing
 {
-    /// <summary>Electra <c>MAX_RANDOM_VALUE</c>: random values are 16-bit from this fork on.</summary>
-    private const ulong MaxRandomValue = (1 << 16) - 1;
-
     public static void ProcessEpoch(BeaconStateFulu state, EpochCache cache)
     {
         ProcessJustificationAndFinalization(state, cache);
@@ -74,9 +71,9 @@ public static class EpochProcessing
             Validator validator = validators[i];
             if (validator.Slashed)
                 continue;
-            if (validator.IsActiveValidator(previousEpoch) && HasFlag(previousParticipation[i], Presets.TimelyTargetFlagIndex))
+            if (validator.IsActiveValidator(previousEpoch) && BeaconStateAccessors.HasParticipationFlag(previousParticipation[i], Presets.TimelyTargetFlagIndex))
                 previousTargetBalance += validator.EffectiveBalance;
-            if (validator.IsActiveValidator(currentEpoch) && HasFlag(currentParticipation[i], Presets.TimelyTargetFlagIndex))
+            if (validator.IsActiveValidator(currentEpoch) && BeaconStateAccessors.HasParticipationFlag(currentParticipation[i], Presets.TimelyTargetFlagIndex))
                 currentTargetBalance += validator.EffectiveBalance;
         }
 
@@ -174,7 +171,7 @@ public static class EpochProcessing
 
         ulong previousEpoch = state.GetPreviousEpoch();
         ulong totalActiveBalance = state.GetTotalActiveBalance(cache);
-        ulong baseRewardPerIncrement = Presets.EffectiveBalanceIncrement * Presets.BaseRewardFactor / IntegerSquareRoot(totalActiveBalance);
+        ulong baseRewardPerIncrement = state.GetBaseRewardPerIncrement(cache);
         ulong activeIncrements = totalActiveBalance / Presets.EffectiveBalanceIncrement;
         bool isInInactivityLeak = IsInInactivityLeak(state);
 
@@ -242,7 +239,7 @@ public static class EpochProcessing
             }
             else if (validator.IsActiveValidator(currentEpoch) && validator.EffectiveBalance <= Presets.EjectionBalance)
             {
-                InitiateValidatorExitChecked(state, i, cache);
+                state.InitiateValidatorExit(i, cache);
             }
             else if (state.IsEligibleForActivation(validator))
             {
@@ -366,32 +363,9 @@ public static class EpochProcessing
         // Verify the deposit signature (proof of possession) which is not checked by the deposit contract.
         else if (DepositSignatureVerifier.IsValid(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
         {
-            AddValidatorToRegistry(state, deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, pubkeyToIndex);
+            pubkeyToIndex.TryAdd(deposit.Pubkey, state.Validators!.Length);
+            state.AddValidatorToRegistry(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount);
         }
-    }
-
-    /// <summary>Electra <c>add_validator_to_registry</c> + <c>get_validator_from_deposit</c>.</summary>
-    private static void AddValidatorToRegistry(BeaconStateFulu state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount, Dictionary<BlsPublicKey, int> pubkeyToIndex)
-    {
-        Validator validator = new()
-        {
-            Pubkey = pubkey,
-            WithdrawalCredentials = withdrawalCredentials,
-            EffectiveBalance = 0,
-            Slashed = false,
-            ActivationEligibilityEpoch = Presets.FarFutureEpoch,
-            ActivationEpoch = Presets.FarFutureEpoch,
-            ExitEpoch = Presets.FarFutureEpoch,
-            WithdrawableEpoch = Presets.FarFutureEpoch,
-        };
-        validator.EffectiveBalance = Math.Min(amount - amount % Presets.EffectiveBalanceIncrement, validator.GetMaxEffectiveBalance());
-
-        pubkeyToIndex.TryAdd(pubkey, state.Validators!.Length);
-        state.Validators = [.. state.Validators, validator];
-        state.Balances = [.. state.Balances!, amount];
-        state.PreviousEpochParticipation = [.. state.PreviousEpochParticipation ?? [], (byte)0];
-        state.CurrentEpochParticipation = [.. state.CurrentEpochParticipation ?? [], (byte)0];
-        state.InactivityScores = [.. state.InactivityScores ?? [], 0UL];
     }
 
     /// <summary>Electra <c>process_pending_consolidations</c> (EIP-7251): sweep consolidations whose source is withdrawable.</summary>
@@ -532,7 +506,7 @@ public static class EpochProcessing
             SHA256.HashData(preimage, randomBytes);
             ulong randomValue = BinaryPrimitives.ReadUInt16LittleEndian(randomBytes[(int)(i % 16 * 2)..]);
             ulong effectiveBalance = state.Validators![candidateIndex].EffectiveBalance;
-            if (effectiveBalance * MaxRandomValue >= Presets.MaxEffectiveBalanceElectra * randomValue)
+            if (effectiveBalance * BeaconStateAccessors.MaxRandomValue >= Presets.MaxEffectiveBalanceElectra * randomValue)
                 syncCommitteeIndices[count++] = candidateIndex;
             i++;
         }
@@ -549,53 +523,17 @@ public static class EpochProcessing
         lastEpochProposers.CopyTo(lookahead, lookahead.Length - slotsPerEpoch);
     }
 
-    /// <summary>
-    /// <see cref="BeaconStateMutators.InitiateValidatorExit"/> with overflow-checked
-    /// withdrawable-epoch arithmetic: the pyspec's <c>Epoch(...)</c> constructor rejects values
-    /// above 2^64 - 1, which the <c>invalid_large_withdrawable_epoch</c> spec test relies on.
-    /// </summary>
-    private static void InitiateValidatorExitChecked(BeaconStateFulu state, int index, EpochCache cache)
-    {
-        Validator validator = state.Validators![index];
-        if (validator.ExitEpoch != Presets.FarFutureEpoch)
-            return;
-
-        ulong exitQueueEpoch = state.ComputeExitEpochAndUpdateChurn(validator.EffectiveBalance, cache);
-
-        Validator updated = validator.Clone();
-        updated.ExitEpoch = exitQueueEpoch;
-        updated.WithdrawableEpoch = checked(exitQueueEpoch + Presets.MinValidatorWithdrawabilityDelay);
-        state.Validators[index] = updated;
-    }
-
     /// <summary>Phase0 <c>get_eligible_validator_indices</c> membership: validators that earn rewards/penalties for the previous epoch.</summary>
     private static bool IsEligibleValidator(Validator validator, ulong previousEpoch) =>
         validator.IsActiveValidator(previousEpoch) || (validator.Slashed && previousEpoch + 1 < validator.WithdrawableEpoch);
 
     /// <summary>Altair <c>get_unslashed_participating_indices</c> membership for one validator and flag.</summary>
     private static bool IsUnslashedParticipant(Validator validator, byte participation, int flagIndex, ulong epoch) =>
-        validator.IsActiveValidator(epoch) && !validator.Slashed && HasFlag(participation, flagIndex);
-
-    private static bool HasFlag(byte participation, int flagIndex) => (participation & (1 << flagIndex)) != 0;
+        validator.IsActiveValidator(epoch) && !validator.Slashed && BeaconStateAccessors.HasParticipationFlag(participation, flagIndex);
 
     /// <summary>Altair <c>is_in_inactivity_leak</c>: finality is more than <c>MIN_EPOCHS_TO_INACTIVITY_PENALTY</c> epochs behind.</summary>
     private static bool IsInInactivityLeak(BeaconStateFulu state) =>
         state.GetPreviousEpoch() - state.FinalizedCheckpoint!.Epoch > Presets.MinEpochsToInactivityPenalty;
-
-    /// <summary>Phase0 <c>integer_squareroot</c>.</summary>
-    private static ulong IntegerSquareRoot(ulong n)
-    {
-        if (n == ulong.MaxValue)
-            return uint.MaxValue; // The seed below would overflow; the root of 2^64 - 1 is known.
-        ulong x = n;
-        ulong y = (x + 1) / 2;
-        while (y < x)
-        {
-            x = y;
-            y = (x + n / x) / 2;
-        }
-        return x;
-    }
 
     /// <summary>Computes <c>hash_tree_root</c> of a <c>Vector[Root, SLOTS_PER_HISTORICAL_ROOT]</c>.</summary>
     private static Hash256 HashTreeRootOfRoots(Hash256[] roots)

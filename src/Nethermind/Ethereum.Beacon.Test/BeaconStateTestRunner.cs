@@ -5,6 +5,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -81,6 +84,45 @@ public static class BeaconStateTestRunner
         {
             Assert.That(() => transition(pre), Throws.Exception, "the transition must fail: the test case has no post state");
         }
+    }
+
+    /// <summary>
+    /// Runs a block-sequence case (sanity/blocks, finality, random): applies the case's
+    /// <c>blocks_{i}.ssz_snappy</c> signed blocks to the pre-state through
+    /// <see cref="StateTransition.Apply"/>, honoring the meta's <c>blocks_count</c> and
+    /// <c>bls_setting</c> (2 disables signature verification).
+    /// </summary>
+    /// <remarks>
+    /// The fixtures carry no <c>execution.yaml</c>, so the execution layer always accepts the
+    /// payloads. The fixtures' epochs predate any BPO fork, so the Electra blob limit applies
+    /// through <see cref="BeaconChainSpec.Mainnet"/>'s schedule fallback.
+    /// </remarks>
+    public static void RunBlocksTest(string casePath)
+    {
+        Dictionary<string, string> meta = ReadMeta(casePath);
+        int blocksCount = int.Parse(meta["blocks_count"]);
+        bool verifySignatures = !(meta.TryGetValue("bls_setting", out string? blsSetting) && blsSetting == "2");
+
+        RunStateTest(casePath, state =>
+        {
+            EpochCache cache = new();
+            PubkeyCache pubkeys = new();
+            pubkeys.Build(state.Validators!);
+            for (int i = 0; i < blocksCount; i++)
+            {
+                SignedBeaconBlock.Decode(BeaconConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, $"blocks_{i}.ssz_snappy")), out SignedBeaconBlock block);
+                StateTransition.Apply(state, block, cache, pubkeys, new StubPayloadNotifier(true), BeaconChainSpec.Mainnet, verifySignatures: verifySignatures);
+                // Deposits can grow the registry mid-sequence; later blocks may reference the new keys.
+                if (state.Validators!.Length > pubkeys.Count)
+                    pubkeys.Extend(state.Validators, pubkeys.Count);
+            }
+        });
+    }
+
+    /// <summary>An execution layer stub reporting every payload as <paramref name="valid"/>.</summary>
+    public sealed class StubPayloadNotifier(bool valid) : INewPayloadNotifier
+    {
+        public bool NotifyNewPayload(BeaconBlockBody body) => valid;
     }
 
     /// <summary>

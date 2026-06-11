@@ -65,7 +65,7 @@ public class OperationsTests
     {
         bool executionValid = ReadExecutionValid(casePath);
         RunOperation<BeaconBlockBody>(casePath, "body.ssz_snappy", (state, body, _) =>
-            BlockProcessing.ProcessExecutionPayload(state, body, new StubPayloadNotifier(executionValid), MaxBlobsPerBlock));
+            BlockProcessing.ProcessExecutionPayload(state, body, new BeaconStateTestRunner.StubPayloadNotifier(executionValid), MaxBlobsPerBlock));
     }
 
     [TestCaseSource(nameof(Cases), new object[] { "proposer_slashing" })]
@@ -135,10 +135,5 @@ public class OperationsTests
             pubkeys.Build(state.Validators!);
             return pubkeys;
         }
-    }
-
-    private sealed class StubPayloadNotifier(bool valid) : INewPayloadNotifier
-    {
-        public bool NotifyNewPayload(BeaconBlockBody body) => valid;
     }
 }

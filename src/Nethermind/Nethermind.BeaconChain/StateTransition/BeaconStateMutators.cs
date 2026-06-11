@@ -4,6 +4,7 @@
 using System;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -94,6 +95,7 @@ public static class BeaconStateMutators
     /// Initiates the exit of validator <paramref name="index"/> through the EIP-7251
     /// balance-weighted exit queue. No-op if an exit was already initiated.
     /// </summary>
+    /// <exception cref="BeaconStateException">The withdrawable epoch overflows uint64.</exception>
     public static void InitiateValidatorExit(this BeaconStateFulu state, int index, EpochCache cache)
     {
         Validator validator = state.Validators![index];
@@ -104,8 +106,49 @@ public static class BeaconStateMutators
 
         Validator updated = validator.Clone();
         updated.ExitEpoch = exitQueueEpoch;
-        updated.WithdrawableEpoch = exitQueueEpoch + Presets.MinValidatorWithdrawabilityDelay;
+        updated.WithdrawableEpoch = CheckedEpochSum(exitQueueEpoch, Presets.MinValidatorWithdrawabilityDelay);
         state.Validators[index] = updated;
+    }
+
+    /// <summary>
+    /// Epoch addition that rejects uint64 overflow like the pyspec's <c>Epoch(...)</c> constructor
+    /// (the <c>invalid_large_withdrawable_epoch</c> spec test relies on this).
+    /// </summary>
+    private static ulong CheckedEpochSum(ulong epoch, ulong delta) =>
+        epoch <= Presets.FarFutureEpoch - delta
+            ? epoch + delta
+            : throw new BeaconStateException($"Epoch {epoch} + {delta} overflows uint64");
+
+    /// <summary>
+    /// Spec <c>add_validator_to_registry</c> (Electra): appends a deposit-derived validator and its
+    /// per-validator list entries to the state.
+    /// </summary>
+    public static void AddValidatorToRegistry(this BeaconStateFulu state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount)
+    {
+        state.Validators = [.. state.Validators!, GetValidatorFromDeposit(pubkey, withdrawalCredentials, amount)];
+        state.Balances = [.. state.Balances!, amount];
+        state.PreviousEpochParticipation = [.. state.PreviousEpochParticipation!, 0];
+        state.CurrentEpochParticipation = [.. state.CurrentEpochParticipation!, 0];
+        state.InactivityScores = [.. state.InactivityScores!, 0UL];
+    }
+
+    /// <summary>Spec <c>get_validator_from_deposit</c> (Electra).</summary>
+    private static Validator GetValidatorFromDeposit(BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount)
+    {
+        Validator validator = new()
+        {
+            Pubkey = pubkey,
+            WithdrawalCredentials = withdrawalCredentials,
+            EffectiveBalance = 0,
+            Slashed = false,
+            ActivationEligibilityEpoch = Presets.FarFutureEpoch,
+            ActivationEpoch = Presets.FarFutureEpoch,
+            ExitEpoch = Presets.FarFutureEpoch,
+            WithdrawableEpoch = Presets.FarFutureEpoch,
+        };
+        // [Modified in Electra:EIP7251] The cap depends on the credential type.
+        validator.EffectiveBalance = Math.Min(amount - amount % Presets.EffectiveBalanceIncrement, validator.GetMaxEffectiveBalance());
+        return validator;
     }
 
     /// <summary>
@@ -120,7 +163,7 @@ public static class BeaconStateMutators
 
         Validator validator = state.Validators![slashedIndex].Clone();
         validator.Slashed = true;
-        validator.WithdrawableEpoch = Math.Max(validator.WithdrawableEpoch, epoch + Presets.EpochsPerSlashingsVector);
+        validator.WithdrawableEpoch = Math.Max(validator.WithdrawableEpoch, CheckedEpochSum(epoch, Presets.EpochsPerSlashingsVector));
         state.Validators[slashedIndex] = validator;
 
         state.Slashings![(int)(epoch % Presets.EpochsPerSlashingsVector)] += validator.EffectiveBalance;

@@ -9,8 +9,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.Serialization.Ssz;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.BeaconChain.Crypto;
@@ -28,9 +26,6 @@ namespace Nethermind.BeaconChain.Crypto;
 /// </remarks>
 public static class SignatureSets
 {
-    /// <summary>EIP-7044: voluntary exits are perpetually signed over the Capella fork domain.</summary>
-    private static readonly byte[] CapellaForkVersion = [0x03, 0x00, 0x00, 0x00];
-
     /// <summary>Compressed BLS G2 point at infinity — the spec's "empty" signature placeholder.</summary>
     internal static readonly byte[] G2PointAtInfinity = CreateG2PointAtInfinity();
 
@@ -56,7 +51,7 @@ public static class SignatureSets
         }
 
         Hash256 domain = state.GetDomain(DomainType.BeaconAttester, attestation.Data!.Target!.Epoch);
-        Hash256 signingRoot = Domains.ComputeSigningRoot(HashTreeRoot(attestation.Data), domain);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(attestation.Data), domain);
         return VerifyAggregate(aggregate, attestation.Signature, signingRoot);
     }
 
@@ -68,7 +63,7 @@ public static class SignatureSets
     public static bool VerifyProposerSignature(BeaconStateFulu state, BeaconBlock block, BlsSignature signature, PubkeyCache pubkeys)
     {
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
-        Hash256 signingRoot = Domains.ComputeSigningRoot(HashTreeRoot(block), domain);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block), domain);
         return Verify(pubkeys.GetPublicKey((int)block.ProposerIndex), signature, signingRoot);
     }
 
@@ -77,7 +72,7 @@ public static class SignatureSets
     {
         BeaconBlockHeader header = signedHeader.Message!;
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(header.Slot));
-        Hash256 signingRoot = Domains.ComputeSigningRoot(HashTreeRoot(header), domain);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
         return Verify(pubkeys.GetPublicKey((int)header.ProposerIndex), signedHeader.Signature, signingRoot);
     }
 
@@ -97,8 +92,8 @@ public static class SignatureSets
     public static bool VerifyVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, PubkeyCache pubkeys)
     {
         VoluntaryExit exit = signedExit.Message!;
-        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, CapellaForkVersion, state.GenesisValidatorsRoot!);
-        Hash256 signingRoot = Domains.ComputeSigningRoot(HashTreeRoot(exit), domain);
+        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Presets.CapellaForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
         return Verify(pubkeys.GetPublicKey((int)exit.ValidatorIndex), signedExit.Signature, signingRoot);
     }
 
@@ -111,7 +106,7 @@ public static class SignatureSets
     {
         BlsToExecutionChange change = signedChange.Message!;
         Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, Presets.GenesisForkVersion, state.GenesisValidatorsRoot!);
-        Hash256 signingRoot = Domains.ComputeSigningRoot(HashTreeRoot(change), domain);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
         return pubkey.TryDecode(change.FromBlsPubkey.Bytes, out _) && Verify(pubkey, signedChange.Signature, signingRoot);
@@ -160,11 +155,5 @@ public static class SignatureSets
         Bls.P2 point = new(stackalloc long[Bls.P2.Sz]);
         return point.TryDecode(signature.Bytes, out _)
             && BlsSigner.VerifyAggregate(publicKey, new BlsSigner.Signature(point), signingRoot.Bytes);
-    }
-
-    private static Hash256 HashTreeRoot<T>(T value) where T : class, ISszCodec<T>
-    {
-        T.Merkleize(value, out UInt256 root);
-        return new Hash256(root.ToLittleEndian());
     }
 }

@@ -29,6 +29,10 @@ public static class Presets
     public const ulong MaxEffectiveBalance = 32_000_000_000;
     public const ulong EffectiveBalanceIncrement = 1_000_000_000;
 
+    // Phase0 — max operations per block
+    /// <summary><c>MAX_DEPOSITS</c> (the Eth1 deposits list limit, distinct from EIP-6110 deposit requests).</summary>
+    public const ulong MaxDeposits = 16;
+
     // Phase0 — time parameters
     public const ulong GenesisSlot = 0;
     public const ulong GenesisEpoch = 0;
@@ -79,6 +83,12 @@ public static class Presets
     public const ulong MinSlashingPenaltyQuotientElectra = 4096;
     public const ulong WhistleblowerRewardQuotientElectra = 4096;
 
+    // Electra — state list lengths
+    /// <summary>The SSZ list limit of <c>pending_partial_withdrawals</c>.</summary>
+    public const int PendingPartialWithdrawalsLimit = 134_217_728;
+    /// <summary>The SSZ list limit of <c>pending_consolidations</c>.</summary>
+    public const int PendingConsolidationsLimit = 262_144;
+
     // Electra — withdrawals and deposits processing
     public const int MaxPendingPartialsPerWithdrawalsSweep = 8;
     public const int MaxPendingDepositsPerEpoch = 16;
@@ -97,6 +107,7 @@ public static class Presets
     public const ulong MaxPerEpochActivationExitChurnLimit = 256_000_000_000;
 
     // Config — time parameters
+    public const ulong SecondsPerSlot = 12;
     public const ulong MinValidatorWithdrawabilityDelay = 256;
     public const ulong ShardCommitteePeriod = 256;
 
@@ -111,4 +122,6 @@ public static class Presets
     public const byte EthWithdrawalPrefix = 0x01;
     public const byte CompoundingWithdrawalPrefix = 0x02;
     public static readonly byte[] GenesisForkVersion = [0x00, 0x00, 0x00, 0x00];
+    /// <summary>EIP-7044: voluntary exits are perpetually signed over the Capella fork domain.</summary>
+    public static readonly byte[] CapellaForkVersion = [0x03, 0x00, 0x00, 0x00];
 }

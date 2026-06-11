@@ -25,7 +25,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 public static class BeaconStateAccessors
 {
     /// <summary>Electra <c>MAX_RANDOM_VALUE</c>: random values are 16-bit from this fork on.</summary>
-    private const ulong MaxRandomValue = (1 << 16) - 1;
+    internal const ulong MaxRandomValue = (1 << 16) - 1;
 
     public static ulong ComputeEpochAtSlot(ulong slot) => slot / Presets.SlotsPerEpoch;
 
@@ -160,6 +160,33 @@ public static class BeaconStateAccessors
     /// <summary>Returns the total effective balance of active validators, memoized per epoch in <paramref name="cache"/>.</summary>
     public static ulong GetTotalActiveBalance(this BeaconStateFulu state, EpochCache cache) =>
         cache.GetTotalActiveBalance(state);
+
+    /// <summary>Spec <c>get_base_reward_per_increment</c> (Altair).</summary>
+    public static ulong GetBaseRewardPerIncrement(this BeaconStateFulu state, EpochCache cache) =>
+        Presets.EffectiveBalanceIncrement * Presets.BaseRewardFactor / IntegerSquareRoot(state.GetTotalActiveBalance(cache));
+
+    /// <summary>Spec <c>get_base_reward</c> (Altair).</summary>
+    public static ulong GetBaseReward(this BeaconStateFulu state, int index, EpochCache cache) =>
+        state.Validators![index].EffectiveBalance / Presets.EffectiveBalanceIncrement * state.GetBaseRewardPerIncrement(cache);
+
+    /// <summary>Spec <c>integer_squareroot</c> (with the Deneb special case for <c>2^64 - 1</c>).</summary>
+    public static ulong IntegerSquareRoot(ulong n)
+    {
+        if (n == ulong.MaxValue)
+            return uint.MaxValue; // The Newton step below would overflow; the root of 2^64 - 1 is known.
+        ulong x = n;
+        ulong y = (x + 1) / 2;
+        while (y < x)
+        {
+            x = y;
+            y = (x + n / x) / 2;
+        }
+        return x;
+    }
+
+    /// <summary>Spec <c>has_flag</c>: whether a participation byte has the given flag index set.</summary>
+    public static bool HasParticipationFlag(byte participation, int flagIndex) =>
+        (participation & (1 << flagIndex)) != 0;
 
     /// <summary>Returns the pre-Electra validator-count churn limit (spec <c>get_validator_churn_limit</c>).</summary>
     /// <remarks>Not used by the Electra transition itself; superseded by <see cref="GetBalanceChurnLimit"/>.</remarks>

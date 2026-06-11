@@ -12,7 +12,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Serialization.Ssz;
 using Transaction = Nethermind.BeaconChain.Types.Transaction;
 using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
 
@@ -42,18 +41,6 @@ public interface INewPayloadNotifier
 /// </remarks>
 public static class BlockProcessing
 {
-    /// <summary>Phase0 <c>MAX_DEPOSITS</c> (the Eth1 deposits list limit, distinct from EIP-6110 deposit requests).</summary>
-    private const ulong MaxDeposits = 16;
-
-    /// <summary>Electra <c>PENDING_PARTIAL_WITHDRAWALS_LIMIT</c> (the SSZ list limit of <c>pending_partial_withdrawals</c>).</summary>
-    private const int PendingPartialWithdrawalsLimit = 134_217_728;
-
-    /// <summary>Electra <c>PENDING_CONSOLIDATIONS_LIMIT</c> (the SSZ list limit of <c>pending_consolidations</c>).</summary>
-    private const int PendingConsolidationsLimit = 262_144;
-
-    /// <summary>Config <c>SECONDS_PER_SLOT</c> (mainnet).</summary>
-    private const ulong SecondsPerSlot = 12;
-
     /// <summary>
     /// Spec <c>process_block</c>. The outer block (proposer) signature is not part of
     /// <c>process_block</c>; verify it separately with
@@ -81,7 +68,7 @@ public static class BlockProcessing
             throw new BeaconStateException($"Block slot {block.Slot} is not newer than latest header slot {state.LatestBlockHeader.Slot}");
         if (block.ProposerIndex != state.GetBeaconProposerIndex())
             throw new BeaconStateException($"Block proposer {block.ProposerIndex} does not match expected proposer {state.GetBeaconProposerIndex()}");
-        if (block.ParentRoot != HashTreeRoot(state.LatestBlockHeader))
+        if (block.ParentRoot != SszRoots.HashTreeRoot(state.LatestBlockHeader))
             throw new BeaconStateException($"Block parent root {block.ParentRoot} does not match latest header root");
 
         state.LatestBlockHeader = new BeaconBlockHeader
@@ -90,7 +77,7 @@ public static class BlockProcessing
             ProposerIndex = block.ProposerIndex,
             ParentRoot = block.ParentRoot,
             StateRoot = Hash256.Zero, // Overwritten by the next process_slot.
-            BodyRoot = HashTreeRoot(block.Body!),
+            BodyRoot = SszRoots.HashTreeRoot(block.Body!),
         };
 
         if (state.Validators![(int)block.ProposerIndex].Slashed)
@@ -262,7 +249,7 @@ public static class BlockProcessing
     }
 
     private static ulong ComputeTimeAtSlot(BeaconStateFulu state, ulong slot) =>
-        state.GenesisTime + (slot - Presets.GenesisSlot) * SecondsPerSlot;
+        state.GenesisTime + (slot - Presets.GenesisSlot) * Presets.SecondsPerSlot;
 
     /// <summary>Spec <c>process_randao</c>: verifies the proposer's reveal and mixes it into the current randao mix.</summary>
     public static void ProcessRandao(BeaconStateFulu state, BeaconBlockBody body, PubkeyCache pubkeys, bool verifySignature = true)
@@ -308,7 +295,7 @@ public static class BlockProcessing
         // pre-request deposits are processed.
         ulong eth1DepositIndexLimit = Math.Min(state.Eth1Data!.DepositCount, state.DepositRequestsStartIndex);
         ulong expectedDeposits = state.Eth1DepositIndex < eth1DepositIndexLimit
-            ? Math.Min(MaxDeposits, eth1DepositIndexLimit - state.Eth1DepositIndex)
+            ? Math.Min(Presets.MaxDeposits, eth1DepositIndexLimit - state.Eth1DepositIndex)
             : 0;
         if ((ulong)(body.Deposits?.Length ?? 0) != expectedDeposits)
             throw new BeaconStateException($"Block has {body.Deposits?.Length ?? 0} deposits, expected {expectedDeposits}");
@@ -481,7 +468,7 @@ public static class BlockProcessing
                 if ((participationFlags & flag) != 0 && (epochParticipation[index] & flag) == 0)
                 {
                     epochParticipation[index] |= flag;
-                    proposerRewardNumerator += GetBaseReward(state, (int)index, cache) * Presets.ParticipationFlagWeights[flagIndex];
+                    proposerRewardNumerator += state.GetBaseReward((int)index, cache) * Presets.ParticipationFlagWeights[flagIndex];
                 }
             }
         }
@@ -507,7 +494,7 @@ public static class BlockProcessing
         bool isMatchingHead = isMatchingTarget && data.BeaconBlockRoot == state.GetBlockRootAtSlot(data.Slot);
 
         byte flags = 0;
-        if (inclusionDelay <= IntegerSquareRoot(Presets.SlotsPerEpoch))
+        if (inclusionDelay <= BeaconStateAccessors.IntegerSquareRoot(Presets.SlotsPerEpoch))
             flags |= 1 << Presets.TimelySourceFlagIndex;
         if (isMatchingTarget)
             flags |= 1 << Presets.TimelyTargetFlagIndex;
@@ -521,7 +508,7 @@ public static class BlockProcessing
     {
         DepositData data = deposit.Data!;
         // The +1 accounts for the SSZ list-length mix-in of the deposit tree.
-        if (!IsValidMerkleBranch(HashTreeRoot(data), deposit.Proof!, Presets.DepositContractTreeDepth + 1, state.Eth1DepositIndex, state.Eth1Data!.DepositRoot!))
+        if (!IsValidMerkleBranch(SszRoots.HashTreeRoot(data), deposit.Proof!, Presets.DepositContractTreeDepth + 1, state.Eth1DepositIndex, state.Eth1Data!.DepositRoot!))
             throw new BeaconStateException($"Invalid Merkle proof for deposit {state.Eth1DepositIndex}");
 
         // Deposits must be processed in order.
@@ -564,7 +551,7 @@ public static class BlockProcessing
         {
             if (!DepositSignatureVerifier.IsValid(pubkey, withdrawalCredentials, amount, signature))
                 return;
-            AddValidatorToRegistry(state, pubkey, withdrawalCredentials, 0);
+            state.AddValidatorToRegistry(pubkey, withdrawalCredentials, 0);
         }
 
         state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
@@ -576,35 +563,6 @@ public static class BlockProcessing
             // GENESIS_SLOT distinguishes Eth1-path deposits from pending deposit requests.
             Slot = Presets.GenesisSlot,
         }];
-    }
-
-    /// <summary>Spec <c>add_validator_to_registry</c> (Electra).</summary>
-    private static void AddValidatorToRegistry(BeaconStateFulu state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount)
-    {
-        state.Validators = [.. state.Validators!, GetValidatorFromDeposit(pubkey, withdrawalCredentials, amount)];
-        state.Balances = [.. state.Balances!, amount];
-        state.PreviousEpochParticipation = [.. state.PreviousEpochParticipation!, 0];
-        state.CurrentEpochParticipation = [.. state.CurrentEpochParticipation!, 0];
-        state.InactivityScores = [.. state.InactivityScores!, 0UL];
-    }
-
-    /// <summary>Spec <c>get_validator_from_deposit</c> (Electra).</summary>
-    private static Validator GetValidatorFromDeposit(BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount)
-    {
-        Validator validator = new()
-        {
-            Pubkey = pubkey,
-            WithdrawalCredentials = withdrawalCredentials,
-            EffectiveBalance = 0,
-            Slashed = false,
-            ActivationEligibilityEpoch = Presets.FarFutureEpoch,
-            ActivationEpoch = Presets.FarFutureEpoch,
-            ExitEpoch = Presets.FarFutureEpoch,
-            WithdrawableEpoch = Presets.FarFutureEpoch,
-        };
-        // [Modified in Electra:EIP7251] The cap depends on the credential type.
-        validator.EffectiveBalance = Math.Min(amount - amount % Presets.EffectiveBalanceIncrement, validator.GetMaxEffectiveBalance());
-        return validator;
     }
 
     /// <summary>Spec <c>process_voluntary_exit</c> (Electra).</summary>
@@ -682,7 +640,7 @@ public static class BlockProcessing
         bool isFullExitRequest = request.Amount == Presets.FullExitRequestAmount;
 
         // When the partial withdrawal queue is full, only full exits are processed.
-        if (state.PendingPartialWithdrawals!.Length == PendingPartialWithdrawalsLimit && !isFullExitRequest)
+        if (state.PendingPartialWithdrawals!.Length == Presets.PendingPartialWithdrawalsLimit && !isFullExitRequest)
             return;
 
         if (FindValidatorIndex(state, request.ValidatorPubkey) is not int index)
@@ -743,7 +701,7 @@ public static class BlockProcessing
         // A consolidation with source == target cannot be used as an exit.
         if (request.SourcePubkey == request.TargetPubkey)
             return;
-        if (state.PendingConsolidations!.Length == PendingConsolidationsLimit)
+        if (state.PendingConsolidations!.Length == Presets.PendingConsolidationsLimit)
             return;
         if (state.GetConsolidationChurnLimit(cache) <= Presets.MinActivationBalance)
             return;
@@ -844,7 +802,7 @@ public static class BlockProcessing
             throw new BeaconStateException("Invalid sync aggregate signature");
 
         ulong totalActiveIncrements = state.GetTotalActiveBalance(cache) / Presets.EffectiveBalanceIncrement;
-        ulong totalBaseRewards = GetBaseRewardPerIncrement(state, cache) * totalActiveIncrements;
+        ulong totalBaseRewards = state.GetBaseRewardPerIncrement(cache) * totalActiveIncrements;
         ulong maxParticipantRewards = totalBaseRewards * Presets.SyncRewardWeight / Presets.WeightDenominator / Presets.SlotsPerEpoch;
         ulong participantReward = maxParticipantRewards / Presets.SyncCommitteeSize;
         ulong proposerReward = participantReward * Presets.ProposerWeight / (Presets.WeightDenominator - Presets.ProposerWeight);
@@ -874,27 +832,6 @@ public static class BlockProcessing
         }
     }
 
-    /// <summary>Spec <c>get_base_reward_per_increment</c> (Altair).</summary>
-    private static ulong GetBaseRewardPerIncrement(BeaconStateFulu state, EpochCache cache) =>
-        Presets.EffectiveBalanceIncrement * Presets.BaseRewardFactor / IntegerSquareRoot(state.GetTotalActiveBalance(cache));
-
-    /// <summary>Spec <c>get_base_reward</c> (Altair).</summary>
-    private static ulong GetBaseReward(BeaconStateFulu state, int index, EpochCache cache) =>
-        state.Validators![index].EffectiveBalance / Presets.EffectiveBalanceIncrement * GetBaseRewardPerIncrement(state, cache);
-
-    /// <summary>Spec <c>integer_squareroot</c>.</summary>
-    private static ulong IntegerSquareRoot(ulong n)
-    {
-        ulong x = n;
-        ulong y = (x + 1) / 2;
-        while (y < x)
-        {
-            x = y;
-            y = (n / x + x) / 2;
-        }
-        return x;
-    }
-
     /// <summary>Returns the index of the validator with <paramref name="pubkey"/>, or null when unregistered.</summary>
     private static int? FindValidatorIndex(BeaconStateFulu state, BlsPublicKey pubkey)
     {
@@ -905,11 +842,5 @@ public static class BlockProcessing
                 return i;
         }
         return null;
-    }
-
-    private static Hash256 HashTreeRoot<T>(T value) where T : class, ISszCodec<T>
-    {
-        T.Merkleize(value, out UInt256 root);
-        return new Hash256(root.ToLittleEndian());
     }
 }
