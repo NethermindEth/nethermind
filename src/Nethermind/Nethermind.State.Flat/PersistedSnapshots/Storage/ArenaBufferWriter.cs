@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -9,9 +9,16 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// <summary>
 /// Arena-backed <see cref="IByteBufferWriter"/> with a 1 MiB write-buffer.
 ///
-/// Writes are buffered into a pooled byte array and flushed to the underlying
+/// Writes are buffered into a native-memory buffer and flushed to the underlying
 /// <see cref="Stream"/> in 1 MiB chunks.
 /// </summary>
+/// <remarks>
+/// The buffer is a <see cref="NativeMemoryList{T}"/> held at <c>Count == Capacity</c>,
+/// so <see cref="NativeMemoryList{T}.AsSpan"/> exposes the whole backing buffer and the
+/// writer slices the free tail with its own <c>_buffered</c> cursor. A hint larger than
+/// the current buffer grows it by reconstruction (after a flush), mirroring the previous
+/// rent-a-bigger-buffer behavior.
+/// </remarks>
 public struct ArenaBufferWriter(Stream stream, long firstOffset)
     : IByteBufferWriter, IDisposable
 {
@@ -20,7 +27,7 @@ public struct ArenaBufferWriter(Stream stream, long firstOffset)
 
     private readonly Stream _stream = stream;
     private readonly long _firstOffset = firstOffset;
-    private byte[] _buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+    private NativeMemoryList<byte> _buffer = new(BufferSize, BufferSize);
     private int _buffered;
     private long _flushed;
 
@@ -28,19 +35,19 @@ public struct ArenaBufferWriter(Stream stream, long firstOffset)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(sizeHint, MaxSizeHint);
 
-        if (sizeHint > _buffer.Length - _buffered)
+        if (sizeHint > _buffer.Count - _buffered)
         {
             Flush();
             // Honor the hint exactly: after the flush the buffer is empty and its
-            // bytes are on the stream, so it can be swapped for a larger rented one.
-            if (sizeHint > _buffer.Length)
+            // bytes are on the stream, so it can be swapped for a larger one.
+            if (sizeHint > _buffer.Count)
             {
-                ArrayPool<byte>.Shared.Return(_buffer);
-                _buffer = ArrayPool<byte>.Shared.Rent(sizeHint);
+                _buffer.Dispose();
+                _buffer = new(sizeHint, sizeHint);
             }
         }
 
-        return _buffer.AsSpan(_buffered);
+        return _buffer.AsSpan()[_buffered..];
     }
 
     public void Advance(int count) => _buffered += count;
@@ -53,7 +60,7 @@ public struct ArenaBufferWriter(Stream stream, long firstOffset)
     {
         if (_buffered > 0)
         {
-            _stream.Write(_buffer, 0, _buffered);
+            _stream.Write(_buffer.AsSpan()[.._buffered]);
             _flushed += _buffered;
             _buffered = 0;
         }
@@ -64,8 +71,6 @@ public struct ArenaBufferWriter(Stream stream, long firstOffset)
     {
         Flush();
         _stream.Dispose();
-        byte[] buffer = _buffer;
-        _buffer = null!;
-        if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
+        _buffer.Dispose();
     }
 }
