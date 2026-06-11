@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.Test.Hsst;
 [TestFixture]
 public class HsstTests
 {
-    // ----- Helpers wrapping HsstReader/HsstRefEnumerator so the original test
+    // ----- Helpers wrapping HsstReader/HsstEnumerator so the original test
     //       bodies stay close to their pre-migration shape.
 
     /// <summary>Exact-match lookup. Returns false when <paramref name="key"/> isn't present.</summary>
@@ -33,12 +33,12 @@ public class HsstTests
     {
         List<(byte[] Key, byte[] Value)> entries = [];
         SpanByteReader reader = new(data);
-        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
         Span<byte> keyBuf = stackalloc byte[256];
-        while (e.MoveNext())
+        while (e.MoveNext(in reader))
         {
-            byte[] k = e.CopyCurrentLogicalKey(keyBuf).ToArray();
-            Bound vb = e.CurrentValueBound;
+            byte[] k = e.CopyCurrentLogicalKey(in reader, keyBuf).ToArray();
+            Bound vb = e.CurrentValue;
             byte[] v = data.Slice((int)vb.Offset, (int)vb.Length).ToArray();
             entries.Add((k, v));
         }
@@ -202,7 +202,7 @@ public class HsstTests
             }
         });
 
-        // Enumerate via HsstRefEnumerator and verify count, ordering, and per-entry value bytes.
+        // Enumerate via HsstEnumerator and verify count, ordering, and per-entry value bytes.
         List<(byte[] Key, byte[] Value)> actual = Materialize(data);
         Assert.That(actual.Count, Is.EqualTo(count));
 

@@ -112,7 +112,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     public ref struct PerAddressEnumerator : IDisposable
     {
         private readonly WholeReadSessionReader _reader;
-        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
+        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         // _curAddress is materialised once per outer row from the 20-byte outer key and
         // reused across every sub-tag access and yielded SlotEntry. Per-row cost: one
         // Address object plus its backing 20-byte array.
@@ -126,26 +126,26 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _reader = reader;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out Bound matched) ? matched : default;
-            _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
+            _addrEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
         public bool MoveNext()
         {
             Span<byte> addrBuf = stackalloc byte[PersistedSnapshotTags.AddressKeyLength];
             Span<Bound> sub = stackalloc Bound[PersistedSnapshotTags.PerAddrSubTagCount];
-            while (_addrEnum.MoveNext())
+            while (_addrEnum.MoveNext(in _reader))
             {
-                Bound addrEntry = _addrEnum.CurrentValueBound;
+                Bound addrInner = _addrEnum.CurrentValue;
                 sub.Clear();
                 HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
-                    in _reader, addrEntry, sub);
+                    in _reader, addrInner, sub);
                 Bound slot = sub[PersistedSnapshotTags.SlotSubTagByte];
                 Bound account = sub[PersistedSnapshotTags.AccountSubTagByte];
                 Bound sd = sub[PersistedSnapshotTags.SelfDestructSubTagByte];
                 // Defensive: skip rows where every sub-tag is gap-filled.
                 if (slot.Length == 0 && account.Length == 0 && sd.Length == 0)
                     continue;
-                ReadOnlySpan<byte> addrKey = _addrEnum.CopyCurrentLogicalKey(addrBuf);
+                ReadOnlySpan<byte> addrKey = _addrEnum.CopyCurrentLogicalKey(in _reader, addrBuf);
                 _curAddress = new Address(addrKey);
                 _slotBound = slot;
                 _accountBound = account;
@@ -209,8 +209,8 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     public ref struct SlotEnumerator : IDisposable
     {
         private readonly WholeReadSessionReader _reader;
-        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _prefixEnum;
-        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _suffixEnum;
+        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _prefixEnum;
+        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _suffixEnum;
         private byte _level; // 0=need prefix MoveNext, 1=have prefix, 2=have suffixEnum
         private readonly byte[] _curPrefix;
         private int _curPrefixLen;
@@ -225,7 +225,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _curSuffix = new byte[SlotSuffixLength];
             // Empty slotBound (no slots for this address) → empty enumeration.
             _prefixEnum = slotBound.Length > 0
-                ? new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, slotBound)
+                ? new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, slotBound)
                 : default;
             _level = (byte)(slotBound.Length > 0 ? 1 : 0);
         }
@@ -236,10 +236,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             {
                 if (_level >= 2)
                 {
-                    if (_suffixEnum.MoveNext())
+                    if (_suffixEnum.MoveNext(in _reader))
                     {
-                        _curSuffixLen = _suffixEnum.CopyCurrentLogicalKey(_curSuffix).Length;
-                        _curSuffixValue = _suffixEnum.CurrentValueBound;
+                        _curSuffixLen = _suffixEnum.CopyCurrentLogicalKey(in _reader, _curSuffix).Length;
+                        _curSuffixValue = _suffixEnum.CurrentValue;
                         return true;
                     }
                     _suffixEnum.Dispose();
@@ -248,13 +248,13 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 }
                 if (_level == 1)
                 {
-                    if (_prefixEnum.MoveNext())
+                    if (_prefixEnum.MoveNext(in _reader))
                     {
-                        _curPrefixLen = _prefixEnum.CopyCurrentLogicalKey(_curPrefix).Length;
+                        _curPrefixLen = _prefixEnum.CopyCurrentLogicalKey(in _reader, _curPrefix).Length;
                         // The prefix entry's value is a keys-first TwoByteSlotValue / -Large
                         // sub-slot blob — front-dispatch on byte 0, no tail read.
-                        _suffixEnum = HsstRefEnumerator<WholeReadSessionReader, NoOpPin>.CreateTwoByteSlot(
-                            in _reader, _prefixEnum.CurrentValueBound);
+                        _suffixEnum = HsstEnumerator<WholeReadSessionReader, NoOpPin>.CreateTwoByteSlot(
+                            in _reader, _prefixEnum.CurrentValue);
                         _level = 2;
                         continue;
                     }
@@ -305,7 +305,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     {
         private readonly PersistedSnapshot _snapshot;
         private readonly WholeReadSessionReader _reader;
-        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _inner;
+        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _inner;
         private byte _stage; // 0=TopNodes, 1=CompactNodes, 2=Fallback, 3=done
         // State-trie path key in logical form. Stage 1 (compact, keySize=8) is auto
         // LE-stored at the source; CopyCurrentLogicalKey un-reverses it. 33 covers the
@@ -323,21 +323,21 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _inner = OpenColumn(in _reader, PersistedSnapshotTags.StateTopNodesTag);
         }
 
-        private static HsstRefEnumerator<WholeReadSessionReader, NoOpPin> OpenColumn(scoped in WholeReadSessionReader reader, byte[] tag)
+        private static HsstEnumerator<WholeReadSessionReader, NoOpPin> OpenColumn(scoped in WholeReadSessionReader reader, byte[] tag)
         {
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader);
             Bound b = r.TrySeek(tag, out Bound matched) ? matched : default;
-            return new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
+            return new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
         }
 
         public bool MoveNext()
         {
             while (_stage < 3)
             {
-                if (_inner.MoveNext())
+                if (_inner.MoveNext(in _reader))
                 {
-                    _curKeyLen = _inner.CopyCurrentLogicalKey(_curKey).Length;
-                    _curValue = _inner.CurrentValueBound;
+                    _curKeyLen = _inner.CopyCurrentLogicalKey(in _reader, _curKey).Length;
+                    _curValue = _inner.CurrentValue;
                     return true;
                 }
                 _inner.Dispose();
@@ -389,8 +389,8 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private readonly WholeReadSessionReader _reader;
         // Walks column 0x05 (storage-trie) keyed by addressHash. For each row we open the
         // storage-trie sub-tags in order: top (0x00), compact (0x01), then fallback (0x02).
-        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
-        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _pathEnum;
+        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
+        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _pathEnum;
         // _stage: 0 = current address-hash's top sub-tag, 1 = its compact sub-tag,
         // 2 = its fallback sub-tag. Reported back to StorageNodeEntry for path-key
         // decoding (top 3 bytes / compact 8 bytes / fallback 33 bytes), so it doubles
@@ -415,12 +415,12 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _curHash = default;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshotTags.StorageTrieColumnTag, out Bound matched) ? matched : default;
-            _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
+            _addrEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
         private static bool TryOpenSubTag(
             scoped in WholeReadSessionReader reader, Bound addrInner, byte[] subTag,
-            out HsstRefEnumerator<WholeReadSessionReader, NoOpPin> e)
+            out HsstEnumerator<WholeReadSessionReader, NoOpPin> e)
         {
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader, addrInner);
             if (!r.TrySeek(subTag, out _))
@@ -436,7 +436,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 e = default;
                 return false;
             }
-            e = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
+            e = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
             return true;
         }
 
@@ -447,10 +447,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             {
                 if (_level == 1)
                 {
-                    if (_pathEnum.MoveNext())
+                    if (_pathEnum.MoveNext(in _reader))
                     {
-                        _curPathKeyLen = _pathEnum.CopyCurrentLogicalKey(_curPathKey).Length;
-                        _curValue = _pathEnum.CurrentValueBound;
+                        _curPathKeyLen = _pathEnum.CopyCurrentLogicalKey(in _reader, _curPathKey).Length;
+                        _curValue = _pathEnum.CurrentValue;
                         return true;
                     }
                     _pathEnum.Dispose();
@@ -472,9 +472,8 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     _stage = 0;
                 }
                 // _level == 0: pull next address that has at least one storage sub-tag.
-                if (!_addrEnum.MoveNext()) return false;
-                Bound addrEntry = _addrEnum.CurrentValueBound;
-                _addrInnerBound = addrEntry;
+                if (!_addrEnum.MoveNext(in _reader)) return false;
+                _addrInnerBound = _addrEnum.CurrentValue;
                 _stage = 0;
                 if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshotTags.StorageTopSubTag, out _pathEnum))
                 {
@@ -487,7 +486,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     }
                 }
                 _curHash = default;
-                ReadOnlySpan<byte> hashKey = _addrEnum.CopyCurrentLogicalKey(hashBuf);
+                ReadOnlySpan<byte> hashKey = _addrEnum.CopyCurrentLogicalKey(in _reader, hashBuf);
                 hashKey.CopyTo(_curHash.BytesAsSpan[..hashKey.Length]);
                 _level = 1;
             }

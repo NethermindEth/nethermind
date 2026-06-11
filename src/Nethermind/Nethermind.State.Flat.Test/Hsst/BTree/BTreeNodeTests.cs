@@ -433,9 +433,9 @@ public class BTreeNodeTests
         SpanByteReader reader = new(data);
         // Count entries via the new enumerator and verify each key is reachable via TrySeek.
         int actualCount = 0;
-        using (HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
+        using (HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
         {
-            while (e.MoveNext()) actualCount++;
+            while (e.MoveNext(in reader)) actualCount++;
         }
         Assert.That(actualCount, Is.EqualTo(count));
 

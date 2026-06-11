@@ -229,15 +229,15 @@ public class HsstLargeBuildTests
         {
             byte* dataPtr = ptr + accessor.PointerOffset;
             WholeReadSessionReader reader = new(dataPtr, size);
-            using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> e = new(in reader, new Bound(0, size));
+            using HsstEnumerator<WholeReadSessionReader, NoOpPin> e = new(in reader, new Bound(0, size));
             Span<byte> expectedKey = stackalloc byte[8];
             Span<byte> expectedValue = stackalloc byte[PackedValueSize];
             Span<byte> keyBuf = stackalloc byte[KeySize];
             long i = 0;
-            while (e.MoveNext())
+            while (e.MoveNext(in reader))
             {
-                ReadOnlySpan<byte> kSpan = e.CopyCurrentLogicalKey(keyBuf);
-                Bound vb = e.CurrentValueBound;
+                ReadOnlySpan<byte> kSpan = e.CopyCurrentLogicalKey(in reader, keyBuf);
+                Bound vb = e.CurrentValue;
                 using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
 
                 BinaryPrimitives.WriteInt64BigEndian(expectedKey, baseKey + i);
@@ -286,7 +286,7 @@ public class HsstLargeBuildTests
             {
                 case IndexType.DenseByteIndex:
                     {
-                        // DenseByteIndex has no HsstRefEnumerator support — it's point-lookup only.
+                        // DenseByteIndex has no HsstEnumerator support — it's point-lookup only.
                         // Verify every tag 0..ByteKeyEntryCount-1 round-trips via HsstReader.TrySeek.
                         Span<byte> keyBuf = stackalloc byte[1];
                         for (int i = 0; i < ByteKeyEntryCount; i++)
