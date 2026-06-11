@@ -507,8 +507,9 @@ public class SyncPeerPoolTests
         peer.SetHeaderFailure(true);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
-        // Init is expected to fail, so we don't assert success here — give the refresh loop a brief window to attempt.
-        await Wait.ForCondition(() => peer.IsInitialized, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(50));
+        // GetHeadBlockHeader throws, so refresh routes through ReportRefreshFailed -> Disconnect.
+        bool refreshAttempted = await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(50));
+        Assert.That(refreshAttempted, Is.True, "refresh loop did not attempt the failing peer in time");
 
         SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         ctx.Pool.RemovePeer(peer);
