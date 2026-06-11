@@ -105,6 +105,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
         }
+
+        if (flatDbConfig.RebuildTrieFromLeaves)
+        {
+            builder
+                .AddSingleton<FlatTrieRebuilder>()
+                .AddStep(typeof(RebuildFlatTrie));
+        }
     }
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule

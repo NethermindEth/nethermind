@@ -25,6 +25,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 
+    [ConfigItem(Description = "Rebuild the trie nodes of a Flat-layout state db from its already-present flat leaves (recovery for corrupt/stale trie nodes). Leaf columns are never modified.", DefaultValue = "false")]
+    bool RebuildTrieFromLeaves { get; set; }
+
+    [ConfigItem(Description = "Target block number to record for the rebuilt state. 0 means use the current head block.", DefaultValue = "0")]
+    long RebuildTrieTargetBlockNumber { get; set; }
+
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
