@@ -25,16 +25,15 @@ using Nethermind.Evm.Tracing.State;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public sealed class TransactionProcessor<TGasPolicy>(
+    public class TransactionProcessor<TGasPolicy>(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager,
-        ISystemTransactionProcessorFactory<TGasPolicy>? systemTxFactory = null,
         bool parallel = false)
-        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, systemTxFactory, parallel)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options, in IntrinsicGas<TGasPolicy> intrinsicGas)
@@ -51,8 +50,8 @@ namespace Nethermind.Evm.TransactionProcessing
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager,
-        ISystemTransactionProcessorFactory<EthereumGasPolicy>? systemTxFactory = null)
-        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, systemTxFactory);
+        bool parallel = false)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
 
     public class BlobBaseFeeCalculator : ITransactionProcessor.IBlobBaseFeeCalculator
     {
@@ -83,7 +82,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         protected readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         protected readonly ILogManager _logManager;
-        private readonly ISystemTransactionProcessorFactory<TGasPolicy> _systemTxFactory;
         private readonly bool _parallel;
         private long _blockCumulativeRegularGas;
         private long _blockCumulativeStateGas;
@@ -95,7 +93,6 @@ namespace Nethermind.Evm.TransactionProcessing
             IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
             ILogManager? logManager,
-            ISystemTransactionProcessorFactory<TGasPolicy>? systemTxFactory = null,
             bool parallel = false)
         {
             ArgumentNullException.ThrowIfNull(logManager);
@@ -112,7 +109,6 @@ namespace Nethermind.Evm.TransactionProcessing
             _codeInfoRepository = codeInfoRepository;
             _isCodeOverridable = codeInfoRepository.IsCodeOverridable;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
-            _systemTxFactory = systemTxFactory ?? DefaultSystemTransactionProcessorFactory<TGasPolicy>.Instance;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
@@ -149,12 +145,17 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (_systemTransactionProcessor is null)
             {
-                SystemTransactionProcessor<TGasPolicy> created = _systemTxFactory.Create(
-                    _blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                Interlocked.CompareExchange(ref _systemTransactionProcessor, created, null);
+                Interlocked.CompareExchange(ref _systemTransactionProcessor, CreateSystemTransactionProcessor(), null);
             }
             return _systemTransactionProcessor;
         }
+
+        /// <summary>
+        /// Builds the per-instance system-transaction processor. Override to substitute an
+        /// engine-specific variant (e.g. AuRa returns <c>AuRaSystemTransactionProcessor</c>).
+        /// </summary>
+        protected virtual SystemTransactionProcessor<TGasPolicy> CreateSystemTransactionProcessor() =>
+            new(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -1724,8 +1725,8 @@ namespace Nethermind.Evm.TransactionProcessing
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager,
-        ISystemTransactionProcessorFactory<EthereumGasPolicy>? systemTxFactory = null)
-        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, systemTxFactory);
+        bool parallel = false)
+        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
 
     public readonly struct TransactionResult : IEquatable<TransactionResult>
     {

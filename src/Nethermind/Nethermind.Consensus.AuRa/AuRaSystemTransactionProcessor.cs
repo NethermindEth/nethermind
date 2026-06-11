@@ -13,19 +13,11 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.AuRa;
 
 /// <summary>
-/// AuRa-flavoured system transaction processor.
+/// AuRa-flavoured system transaction processor. Surfaces system-user reads to the BAL,
+/// materialises SYSTEM_ADDRESS on non-genesis system calls, and keeps EIP-158 disabled for
+/// system-tx state commits at genesis. Guarded by <c>SpecProvider.SealEngine == AuRa</c> so it
+/// falls back to base behaviour under non-AuRa test specs.
 /// </summary>
-/// <remarks>
-/// Differs from the standard <see cref="SystemTransactionProcessor{TGasPolicy}"/> in three places:
-/// <list type="bullet">
-///   <item>System-user reads are surfaced to the BAL (parity with AuRa system contracts).</item>
-///   <item>The SYSTEM_ADDRESS account is materialised on every non-genesis system call so the BAL records the access.</item>
-///   <item>EIP-158 stays disabled for system-transaction state commits even at genesis.</item>
-/// </list>
-/// AuRa semantics are guarded by <c>SpecProvider.SealEngine == AuRa</c>: when the seal engine is not
-/// AuRa (e.g. tests with a generic <c>TestSpecProvider</c>), this subclass falls back to the base
-/// processor's behaviour so existing test expectations are preserved.
-/// </remarks>
 public sealed class AuRaSystemTransactionProcessor<TGasPolicy>(
     ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider? specProvider,
@@ -51,23 +43,4 @@ public sealed class AuRaSystemTransactionProcessor<TGasPolicy>(
 
     protected override bool TreatAsGenesisForSpec(BlockHeader header) =>
         !_isAura && base.TreatAsGenesisForSpec(header);
-}
-
-/// <summary>
-/// Factory binding for <see cref="AuRaSystemTransactionProcessor{TGasPolicy}"/>. Registered by
-/// the AuRa plugin so every <see cref="TransactionProcessorBase{TGasPolicy}"/> — including BAL
-/// parallel-pool workers that hand-build their own processor — picks up the AuRa subclass.
-/// </summary>
-public sealed class AuRaSystemTransactionProcessorFactory<TGasPolicy>
-    : ISystemTransactionProcessorFactory<TGasPolicy>
-    where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-{
-    public SystemTransactionProcessor<TGasPolicy> Create(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider specProvider,
-        IWorldState worldState,
-        IVirtualMachine<TGasPolicy> virtualMachine,
-        ICodeInfoRepository codeInfoRepository,
-        ILogManager logManager)
-        => new AuRaSystemTransactionProcessor<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
 }

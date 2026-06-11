@@ -47,16 +47,20 @@ public partial class BlockAccessListManager(
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    ISystemTransactionProcessorFactory<EthereumGasPolicy>? systemTxFactory = null,
+    ITransactionProcessorFactory? transactionProcessorFactory = null,
     bool witnessMode = false)
     : IBlockAccessListManager, IDisposable
 {
+    private readonly ITransactionProcessorFactory _transactionProcessorFactory =
+        transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>();
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, systemTxFactory, witnessMode));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory,
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, systemTxFactory, witnessMode));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager,
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), witnessMode));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;

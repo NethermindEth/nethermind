@@ -31,12 +31,9 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
     /// <summary>
     /// Whether to suppress BAL reads of the SYSTEM_ADDRESS account for this transaction.
+    /// EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls;
+    /// engines that surface the system user (e.g. AuRa) override to return false.
     /// </summary>
-    /// <remarks>
-    /// EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls.
-    /// Consensus engines that surface the system user (e.g. AuRa) override this to return
-    /// false and supply their own subclass via <see cref="ISystemTransactionProcessorFactory{TGasPolicy}"/>.
-    /// </remarks>
     protected virtual bool ShouldSuppressSystemAccountReads(Transaction tx) =>
         tx.SenderAddress == Address.SystemUser;
 

@@ -95,9 +95,11 @@ namespace Nethermind.Consensus.AuRa
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
 
-                // Replaces the default in every TransactionProcessor — including BAL parallel-pool
-                // workers that hand-build their own processor with the worker's traced state.
-                .AddSingleton<ISystemTransactionProcessorFactory<EthereumGasPolicy>, AuRaSystemTransactionProcessorFactory<EthereumGasPolicy>>()
+                // AuRa transaction processor (DI singleton + BAL pool workers). The subclass
+                // overrides CreateSystemTransactionProcessor so system-tx execution goes through
+                // AuRaSystemTransactionProcessor without an external factory.
+                .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
+                .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
