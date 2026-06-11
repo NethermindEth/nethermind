@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -39,7 +39,9 @@ public sealed class BlobArenaWriter : IDisposable
     private readonly ushort _blobArenaId;
     private readonly long _startOffset;
     private readonly FileStream _stream;
-    private byte[] _buffer;
+    // Held at Count == Capacity so AsSpan() exposes the whole 1 MiB buffer; the writer slices
+    // the free tail with its own _buffered cursor (same shape as ArenaBufferWriter).
+    private readonly NativeMemoryList<byte> _buffer = new(BufferSize, BufferSize);
     private int _buffered;
     // File-absolute offset of the next byte to write. Starts at _startOffset (the file's
     // frontier when this writer was opened) and advances with each write and any inserted
@@ -65,7 +67,6 @@ public sealed class BlobArenaWriter : IDisposable
         _startOffset = startOffset;
         _written = startOffset;
         _stream = stream;
-        _buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
     }
 
     /// <summary>
@@ -109,15 +110,10 @@ public sealed class BlobArenaWriter : IDisposable
                 $"BlobArenaWriter for blob arena {_blobArenaId} would exceed the 2 GiB per-file NodeRef offset ceiling.");
 
         int offset = (int)_written;
-        ReadOnlySpan<byte> remaining = rlp;
-        while (remaining.Length > 0)
-        {
-            Span<byte> dst = EnsureBufferSpace(remaining.Length);
-            int chunk = Math.Min(remaining.Length, dst.Length);
-            remaining[..chunk].CopyTo(dst);
-            _buffered += chunk;
-            remaining = remaining[chunk..];
-        }
+        // Trie-node RLP is bounded well below the buffer size (worst-case branch ≈ 532 B), so
+        // EnsureBufferSpace always returns room for the whole value in one copy.
+        rlp.CopyTo(EnsureBufferSpace(rlp.Length));
+        _buffered += rlp.Length;
         _written += rlp.Length;
         return new NodeRef(_blobArenaId, offset);
     }
@@ -166,9 +162,7 @@ public sealed class BlobArenaWriter : IDisposable
             // Manager re-adds the id to the mutable pool without touching the file.
             _manager.OnWriteCancelled(_blobArenaId);
         }
-        byte[] buffer = _buffer;
-        _buffer = null!;
-        if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
+        _buffer.Dispose();
         // Drop the writer's lease on the file. If a snapshot has already picked the file
         // up via TryLeaseFile, this just decrements one lease; if nobody else holds a
         // lease, the file stays alive on the manager's array-slot ref until shutdown / sweep.
@@ -177,14 +171,14 @@ public sealed class BlobArenaWriter : IDisposable
 
     private Span<byte> EnsureBufferSpace(int sizeHint)
     {
-        if (sizeHint > _buffer.Length - _buffered) FlushBuffer();
-        return _buffer.AsSpan(_buffered);
+        if (sizeHint > _buffer.Count - _buffered) FlushBuffer();
+        return _buffer.AsSpan()[_buffered..];
     }
 
     private void FlushBuffer()
     {
         if (_buffered == 0) return;
-        _stream.Write(_buffer, 0, _buffered);
+        _stream.Write(_buffer.AsSpan()[.._buffered]);
         _buffered = 0;
     }
 }
