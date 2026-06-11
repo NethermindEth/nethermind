@@ -91,11 +91,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
-            // SSTORE always reads the slot before asking for the original, so the block
-            // state holds the committed value even when reads skipped the journal.
-            if (JournalReads || !GetOrCreateStorage(storageCell.Address).TryGetBefore(in storageCell, out value))
+            if (JournalReads)
             {
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            }
+
+            // Reads skipped the journal: the round-start value is the block state's current
+            // value (BlockChange.After only moves at commit), loaded on demand when the
+            // slot's only prior touch was a journaled write.
+            PerContractState storage = GetOrCreateStorage(storageCell.Address);
+            if (!storage.TryGetRoundStartValue(in storageCell, out value))
+            {
+                storage.LoadFromTree(in storageCell);
+                storage.TryGetRoundStartValue(in storageCell, out value);
             }
 
             PushToRegistryOnly(storageCell, value);
@@ -524,19 +532,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         /// <summary>
-        /// The committed (pre-block-change) value of a slot already loaded this block; feeds
-        /// the lazy original registration when reads skip the journal.
+        /// The value a slot had when the current caching round started: block state moves
+        /// only at commit, so its current value IS the round-start value mid-round. Feeds
+        /// the lazy original registration when reads skip the journal — the exact value the
+        /// eager path used to register on first read.
         /// </summary>
-        public bool TryGetBefore(in StorageCell storageCell, out byte[] before)
+        public bool TryGetRoundStartValue(in StorageCell storageCell, out byte[] value)
         {
             ref StorageChangeTrace trace = ref BlockChange.GetValueRefOrNullRef(storageCell.Index);
             if (Unsafe.IsNullRef(ref trace))
             {
-                before = null!;
+                value = null!;
                 return false;
             }
 
-            before = trace.Before;
+            value = trace.After;
             return true;
         }
 
