@@ -86,12 +86,7 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        Assert.That(receipt.L1BaseFeeScalar, Is.EqualTo((UInt256)2));
-        Assert.That(receipt.L1BlobBaseFeeScalar, Is.EqualTo((UInt256)3));
-        Assert.That(receipt.L1GasPrice, Is.EqualTo((UInt256)(1000 * 1e6)));
-        Assert.That(receipt.L1BlobBaseFee, Is.EqualTo((UInt256)(10 * 1e6)));
-        Assert.That(receipt.OperatorFeeScalar, Is.EqualTo((UInt256)0));
-        Assert.That(receipt.OperatorFeeConstant, Is.EqualTo((UInt256)0));
+        AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 0, expectedOperatorFeeConstant: 0);
     }
 
     [Test]
@@ -131,11 +126,20 @@ public class OptimismReceiptTests
             blockGasInfo.GetTxGasInfo(tx)
         );
 
-        Assert.That(receipt.L1BaseFeeScalar, Is.EqualTo((UInt256)2));
-        Assert.That(receipt.L1BlobBaseFeeScalar, Is.EqualTo((UInt256)3));
-        Assert.That(receipt.L1GasPrice, Is.EqualTo((UInt256)(1000 * 1e6)));
-        Assert.That(receipt.L1BlobBaseFee, Is.EqualTo((UInt256)(10 * 1e6)));
-        Assert.That(receipt.OperatorFeeScalar, Is.EqualTo((UInt256)7));
-        Assert.That(receipt.OperatorFeeConstant, Is.EqualTo((UInt256)9));
+        AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 7, expectedOperatorFeeConstant: 9);
+    }
+
+    private static void AssertL1AndOperatorFees(OptimismReceiptForRpc receipt, UInt256 expectedOperatorFeeScalar, UInt256 expectedOperatorFeeConstant)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            // L1 attribute fields are identical across the Ecotone-postIsthmus and Isthmus payloads — only the operator-fee tail differs
+            Assert.That(receipt.L1BaseFeeScalar, Is.EqualTo((UInt256)2));
+            Assert.That(receipt.L1BlobBaseFeeScalar, Is.EqualTo((UInt256)3));
+            Assert.That(receipt.L1GasPrice, Is.EqualTo((UInt256)(1000 * 1e6)));
+            Assert.That(receipt.L1BlobBaseFee, Is.EqualTo((UInt256)(10 * 1e6)));
+            Assert.That(receipt.OperatorFeeScalar, Is.EqualTo(expectedOperatorFeeScalar));
+            Assert.That(receipt.OperatorFeeConstant, Is.EqualTo(expectedOperatorFeeConstant));
+        }
     }
 }

@@ -89,7 +89,7 @@ public class BlockCachePreWarmerTests
         (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 1);
 
-        await preWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
 
         // With pool capacity 1 and two parallel workers, at least one eviction must occur.
         Assert.That(created.Count, Is.GreaterThanOrEqualTo(2), "two distinct senders must have exercised two concurrent workers");
@@ -108,7 +108,7 @@ public class BlockCachePreWarmerTests
         (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 10);
 
-        await preWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
 
         Assert.That(disposed.Count, Is.EqualTo(0), "no eviction should have occurred with a large pool");
         Assert.That(created.Count, Is.GreaterThanOrEqualTo(1), "at least one env must have been created");
@@ -139,7 +139,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA is in the BAL and should be pre-warmed");
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressB, out _), Is.True, "AddressB is in the BAL and should be pre-warmed");
@@ -173,14 +173,14 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
-        // Changed slot should be warmed
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _), Is.True, "slot 1 (changed) should be pre-warmed via BAL");
-        // Read-only slot should be warmed
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _), Is.True, "slot 2 (read-only) should be pre-warmed via BAL");
-        // Storage from a different account
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _), Is.True, "slot 10 on AddressB should be pre-warmed via BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _), Is.True, "slot 1 (changed) should be pre-warmed via BAL");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _), Is.True, "slot 2 (read-only) should be pre-warmed via BAL");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _), Is.True, "slot 10 on AddressB should be pre-warmed via BAL");
+        }
     }
 
     /// <summary>
@@ -204,7 +204,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _), Is.False, "BAL path should be skipped when ParallelExecutionBatchRead is disabled");
     }
@@ -232,7 +232,7 @@ public class BlockCachePreWarmerTests
             .TestObject;
 
         // Use Osaka which does NOT have EIP-7928 — BAL path should not trigger
-        await preWarmer.PreWarmCaches(block, BuildParentHeader(), Osaka.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
 
         // AddressA should still be warmed via speculative tx execution (not BAL path)
         // since it's a sender in the transactions
@@ -314,7 +314,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await preWarmer.PreWarmCaches(block, BuildParentHeader(), spec);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), spec);
 
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.EqualTo(expectWarmed), $"ParallelExec={parallelExecution}, BALs={hasBal}, BatchRead={batchRead} => warmed={expectWarmed}");
     }
@@ -339,7 +339,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
         AddressAsKey warmedAddress = TestItem.AddressA;
         Assert.That(preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _), Is.True);
@@ -418,6 +418,21 @@ public class BlockCachePreWarmerTests
             .WithStateRoot(_genesisStateRoot)
             .WithGasLimit(30_000_000)
             .TestObject;
+
+    // Sync on purpose — TrieStore's Lock-based BeginScope dispose must run on the same thread.
+    private Task RunPreWarmCaches(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec)
+    {
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)
+                ? mainWorldState.HintBal(block.BlockAccessList)
+                : null;
+            preWarmer.PreWarmCaches(block, parent, spec).GetAwaiter().GetResult();
+            hintBalTask?.GetAwaiter().GetResult();
+        }
+        return Task.CompletedTask;
+    }
 
     /// <summary>
     /// Builds a block with transactions from two distinct senders, producing two parallel

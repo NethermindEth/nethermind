@@ -45,15 +45,16 @@ public partial class BlockAccessListManager(
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
-    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+    bool witnessMode = false)
     : IBlockAccessListManager, IDisposable
 {
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, witnessMode));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, witnessMode));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
@@ -77,6 +78,8 @@ public partial class BlockAccessListManager(
     private int _suggestedChargeableStorageReads;
     private int _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
+    // for tests
+    internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
     // Latched when a per-tx slice surfaces a generated-only account that the column index
     // can't see (no lane data on either side). Forces the validator's fallback walk so the
     // same "missing account changes" error fires as on the sequential path.
@@ -93,6 +96,7 @@ public partial class BlockAccessListManager(
     public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
+    public bool BatchReadEnabled { get; private set; }
 
     /// <summary>
     /// When set, the manager always builds the constructed GeneratedBlockAccessList even on
@@ -123,16 +127,18 @@ public partial class BlockAccessListManager(
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope;
 
+        // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
+        // HintBal honours the same opt-in config as the prewarmer path.
+        BatchReadEnabled = Enabled && blocksConfig.ParallelExecutionBatchRead;
+
         if (Enabled)
         {
             Reset();
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
-            // Only the parallel path feeds the generated side (via RegisterGeneratedSlice in
-            // MergeAndReturnBal); the sequential NextTransaction merges directly into
-            // GeneratedBlockAccessList, so the fast path never fires there — skip the build.
-            if (ParallelExecutionEnabled && suggestedBlock.BlockAccessList is not null)
+            // Skipped when building a block or in RLP fixtures (no suggested)
+            if (!_isBuilding && suggestedBlock.BlockAccessList is not null)
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;

@@ -52,8 +52,11 @@ public class SeqlockCacheTests
 
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        Assert.That(found, Is.False);
-        Assert.That(value, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(value, Is.Null);
+        }
     }
 
     [Test]
@@ -66,8 +69,11 @@ public class SeqlockCacheTests
         cache.Set(in key, expected);
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        Assert.That(found, Is.True);
-        Assert.That(value, Is.SameAs(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.SameAs(expected));
+        }
     }
 
     [Test]
@@ -82,8 +88,11 @@ public class SeqlockCacheTests
         cache.Set(in key, second);
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        Assert.That(found, Is.True);
-        Assert.That(value, Is.SameAs(second));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.SameAs(second));
+        }
     }
 
     [Test]
@@ -97,8 +106,11 @@ public class SeqlockCacheTests
         cache.Set(in key, expected); // Same reference - should be fast-path no-op
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        Assert.That(found, Is.True);
-        Assert.That(value, Is.SameAs(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.SameAs(expected));
+        }
     }
 
     [Test]
@@ -110,8 +122,11 @@ public class SeqlockCacheTests
         cache.Set(in key, null);
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        Assert.That(found, Is.True);
-        Assert.That(value, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.Null);
+        }
     }
 
     [Test]
@@ -140,8 +155,11 @@ public class SeqlockCacheTests
 
         // Value should now be cached
         bool found = cache.TryGetValue(in key, out byte[]? cached);
-        Assert.That(found, Is.True);
-        Assert.That(cached, Is.SameAs(factoryResult));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(cached, Is.SameAs(factoryResult));
+        }
     }
 
     [Test]
@@ -195,8 +213,11 @@ public class SeqlockCacheTests
 
         // Value should now be cached
         bool found = cache.TryGetValue(in key, out byte[]? cached);
-        Assert.That(found, Is.True);
-        Assert.That(cached, Is.SameAs(factoryResult));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(cached, Is.SameAs(factoryResult));
+        }
     }
 
     [Test]
@@ -211,8 +232,11 @@ public class SeqlockCacheTests
 
         cache.Clear();
 
-        Assert.That(cache.TryGetValue(in key1, out _), Is.False);
-        Assert.That(cache.TryGetValue(in key2, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGetValue(in key1, out _), Is.False);
+            Assert.That(cache.TryGetValue(in key2, out _), Is.False);
+        }
     }
 
     [Test]
@@ -228,8 +252,11 @@ public class SeqlockCacheTests
         cache.Set(in key, afterClear);
 
         bool found = cache.TryGetValue(in key, out byte[]? value);
-        Assert.That(found, Is.True);
-        Assert.That(value, Is.SameAs(afterClear));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.SameAs(afterClear));
+        }
     }
 
     [Test]
@@ -242,8 +269,11 @@ public class SeqlockCacheTests
         {
             byte[] value = CreateValue(i);
             cache.Set(in key, value);
-            Assert.That(cache.TryGetValue(in key, out byte[]? retrieved), Is.True);
-            Assert.That(retrieved, Is.SameAs(value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.TryGetValue(in key, out byte[]? retrieved), Is.True);
+                Assert.That(retrieved, Is.SameAs(value));
+            }
             cache.Clear();
             Assert.That(cache.TryGetValue(in key, out _), Is.False);
         }
@@ -405,8 +435,11 @@ public class SeqlockCacheTests
         cache.Set(in key, account);
         bool found = cache.TryGetValue(in key, out Account? result);
 
-        Assert.That(found, Is.True);
-        Assert.That(result, Is.SameAs(account));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result, Is.SameAs(account));
+        }
     }
 
     [Test]
@@ -420,8 +453,11 @@ public class SeqlockCacheTests
         cache.Set(in key, value);
         bool found = cache.TryGetValue(in key, out byte[]? result);
 
-        Assert.That(found, Is.True);
-        Assert.That(result, Is.SameAs(value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result, Is.SameAs(value));
+        }
     }
 
     [Test]
@@ -450,8 +486,11 @@ public class SeqlockCacheTests
 
         // Value should still be retrievable and correct
         bool found = cache.TryGetValue(in key, out byte[]? result);
-        Assert.That(found, Is.True);
-        Assert.That(result, Is.SameAs(value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result, Is.SameAs(value));
+        }
     }
 
     [Test]

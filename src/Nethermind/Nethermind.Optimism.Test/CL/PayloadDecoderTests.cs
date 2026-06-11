@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL.P2P;
 using NUnit.Framework;
@@ -22,27 +23,28 @@ public class PayloadDecoderTests
 
     private void ComparePayloads(ExecutionPayloadV3 expected, ExecutionPayloadV3 actual)
     {
-        Assert.That(expected.BaseFeePerGas, Is.EqualTo(actual.BaseFeePerGas));
-        Assert.That(expected.BlobGasUsed, Is.EqualTo(actual.BlobGasUsed));
-        Assert.That(expected.BlockHash, Is.EqualTo(actual.BlockHash));
-        Assert.That(expected.BlockNumber, Is.EqualTo(actual.BlockNumber));
-        Assert.That(expected.ExcessBlobGas, Is.EqualTo(actual.ExcessBlobGas));
-        Assert.That(expected.ExecutionRequests, Is.EqualTo(actual.ExecutionRequests));
-        Assert.That(expected.ExtraData, Is.EqualTo(actual.ExtraData));
-        Assert.That(expected.FeeRecipient, Is.EqualTo(actual.FeeRecipient));
-        Assert.That(expected.GasLimit, Is.EqualTo(actual.GasLimit));
-        Assert.That(expected.GasUsed, Is.EqualTo(actual.GasUsed));
-        Assert.That(expected.Timestamp, Is.EqualTo(actual.Timestamp));
-        Assert.That(expected.ParentHash, Is.EqualTo(actual.ParentHash));
-        Assert.That(expected.Transactions, Is.EqualTo(actual.Transactions));
-        Assert.That(expected.ParentBeaconBlockRoot, Is.EqualTo(actual.ParentBeaconBlockRoot!));
-        Assert.That(expected.ReceiptsRoot, Is.EqualTo(actual.ReceiptsRoot));
-        Assert.That(expected.StateRoot, Is.EqualTo(actual.StateRoot));
-        Assert.That(expected.Withdrawals, Is.EqualTo(actual.Withdrawals)
-            .UsingPropertiesComparer<Withdrawal>(
-                static options => options.Excluding(static withdrawal => withdrawal.AmountInWei)));
-        Assert.That(expected.LogsBloom, Is.EqualTo(actual.LogsBloom));
-        Assert.That(expected.PrevRandao, Is.EqualTo(actual.PrevRandao));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected.BaseFeePerGas, Is.EqualTo(actual.BaseFeePerGas));
+            Assert.That(expected.BlobGasUsed, Is.EqualTo(actual.BlobGasUsed));
+            Assert.That(expected.BlockHash, Is.EqualTo(actual.BlockHash));
+            Assert.That(expected.BlockNumber, Is.EqualTo(actual.BlockNumber));
+            Assert.That(expected.ExcessBlobGas, Is.EqualTo(actual.ExcessBlobGas));
+            Assert.That(expected.ExecutionRequests, Is.EqualTo(actual.ExecutionRequests));
+            Assert.That(expected.ExtraData, Is.EqualTo(actual.ExtraData));
+            Assert.That(expected.FeeRecipient, Is.EqualTo(actual.FeeRecipient));
+            Assert.That(expected.GasLimit, Is.EqualTo(actual.GasLimit));
+            Assert.That(expected.GasUsed, Is.EqualTo(actual.GasUsed));
+            Assert.That(expected.Timestamp, Is.EqualTo(actual.Timestamp));
+            Assert.That(expected.ParentHash, Is.EqualTo(actual.ParentHash));
+            Assert.That(expected.Transactions, Is.EqualTo(actual.Transactions));
+            Assert.That(expected.ParentBeaconBlockRoot, Is.EqualTo(actual.ParentBeaconBlockRoot!));
+            Assert.That(expected.ReceiptsRoot, Is.EqualTo(actual.ReceiptsRoot));
+            Assert.That(expected.StateRoot, Is.EqualTo(actual.StateRoot));
+            Assert.That(expected.Withdrawals, Is.EqualTo(actual.Withdrawals).UsingWithdrawalComparer());
+            Assert.That(expected.LogsBloom, Is.EqualTo(actual.LogsBloom));
+            Assert.That(expected.PrevRandao, Is.EqualTo(actual.PrevRandao));
+        }
     }
 
     public static IEnumerable<(string, ExecutionPayloadV3)> RealPayloadsTestCases()

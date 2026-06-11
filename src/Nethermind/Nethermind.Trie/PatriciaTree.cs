@@ -773,36 +773,34 @@ namespace Nethermind.Trie
         internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, TrieNode? originalNode)
         {
             int onlyChildIdx = -1;
-            TrieNode? onlyChildNode = null;
-            path.AppendMut(0);
-            TrieNode.ChildIterator iterator = node.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
-                path.SetLast(i);
-                TrieNode? child = iterator.GetChildWithChildPath(TrieStore, ref path, i);
-
-                if (child is not null)
+                if (!node.IsChildNull(i)) // presence check only, no resolution (useful for witness recording, stateless execution and perfs)
                 {
                     if (onlyChildIdx == -1)
                     {
                         onlyChildIdx = i;
-                        onlyChildNode = child;
                     }
                     else
                     {
                         // 63%
-                        // More than one non null child. We don't care anymore.
-                        path.TruncateOne();
+                        // 2+ non-null children, no need to collapse any node
+                        // Nothing resolved, nothing captured (for witness recording, stateless execution)
                         return node;
                     }
                 }
 
             }
-            path.TruncateOne();
 
-            if (onlyChildIdx == -1) return null; // No child at all.
+            if (onlyChildIdx == -1) return null; // No child at all
+
+            // 1 child only, let's collapse
 
             path.AppendMut(onlyChildIdx);
+            TrieNode.ChildIterator iterator = node.CreateChildIterator();
+            TrieNode? onlyChildNode = iterator.GetChildWithChildPath(TrieStore, ref path, onlyChildIdx);
+            Debug.Assert(onlyChildNode is not null, "Only child should not be null here as checked before by node.IsChildNull");
+
             onlyChildNode.ResolveNode(TrieStore, path);
             path.TruncateOne();
 

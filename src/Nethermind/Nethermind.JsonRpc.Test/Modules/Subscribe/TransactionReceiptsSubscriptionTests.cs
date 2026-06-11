@@ -19,7 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 {
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     public class TransactionReceiptsSubscriptionTests
     {
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
@@ -86,15 +86,24 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 filter);
 
             List<JsonRpcResult> jsonRpcResults = [];
-            SemaphoreSlim semaphoreSlim = new(0, 1);
+            using CountdownEvent received = new(Math.Max(expectedCount, 1));
 
             subscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResults.Add(j);
+                if (!received.IsSet) received.Signal();
             }));
 
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
-            semaphoreSlim.Wait(TimeSpan.FromMilliseconds(500));
+
+            if (expectedCount > 0)
+            {
+                received.Wait(TimeSpan.FromSeconds(1));
+            }
+            else
+            {
+                Thread.Sleep(200);
+            }
 
             subscriptionId = subscription.Id;
             return jsonRpcResults;
@@ -144,15 +153,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
-            Assert.That(results.Count, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
-            Assert.That(serialized1, Does.Contain(subscriptionId));
-            Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
+                string serialized1 = RpcTest.SerializeResponse(results[0].Response);
+                Assert.That(serialized1, Does.Contain(subscriptionId));
+                Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
 
-            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
-            Assert.That(serialized2, Does.Contain(subscriptionId));
-            Assert.That(serialized2, Does.Contain(TestItem.KeccakB.ToString()));
+                string serialized2 = RpcTest.SerializeResponse(results[1].Response);
+                Assert.That(serialized2, Does.Contain(subscriptionId));
+                Assert.That(serialized2, Does.Contain(TestItem.KeccakB.ToString()));
+            }
         }
 
         [Test]
@@ -201,13 +213,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(filter, eventArgs, out string subscriptionId, 2);
 
-            Assert.That(results.Count, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
-            Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
+                string serialized1 = RpcTest.SerializeResponse(results[0].Response);
+                Assert.That(serialized1, Does.Contain(TestItem.KeccakA.ToString()));
 
-            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
-            Assert.That(serialized2, Does.Contain(TestItem.KeccakC.ToString()));
+                string serialized2 = RpcTest.SerializeResponse(results[1].Response);
+                Assert.That(serialized2, Does.Contain(TestItem.KeccakC.ToString()));
+            }
         }
 
         [Test]
@@ -285,17 +300,20 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             Assert.That(result.Response, Is.Not.Null);
             string serialized = RpcTest.SerializeResponse(result.Response);
 
-            Assert.That(serialized, Does.Contain("transactionHash"));
-            Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
-            Assert.That(serialized, Does.Contain("blockHash"));
-            Assert.That(serialized, Does.Contain(TestItem.KeccakF.ToString()));
-            Assert.That(serialized, Does.Contain("blockNumber"));
-            Assert.That(serialized, Does.Contain("0xd903")); // 55555 in hex
-            Assert.That(serialized, Does.Contain("transactionIndex"));
-            Assert.That(serialized, Does.Contain("0x5")); // index 5
-            Assert.That(serialized, Does.Contain("logs"));
-            Assert.That(serialized, Does.Contain("status"));
-            Assert.That(serialized, Does.Contain("0x1")); // status code 1
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain("transactionHash"));
+                Assert.That(serialized, Does.Contain(TestItem.KeccakA.ToString()));
+                Assert.That(serialized, Does.Contain("blockHash"));
+                Assert.That(serialized, Does.Contain(TestItem.KeccakF.ToString()));
+                Assert.That(serialized, Does.Contain("blockNumber"));
+                Assert.That(serialized, Does.Contain("0xd903")); // 55555 in hex
+                Assert.That(serialized, Does.Contain("transactionIndex"));
+                Assert.That(serialized, Does.Contain("0x5")); // index 5
+                Assert.That(serialized, Does.Contain("logs"));
+                Assert.That(serialized, Does.Contain("status"));
+                Assert.That(serialized, Does.Contain("0x1")); // status code 1
+            }
         }
 
         [Test]
@@ -316,16 +334,19 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             List<JsonRpcResult> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
-            Assert.That(results.Count, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Count, Is.EqualTo(2));
 
-            // First receipt should have logs with indices 0 and 1
-            string serialized1 = RpcTest.SerializeResponse(results[0].Response);
-            Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x0\""));
-            Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x1\""));
+                // First receipt should have logs with indices 0 and 1
+                string serialized1 = RpcTest.SerializeResponse(results[0].Response);
+                Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x0\""));
+                Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x1\""));
 
-            // Second receipt should have log with index 2 (cumulative)
-            string serialized2 = RpcTest.SerializeResponse(results[1].Response);
-            Assert.That(serialized2, Does.Contain("\"logIndex\":\"0x2\""));
+                // Second receipt should have log with index 2 (cumulative)
+                string serialized2 = RpcTest.SerializeResponse(results[1].Response);
+                Assert.That(serialized2, Does.Contain("\"logIndex\":\"0x2\""));
+            }
         }
 
         [Test]

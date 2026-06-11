@@ -169,8 +169,11 @@ public class SnapServerTest
         AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.RootHash, Keccak.Zero,
             accounts.ToArray(), proofs);
 
-        Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(context.PersistedNodeCount, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddRangeResult.OK));
+            Assert.That(context.PersistedNodeCount, Is.EqualTo(10));
+        }
         accounts.Dispose();
         proofs.Dispose();
     }
@@ -418,8 +421,11 @@ public class SnapServerTest
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
                 beyondLast, ValueKeccak.MaxValue, 10, CancellationToken.None);
 
-        Assert.That(storageSlots.Count, Is.EqualTo(0));
-        Assert.That(proofs?.Count, Is.GreaterThan(0)); //in worst case should get at least root node
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storageSlots.Count, Is.EqualTo(0));
+            Assert.That(proofs?.Count, Is.GreaterThan(0)); //in worst case should get at least root node
+        }
 
         storageSlots.DisposeRecursive();
         proofs?.Dispose();

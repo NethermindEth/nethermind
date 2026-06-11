@@ -24,13 +24,19 @@ public class RefList16Tests
         pool.Add(TestItem.KeccakB);
         Assert.That(pool.Count, Is.EqualTo(2));
 
-        Assert.That(pool[0], Is.EqualTo(TestItem.KeccakA));
-        Assert.That(pool[1], Is.EqualTo(TestItem.KeccakB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool[0], Is.EqualTo(TestItem.KeccakA));
+            Assert.That(pool[1], Is.EqualTo(TestItem.KeccakB));
+        }
 
         Span<Hash256> span = pool.AsSpan();
-        Assert.That(span.Length, Is.EqualTo(2));
-        Assert.That(span[0], Is.EqualTo(TestItem.KeccakA));
-        Assert.That(span[1], Is.EqualTo(TestItem.KeccakB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(span.Length, Is.EqualTo(2));
+            Assert.That(span[0], Is.EqualTo(TestItem.KeccakA));
+            Assert.That(span[1], Is.EqualTo(TestItem.KeccakB));
+        }
     }
 
     [Test]

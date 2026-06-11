@@ -16,6 +16,7 @@ namespace Nethermind.Blockchain.Visitors
     {
         private readonly IReceiptStorage _receiptStorage;
         protected readonly ILogger _logger;
+        private readonly ProgressReporter _progress;
         private int _good = 0;
         private int _bad = 0;
         private ChainLevelInfo _currentLevel;
@@ -29,6 +30,7 @@ namespace Nethermind.Blockchain.Visitors
             EndLevelExclusive = endLevel;
             StartLevelInclusive = startLevel; // we should start post-pivot
             _toCheck = EndLevelExclusive - StartLevelInclusive;
+            _progress = new ProgressReporter("Receipts verify", logManager, _toCheck);
         }
 
         public bool PreventsAcceptingNewBlocks => false;
@@ -111,11 +113,10 @@ namespace Nethermind.Blockchain.Visitors
         public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             _checked++;
-            if (_checked % 1000 == 0)
-            {
-                if (_logger.IsInfo) _logger.Info($"Checking receipts {_checked}/{_toCheck}");
-            }
+            _progress.Update(_checked);
             return Task.FromResult(LevelVisitOutcome.None);
         }
+
+        public virtual void Dispose() => _progress.Dispose();
     }
 }

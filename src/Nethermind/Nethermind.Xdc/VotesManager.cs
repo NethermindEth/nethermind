@@ -93,7 +93,7 @@ internal class VotesManager(
 
         // Collect votes
         _votePool.Add(vote);
-        IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote);
+        IReadOnlyCollection<Vote> roundVotes = _votePool.GetItemsByKey(vote);
         IReadOnlyCollection<Vote> roundVotesFromOtherKeys = _votePool.GetItemsFromRoundExcludingKey(vote);
         // Forensics is expected to run asynchronously and must not block vote processing.
         // The two calls are complementary: one checks signer conflicts across pool keys in the same round,
@@ -333,4 +333,6 @@ internal class VotesManager(
     }
 
     public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
+
+    public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> GetReceivedVotes() => _votePool.GetItems();
 }
