@@ -30,6 +30,7 @@ public sealed class KademliaAdapter(
     IDiscoveryConfig discoveryConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<Hash256> distance,
+    Discv5RecordFilter recordFilter,
     ILogManager logManager) : IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
@@ -125,7 +126,7 @@ public sealed class KademliaAdapter(
         RegisterKnownRecord(receiver);
         Distances distances = GetLookupDistances(receiver, target);
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
-        using NodesResponseHandler responseHandler = new(receiver, distances, _distance);
+        using NodesResponseHandler responseHandler = new(receiver, distances, _distance, recordFilter);
 
         if (_logger.IsTrace) _logger.Trace($"Sending discv5 FINDNODE {findNode.RequestId} to {receiver:s}, distances: {FormatDistances(distances)}.");
         if (!await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token))
@@ -460,7 +461,7 @@ public sealed class KademliaAdapter(
                         return;
                     }
 
-                    if (IsAcceptableNodeRecord(nodeRecord, nodeId, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address)))
+                    if (IsAcceptableNodeRecord(nodeRecord, nodeId, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(endpoint.Address), recordFilter))
                     {
                         TrySetKnownRecord(nodeId, nodeRecord, out NodeRecord currentRecord);
                         messageRecord = currentRecord;
@@ -645,13 +646,13 @@ public sealed class KademliaAdapter(
     {
         if (TryGetKnownRecord(node.Id.Hash, out NodeRecord? knownRecord))
         {
-            return IsAcceptableNodeRecord(knownRecord, node.Id.Hash, allowNonRoutableRelays) ? knownRecord : null;
+            return IsAcceptableNodeRecord(knownRecord, node.Id.Hash, allowNonRoutableRelays, recordFilter) ? knownRecord : null;
         }
 
         try
         {
             NodeRecord record = NodeRecord.FromEnrString(node.Enr);
-            return IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays) ? record : null;
+            return IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays, recordFilter) ? record : null;
         }
         catch (Exception e)
         {
@@ -670,7 +671,7 @@ public sealed class KademliaAdapter(
         try
         {
             NodeRecord record = NodeRecord.FromEnrString(node.Enr);
-            if (IsAcceptableNodeRecord(record, node.Id.Hash, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(node.Address.Address)))
+            if (IsAcceptableNodeRecord(record, node.Id.Hash, IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(node.Address.Address), recordFilter))
             {
                 TrySetKnownRecord(node.Id.Hash, record, out _);
             }
@@ -762,8 +763,8 @@ public sealed class KademliaAdapter(
         }
     }
 
-    internal static bool IsAcceptableNodeRecord(NodeRecord record, Hash256 expectedNodeId, bool allowNonRoutable)
-        => !DiscoveryV5App.IsConsensusOnlyNodeRecord(record) &&
+    internal static bool IsAcceptableNodeRecord(NodeRecord record, Hash256 expectedNodeId, bool allowNonRoutable, Discv5RecordFilter? recordFilter = null)
+        => !(recordFilter ?? Discv5RecordFilter.ExecutionLayer).Excludes(record) &&
             Node.TryFromDiscoveryEnr(record, out Node? node) &&
             node.Id.Hash.Equals(expectedNodeId) &&
             DiscoveryV5App.IsDiscoveryAddressAcceptable(node.Address.Address, allowNonRoutable);

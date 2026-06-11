@@ -9,6 +9,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -67,7 +68,9 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconChainStatusHolder>()
             .Bind<IBeaconChainStatusSource, BeaconChainStatusHolder>()
             .AddSingleton<LocalMetadataSource>()
+            .AddSingleton<SlotClock>()
             .AddSingleton<BeaconP2P>()
+            .AddSingleton<GossipRouter>()
             .AddSingleton<PeerManager>()
             .Bind<IBeaconSyncPeerPool, PeerManager>()
             .AddSingleton<RangeSync>()

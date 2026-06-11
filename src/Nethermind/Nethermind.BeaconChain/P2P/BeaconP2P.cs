@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
+using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -18,6 +19,7 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Libp2p.Protocols;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Logging.Microsoft;
 using ILogger = Nethermind.Logging.ILogger;
@@ -26,13 +28,16 @@ using ILoggerFactory = Microsoft.Extensions.Logging.ILoggerFactory;
 namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>
-/// The beacon chain libp2p host: TCP + noise + yamux with the eth2 req/resp protocols registered,
-/// exposing typed request methods over dialed sessions.
+/// The beacon chain libp2p host: TCP + noise + yamux with the eth2 req/resp protocols and
+/// gossipsub registered, exposing typed request methods over dialed sessions and pubsub topics.
 /// </summary>
 /// <remarks>
 /// The host identity is a secp256k1 key persisted in the store metadata column, so the peer ID is
-/// stable across restarts (and reusable for the discv5 ENR in a later milestone). Gossipsub is not
-/// enabled yet.
+/// stable across restarts (and reusable for the discv5 ENR in a later milestone). Gossipsub uses
+/// the eth2 parameters: <c>StrictNoSign</c>, the eth2 message-id function
+/// (<see cref="Eth2MessageId"/>), D=8/D_low=6/D_high=12/D_lazy=6, a 700 ms heartbeat, and a seen
+/// TTL of 550 heartbeats. Note that the pinned libp2p preview always signs published messages,
+/// which StrictNoSign peers reject — receiving gossip works, but publishing needs a library fix.
 /// </remarks>
 public sealed class BeaconP2P : IAsyncDisposable
 {
@@ -47,6 +52,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     private readonly ServiceProvider _serviceProvider;
 
     private LocalPeer? _localPeer;
+    private PubsubRouter? _router;
 
     public BeaconP2P(
         IBeaconChainConfig config,
@@ -72,6 +78,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store))
             .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store))
             .AddLibp2p(builder => builder
+                .WithPubsub()
                 .AddAppLayerProtocol<StatusProtocolV1>()
                 .AddAppLayerProtocol<StatusProtocolV2>()
                 .AddAppLayerProtocol<GoodbyeProtocol>()
@@ -84,6 +91,21 @@ public sealed class BeaconP2P : IAsyncDisposable
                 ProtocolVersion = "eth2/1.0.0",
                 AgentVersion = $"nethermind/{ProductInfo.Version}",
             })
+            // The eth2 gossipsub parameters (consensus-specs p2p-interface "The gossip domain: gossipsub").
+            .AddSingleton(new PubsubSettings
+            {
+                DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
+                GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
+                Degree = 8, // D
+                LowestDegree = 6, // D_low
+                HighestDegree = 12, // D_high
+                LazyDegree = 6, // D_lazy
+                HeartbeatInterval = 700, // heartbeat_interval: 0.7 s
+                FanoutTtl = 60_000, // fanout_ttl: 60 s
+                mcache_len = 6,
+                mcache_gossip = 3,
+                MessageCacheTtl = 550 * 700, // seen_ttl: 550 heartbeats
+            })
             .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager, lowerLogLevel: true))
             .BuildServiceProvider();
     }
@@ -92,12 +114,23 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public IReadOnlyList<Multiaddress> ListenAddresses => _localPeer is null ? [] : [.. _localPeer.ListenAddresses];
 
+    /// <summary>Starts listening and the pubsub router.</summary>
+    /// <param name="token">Must stay uncancelled for the host lifetime: the pubsub heartbeat and reconnect loops are bound to it.</param>
     public async Task StartAsync(CancellationToken token)
     {
         _localPeer = (LocalPeer)_serviceProvider.GetRequiredService<IPeerFactory>().Create(LoadOrCreateIdentity());
         await _localPeer.StartListenAsync([$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"], token);
+        _router = _serviceProvider.GetRequiredService<PubsubRouter>();
+        await _router.StartAsync(_localPeer, token);
         if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {_config.P2PPort} as {LocalPeerId}");
     }
+
+    /// <summary>Gets (and subscribes) the pubsub topic; available after <see cref="StartAsync"/>.</summary>
+    public ITopic GetTopic(string topicId) =>
+        (_router ?? throw new InvalidOperationException($"{nameof(BeaconP2P)} is not started")).GetTopic(topicId);
+
+    /// <summary>Feeds known peer addresses to the peer store so the pubsub router connects to them.</summary>
+    public void Discover(Multiaddress[] addresses) => _serviceProvider.GetRequiredService<PeerStore>().Discover(addresses);
 
     /// <summary>Dials the peer, or returns the existing session when one is already established (for example inbound).</summary>
     /// <remarks>

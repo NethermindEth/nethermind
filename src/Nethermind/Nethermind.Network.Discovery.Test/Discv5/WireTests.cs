@@ -216,6 +216,7 @@ public class WireTests
             new DiscoveryConfig(),
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
+            Discv5RecordFilter.ExecutionLayer,
             LimboLogs.Instance);
 
         return new TestPeer(adapter, handler, channel, kademlia, nodeRecordProvider, endpoint);
