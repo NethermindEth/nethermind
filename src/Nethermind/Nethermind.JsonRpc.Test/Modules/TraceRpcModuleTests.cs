@@ -1569,7 +1569,7 @@ public class TraceRpcModuleTests
         string output = parsed["result"]!["output"]!.Value<string>()!;
         Assert.That(output, Is.EqualTo("0x" + new string('0', 64)));
     }
-  
+
     private static void AssertBalanceChange(ParityAccountStateChange? stateChanges, UInt256 before, UInt256 after)
     {
         Assert.That(stateChanges?.Balance, Is.Not.Null);
