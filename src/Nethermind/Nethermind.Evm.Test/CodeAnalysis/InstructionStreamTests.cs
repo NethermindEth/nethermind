@@ -39,8 +39,9 @@ public class InstructionStreamTests
         Assert.That(stream.Ops[0].Operand, Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
         Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock),
             "PUSH1 2; ADD folds into a single const-op entry");
-        Assert.That(stream.Ops[1].Opcode, Is.EqualTo((byte)Instruction.ADD));
-        Assert.That(stream.Ops[1].Operand, Is.EqualTo(2UL), "the pushed constant survives as the pair's operand");
+        Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.Add), "the pair runs under its virtual opcode");
+        Assert.That(stream.Constants[(int)stream.Ops[1].Operand], Is.EqualTo((Nethermind.Int256.UInt256)2),
+            "the pushed constant survives in the pool as the pair's operand");
         Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
             "STOP is not a static-cost op and must run the standard handler");
     }
@@ -106,7 +107,8 @@ public class InstructionStreamTests
         InstructionStream stream = BuildWithFusion(code);
 
         Assert.That(stream.PcToEntry[0], Is.EqualTo(0), "PUSH3 opens the block as its first entry");
-        Assert.That(stream.Ops[0].Operand, Is.EqualTo(0x010203UL), "PUSH3 immediates are pre-decoded big-endian");
+        Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)0x010203),
+            "PUSH3 immediates are pre-decoded big-endian into the pool");
         Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.FusedBlockFirst),
             "PUSH3 const; ADD folds into a single block-charging const-op entry");
         Assert.That(stream.Ops[0].Advance, Is.EqualTo(5), "the pair covers the push, its immediates, and the op");

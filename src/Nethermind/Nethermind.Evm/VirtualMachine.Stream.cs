@@ -118,11 +118,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                     if (metered)
                     {
-                        programCounter = entry.Pc;
-                        MeteredOutcome outcome = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, ref programCounter, ref opCodeCount, ref entryIndex, ref metered, ref exceptionType, callDepth);
-                        if (outcome == MeteredOutcome.Continue)
+                        // By-value in, struct out: ref parameters here would force the loop's
+                        // hottest locals out of registers for the whole method.
+                        MeteredResult result = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, entry.Pc, opCodeCount, callDepth);
+                        programCounter = result.ProgramCounter;
+                        opCodeCount = result.OpCodeCount;
+                        entryIndex = result.EntryIndex;
+                        metered = result.Metered;
+                        exceptionType = result.Exception;
+                        if (result.Outcome == MeteredOutcome.Continue)
                             continue;
-                        if (outcome == MeteredOutcome.OutOfGas)
+                        if (result.Outcome == MeteredOutcome.OutOfGas)
                         {
                             OpCodeCount += opCodeCount;
                             goto OutOfGas;
@@ -415,19 +421,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// and failure semantics; immune to fused-pair merging because it reads bytes. Kept out
     /// of <see cref="RunStream{TCancelable}"/> so the hot loop stays small and reducible.
     /// </summary>
+    private readonly record struct MeteredResult(
+        MeteredOutcome Outcome,
+        int ProgramCounter,
+        int OpCodeCount,
+        int EntryIndex,
+        bool Metered,
+        EvmExceptionType Exception);
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private MeteredOutcome RunMeteredSegment<TCancelable>(
+    private MeteredResult RunMeteredSegment<TCancelable>(
         InstructionStream stream,
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
-        ref int programCounter,
-        ref int opCodeCount,
-        ref int entryIndex,
-        ref bool metered,
-        ref EvmExceptionType exceptionType,
+        int programCounter,
+        int opCodeCount,
         int callDepth)
         where TCancelable : struct, IFlag
     {
+        int entryIndex = 0;
+        bool metered = true;
+        EvmExceptionType exceptionType = EvmExceptionType.None;
         StreamOp[] ops = stream.Ops;
         ushort[] pcToEntry = stream.PcToEntry;
         ref byte code = ref stack.Code;
@@ -438,8 +452,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if ((uint)programCounter >= codeLength)
             {
-                entryIndex = ops.Length;
-                return MeteredOutcome.Continue;
+                return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, ops.Length, metered, exceptionType);
             }
 
             Instruction instruction = (Instruction)Unsafe.Add(ref code, programCounter);
@@ -456,20 +469,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
 
             if (TGasPolicy.GetRemainingGas(in gas) < 0)
-                return MeteredOutcome.OutOfGas;
+                return new MeteredResult(MeteredOutcome.OutOfGas, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             TGasPolicy.OnAfterInstructionTrace(in gas);
 
             if (exceptionType != EvmExceptionType.None)
-                return MeteredOutcome.BreakLoop;
+                return new MeteredResult(MeteredOutcome.BreakLoop, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             if (ReturnData is not null)
-                return MeteredOutcome.BreakLoop;
+                return new MeteredResult(MeteredOutcome.BreakLoop, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             if ((uint)programCounter >= (uint)pcToEntry.Length)
             {
-                entryIndex = ops.Length;
-                return MeteredOutcome.Continue;
+                return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, ops.Length, metered, exceptionType);
             }
 
             int landing = pcToEntry[programCounter];
@@ -482,7 +494,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             entryIndex = landing;
             if ((uint)entryIndex >= (uint)ops.Length)
-                return MeteredOutcome.Continue;
+                return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered, exceptionType);
 
             StreamOpKind kind = ops[entryIndex].Kind;
             if (kind is StreamOpKind.InBlock or StreamOpKind.FusedInBlock)
@@ -490,8 +502,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             // Reached a block-charging entry or a boundary op: hand back to the stream loop,
             // which re-evaluates the charge (and so whether metering must continue).
-            metered = false;
-            return MeteredOutcome.Continue;
+            return new MeteredResult(MeteredOutcome.Continue, programCounter, opCodeCount, entryIndex, metered: false, exceptionType);
         }
     }
 }
