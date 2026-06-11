@@ -598,9 +598,11 @@
       "nethermind.beaconchain": {
         "type": "Project",
         "dependencies": {
+          "Nethermind.Crypto.Bls": "[1.0.5, )",
           "Nethermind.Init": "[1.39.0-unstable, )",
           "Nethermind.Merge.Plugin": "[1.39.0-unstable, )",
-          "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )"
+          "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )",
+          "Snappier": "[1.3.1, )"
         }
       },
       "nethermind.blockchain": {

@@ -6,7 +6,10 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using Nethermind.Init.Modules;
 
@@ -53,6 +56,10 @@ public class BeaconChainModule : Module
 
         builder
             .AddSingleton<BeaconChainService>()
+            .AddSingleton(BeaconChainSpec.Mainnet)
+            .AddSingleton<BeaconChainStore>()
+            .AddSingleton<PubkeyCache>()
+            .AddSingleton<CheckpointSync>()
             .AddColumnDatabase<BeaconChainDbColumns>("beaconChain")
             ;
     }

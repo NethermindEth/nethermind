@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain;
@@ -18,6 +24,9 @@ namespace Nethermind.BeaconChain;
 /// </remarks>
 public sealed class BeaconChainService(
     IBeaconChainConfig config,
+    BeaconChainStore store,
+    PubkeyCache pubkeyCache,
+    CheckpointSync checkpointSync,
     ILogManager logManager) : IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconChainService>();
@@ -28,7 +37,7 @@ public sealed class BeaconChainService(
         try
         {
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {config.CheckpointSyncUrl}");
-            await Task.CompletedTask;
+            await InitializeAnchorAsync(_cancellationTokenSource.Token);
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
         {
@@ -36,6 +45,39 @@ public sealed class BeaconChainService(
         catch (Exception e)
         {
             if (_logger.IsError) _logger.Error("Embedded beacon chain driver failed.", e);
+        }
+    }
+
+    private async Task InitializeAnchorAsync(CancellationToken cancellationToken)
+    {
+        BeaconStateFulu state;
+        if (store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot))
+        {
+            if (_logger.IsInfo) _logger.Info($"Resuming from persisted anchor slot {anchorSlot} (block {anchorRoot})");
+            if (!store.TryGetState(anchorRoot, out byte[]? stateSsz))
+            {
+                throw new InvalidOperationException($"Persisted anchor state {anchorRoot} is missing or corrupt; delete the beaconChain database to checkpoint-sync again.");
+            }
+
+            BeaconStateFulu.Decode(stateSsz, out state);
+        }
+        else
+        {
+            state = (await checkpointSync.RunAsync(cancellationToken)).State;
+        }
+
+        Validator[] validators = state.Validators!;
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        if (pubkeyCache.TryLoad(store, validators))
+        {
+            if (_logger.IsInfo) _logger.Info($"Loaded pubkey cache for {pubkeyCache.Count} validators in {stopwatch.Elapsed.TotalSeconds:F1} s");
+        }
+        else
+        {
+            if (_logger.IsInfo) _logger.Info($"Building pubkey cache for {validators.Length} validators");
+            pubkeyCache.Build(validators);
+            pubkeyCache.Persist(store);
+            if (_logger.IsInfo) _logger.Info($"Built and persisted pubkey cache for {pubkeyCache.Count} validators in {stopwatch.Elapsed.TotalSeconds:F1} s");
         }
     }
 
