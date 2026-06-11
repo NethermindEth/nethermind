@@ -51,16 +51,15 @@ namespace Nethermind.Consensus.AuRa
         protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockToProduce block = base.PrepareBlock(parent, payloadAttributes, flags);
-            // Upgrade to an AuRa-typed header in place when needed so the step can be stamped;
-            // signature is filled in later by AuRaSealer. Skip the WithReplacedHeader churn when
-            // the header is already AuRa-typed (the common case once chainspec/decoder produce them).
+            // Skip the WithReplacedHeader churn when the header is already AuRa-typed; signature
+            // is filled in later by AuRaSealer.
             if (block.Header is AuRaBlockHeader aura)
             {
                 aura.AuRaStep = _auRaStepCalculator.CurrentStep;
                 return block;
             }
 
-            AuRaBlockHeader upgraded = UpgradeHeaderToAuRa(block.Header);
+            AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(block.Header);
             upgraded.AuRaStep = _auRaStepCalculator.CurrentStep;
             return (BlockToProduce)block.WithReplacedHeader(upgraded);
         }
@@ -96,38 +95,5 @@ namespace Nethermind.Consensus.AuRa
             return base.SealBlock(block, parent, token);
         }
 
-        /// <summary>
-        /// Identity-preserving upgrade: returns the same instance when already AuRa, otherwise
-        /// clones a base <see cref="BlockHeader"/> into an <see cref="AuRaBlockHeader"/>. Used by
-        /// <c>PrepareBlock</c> to stamp the step before the sealer produces the signature.
-        /// </summary>
-        private static AuRaBlockHeader UpgradeHeaderToAuRa(BlockHeader header)
-        {
-            if (header is AuRaBlockHeader aura) return aura;
-
-            return new AuRaBlockHeader(header.ParentHash, header.UnclesHash, header.Beneficiary,
-                header.Difficulty, header.Number, header.GasLimit, header.Timestamp, header.ExtraData)
-            {
-                Author = header.Author,
-                StateRoot = header.StateRoot,
-                TxRoot = header.TxRoot,
-                ReceiptsRoot = header.ReceiptsRoot,
-                Bloom = header.Bloom,
-                GasUsed = header.GasUsed,
-                MixHash = header.MixHash,
-                Nonce = header.Nonce,
-                Hash = header.Hash,
-                TotalDifficulty = header.TotalDifficulty,
-                BaseFeePerGas = header.BaseFeePerGas,
-                WithdrawalsRoot = header.WithdrawalsRoot,
-                ParentBeaconBlockRoot = header.ParentBeaconBlockRoot,
-                RequestsHash = header.RequestsHash,
-                BlockAccessListHash = header.BlockAccessListHash,
-                BlobGasUsed = header.BlobGasUsed,
-                ExcessBlobGas = header.ExcessBlobGas,
-                SlotNumber = header.SlotNumber,
-                IsPostMerge = header.IsPostMerge,
-            };
-        }
     }
 }

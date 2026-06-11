@@ -28,4 +28,51 @@ public sealed class AuRaBlockHeader(
 
     /// <inheritdoc/>
     public byte[]? AuRaSignature { get; set; }
+
+    public override BlockHeader CloneForProcessing() => new AuRaBlockHeader(
+        ParentHash, UnclesHash, Beneficiary, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+    {
+        AuRaStep = AuRaStep,
+        AuRaSignature = AuRaSignature,
+    };
+
+    /// <summary>
+    /// Promote a base <see cref="BlockHeader"/> to <see cref="AuRaBlockHeader"/>, copying every
+    /// field across. Returns <paramref name="src"/> unchanged if it's already an AuRa header.
+    /// </summary>
+    public static AuRaBlockHeader UpgradeFrom(BlockHeader src)
+    {
+        if (src is AuRaBlockHeader aura) return aura;
+
+        return new AuRaBlockHeader(
+            src.ParentHash,
+            src.UnclesHash,
+            src.Beneficiary,
+            in src.Difficulty,
+            src.Number,
+            src.GasLimit,
+            src.Timestamp,
+            src.ExtraData)
+        {
+            Author = src.Author,
+            StateRoot = src.StateRoot,
+            TxRoot = src.TxRoot,
+            ReceiptsRoot = src.ReceiptsRoot,
+            Bloom = src.Bloom,
+            GasUsed = src.GasUsed,
+            MixHash = src.MixHash,
+            Nonce = src.Nonce,
+            Hash = src.Hash,
+            TotalDifficulty = src.TotalDifficulty,
+            BaseFeePerGas = src.BaseFeePerGas,
+            WithdrawalsRoot = src.WithdrawalsRoot,
+            ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
+            RequestsHash = src.RequestsHash,
+            BlockAccessListHash = src.BlockAccessListHash,
+            BlobGasUsed = src.BlobGasUsed,
+            ExcessBlobGas = src.ExcessBlobGas,
+            SlotNumber = src.SlotNumber,
+            IsPostMerge = src.IsPostMerge,
+        };
+    }
 }

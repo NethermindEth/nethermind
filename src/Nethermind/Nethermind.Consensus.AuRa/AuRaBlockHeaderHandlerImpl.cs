@@ -27,45 +27,9 @@ internal sealed class AuRaBlockHeaderHandlerImpl : IAuRaBlockHeaderHandler
 
     public BlockHeader SetSeal(BlockHeader header, long step, byte[]? signature)
     {
-        AuRaBlockHeader aura = UpgradeToAuRa(header);
+        AuRaBlockHeader aura = AuRaBlockHeader.UpgradeFrom(header);
         aura.AuRaStep = step;
         aura.AuRaSignature = signature;
         return aura;
-    }
-
-    private static AuRaBlockHeader UpgradeToAuRa(BlockHeader header)
-    {
-        if (header is AuRaBlockHeader aura) return aura;
-
-        return new AuRaBlockHeader(
-            header.ParentHash,
-            header.UnclesHash,
-            header.Beneficiary,
-            in header.Difficulty,
-            header.Number,
-            header.GasLimit,
-            header.Timestamp,
-            header.ExtraData)
-        {
-            Author = header.Author,
-            StateRoot = header.StateRoot,
-            TxRoot = header.TxRoot,
-            ReceiptsRoot = header.ReceiptsRoot,
-            Bloom = header.Bloom,
-            GasUsed = header.GasUsed,
-            MixHash = header.MixHash,
-            Nonce = header.Nonce,
-            Hash = header.Hash,
-            TotalDifficulty = header.TotalDifficulty,
-            BaseFeePerGas = header.BaseFeePerGas,
-            WithdrawalsRoot = header.WithdrawalsRoot,
-            ParentBeaconBlockRoot = header.ParentBeaconBlockRoot,
-            RequestsHash = header.RequestsHash,
-            BlockAccessListHash = header.BlockAccessListHash,
-            BlobGasUsed = header.BlobGasUsed,
-            ExcessBlobGas = header.ExcessBlobGas,
-            SlotNumber = header.SlotNumber,
-            IsPostMerge = header.IsPostMerge,
-        };
     }
 }

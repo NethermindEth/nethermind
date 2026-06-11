@@ -121,26 +121,8 @@ namespace Nethermind.Consensus.AuRa
         // BAL-era preprocessing for AuRa+Merge: materialise the system-user and withdrawal-contract
         // accounts on the raw worldstate so subsequent block processing can see them. Skipped when
         // BAL is off — pre-EIP-7928 chains continue to rely on the EVM's lazy account creation.
-        // Done BEFORE base.ProcessBlock (i.e. before BAL Setup captures the parent state root) so
-        /// <summary>
-        /// Preserves the <see cref="AuRaBlockHeader"/> subclass when rebuilding the header for
-        /// processing, and copies the partial seal (step may be set, signature null) — block
-        /// production stamps the step in <c>PrepareBlock</c> and the signature later in
-        /// <c>AuRaSealer.SealBlock</c>.
-        /// </summary>
-        protected override BlockHeader CloneHeaderShape(BlockHeader source)
-        {
-            if (source is not AuRaBlockHeader auraSrc) return base.CloneHeaderShape(source);
-
-            return new AuRaBlockHeader(source.ParentHash, source.UnclesHash, source.Beneficiary,
-                source.Difficulty, source.Number, source.GasLimit, source.Timestamp, source.ExtraData)
-            {
-                AuRaStep = auraSrc.AuRaStep,
-                AuRaSignature = auraSrc.AuRaSignature,
-            };
-        }
-
-        // the BAL parent-snapshot in parallel mode reflects the materialised accounts.
+        // Done BEFORE base.ProcessBlock so the BAL parent-snapshot in parallel mode reflects the
+        // materialised accounts.
         private void ApplyAuRaPreprocessingChanges(IReleaseSpec spec)
         {
             if (!_balManager.Enabled) return;

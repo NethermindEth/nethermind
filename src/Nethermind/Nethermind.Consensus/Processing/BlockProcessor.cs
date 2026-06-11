@@ -293,8 +293,7 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
-        BlockHeader headerForProcessing = CloneHeaderShape(bh);
-
+        BlockHeader headerForProcessing = bh.CloneForProcessing();
         CopyHeaderForProcessing(bh, headerForProcessing);
 
         if (!ShouldComputeStateRoot(bh))
@@ -308,11 +307,6 @@ public partial class BlockProcessor(
         return block;
     }
 
-    /// <remarks>
-    /// Bloom is reset (recomputed during processing); every other field is copied verbatim from
-    /// <paramref name="src"/>. <c>BlockAccessListHash</c> is carried so the verify-only fast path
-    /// can skip recomputing it.
-    /// </remarks>
     private static void CopyHeaderForProcessing(BlockHeader src, BlockHeader dst)
     {
         dst.Bloom = Bloom.Empty;
@@ -332,27 +326,6 @@ public partial class BlockProcessor(
         dst.BlockAccessListHash = src.BlockAccessListHash;
         dst.BlobGasUsed = src.BlobGasUsed;
         dst.ExcessBlobGas = src.ExcessBlobGas;
-    }
-
-    /// <summary>
-    /// Construct an empty header carrying the same subclass shape as <paramref name="source"/>.
-    /// Default returns a base <see cref="BlockHeader"/>; if <paramref name="source"/> carries an
-    /// AuRa seal the handler bridges the subclass + partial seal across without requiring an
-    /// engine-specific override. Consensus engines may still override for additional behaviour.
-    /// </summary>
-    protected virtual BlockHeader CloneHeaderShape(BlockHeader source)
-    {
-        BlockHeader cloned = new(source.ParentHash, source.UnclesHash, source.Beneficiary, source.Difficulty, source.Number, source.GasLimit, source.Timestamp, source.ExtraData);
-
-        if (source is IAuRaSealedHeader auraSource && AuRaBlockHeaderHandler.Instance is { } handler)
-        {
-            cloned = handler.SetSeal(cloned, 0, null);
-            IAuRaSealedHeader auraCloned = (IAuRaSealedHeader)cloned;
-            auraCloned.AuRaStep = auraSource.AuRaStep;
-            auraCloned.AuRaSignature = auraSource.AuRaSignature;
-        }
-
-        return cloned;
     }
 
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
