@@ -70,22 +70,22 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // ArrayPool-backed for cross-build reuse; null until the first non-empty build.
     internal byte[]? RootFirstKey = null;
 
-    // Previous entry's full key, used by HsstBTreeBuilder.OnEntryAdded /
+    // Previous entry's full key, used by HsstBTreeBuilder.EmitEntryBookkeeping /
     // MaybeFlushBeforeEntry to compute online LCP across flushes (the pending-range
     // descriptor slice in <see cref="CurrentLevel"/> can shrink to zero on a flush,
     // but the LCP chain must stay intact). ArrayPool-backed and retained across
     // builds: cross-build contamination is impossible because the in-build invariant
     // is "PrevKeyBuf is meaningful only when entryIdx > 0 in the current build", and
-    // entryIdx=0's OnEntryAdded unconditionally writes the entry-0 key before any
+    // entryIdx=0's EmitEntryBookkeeping unconditionally writes the entry-0 key before any
     // later add reads it.
     internal byte[]? PrevKeyBuf = null;
 
     // Running max separator length over the currently-pending entry range (the
     // trailing run of Entry-kind descriptors in <see cref="CurrentLevel"/>).
-    // Maintained incrementally by HsstBTreeBuilder.OnEntryAdded so
+    // Maintained incrementally by HsstBTreeBuilder.EmitEntryBookkeeping so
     // MaybeFlushBeforeEntry's leaf-fit estimate can read it in O(1) instead of
     // rescanning the pending CommonPrefixArr slice on every Add. Reset to 0 on
-    // every full pending flush (EmitInlineLeaf / FlushPendingAsEntries); recomputed
+    // every full pending flush (MaybeEmitInlineLeaf / FlushPendingAsEntries); recomputed
     // by a bounded rescan in FlushPendingNotOnCurrentPage's partial-trim path.
     internal byte PendingMaxSepLen = 0;
 

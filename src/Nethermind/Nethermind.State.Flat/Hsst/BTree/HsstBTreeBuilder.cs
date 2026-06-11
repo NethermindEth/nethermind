@@ -273,7 +273,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// so it does not pay double page-math. <paramref name="precomputedLcp"/> is
     /// the raw LCP byte count returned by <see cref="MaybeFlushBeforeEntry"/>
     /// (<c>-1</c> if unknown) and is forwarded into
-    /// <see cref="OnEntryAdded"/> so the per-key
+    /// <see cref="EmitEntryBookkeeping"/> so the per-key
     /// LCP loop runs once per buffered <see cref="Add"/>.
     /// </summary>
     private void AddCore(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value, int lebSize, int precomputedLcp)
@@ -334,29 +334,63 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Per-entry list pushes + LCP update shared by the buffered <see cref="AddCore"/>
-    /// path and the streaming <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/>
-    /// path. Records the entry's index pointer (MetadataStart in key-after-value
-    /// mode, EntryStart in key-first mode), appends the key to the pending leaf set,
-    /// and runs the LCP / PendingMaxSepLen / PrevKeyBuf bookkeeping in
-    /// <see cref="OnEntryAdded"/>. <paramref name="precomputedLcp"/> is the LCP
-    /// against <c>PrevKeyBuf</c> when the caller already has it (AddCore forwards the
-    /// value from <see cref="MaybeFlushBeforeEntry"/>); <c>-1</c> means OnEntryAdded
-    /// recomputes it.
+    /// Per-entry bookkeeping shared by the buffered <see cref="AddCore"/> path and the
+    /// streaming <see cref="FinishValueWrite(System.ReadOnlySpan{byte},long)"/> path: push the
+    /// entry's index pointer (MetadataStart in key-after-value mode, EntryStart in key-first
+    /// mode) and first-key onto the level-0 lists, then record the LCP / PendingMaxSepLen and
+    /// refresh PrevKeyBuf. <paramref name="precomputedLcp"/> is the LCP against
+    /// <c>PrevKeyBuf</c> when the caller already has it (AddCore forwards the value from
+    /// <see cref="MaybeFlushBeforeEntry"/>); <c>-1</c> recomputes it from prev/current keys.
+    /// <paramref name="bufs"/> is the same ref the caller already resolved, threaded through to
+    /// avoid re-resolving the <see cref="Buffers"/> branch on every Add.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EmitEntryBookkeeping(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, long entryPos, int precomputedLcp)
     {
         // Push the per-entry descriptor and its first-key directly onto the level-0
-        // lists. FirstEntry == LastEntry == _entryCount tags the descriptor with its
+        // lists. FirstEntry == LastEntry == entryIdx tags the descriptor with its
         // global entry index — used by WriteIndexNode / ChooseIntermediateChildCount
         // to look up CommonPrefixArr[FirstEntry] when this descriptor (or its
         // enclosing leaf) becomes a child of an intermediate node.
-        bufs.CurrentLevel.Add(new HsstIndexNodeInfo(entryPos, _entryCount, _entryCount, prefixLen: 0));
+        int entryIdx = _entryCount;
+        bufs.CurrentLevel.Add(new HsstIndexNodeInfo(entryPos, entryIdx, entryIdx, prefixLen: 0));
         if (key.Length > 0) bufs.CurrentLevelFirstKeys.AddRange(key);
         _pendingCount++;
         _entryCount++;
-        OnEntryAdded(ref bufs, key, precomputedLcp);
+
+        // Record this entry's LCP against the previous entry's key in CommonPrefixArr.
+        byte[]? prevKey = bufs.PrevKeyBuf;
+        int cp = 0;
+        if (entryIdx > 0 && _keyLength > 0 && prevKey is not null)
+        {
+            cp = precomputedLcp >= 0
+                ? precomputedLcp
+                : MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, Math.Min(prevKey.Length, _keyLength)), key);
+        }
+        bufs.AddCommonPrefix(entryIdx, (byte)cp);
+
+        // Incremental update of PendingMaxSepLen so MaybeFlushBeforeEntry can skip its
+        // O(pending) scan: sepLen for an entry is min(cp + 1, keyLength), and we want the max
+        // over the pending range (rebuilt by FlushPendingNotOnCurrentPage's partial-flush rescan).
+        if (_keyLength > 0)
+        {
+            byte sl = (byte)Math.Min(cp + 1, _keyLength);
+            if (sl > bufs.PendingMaxSepLen) bufs.PendingMaxSepLen = sl;
+        }
+
+        // Refresh PrevKeyBuf for the next entry's LCP. Sized to _keyLength by the constructor
+        // (when known) or here on the first entry of a deferred-keyLength build; after that
+        // every Add writes exactly _keyLength bytes into an already-large-enough buffer.
+        if (_keyLength > 0 && key.Length == _keyLength)
+        {
+            byte[]? prev = bufs.PrevKeyBuf;
+            if (prev is null || prev.Length < _keyLength)
+            {
+                bufs.EnsurePrevKeyCapacity(_keyLength);
+                prev = bufs.PrevKeyBuf;
+            }
+            key.CopyTo(prev);
+        }
     }
 
     /// <summary>Builds the index region and appends the trailer.</summary>
@@ -416,67 +450,15 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Per-entry bookkeeping: record the new entry's LCP against the previous entry's
-    /// key in <c>Buffers.CommonPrefixArr</c>, then refresh <c>Buffers.PrevKeyBuf</c>
-    /// for the next add. <paramref name="precomputedLcp"/> is the raw LCP byte count
-    /// against <c>Buffers.PrevKeyBuf</c> already computed by
-    /// <see cref="MaybeFlushBeforeEntry"/>; pass <c>-1</c> when no precomputed value
-    /// is available and the method will walk the prev/current keys itself.
-    /// <paramref name="bufs"/> is the same ref the caller already resolved at the
-    /// top of <see cref="Add"/> / <see cref="BeginValueWrite"/>; threading it
-    /// through avoids re-resolving the <see cref="Buffers"/> branch on every Add.
-    /// </summary>
-    private void OnEntryAdded(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, int precomputedLcp)
-    {
-        int entryIdx = _entryCount - 1;
-        byte[]? prevKey = bufs.PrevKeyBuf;
-        int cp = 0;
-        if (entryIdx > 0 && _keyLength > 0 && prevKey is not null)
-        {
-            cp = precomputedLcp >= 0
-                ? precomputedLcp
-                : MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, Math.Min(prevKey.Length, _keyLength)), key);
-        }
-        bufs.AddCommonPrefix(entryIdx, (byte)cp);
-
-        // Incremental update of PendingMaxSepLen so MaybeFlushBeforeEntry can skip
-        // its O(pending) scan. Mirrors the loop it replaces: sepLen for an entry is
-        // min(cp + 1, keyLength), and we want the max over the pending range — the
-        // trailing <c>_pendingCount</c> descriptors in <c>CurrentLevel</c>, including
-        // the first-in-pending entry, which is what the rescan in
-        // <see cref="FlushPendingNotOnCurrentPage"/> iterates over.
-        if (_keyLength > 0)
-        {
-            byte sl = (byte)Math.Min(cp + 1, _keyLength);
-            if (sl > bufs.PendingMaxSepLen) bufs.PendingMaxSepLen = sl;
-        }
-
-        // Refresh PrevKeyBuf for the next entry's LCP. The buffer is sized to
-        // <c>_keyLength</c> by the constructor (when known) or here on the first
-        // entry of a deferred-keyLength build; after that, every Add writes
-        // exactly _keyLength bytes into a buffer that is already large enough.
-        if (_keyLength > 0 && key.Length == _keyLength)
-        {
-            byte[]? prev = bufs.PrevKeyBuf;
-            if (prev is null || prev.Length < _keyLength)
-            {
-                bufs.EnsurePrevKeyCapacity(_keyLength);
-                prev = bufs.PrevKeyBuf;
-            }
-            key.CopyTo(prev);
-        }
-    }
-
-    /// <summary>
     /// Trigger 2 (page-boundary fit): flush the pending set as a leaf when the next entry plus that leaf would
     /// straddle the current 4 KiB page. Returns the raw LCP between <paramref name="key"/> and PrevKeyBuf
-    /// (<c>-1</c> when no meaningful LCP exists) so the caller can thread it into OnEntryAdded.
+    /// (<c>-1</c> when no meaningful LCP exists) so the caller can thread it into EmitEntryBookkeeping.
     /// </summary>
     private int MaybeFlushBeforeEntry(ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> key, long entryLen)
     {
         // Compute LCP once at the top; reused for the leaf-fit estimate below and
-        // returned for the caller to forward into OnEntryAdded. Uses PrevKeyBuf
-        // (set by the last OnEntryAdded) — survives flushes that clear the pending
+        // returned for the caller to forward into EmitEntryBookkeeping. Uses PrevKeyBuf
+        // (set by the last EmitEntryBookkeeping) — survives flushes that clear the pending
         // range, and stays valid even when the prior entry was stranded onto the
         // previous page and sealed as a direct Entry descriptor.
         byte[]? prevKey = bufs.PrevKeyBuf;
@@ -505,7 +487,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int newSepLen = lcp >= 0 ? Math.Min(lcp + 1, _keyLength) : _keyLength;
 
         // Max sep length over pending entries is maintained incrementally by
-        // OnEntryAdded (and rebuilt by FlushPendingNotOnCurrentPage's
+        // EmitEntryBookkeeping (and rebuilt by FlushPendingNotOnCurrentPage's
         // partial-flush rescan).
         int maxSepLen = bufs.PendingMaxSepLen;
         int maxSepWithNew = Math.Max(maxSepLen, newSepLen);
@@ -753,7 +735,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     //
     // Per-key state during this build phase is one <c>long</c> position. Per-entry
     // common-prefix lengths against the prior entry's key are precomputed online in
-    // <see cref="OnEntryAdded"/> into <c>Buffers.CommonPrefixArr</c>; leaf separators
+    // <see cref="EmitEntryBookkeeping"/> into <c>Buffers.CommonPrefixArr</c>; leaf separators
     // are derived as <c>min(commonPrefix + 1, currKeyLen)</c>. Internal-node
     // separators are derived the same way — adjacency of <see cref="HsstIndexNodeInfo"/>
     // ranges means <c>commonPrefixArr[curr.FirstEntry]</c> already holds the LCP
