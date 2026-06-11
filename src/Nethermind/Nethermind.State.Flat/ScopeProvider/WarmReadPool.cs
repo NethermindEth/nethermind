@@ -127,6 +127,12 @@ public sealed class WarmReadPool : IDisposable
         }
     }
 
+    /// <remarks>
+    /// Must not be called concurrently with <see cref="Run"/>: a worker that observes
+    /// <c>_disposed</c> after its <c>_workAvailable.Wait()</c> exits without signalling
+    /// the active batch, which would hang the in-flight <c>Run</c>. Owners call Dispose
+    /// at shutdown only, after all <c>Run</c> callers have returned.
+    /// </remarks>
     public void Dispose()
     {
         if (_disposed) return;
