@@ -17,11 +17,13 @@ public class FlatScopeProvider(
     ResourcePool.Usage usage,
     ILogManager logManager,
     bool isReadOnly)
-    : IWorldStateScopeProvider
+    : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
 
-    private readonly Lazy<WarmReadPool> _warmReadPool = new(() =>
+    // Read-only providers (eth_call, debug_traceCall, snapshot readers) never run the pump,
+    // so the pool is left null to avoid spawning its background threads at scope-open time.
+    private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
     {
         int configured = configuration.WarmReadConcurrency;
         int concurrency = configured < 0 ? Math.Min(4 * Environment.ProcessorCount, 64) : Math.Max(1, configured);
@@ -43,7 +45,12 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             logManager,
-            warmReadPool: _warmReadPool.Value,
+            warmReadPool: _warmReadPool?.Value,
             isReadOnly: isReadOnly);
+    }
+
+    public void Dispose()
+    {
+        if (_warmReadPool is { IsValueCreated: true }) _warmReadPool.Value.Dispose();
     }
 }
