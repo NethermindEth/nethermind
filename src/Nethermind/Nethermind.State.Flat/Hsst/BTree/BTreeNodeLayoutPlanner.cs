@@ -4,25 +4,6 @@
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// The index-node layout chosen by <see cref="BTreeNodeLayoutPlanner.Plan"/>:
-/// common-key-prefix length plus (KeyType, KeySlotSize) and the little-endian flag.
-/// </summary>
-/// <param name="CommonKeyPrefixLen">Post-gating LCP. 0 if not worth stripping.</param>
-/// <param name="KeyType">0=Variable, 1=Uniform.</param>
-/// <param name="KeySlotSize">Post-strip slot size for Uniform; 0 for Variable.</param>
-/// <param name="KeyLittleEndian">
-/// When true, callers should set <c>BTreeNodeMetadata.IsKeyLittleEndian</c> so each
-/// fixed-width key slot is byte-reversed on disk (Flags bit 5). Set for the SIMD-eligible
-/// shapes: Uniform with <see cref="KeySlotSize"/> ∈ {2,4,8} and Variable (whose 2-byte
-/// prefixArr is uniformly LE-encoded).
-/// </param>
-internal readonly record struct BTreeNodeLayoutPlan(
-    int CommonKeyPrefixLen,
-    int KeyType,
-    int KeySlotSize,
-    bool KeyLittleEndian);
-
-/// <summary>
 /// Decides the optimal index-node layout — common-key-prefix length plus
 /// (KeyType, KeySlotSize) — from per-entry separator lengths and a pre-computed
 /// cross-entry LCP.
@@ -46,6 +27,25 @@ internal static class BTreeNodeLayoutPlanner
     public const int MaxCommonKeyPrefixLen = 128;
 
     /// <summary>
+    /// The index-node layout chosen by <see cref="Compute"/>: common-key-prefix length plus
+    /// (KeyType, KeySlotSize) and the little-endian flag.
+    /// </summary>
+    /// <param name="CommonKeyPrefixLen">Post-gating LCP. 0 if not worth stripping.</param>
+    /// <param name="KeyType">0=Variable, 1=Uniform.</param>
+    /// <param name="KeySlotSize">Post-strip slot size for Uniform; 0 for Variable.</param>
+    /// <param name="KeyLittleEndian">
+    /// When true, callers should set <c>BTreeNodeMetadata.IsKeyLittleEndian</c> so each
+    /// fixed-width key slot is byte-reversed on disk (Flags bit 5). Set for the SIMD-eligible
+    /// shapes: Uniform with <see cref="KeySlotSize"/> ∈ {2,4,8} and Variable (whose 2-byte
+    /// prefixArr is uniformly LE-encoded).
+    /// </param>
+    public readonly record struct Plan(
+        int CommonKeyPrefixLen,
+        int KeyType,
+        int KeySlotSize,
+        bool KeyLittleEndian);
+
+    /// <summary>
     /// Compute the tightest KeyType+KeySlotSize for a node whose separator lengths are
     /// supplied in <paramref name="lengths"/>, given the cross-entry LCP across those
     /// separators in <paramref name="crossEntryLcp"/>.
@@ -63,8 +63,8 @@ internal static class BTreeNodeLayoutPlanner
     /// LE compare). Widening only fires when the post-strip total
     /// <c>prefixLen + keySlotSize</c> stays within this budget.
     /// </param>
-    /// <returns>The chosen layout — see <see cref="BTreeNodeLayoutPlan"/>.</returns>
-    public static BTreeNodeLayoutPlan Plan(
+    /// <returns>The chosen layout — see <see cref="Plan"/>.</returns>
+    public static Plan Compute(
         ReadOnlySpan<int> lengths,
         int crossEntryLcp,
         int keyLength,
@@ -158,11 +158,11 @@ internal static class BTreeNodeLayoutPlanner
             keyType == 0 ||
             (keyType == 1 && keySlotSize is 2 or 4 or 8);
 
-        return new BTreeNodeLayoutPlan(lcp, keyType, keySlotSize, keyLittleEndian);
+        return new Plan(lcp, keyType, keySlotSize, keyLittleEndian);
     }
 
     /// <summary>
-    /// Slot-widening rule shared by <see cref="Plan"/> and callers that size a
+    /// Slot-widening rule shared by <see cref="Compute"/> and callers that size a
     /// node before planning it (e.g. <c>HsstBTreeBuilder</c>'s split heuristic): the
     /// SIMD-eligible Uniform slot width a node whose longest separator is
     /// <paramref name="maxLen"/> bytes is widened up to — {2, 4, 8} when the per-key
@@ -174,5 +174,4 @@ internal static class BTreeNodeLayoutPlanner
         maxLen <= 4 && keyLength >= 4 ? 4 :
         maxLen <= 8 && keyLength >= 8 ? 8 :
         maxLen;
-
 }

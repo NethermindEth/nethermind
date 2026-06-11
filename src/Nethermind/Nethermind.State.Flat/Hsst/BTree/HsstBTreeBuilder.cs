@@ -138,13 +138,13 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         PrimePerAddBuffers(ref buffers, expectedKeyCount, keyLength);
     }
 
-    /// <summary>Pre-rent CommonPrefixArr and (when keyLength is known) PrevKeyBuf so the per-Add hot path skips the null/grow check.</summary>
+    /// <summary>Pre-grow CommonPrefixArr and (when keyLength is known) PrevKeyBuf capacity so the per-Add hot path avoids regrows.</summary>
     private static void PrimePerAddBuffers(ref HsstBTreeBuilderBuffers buffers, int expectedKeyCount, int keyLength)
     {
         int cpCap = Math.Max(expectedKeyCount, 64);
-        buffers.EnsureCommonPrefixCapacity(cpCap);
+        buffers.CommonPrefixArr.EnsureCapacity(cpCap);
         if (keyLength > 0)
-            buffers.EnsurePrevKeyCapacity(keyLength);
+            buffers.PrevKeyBuf.EnsureCapacity(keyLength);
     }
 
     /// <summary>
@@ -363,16 +363,16 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _pendingCount++;
         _entryCount++;
 
-        // Record this entry's LCP against the previous entry's key in CommonPrefixArr.
-        byte[]? prevKey = bufs.PrevKeyBuf;
+        // Record this entry's LCP against the previous entry's key in CommonPrefixArr
+        // (appended in order — Count == entryIdx before this Add).
         int cp = 0;
-        if (entryIdx > 0 && _keyLength > 0 && prevKey is not null)
+        if (entryIdx > 0 && _keyLength > 0)
         {
             cp = precomputedLcp >= 0
                 ? precomputedLcp
-                : MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, Math.Min(prevKey.Length, _keyLength)), key);
+                : MemoryExtensions.CommonPrefixLength(bufs.PrevKeyBuf.AsSpan(), key);
         }
-        bufs.AddCommonPrefix(entryIdx, (byte)cp);
+        bufs.CommonPrefixArr.Add((byte)cp);
 
         // Incremental update of PendingMaxSepLen so MaybeFlushBeforeEntry can skip its
         // O(pending) scan: sepLen for an entry is min(cp + 1, keyLength), and we want the max
@@ -383,18 +383,11 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
             if (sl > bufs.PendingMaxSepLen) bufs.PendingMaxSepLen = sl;
         }
 
-        // Refresh PrevKeyBuf for the next entry's LCP. Sized to _keyLength by the constructor
-        // (when known) or here on the first entry of a deferred-keyLength build; after that
-        // every Add writes exactly _keyLength bytes into an already-large-enough buffer.
+        // Refresh PrevKeyBuf for the next entry's LCP: hold exactly this entry's key.
         if (_keyLength > 0 && key.Length == _keyLength)
         {
-            byte[]? prev = bufs.PrevKeyBuf;
-            if (prev is null || prev.Length < _keyLength)
-            {
-                bufs.EnsurePrevKeyCapacity(_keyLength);
-                prev = bufs.PrevKeyBuf;
-            }
-            key.CopyTo(prev);
+            bufs.PrevKeyBuf.Clear();
+            bufs.PrevKeyBuf.AddRange(key);
         }
     }
 
@@ -466,11 +459,10 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // (set by the last EmitEntryBookkeeping) — survives flushes that clear the pending
         // range, and stays valid even when the prior entry was stranded onto the
         // previous page and sealed as a direct Entry descriptor.
-        byte[]? prevKey = bufs.PrevKeyBuf;
         int lcp = -1;
-        if (_keyLength > 0 && key.Length == _keyLength && prevKey is not null)
+        if (_keyLength > 0 && key.Length == _keyLength && bufs.PrevKeyBuf.Count >= _keyLength)
         {
-            lcp = MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, _keyLength), key);
+            lcp = MemoryExtensions.CommonPrefixLength(bufs.PrevKeyBuf.AsSpan(), key);
         }
 
         int pending = _pendingCount;
@@ -598,7 +590,6 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
         int count = _pendingCount;
-        bufs.EnsureValueScratchCapacity(Math.Max(64, count * 8));
 
         // The pending Entry descriptors are the trailing <c>count</c> slots of
         // CurrentLevel; their first-keys are the trailing <c>count * _keyLength</c>
@@ -616,7 +607,7 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int firstEntryIdx = children[0].FirstEntry;
         int lastEntryIdx = children[count - 1].LastEntry;
 
-        WriteIndexNode(children, childFirstKeys, bufs.ValueScratch!, bufs.CommonPrefixArr!, out int leafPrefixLen);
+        WriteIndexNode(children, childFirstKeys, bufs.CommonPrefixArr.AsSpan(), out int leafPrefixLen);
 
         // Pop the per-entry descriptors; push the leaf descriptor. CurrentLevelFirstKeys
         // keeps the leftmost popped entry's key in place at offset <c>keysStart</c> —
@@ -647,8 +638,6 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         Debug.Assert(bufs.CurrentLevel.Count == 1, "WrapLoneEntryAsLeaf expects a single descriptor on CurrentLevel.");
         Debug.Assert(_entryCount == 1, "WrapLoneEntryAsLeaf is only valid for single-entry builds.");
 
-        bufs.EnsureValueScratchCapacity(Math.Max(64, 8));
-
         long nodeStart = _writer.Written - _baseOffset;
         ReadOnlySpan<HsstIndexNodeInfo> children = bufs.CurrentLevel.AsSpan();
         ReadOnlySpan<byte> childFirstKeys = _keyLength == 0
@@ -658,7 +647,7 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int firstEntryIdx = children[0].FirstEntry;
         int lastEntryIdx = children[0].LastEntry;
 
-        WriteIndexNode(children, childFirstKeys, bufs.ValueScratch!, bufs.CommonPrefixArr!, out int leafPrefixLen);
+        WriteIndexNode(children, childFirstKeys, bufs.CommonPrefixArr.AsSpan(), out int leafPrefixLen);
 
         // Replace the lone Entry descriptor with the leaf descriptor. The lone
         // first-key block in CurrentLevelFirstKeys is also the leaf's first-key,
@@ -717,15 +706,12 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         byte newMax = 0;
         if (_keyLength > 0)
         {
-            byte[]? cpArr = bufs.CommonPrefixArr;
-            if (cpArr is not null)
+            ReadOnlySpan<byte> cpArr = bufs.CommonPrefixArr.AsSpan();
+            int firstSurvivingEntry = _entryCount - _pendingCount;
+            for (int i = firstSurvivingEntry; i < _entryCount; i++)
             {
-                int firstSurvivingEntry = _entryCount - _pendingCount;
-                for (int i = firstSurvivingEntry; i < _entryCount; i++)
-                {
-                    byte sl = (byte)Math.Min(cpArr[i] + 1, _keyLength);
-                    if (sl > newMax) newMax = sl;
-                }
+                byte sl = (byte)Math.Min(cpArr[i] + 1, _keyLength);
+                if (sl > newMax) newMax = sl;
             }
         }
         bufs.PendingMaxSepLen = newMax;

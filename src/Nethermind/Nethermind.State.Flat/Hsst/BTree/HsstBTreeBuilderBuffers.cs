@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
 
@@ -14,15 +12,11 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// <c>ref</c> to multiple builder constructions to skip the per-build rent/return of all
 /// internal buffers.
 ///
-/// List buffers retain their capacity across builds (cleared by
-/// <see cref="ResetForBuild"/>). Array buffers stay rented from <see cref="ArrayPool{T}.Shared"/>
-/// and only grow when a subsequent build needs more space than the previous one. Steady
-/// state after a few uses is zero rent/return per build.
-///
-/// <see cref="Dispose"/> releases everything; in the auto-owned constructor path of
-/// <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/> the builder owns and disposes
-/// an internal instance, so behavior is identical to the pre-refactor code at the cost
-/// of one struct-sized field.
+/// Every buffer is a <see cref="NativeMemoryList{T}"/> that grows itself and retains its
+/// capacity across builds (cleared/refilled per build). Steady state after a few uses is zero
+/// allocation per build. <see cref="Dispose"/> releases everything; in the auto-owned
+/// constructor path of <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/> the builder owns
+/// and disposes an internal instance.
 /// </summary>
 public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 {
@@ -50,35 +44,33 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     internal NativeMemoryList<byte> CurrentLevelFirstKeys = new(64);
     internal NativeMemoryList<byte> NextLevelFirstKeys = new(64);
 
-    // ArrayPool-backed scratch — null until first build that uses them.
-    internal byte[]? CommonPrefixArr = null;
-    internal byte[]? ValueScratch = null;
+    // Per-entry common-prefix length against the prior entry's key. Appended once per entry
+    // by HsstBTreeBuilder.EmitEntryBookkeeping (Count == entry count) and read back by the
+    // index-build phase at child.FirstEntry. Cleared at build start by ResetForBuild.
+    internal NativeMemoryList<byte> CommonPrefixArr = new(expectedKeyCount);
+
+    // Per-node scratch for child-offset value bytes, written by HsstBTreeBuilder.WriteIndexNode.
+    internal NativeMemoryList<byte> ValueScratch = new(64);
 
     // Per-Build scratch for HsstBTreeBuilder.ChooseIntermediateChildCount and
-    // HsstBTreeBuilder.WriteIndexNode. Pooled fields (rather than stackalloc'd per call)
-    // so a hot caller (e.g. PersistedSnapshotBuilder, which fires many small Builds
-    // back-to-back) reuses the rented buffers across calls. Sized lazily by
-    // HsstBTreeBuilder; null until the first build that needs them.
-    internal byte[]? IndexFirstSepScratch = null;
-    internal byte[]? IndexSepBufScratch = null;
-    internal int[]? IndexSepLengthsScratch = null;
+    // HsstBTreeBuilder.WriteIndexNode. Refilled (Clear + Add/AddRange) per call so a hot
+    // caller (e.g. PersistedSnapshotBuilder, firing many small Builds back-to-back) reuses
+    // the buffers across calls.
+    internal NativeMemoryList<byte> IndexFirstSepScratch = new(64);
+    internal NativeMemoryList<byte> IndexSepBufScratch = new(64);
+    internal NativeMemoryList<int> IndexSepLengthsScratch = new(64);
 
-    // Root node's first-entry full key, populated by HsstBTreeBuilder.BuildIndex at
-    // its final return so HsstBTreeBuilder.CopyRootPrefixBytes can supply the
-    // trailer's RootPrefix bytes from memory rather than re-reading from the data
-    // section.
-    // ArrayPool-backed for cross-build reuse; null until the first non-empty build.
-    internal byte[]? RootFirstKey = null;
+    // Root node's first-entry full key, populated by HsstBTreeBuilder.BuildIndex at its final
+    // return so HsstBTreeBuilder.CopyRootPrefixBytes can supply the trailer's RootPrefix bytes
+    // from memory rather than re-reading from the data section.
+    internal NativeMemoryList<byte> RootFirstKey = new(64);
 
     // Previous entry's full key, used by HsstBTreeBuilder.EmitEntryBookkeeping /
     // MaybeFlushBeforeEntry to compute online LCP across flushes (the pending-range
-    // descriptor slice in <see cref="CurrentLevel"/> can shrink to zero on a flush,
-    // but the LCP chain must stay intact). ArrayPool-backed and retained across
-    // builds: cross-build contamination is impossible because the in-build invariant
-    // is "PrevKeyBuf is meaningful only when entryIdx > 0 in the current build", and
-    // entryIdx=0's EmitEntryBookkeeping unconditionally writes the entry-0 key before any
-    // later add reads it.
-    internal byte[]? PrevKeyBuf = null;
+    // descriptor slice in <see cref="CurrentLevel"/> can shrink to zero on a flush, but the
+    // LCP chain must stay intact). Refilled (Clear + AddRange) at the end of each entry's
+    // bookkeeping; meaningful only when entryIdx > 0, and entry 0 writes it before any read.
+    internal NativeMemoryList<byte> PrevKeyBuf = new(64);
 
     // Running max separator length over the currently-pending entry range (the
     // trailing run of Entry-kind descriptors in <see cref="CurrentLevel"/>).
@@ -90,8 +82,7 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     internal byte PendingMaxSepLen = 0;
 
     /// <summary>
-    /// Reset list counts to zero ahead of a new build. Capacity is retained, and
-    /// rented arrays stay rented — the next build will reuse them if large enough.
+    /// Reset list counts to zero ahead of a new build. Capacity is retained for reuse.
     /// </summary>
     internal void ResetForBuild(int expectedKeyCount)
     {
@@ -100,73 +91,9 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         NextLevel.Clear();
         CurrentLevelFirstKeys.Clear();
         NextLevelFirstKeys.Clear();
+        CommonPrefixArr.Clear();
+        PrevKeyBuf.Clear();
         PendingMaxSepLen = 0;
-    }
-
-    /// <summary>Ensure <see cref="CommonPrefixArr"/> can hold the per-entry LCP for <paramref name="entryCount"/> entries.</summary>
-    internal void EnsureCommonPrefixCapacity(int entryCount) => EnsureSize(ref CommonPrefixArr, entryCount);
-
-    /// <summary>Ensure <see cref="PrevKeyBuf"/> can hold one <paramref name="keyLength"/>-byte key.</summary>
-    internal void EnsurePrevKeyCapacity(int keyLength) => EnsureSize(ref PrevKeyBuf, keyLength);
-
-    /// <summary>Ensure <see cref="ValueScratch"/> holds at least <paramref name="byteCount"/> bytes.</summary>
-    internal void EnsureValueScratchCapacity(int byteCount) => EnsureSize(ref ValueScratch, byteCount);
-
-    /// <summary>Ensure <see cref="RootFirstKey"/> holds the <paramref name="byteCount"/>-byte root first-key.</summary>
-    internal void EnsureRootFirstKeyCapacity(int byteCount) => EnsureSize(ref RootFirstKey, byteCount);
-
-    /// <summary>Ensure <see cref="IndexSepLengthsScratch"/> can hold <paramref name="count"/> separator lengths.</summary>
-    internal void EnsureIndexSepLengthsCapacity(int count) => EnsureSize(ref IndexSepLengthsScratch, count);
-
-    /// <summary>Ensure <see cref="IndexFirstSepScratch"/> holds the <paramref name="byteCount"/>-byte first separator.</summary>
-    internal void EnsureIndexFirstSepCapacity(int byteCount) => EnsureSize(ref IndexFirstSepScratch, byteCount);
-
-    /// <summary>Ensure <see cref="IndexSepBufScratch"/> holds a <paramref name="byteCount"/>-byte separator.</summary>
-    internal void EnsureIndexSepBufCapacity(int byteCount) => EnsureSize(ref IndexSepBufScratch, byteCount);
-
-    /// <summary>
-    /// Ensure <paramref name="slot"/> holds an array of at least <paramref name="minSize"/>
-    /// elements: keeps the existing array when already large enough, otherwise returns the
-    /// old one to the pool (if any) and rents a fresh one.
-    /// </summary>
-    private static void EnsureSize<T>(ref T[]? slot, int minSize)
-    {
-        if (slot is null || slot.Length < minSize)
-        {
-            if (slot is not null) ArrayPool<T>.Shared.Return(slot);
-            slot = ArrayPool<T>.Shared.Rent(minSize);
-        }
-    }
-
-    /// <summary>
-    /// Record entry <paramref name="entryIdx"/>'s common-prefix length in
-    /// <see cref="CommonPrefixArr"/>. <see cref="CommonPrefixArr"/> is primed at build start and
-    /// grows monotonically, so the hot path is a bounds check + direct write; the out-of-line
-    /// grow rents a larger pool array, preserving the bytes already written for entries
-    /// <c>0..entryIdx</c>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AddCommonPrefix(int entryIdx, byte commonPrefixLength)
-    {
-        byte[] cpArr = CommonPrefixArr!;
-        if ((uint)entryIdx >= (uint)cpArr.Length)
-            cpArr = GrowCommonPrefixArr(entryIdx + 1);
-        cpArr[entryIdx] = commonPrefixLength;
-    }
-
-    /// <summary>Cold-path rent-and-copy for <see cref="CommonPrefixArr"/>, kept out-of-line so <see cref="AddCommonPrefix"/> inlines.</summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private byte[] GrowCommonPrefixArr(int needed)
-    {
-        byte[]? oldArr = CommonPrefixArr;
-        byte[] newArr = ArrayPool<byte>.Shared.Rent(needed);
-        if (oldArr is not null)
-        {
-            Array.Copy(oldArr, newArr, oldArr.Length);
-            ArrayPool<byte>.Shared.Return(oldArr);
-        }
-        CommonPrefixArr = newArr;
-        return newArr;
     }
 
     public void Dispose()
@@ -175,13 +102,41 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         NextLevel.Dispose();
         CurrentLevelFirstKeys.Dispose();
         NextLevelFirstKeys.Dispose();
-        if (CommonPrefixArr is not null) { ArrayPool<byte>.Shared.Return(CommonPrefixArr); CommonPrefixArr = null; }
-        if (ValueScratch is not null) { ArrayPool<byte>.Shared.Return(ValueScratch); ValueScratch = null; }
-        if (RootFirstKey is not null) { ArrayPool<byte>.Shared.Return(RootFirstKey); RootFirstKey = null; }
-        if (PrevKeyBuf is not null) { ArrayPool<byte>.Shared.Return(PrevKeyBuf); PrevKeyBuf = null; }
-        if (IndexFirstSepScratch is not null) { ArrayPool<byte>.Shared.Return(IndexFirstSepScratch); IndexFirstSepScratch = null; }
-        if (IndexSepBufScratch is not null) { ArrayPool<byte>.Shared.Return(IndexSepBufScratch); IndexSepBufScratch = null; }
-        if (IndexSepLengthsScratch is not null) { ArrayPool<int>.Shared.Return(IndexSepLengthsScratch); IndexSepLengthsScratch = null; }
+        CommonPrefixArr.Dispose();
+        ValueScratch.Dispose();
+        IndexFirstSepScratch.Dispose();
+        IndexSepBufScratch.Dispose();
+        IndexSepLengthsScratch.Dispose();
+        RootFirstKey.Dispose();
+        PrevKeyBuf.Dispose();
     }
 }
 
+/// <summary>
+/// One node descriptor in the bottom-up B-tree build. Used uniformly for entries, leaves,
+/// and intermediate nodes — the on-disk flag byte at <see cref="ChildOffset"/> tells the
+/// reader which kind of thing it is sitting on.
+/// </summary>
+/// <remarks>
+/// Lives here (rather than inside the generic <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/>)
+/// so the non-generic <see cref="HsstBTreeBuilderBuffers"/> can hold preallocated lists of these.
+/// </remarks>
+internal readonly struct HsstIndexNodeInfo(long childOffset, int firstEntry, int lastEntry, int prefixLen)
+{
+    /// <summary>Absolute first-byte position of this node (or entry) in the HSST (= the flag byte).</summary>
+    public readonly long ChildOffset = childOffset;
+    /// <summary>Global, build-wide entry index of the first leaf entry under this subtree.
+    /// Used by the index-build phase to look up per-entry common-prefix length in
+    /// <see cref="HsstBTreeBuilderBuffers.CommonPrefixArr"/>.</summary>
+    public readonly int FirstEntry = firstEntry;
+    /// <summary>Global, build-wide entry index of the last leaf entry under this subtree.
+    /// Used by the index-build phase to look up per-entry common-prefix length in
+    /// <see cref="HsstBTreeBuilderBuffers.CommonPrefixArr"/>.</summary>
+    public readonly int LastEntry = lastEntry;
+    /// <summary>Common-key-prefix length the BTreeNode planner picked for this node.
+    /// Read at the level above when computing each separator length: the parent must extend
+    /// its separator i to at least <c>PrefixLen</c> bytes so the child can recover its
+    /// prefix bytes from the parent's separator at descent time. <c>0</c> for an entry
+    /// descriptor — entries have no header, no <c>CommonKeyPrefix</c>.</summary>
+    public readonly int PrefixLen = prefixLen;
+}

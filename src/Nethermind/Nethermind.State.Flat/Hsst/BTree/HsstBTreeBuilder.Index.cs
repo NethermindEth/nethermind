@@ -80,9 +80,7 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
             return WriteEmptyIndexNode();
         }
 
-        bufs.EnsureValueScratchCapacity(Math.Max(64, MaxIntermediateEntries * 8));
-        byte[] valueScratchArr = bufs.ValueScratch!;
-        byte[] commonPrefixArr = bufs.CommonPrefixArr!;
+        ReadOnlySpan<byte> commonPrefixArr = bufs.CommonPrefixArr.AsSpan();
 
         // CurrentLevel is pre-populated by the inline-leaf emission in the data-region
         // phase (page-local leaves pushed during Add, plus a final trigger 3 flush at
@@ -144,7 +142,7 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
-                WriteIndexNode(children, childFirstKeys, valueScratchArr, commonPrefixArr, out int intermediatePrefixLen);
+                WriteIndexNode(children, childFirstKeys, commonPrefixArr, out int intermediatePrefixLen);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
                 lastNodeLen = nodeLen;
                 lastNodePrefixLen = intermediatePrefixLen;
@@ -183,20 +181,19 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private static void CaptureRootFirstKey(scoped ref HsstBTreeBuilderBuffers bufs, scoped ReadOnlySpan<byte> finalLevelKeys)
     {
         if (finalLevelKeys.Length == 0) return;
-        bufs.EnsureRootFirstKeyCapacity(finalLevelKeys.Length);
-        // finalLevelKeys.Length is one descriptor's worth of bytes (the root); copying
-        // every byte is correct because RootFirstKey is sized to at least that span.
-        finalLevelKeys.CopyTo(bufs.RootFirstKey);
+        // finalLevelKeys is one descriptor's worth of bytes (the root's first key).
+        bufs.RootFirstKey.Clear();
+        bufs.RootFirstKey.AddRange(finalLevelKeys);
     }
 
     /// <summary>Copy the root's common-key-prefix bytes into <paramref name="dest"/> from the cached first-key, returning the byte count (<c>_rootPrefixLen</c>).</summary>
     private int CopyRootPrefixBytes(scoped Span<byte> dest)
     {
         if (_rootPrefixLen == 0) return 0;
-        byte[]? rootFirstKey = Buffers.RootFirstKey;
-        if (rootFirstKey is null || rootFirstKey.Length < _rootPrefixLen)
+        ReadOnlySpan<byte> rootFirstKey = Buffers.RootFirstKey.AsSpan();
+        if (rootFirstKey.Length < _rootPrefixLen)
             throw new InvalidOperationException("Root first-key cache not populated by BuildIndex.");
-        rootFirstKey.AsSpan(0, _rootPrefixLen).CopyTo(dest);
+        rootFirstKey[.._rootPrefixLen].CopyTo(dest);
         return _rootPrefixLen;
     }
 
@@ -244,8 +241,7 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private void WriteIndexNode(
         scoped ReadOnlySpan<HsstIndexNodeInfo> children,
         scoped ReadOnlySpan<byte> childFirstKeys,
-        scoped Span<byte> valueScratch,
-        byte[] commonPrefixArr,
+        scoped ReadOnlySpan<byte> commonPrefixArr,
         out int nodePrefixLen)
     {
         int count = children.Length;
@@ -253,22 +249,23 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         // Per-child separator length: natural LCP-derived length widened to at least
         // the child's own planner-picked prefix so the parent slot can hand the child
-        // every byte of its CommonKeyPrefix at descent time. Backed by a pooled buffer
-        // so back-to-back Builds reuse the rent.
-        bufs.EnsureIndexSepLengthsCapacity(count);
-        Span<int> sepLengths = bufs.IndexSepLengthsScratch.AsSpan(0, count);
+        // every byte of its CommonKeyPrefix at descent time. Backed by a reused list
+        // so back-to-back Builds reuse the buffer.
+        NativeMemoryList<int> sepLengthsList = bufs.IndexSepLengthsScratch;
+        sepLengthsList.Clear();
         for (int i = 0; i < count; i++)
         {
             int natural = Math.Min(commonPrefixArr[children[i].FirstEntry] + 1, _keyLength);
-            sepLengths[i] = Math.Max(natural, children[i].PrefixLen);
+            sepLengthsList.Add(Math.Max(natural, children[i].PrefixLen));
         }
+        Span<int> sepLengths = sepLengthsList.AsSpan();
 
         // Shared per-entry LCP array — cp[entry j] is identical at every level by
         // construction, so the chain-min across the children's entry range is the
         // cross-entry LCP the planner needs.
         int crossEntryLcp = ComputeCrossEntryLcp(children, commonPrefixArr);
 
-        BTreeNodeLayoutPlan plan = BTreeNodeLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength);
+        BTreeNodeLayoutPlanner.Plan plan = BTreeNodeLayoutPlanner.Compute(sepLengths, crossEntryLcp, _keyLength);
         int prefixLen = plan.CommonKeyPrefixLen;
         int keyType = plan.KeyType;
         int keySlotSize = plan.KeySlotSize;
@@ -298,14 +295,16 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // each entry already delta-adjusted against baseOffset and written LE. BTreeNodeWriter
         // reads keys in-place from childFirstKeys and values stride-wise from this block,
         // so no per-entry staging copy is needed.
-        Span<byte> values = valueScratch[..(count * valueSlotSize)];
+        NativeMemoryList<byte> valueScratch = bufs.ValueScratch;
+        valueScratch.Clear();
+        valueScratch.EnsureCapacity(count * valueSlotSize);
         for (int i = 0; i < count; i++)
         {
             long delta = children[i].ChildOffset - baseOffset;
-            int off = i * valueSlotSize;
             for (int b = 0; b < valueSlotSize; b++)
-                values[off + b] = (byte)(delta >> (b * 8));
+                valueScratch.Add((byte)(delta >> (b * 8)));
         }
+        Span<byte> values = valueScratch.AsSpan();
 
         BTreeNodeWriter<TWriter>.Write(
             ref _writer,
@@ -329,7 +328,7 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>Chain-min of <c>commonPrefixArr</c> over the entry range covered by <paramref name="children"/>; the index-0 boundary against the (nonexistent) prior subtree is conventionally 0.</summary>
-    private static int ComputeCrossEntryLcp(scoped ReadOnlySpan<HsstIndexNodeInfo> children, byte[] commonPrefixArr)
+    private static int ComputeCrossEntryLcp(scoped ReadOnlySpan<HsstIndexNodeInfo> children, scoped ReadOnlySpan<byte> commonPrefixArr)
     {
         if (children.Length == 0) return MaxKeyLen;
         int rangeStart = children[0].FirstEntry;
@@ -349,7 +348,7 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         scoped ReadOnlySpan<byte> levelFirstKeys,
         int childIdx,
         long nodeStart, long firstOffset,
-        byte[] commonPrefixArr)
+        scoped ReadOnlySpan<byte> commonPrefixArr)
     {
         int remaining = level.Length - childIdx;
         int hardMax = Math.Min(MaxIntermediateEntries, remaining);
@@ -382,15 +381,17 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // re-stackallocating 510 bytes per ChooseIntermediateChildCount call.
         int commonLen = firstSepLen;
         ref HsstBTreeBuilderBuffers bufs = ref Buffers;
-        bufs.EnsureIndexFirstSepCapacity(MaxKeyLen);
-        bufs.EnsureIndexSepBufCapacity(MaxKeyLen);
-        Span<byte> firstSep = bufs.IndexFirstSepScratch.AsSpan(0, MaxKeyLen);
-        Span<byte> sepBuf = bufs.IndexSepBufScratch.AsSpan(0, MaxKeyLen);
+        // firstSep is filled once and read across the loop; sepBuf is refilled per candidate.
+        // Both reuse their list buffers across back-to-back Builds.
+        NativeMemoryList<byte> firstSepList = bufs.IndexFirstSepScratch;
+        NativeMemoryList<byte> sepBufList = bufs.IndexSepBufScratch;
+        firstSepList.Clear();
         if (firstSepLen > 0)
         {
             // First child's first-key sits at slot childIdx of levelFirstKeys.
-            levelFirstKeys.Slice(childIdx * _keyLength, firstSepLen).CopyTo(firstSep);
+            firstSepList.AddRange(levelFirstKeys.Slice(childIdx * _keyLength, firstSepLen));
         }
+        ReadOnlySpan<byte> firstSep = firstSepList.AsSpan();
 
         while (childCount < hardMax)
         {
@@ -405,11 +406,13 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
             // curr's first-key sits at slot (childIdx + childCount) of levelFirstKeys —
             // childCount currently being the number of children already committed in
             // this group, so the next candidate sits exactly after them.
+            sepBufList.Clear();
             if (sepLen > 0)
             {
                 int rightSlot = (childIdx + childCount) * _keyLength;
-                levelFirstKeys.Slice(rightSlot, sepLen).CopyTo(sepBuf);
+                sepBufList.AddRange(levelFirstKeys.Slice(rightSlot, sepLen));
             }
+            ReadOnlySpan<byte> sepBuf = sepBufList.AsSpan();
 
             long newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
             int valueSlotSize = HsstValueSlot.MinBytesFor(newMaxOff - baseChildOffset);
@@ -460,8 +463,10 @@ public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
                 // curr's bytes — already consumed by the newCommonLen computation
                 // above — so overwriting it with next2's bytes here is safe.
                 int next2Boundary = Math.Min(effCommonLen, next2SepLen);
+                sepBufList.Clear();
                 if (next2Boundary > 0)
-                    levelFirstKeys.Slice(next2Idx * _keyLength, next2Boundary).CopyTo(sepBuf);
+                    sepBufList.AddRange(levelFirstKeys.Slice(next2Idx * _keyLength, next2Boundary));
+                sepBuf = sepBufList.AsSpan();
                 effCommonLen = effCommonLen == 0
                     ? 0
                     : CommonPrefixLength(firstSep[..next2Boundary], sepBuf[..next2Boundary]);

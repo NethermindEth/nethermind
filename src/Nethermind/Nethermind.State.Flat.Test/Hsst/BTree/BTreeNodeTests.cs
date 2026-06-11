@@ -570,7 +570,7 @@ public class BTreeNodeTests
         ReadOnlySpan<int> offsets = [0, 2];
         ReadOnlySpan<int> lengths = [2, 2];
 
-        BTreeNodeLayoutPlan plan = BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp: 1, keyLength: 2);
+        BTreeNodeLayoutPlanner.Plan plan = BTreeNodeLayoutPlanner.Compute(lengths, crossEntryLcp: 1, keyLength: 2);
 
         Assert.That(plan.CommonKeyPrefixLen, Is.EqualTo(0), "1-byte LCP × 1 saving entry − 1 metadata byte = 0; must not strip");
         // Same length, length > 0 → Uniform-2.
@@ -713,7 +713,7 @@ public class BTreeNodeTests
             // Distinct keys with no common prefix (high byte differs).
             buf[i * keyLen] = (byte)(i + 1);
         }
-        BTreeNodeLayoutPlan plan = BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp: 0, keyLength: keyLen);
+        BTreeNodeLayoutPlanner.Plan plan = BTreeNodeLayoutPlanner.Compute(lengths, crossEntryLcp: 0, keyLength: keyLen);
         Assert.That(plan.KeyType, Is.EqualTo(expectedKeyType));
         Assert.That(plan.KeyLittleEndian, Is.EqualTo(expectedLe));
     }
@@ -746,7 +746,7 @@ public class BTreeNodeTests
         int expectedLcp, int expectedKeyType, int expectedKeySlotSize, bool expectedLe)
     {
         int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
-        BTreeNodeLayoutPlan plan = BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength);
+        BTreeNodeLayoutPlanner.Plan plan = BTreeNodeLayoutPlanner.Compute(lengths, crossEntryLcp, keyLength);
         Assert.That(plan.CommonKeyPrefixLen, Is.EqualTo(expectedLcp));
         Assert.That(plan.KeyType, Is.EqualTo(expectedKeyType));
         Assert.That(plan.KeySlotSize, Is.EqualTo(expectedKeySlotSize));
@@ -775,7 +775,7 @@ public class BTreeNodeTests
         int expectedLcp, int expectedKeyType, int expectedKeySlotSize, bool expectedLe)
     {
         int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
-        BTreeNodeLayoutPlan plan = BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength);
+        BTreeNodeLayoutPlanner.Plan plan = BTreeNodeLayoutPlanner.Compute(lengths, crossEntryLcp, keyLength);
         Assert.That(plan.CommonKeyPrefixLen, Is.EqualTo(expectedLcp));
         Assert.That(plan.KeyType, Is.EqualTo(expectedKeyType));
         Assert.That(plan.KeySlotSize, Is.EqualTo(expectedKeySlotSize));
@@ -800,7 +800,7 @@ public class BTreeNodeTests
         int expectedLcp, int expectedKeySlotSize, bool expectedLe)
     {
         int[] lengths = BuildLengthsProfile(firstLen, otherLen, count);
-        BTreeNodeLayoutPlan plan = BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp, keyLength);
+        BTreeNodeLayoutPlanner.Plan plan = BTreeNodeLayoutPlanner.Compute(lengths, crossEntryLcp, keyLength);
         Assert.That(plan.KeyType, Is.EqualTo(1), "Uniform expected for allSameLen profiles");
         Assert.That(plan.CommonKeyPrefixLen, Is.EqualTo(expectedLcp));
         Assert.That(plan.KeySlotSize, Is.EqualTo(expectedKeySlotSize));
@@ -838,7 +838,7 @@ public class BTreeNodeTests
         const int count = 50;
         const int len = 256;
         int[] lengths = BuildLengthsProfile(len, len, count);
-        BTreeNodeLayoutPlan plan = BTreeNodeLayoutPlanner.Plan(lengths, crossEntryLcp: 200, keyLength: 256);
+        BTreeNodeLayoutPlanner.Plan plan = BTreeNodeLayoutPlanner.Compute(lengths, crossEntryLcp: 200, keyLength: 256);
         Assert.That(plan.CommonKeyPrefixLen, Is.EqualTo(BTreeNodeLayoutPlanner.MaxCommonKeyPrefixLen));
         Assert.That(plan.KeyType, Is.EqualTo(1));
         Assert.That(plan.KeySlotSize, Is.EqualTo(len - BTreeNodeLayoutPlanner.MaxCommonKeyPrefixLen));
