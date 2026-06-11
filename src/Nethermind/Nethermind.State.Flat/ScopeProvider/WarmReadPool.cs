@@ -27,6 +27,7 @@ public sealed class WarmReadPool : IDisposable
 
     private readonly Thread[] _threads;
     private readonly SemaphoreSlim _workAvailable;
+    private readonly CancellationTokenSource _disposalCts = new();
     private Batch? _current;
     private int _runInFlight;
     private volatile bool _disposed;
@@ -70,6 +71,8 @@ public sealed class WarmReadPool : IDisposable
 
         int activeWorkers = Math.Clamp(workers, 1, MaxConcurrency);
 
+        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, _disposalCts.Token);
+
         while (Interlocked.CompareExchange(ref _runInFlight, 1, 0) != 0)
         {
             Thread.Yield();
@@ -79,7 +82,7 @@ public sealed class WarmReadPool : IDisposable
         {
             Work = work,
             JobCount = jobCount,
-            Token = token,
+            Token = linked.Token,
             Done = new CountdownEvent(activeWorkers),
         };
 
@@ -94,7 +97,6 @@ public sealed class WarmReadPool : IDisposable
         {
             _current = null;
             batch.Done.Dispose();
-            // The next caller's Interlocked.CompareExchange is a full barrier — plain store suffices.
             _runInFlight = 0;
         }
     }
@@ -104,10 +106,12 @@ public sealed class WarmReadPool : IDisposable
         while (true)
         {
             _workAvailable.Wait();
-            if (_disposed) return;
-
             Batch? batch = _current;
-            if (batch is null) continue;
+            if (batch is null)
+            {
+                if (_disposed) return;
+                continue;
+            }
 
             try
             {
@@ -131,18 +135,14 @@ public sealed class WarmReadPool : IDisposable
         }
     }
 
-    /// <remarks>
-    /// Must not be called concurrently with <see cref="Run"/>: a worker that observes
-    /// <c>_disposed</c> after its <c>_workAvailable.Wait()</c> exits without signalling
-    /// the active batch, which would hang the in-flight <c>Run</c>. Owners call Dispose
-    /// at shutdown only, after all <c>Run</c> callers have returned.
-    /// </remarks>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _disposalCts.Cancel();
         _workAvailable.Release(_threads.Length);
         foreach (Thread t in _threads) t.Join();
         _workAvailable.Dispose();
+        _disposalCts.Dispose();
     }
 }
