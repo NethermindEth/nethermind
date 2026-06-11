@@ -57,7 +57,7 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
     {
         try
         {
-            string text = $"{_prefix}\n{error}";
+            string text = $"⚠ {_prefix}\n{error}";
 
             if (exception is null)
             {
@@ -87,7 +87,7 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
         }
     }
 
-    public async Task NotifyStatsAsync(MonitorStats stats)
+    public async Task NotifyStatsAsync(MonitorStats stats, CancellationToken ct)
     {
         try
         {
@@ -102,9 +102,9 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
                         - `{stats.TestFailures}` test failures
                         - `{stats.Errors}` errors
                         """
-            });
+            }, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.Error.WriteLine($"Slack notification error: {ex.Message}");
         }

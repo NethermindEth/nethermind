@@ -50,7 +50,7 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt) : IStatsRepo
                 try
                 {
                     await Task.Delay(DelayUntilNext(reportAt), ct);
-                    await notifier.NotifyStatsAsync(GetAndReset());
+                    await notifier.NotifyStatsAsync(GetAndReset(), ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

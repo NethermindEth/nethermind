@@ -37,8 +37,7 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
     {
         stats.RecordRequestRun();
 
-        using JsonContent requestContent = JsonContent.Create(requestData);
-        using HttpRequestMessage request = new(HttpMethod.Post, url) {Content = requestContent};
+        using HttpRequestMessage request = new(HttpMethod.Post, url) {Content = JsonContent.Create(requestData)};
 
         HttpResponseMessage response;
         try
@@ -52,7 +51,7 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
 
         using HttpResponseMessage _ = response;
 
-        string? content;
+        string content;
         try
         {
             content = await response.Content.ReadAsStringAsync(ct);
@@ -92,6 +91,9 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
 
             if (string.IsNullOrEmpty(content))
                 content = "<empty response>";
+
+            if (content.Length > MaxErrorLength)
+                content = content[..MaxErrorLength] + "...";
 
             message = $"{message}\n{content}";
 
