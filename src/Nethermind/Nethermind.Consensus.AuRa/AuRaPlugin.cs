@@ -63,6 +63,7 @@ namespace Nethermind.Consensus.AuRa
         protected override void Load(ContainerBuilder builder)
         {
             base.Load(builder);
+            AuRaBlockHeaderHandlerImpl.Register();
             AuRaChainSpecEngineParameters specParam = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
