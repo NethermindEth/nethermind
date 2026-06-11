@@ -989,7 +989,7 @@ namespace Nethermind.Trie
 
                     // Call FindCachedOrUnknown on some path.
                     if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    node.ResolveNode(TrieStore, path, ReadFlags.HintCacheMiss);
+                    node.ResolveNode(TrieStore, path);
 
                     if (node.IsLeaf || node.IsExtension)
                     {
