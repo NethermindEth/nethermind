@@ -287,7 +287,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
 
     // Lex-keyed input arrives big-endian. When IsLittleEndian is set (KeySize ∈ {2,4,8}),
     // emit byte-reversed bytes so a native LE int load over the slot recovers the lex value.
-    // Mirrors the BTreeNode LE-stored convention (see UniformKeySearch.Pack24LeMask512).
+    // Mirrors the BTreeNode LE-stored convention (see UniformKeySearch.Uniform2LE).
     private void WriteStorageKey(ref TWriter writer, scoped ReadOnlySpan<byte> key)
     {
         if (!_isLittleEndian)

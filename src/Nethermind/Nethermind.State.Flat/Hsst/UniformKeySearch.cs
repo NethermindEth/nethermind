@@ -48,30 +48,6 @@ public static class UniformKeySearch
     /// </summary>
     public static int LinearScanMaxCount = 1024;
 
-    // ---- AVX-512 shuffle masks (private) ----
-
-    // 3-byte LE packed-key gather: each output u32 lane pulls (3n, 3n+1, 3n+2) from the
-    // raw 64-byte load and forces the high byte to zero via an out-of-range index (>=64
-    // → 0 per Vector512.Shuffle<byte> semantics). Cross-lane: requires AVX-512 VBMI
-    // (vpermb). The unused tail of the load (bytes 48..63) is never addressed.
-    private static readonly Vector512<byte> Pack24LeMask512 = Vector512.Create(
-        (byte)0, 1, 2, 0xFF,
-        3, 4, 5, 0xFF,
-        6, 7, 8, 0xFF,
-        9, 10, 11, 0xFF,
-        12, 13, 14, 0xFF,
-        15, 16, 17, 0xFF,
-        18, 19, 20, 0xFF,
-        21, 22, 23, 0xFF,
-        24, 25, 26, 0xFF,
-        27, 28, 29, 0xFF,
-        30, 31, 32, 0xFF,
-        33, 34, 35, 0xFF,
-        36, 37, 38, 0xFF,
-        39, 40, 41, 0xFF,
-        42, 43, 44, 0xFF,
-        45, 46, 47, 0xFF);
-
     // Per-lane index vectors. Combined with Vector512.LessThan(idx, broadcast(remaining))
     // they produce the lane mask consumed by Avx512{BW,F}.MaskLoad for the trailing
     // (<N keys) iteration of the FloorScan kernels.
@@ -93,19 +69,6 @@ public static class UniformKeySearch
         if (Enabled && Vector512.IsHardwareAccelerated && count >= 2 && count <= LinearScanMaxCount)
             return FloorScan16(key, keys, count);
         return BinarySearch2LEStrided(key, keys, count, stride: 2);
-    }
-
-    /// <summary>
-    /// Floor index over 3-byte LE-stored keys. SIMD path requires AVX-512 VBMI; otherwise
-    /// falls back to scalar integer-compare binary search.
-    /// </summary>
-    public static int Uniform3LE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        if (count == 0) return -1;
-        if (Enabled && Vector512.IsHardwareAccelerated && Avx512Vbmi.IsSupported
-            && count >= 2 && count <= LinearScanMaxCount)
-            return FloorScan24Le(key, keys, count);
-        return BinarySearch3LE(key, keys, count);
     }
 
     /// <summary>Floor index over 4-byte LE-stored keys.</summary>
@@ -312,40 +275,6 @@ public static class UniformKeySearch
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan24Le(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        // Pack the first 3 search-key bytes into the low 24 bits of a uint, high byte zero —
-        // matches the lane format produced by Vector512.Shuffle(raw, Pack24LeMask512).
-        ref byte keyRef = ref MemoryMarshal.GetReference(key);
-        uint search = Unsafe.ReadUnaligned<ushort>(ref keyRef)
-                      | ((uint)Unsafe.Add(ref keyRef, 2) << 16);
-        ref byte src = ref MemoryMarshal.GetReference(keys);
-
-        Vector512<uint> searchVec = Vector512.Create(search);
-        int i = 0;
-        // Each iteration consumes 16 keys (48 bytes) but the unaligned vector load reads 64
-        // bytes from offset i*3. Stop while that load still fits inside the keys span; the
-        // scalar tail handles the (up to ~22) remaining keys without overrun.
-        int keysLen = keys.Length;
-        while (i + 16 <= count && i * 3 + 64 <= keysLen)
-        {
-            Vector512<byte> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 3));
-            // vpermb: gather (3n, 3n+1, 3n+2) into each u32 lane; out-of-range index 0xFF
-            // zeros the high byte for free, so no follow-up vpand is needed.
-            Vector512<uint> lanes = Vector512.Shuffle(raw, Pack24LeMask512).AsUInt32();
-            Vector512<uint> gt = Vector512.GreaterThan(lanes, searchVec);
-            ulong mask = gt.ExtractMostSignificantBits();
-            if (mask != 0)
-            {
-                int firstGtLane = BitOperations.TrailingZeroCount(mask);
-                return i + firstGtLane - 1;
-            }
-            i += 16;
-        }
-        return ScalarTail24Le(search, ref src, i, count);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FloorScan32(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
     {
         uint search = BinaryPrimitives.ReverseEndianness(
@@ -546,19 +475,6 @@ public static class UniformKeySearch
     //      fixed-stride copies are needed. ----
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail24Le(uint search, ref byte src, int i, int count)
-    {
-        for (; i < count; i++)
-        {
-            ref byte slot = ref Unsafe.Add(ref src, (nint)(i * 3));
-            uint k = Unsafe.ReadUnaligned<ushort>(ref slot)
-                     | ((uint)Unsafe.Add(ref slot, 2) << 16);
-            if (k > search) return i - 1;
-        }
-        return count - 1;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ScalarTail16Strided(ushort search, ref byte s, int i, int count, int stride)
     {
         for (; i < count; i++)
@@ -597,29 +513,8 @@ public static class UniformKeySearch
     //  the original lex key. BE-stored variants use lex SequenceCompareTo. Contiguous
     //  callers reuse the strided variants with the key size as the stride; after
     //  aggressive inlining the JIT folds the constant, so no dedicated fixed-stride
-    //  copies are needed (3-byte keys excepted — no strided twin exists).
+    //  copies are needed.
     // =====================================================================================
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BinarySearch3LE(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        ref byte keyRef = ref MemoryMarshal.GetReference(key);
-        uint search = Unsafe.ReadUnaligned<ushort>(ref keyRef)
-                      | ((uint)Unsafe.Add(ref keyRef, 2) << 16);
-        ref byte src = ref MemoryMarshal.GetReference(keys);
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            ref byte slot = ref Unsafe.Add(ref src, (nint)(mid * 3));
-            uint midKey = Unsafe.ReadUnaligned<ushort>(ref slot)
-                          | ((uint)Unsafe.Add(ref slot, 2) << 16);
-            if (search >= midKey) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int BinarySearch2LEStrided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)

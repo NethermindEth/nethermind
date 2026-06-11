@@ -212,7 +212,6 @@ public readonly ref struct BTreeNodeReader(
                 ? keySize switch
                 {
                     2 => UniformKeySearch.Uniform2LE(q, keys, count),
-                    3 => UniformKeySearch.Uniform3LE(q, keys, count),
                     4 => UniformKeySearch.Uniform4LE(q, keys, count),
                     8 => UniformKeySearch.Uniform8LE(q, keys, count),
                     _ => throw new InvalidDataException($"Invalid LE keySize: {keySize}")
