@@ -17,6 +17,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Evm;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -43,6 +44,7 @@ namespace Nethermind.Init.Steps
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
+            StreamInterpreter.Enabled |= getApi.Config<IEvmConfig>().StreamInterpreter;
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?

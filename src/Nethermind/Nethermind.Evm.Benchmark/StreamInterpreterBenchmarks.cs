@@ -32,7 +32,6 @@ namespace Nethermind.Evm.Benchmark
         {
             ByteCodeLoop,
             Stream,
-            StreamFused,
         }
 
         // 1024 iterations of arithmetic/dup/swap glue with fusable PUSH1+op pairs and a
@@ -102,14 +101,13 @@ namespace Nethermind.Evm.Benchmark
         private IWorldState _stateProvider;
         private IDisposable _stateScope;
 
-        [Params(InterpreterMode.ByteCodeLoop, InterpreterMode.Stream, InterpreterMode.StreamFused)]
+        [Params(InterpreterMode.ByteCodeLoop, InterpreterMode.Stream)]
         public InterpreterMode Mode { get; set; }
 
         [GlobalSetup]
         public void GlobalSetup()
         {
             StreamInterpreter.Enabled = Mode != InterpreterMode.ByteCodeLoop;
-            StreamInterpreter.FusionEnabled = Mode == InterpreterMode.StreamFused;
 
             BlockHeader header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One,
                 MainnetSpecProvider.ParisBlockNumber + 4, Int64.MaxValue,
@@ -155,7 +153,6 @@ namespace Nethermind.Evm.Benchmark
             _straightLineEnvironment.Dispose();
             _stateScope.Dispose();
             StreamInterpreter.Enabled = Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
-            StreamInterpreter.FusionEnabled = Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM_FUSION") == "1";
         }
 
         [Benchmark]

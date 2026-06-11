@@ -141,10 +141,6 @@ public sealed class InstructionStream
     /// <summary>Entry-index sentinel for program counters that are not an entry start.</summary>
     public const ushort InvalidEntry = ushort.MaxValue;
 
-    /// <summary>The fusion setting this stream was built under; the CodeInfo cache rebuilds
-    /// on mismatch instead of serving a stale fusion decision.</summary>
-    public readonly bool BuiltWithFusion;
-
     public readonly StreamOp[] Ops;
     public readonly long[] BlockGas;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
@@ -156,9 +152,8 @@ public sealed class InstructionStream
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
 
-    private InstructionStream(StreamOp[] ops, long[] blockGas, UInt256[] constants, ushort[] pcToEntry, bool builtWithFusion)
+    private InstructionStream(StreamOp[] ops, long[] blockGas, UInt256[] constants, ushort[] pcToEntry)
     {
-        BuiltWithFusion = builtWithFusion;
         Ops = ops;
         BlockGas = blockGas;
         Constants = constants;
@@ -175,8 +170,6 @@ public sealed class InstructionStream
     {
         if (code.Length == 0 || code.Length >= ushort.MaxValue)
             return null;
-
-        bool fusionEnabled = StreamInterpreter.FusionEnabled;
 
         List<StreamOp> ops = new(code.Length / 2);
         List<long> blockGas = new(code.Length / 16);
@@ -203,7 +196,7 @@ public sealed class InstructionStream
             }
             else if (TryGetInBlockCost(instruction, out long cost) && pc + immediates < code.Length)
             {
-                if (fusionEnabled && openBlock >= 0
+                if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -303,7 +296,7 @@ public sealed class InstructionStream
             }
         }
 
-        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry, fusionEnabled);
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry);
     }
 
     /// <summary>

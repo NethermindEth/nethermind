@@ -16,19 +16,13 @@ namespace Nethermind.Evm;
 public static class StreamInterpreter
 {
     /// <summary>
-    /// Rollout flag; off by default. Mutable so differential tests can flip interpreters
-    /// in-process; read once per frame.
+    /// Rollout switch; off by default and set at startup from <see cref="IEvmConfig.StreamInterpreter"/>
+    /// (the environment variable remains as a development override). Mutable so differential
+    /// tests can flip interpreters in-process; read once per frame. Const-fusion is part of
+    /// the stream — measured ahead of the unfused stream on every workload.
     /// </summary>
     public static bool Enabled =
         Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
-
-    /// <summary>
-    /// Folds PUSH+op pairs into single const-op entries (virtual opcodes) at analysis time;
-    /// off by default for staged rollout — measured ahead of the unfused stream on both the
-    /// jump-heavy and straight-line local workloads and on the node A/B.
-    /// </summary>
-    public static bool FusionEnabled =
-        Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM_FUSION") == "1";
 
     /// <summary>
     /// Frames executed by the stream interpreter; engagement proof for tests and rollout.

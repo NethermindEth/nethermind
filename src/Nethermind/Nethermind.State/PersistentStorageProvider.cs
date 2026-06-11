@@ -316,7 +316,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
     {
         if (!isEmpty)
-            LoadFromTree(in storageCell);
+        {
+            // Cache priming only: warm-up runs outside any transaction scope and never needs
+            // originals or journal entries, so reads here skip the registry regardless of the
+            // per-transaction journaling mode.
+            bool journalReads = JournalReads;
+            JournalReads = false;
+            try
+            {
+                LoadFromTree(in storageCell);
+            }
+            finally
+            {
+                JournalReads = journalReads;
+            }
+        }
     }
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
