@@ -69,11 +69,27 @@ public sealed class NeighborsMsgSerializer(
 
         Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
         ctx.ReadSequenceLength();
-        Node[] nodes = ctx.DecodeArray(_decodeItem, limit: NodesRlpLimit)!;
+        Node?[] decoded = ctx.DecodeArray(_decodeItem, limit: NodesRlpLimit);
+
+        // DecodeArray substitutes null for empty-list items, so compact them away to uphold
+        // the invariant that consumers never observe null nodes.
+        int nodeCount = 0;
+        for (int i = 0; i < decoded.Length; i++)
+        {
+            if (decoded[i] is not null)
+            {
+                decoded[nodeCount++] = decoded[i];
+            }
+        }
+
+        if (nodeCount != decoded.Length)
+        {
+            Array.Resize(ref decoded, nodeCount);
+        }
 
         long expirationTime = ctx.DecodeLong();
         Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
-        NeighborsMsg msg = new(FarPublicKey, expirationTime, nodes);
+        NeighborsMsg msg = new(FarPublicKey, expirationTime, decoded!);
         return msg;
     }
 

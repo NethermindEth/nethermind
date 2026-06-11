@@ -136,6 +136,7 @@ public class KademliaAdapterTests
     {
         INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
         nodeRecordProvider.Current.Returns(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback));
+        _packetCodec?.Dispose();
         _packetCodec = new PacketCodec(
             new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
             nodeRecordProvider,

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using System.Linq;
 using DotNetty.Buffers;
@@ -273,6 +274,55 @@ public class DiscoveryMessageSerializerTests
                 Assert.That(deserializedMessage.Nodes[i], Is.EqualTo(message.Nodes[i]));
             }
         }
+    }
+
+    [Test]
+    public void NeighborsMessage_Drops_Empty_List_Node_Entries()
+    {
+        // A misbehaving peer can encode a node entry as an RLP empty list (0xc0), which
+        // DecodeArray materializes as a null node; such entries must never reach consumers.
+        byte[] ip = [192, 168, 1, 2];
+        byte[] id = TestItem.PublicKeyA.Bytes;
+        const int port = 30303;
+        long expirationTime = 60 + _timestamper.UnixTime.MillisecondsLong;
+
+        int nodeContentLength = Rlp.LengthOf(ip) + 2 * Rlp.LengthOf(port) + Rlp.LengthOf(id);
+        int nodesContentLength = Rlp.LengthOfSequence(nodeContentLength) + Rlp.OfEmptyList.Bytes.Length;
+        int contentLength = Rlp.LengthOfSequence(nodesContentLength) + Rlp.LengthOf(expirationTime);
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.StartSequence(nodesContentLength);
+        stream.StartSequence(nodeContentLength);
+        stream.Encode(ip);
+        stream.Encode(port);
+        stream.Encode(port);
+        stream.Encode(id);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(expirationTime);
+
+        NeighborsMsg deserialized = _messageSerializationService.Deserialize<NeighborsMsg>(
+            SignAndWrapDiscoveryPacket((byte)MsgType.Neighbors, stream.Data.ToArray()!));
+
+        Assert.That(deserialized.Nodes, Has.Count.EqualTo(1));
+        Assert.That(deserialized.Nodes[0].Id, Is.EqualTo(TestItem.PublicKeyA));
+    }
+
+    private byte[] SignAndWrapDiscoveryPacket(byte msgType, byte[] data)
+    {
+        // [<mdc 32 bytes><sig 64 bytes><sig recovery id><msg type><data>]
+        byte[] packet = new byte[32 + 64 + 1 + 1 + data.Length];
+        packet[97] = msgType;
+        data.CopyTo(packet, 98);
+
+        ValueHash256 toSign = ValueKeccak.Compute(packet.AsSpan(97));
+        Signature signature = new Ecdsa().Sign(_privateKey, in toSign);
+        signature.Bytes.CopyTo(packet.AsSpan(32));
+        packet[96] = signature.RecoveryId;
+
+        ValueHash256 mdc = ValueKeccak.Compute(packet.AsSpan(32));
+        mdc.BytesAsSpan.CopyTo(packet);
+        return packet;
     }
 
     private EnrResponseMsg BuildEnrResponse(CompressedPublicKey enrPublicKey)
