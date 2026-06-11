@@ -507,7 +507,8 @@ public class SyncPeerPoolTests
         peer.SetHeaderFailure(true);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
-        await WaitForPeersInitialization(ctx);
+        // Init is expected to fail, so we don't assert success here — give the refresh loop a brief window to attempt.
+        await Wait.ForCondition(() => peer.IsInitialized, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(50));
 
         SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         ctx.Pool.RemovePeer(peer);
@@ -732,6 +733,12 @@ public class SyncPeerPoolTests
         return peers;
     }
 
-    private async Task WaitForPeersInitialization(Context ctx) =>
-        await Wait.ForCondition(() => ctx.Pool.AllPeers.All(p => p.IsInitialized), TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(50));
+    private async Task WaitForPeersInitialization(Context ctx)
+    {
+        bool initialized = await Wait.ForCondition(
+            () => ctx.Pool.AllPeers.All(p => p.IsInitialized),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromMilliseconds(50));
+        Assert.That(initialized, Is.True, "peers did not initialize in time");
+    }
 }
