@@ -82,7 +82,11 @@ public static partial class EvmInstructions
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
-        if (vm.VmState.IsStatic)
+        // Pre-EIP-8037 the static-context violation halts before any gas is charged. Under EIP-8037
+        // the reference (execution-specs `generic_create`) charges the regular and state CREATE gas
+        // first and only then raises the violation, so the consumed state gas is refunded to the
+        // parent's reservoir on the halt (see RestoreChildStateGasOnHalt). Defer the check for 8037.
+        if (!TEip8037.IsActive && vm.VmState.IsStatic)
         {
             goto StaticCallViolation;
         }
@@ -144,6 +148,15 @@ public static partial class EvmInstructions
 
         if (TEip8037.IsActive && !TGasPolicy.ConsumeStateGas(ref gas, TGasPolicy.GetCreateStateCost(in gas)))
             goto OutOfGas;
+
+        // EIP-8037: the static-context violation is raised only after the regular and state CREATE
+        // gas has been charged (matching execution-specs `generic_create`). The consumed state gas
+        // is then returned to the parent's reservoir when this frame halts (RestoreChildStateGasOnHalt),
+        // so it is neither charged to the sender nor counted in block regular gas.
+        if (TEip8037.IsActive && vm.VmState.IsStatic)
+        {
+            goto StaticCallViolation;
+        }
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
