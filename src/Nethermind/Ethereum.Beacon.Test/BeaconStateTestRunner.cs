@@ -8,6 +8,7 @@ using System.IO;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -97,7 +98,8 @@ public static class BeaconStateTestRunner
     /// payloads. The fixtures' epochs predate any BPO fork, so the Electra blob limit applies
     /// through <see cref="BeaconChainSpec.Mainnet"/>'s schedule fallback.
     /// </remarks>
-    public static void RunBlocksTest(string casePath)
+    /// <param name="hasher">Optional state hasher to run the transition with; the default full hasher when null.</param>
+    public static void RunBlocksTest(string casePath, IBeaconStateHasher? hasher = null)
     {
         Dictionary<string, string> meta = ReadMeta(casePath);
         int blocksCount = int.Parse(meta["blocks_count"]);
@@ -106,6 +108,8 @@ public static class BeaconStateTestRunner
         RunStateTest(casePath, state =>
         {
             EpochCache cache = new();
+            if (hasher is not null)
+                cache.Hasher = hasher;
             PubkeyCache pubkeys = new();
             pubkeys.Build(state.Validators!);
             for (int i = 0; i < blocksCount; i++)

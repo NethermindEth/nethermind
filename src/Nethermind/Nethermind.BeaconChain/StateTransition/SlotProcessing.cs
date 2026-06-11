@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -10,8 +11,8 @@ namespace Nethermind.BeaconChain.StateTransition;
 
 /// <summary>Phase0 <c>process_slots</c>/<c>process_slot</c> over the Fulu state.</summary>
 /// <remarks>
-/// The per-slot state root is currently computed with a full hash-tree-root
-/// (<see cref="BeaconStateFulu.Merkleize"/>); an incremental hasher will replace it later.
+/// The per-slot state root is computed through <see cref="EpochCache.Hasher"/>, so callers
+/// following a state lineage can make it incremental with a <see cref="CachedBeaconStateHasher"/>.
 /// </remarks>
 public static class SlotProcessing
 {
@@ -24,7 +25,7 @@ public static class SlotProcessing
 
         while (state.Slot < targetSlot)
         {
-            ProcessSlot(state);
+            ProcessSlot(state, cache.Hasher);
             // Process the epoch on the start slot of the next epoch.
             if ((state.Slot + 1) % Presets.SlotsPerEpoch == 0)
                 EpochProcessing.ProcessEpoch(state, cache);
@@ -33,11 +34,10 @@ public static class SlotProcessing
     }
 
     /// <summary>Caches the state root, completes the latest block header, and caches the block root for the current slot.</summary>
-    public static void ProcessSlot(BeaconStateFulu state)
+    public static void ProcessSlot(BeaconStateFulu state, IBeaconStateHasher hasher)
     {
         // Cache the state root.
-        BeaconStateFulu.Merkleize(state, out UInt256 stateRoot);
-        Hash256 previousStateRoot = new(stateRoot.ToLittleEndian());
+        Hash256 previousStateRoot = hasher.HashTreeRoot(state);
         state.StateRoots![(int)(state.Slot % Presets.SlotsPerHistoricalRoot)] = previousStateRoot;
 
         // Cache the latest block header state root.

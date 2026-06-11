@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 
@@ -19,6 +20,17 @@ public sealed class EpochCache
 {
     private (ulong Epoch, ulong Balance)? _totalActiveBalance;
     private readonly CommitteeCacheLru _committees = new();
+
+    /// <summary>
+    /// The state hash-tree-root implementation used by slot processing and the post-state root
+    /// check in <see cref="StateTransition.Apply"/>.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to the stateless <see cref="FullBeaconStateHasher"/>; install a
+    /// <see cref="CachedBeaconStateHasher"/> for incremental per-slot roots. A stateful hasher
+    /// follows one state lineage, matching this cache's ownership rules.
+    /// </remarks>
+    public IBeaconStateHasher Hasher { get; set; } = new FullBeaconStateHasher();
 
     /// <summary>
     /// Returns <c>get_total_active_balance(state)</c> — the total effective balance of validators

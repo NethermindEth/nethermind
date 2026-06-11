@@ -46,7 +46,7 @@ public static class StateTransition
         ulong maxBlobsPerBlock = spec.GetBlobParameters(state.GetCurrentEpoch())?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;
         BlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures);
 
-        if (validateResult && block.StateRoot != SszRoots.HashTreeRoot(state))
+        if (validateResult && block.StateRoot != cache.Hasher.HashTreeRoot(state))
             throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
     }
 }
