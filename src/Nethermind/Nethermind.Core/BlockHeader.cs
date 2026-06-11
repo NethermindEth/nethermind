@@ -184,10 +184,8 @@ public class BlockHeader
     }
 
     /// <summary>
-    /// Produce an empty header of the same runtime type carrying the immutable consensus inputs
-    /// (parent linkage, beneficiary, gas limit, timestamp, extra data) but none of the
-    /// to-be-computed processing state. Subclasses override to preserve subclass-specific seal
-    /// fields (e.g. AuRa step + signature).
+    /// Skeleton copy carrying only the immutable consensus inputs; subclasses override to also
+    /// preserve subclass-specific seal fields (e.g. AuRa step + signature).
     /// </summary>
     public virtual BlockHeader CloneForProcessing() =>
         new(ParentHash!, UnclesHash!, Beneficiary!, Difficulty, Number, GasLimit, Timestamp, ExtraData);

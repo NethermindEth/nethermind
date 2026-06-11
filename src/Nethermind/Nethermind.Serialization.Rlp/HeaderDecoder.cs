@@ -44,10 +44,9 @@ namespace Nethermind.Serialization.Rlp
             ulong timestamp = decoderContext.DecodeULong();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
-            // 32-byte item ⇒ Ethash (mixHash + nonce); otherwise AuRa (step + signature) built via
-            // the plugin-registered handler so the AuRaBlockHeader subclass stays in the plugin.
-            // A null MixHash also encodes as an empty RLP item (length 0) — without an AuRa handler
-            // we tolerate that shape by discarding the seal bytes and producing a base BlockHeader.
+            // 32-byte next item ⇒ Ethash (mixHash + nonce); otherwise AuRa (step + signature),
+            // materialised via the plugin-registered handler. Without a handler, the AuRa shape
+            // is tolerated (seal bytes discarded) so RLP parses don't need the plugin loaded.
             bool isAuRaShape = decoderContext.PeekPrefixAndContentLength().ContentLength != Hash256.Size;
             IAuRaBlockHeaderHandler? auraHandler = AuRaBlockHeaderHandler.Instance;
             BlockHeader blockHeader;

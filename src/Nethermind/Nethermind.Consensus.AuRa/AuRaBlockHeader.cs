@@ -36,10 +36,7 @@ public sealed class AuRaBlockHeader(
         AuRaSignature = AuRaSignature,
     };
 
-    /// <summary>
-    /// Promote a base <see cref="BlockHeader"/> to <see cref="AuRaBlockHeader"/>, copying every
-    /// field across. Returns <paramref name="src"/> unchanged if it's already an AuRa header.
-    /// </summary>
+    /// <summary>Promote a base header to <see cref="AuRaBlockHeader"/>, copying every field. Returns the input unchanged if it's already an AuRa header.</summary>
     public static AuRaBlockHeader UpgradeFrom(BlockHeader src)
     {
         if (src is AuRaBlockHeader aura) return aura;
