@@ -19,11 +19,27 @@ namespace Nethermind.State.Flat.Test.Hsst;
 [TestFixture]
 public class HsstTwoByteSlotValueTests
 {
-    private static byte[] Build(bool large, byte[][] keys, byte[][] values)
+    private static byte[] Build(bool large, byte[][] keys, byte[][] values) =>
+        Build(large ? 3 : 2, keys, values);
+
+    /// <summary>
+    /// Builds with the offset width chosen automatically from the cumulative payload size,
+    /// exactly as production does (see <see cref="HsstTwoByteSlotValueBuilder{TWriter}.FitsInOffsetWidth"/>
+    /// callers in the merger / snapshot builder): u16 while it fits the cap, u24 once it overflows.
+    /// </summary>
+    private static byte[] BuildAuto(byte[][] keys, byte[][] values)
+    {
+        long totalValueBytes = 0;
+        foreach (byte[] v in values) totalValueBytes += v.Length;
+        int offsetSize = HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer>.FitsInOffsetWidth(totalValueBytes) ? 2 : 3;
+        return Build(offsetSize, keys, values);
+    }
+
+    private static byte[] Build(int offsetSize, byte[][] keys, byte[][] values)
     {
         Assert.That(keys.Length, Is.EqualTo(values.Length));
         using PooledByteBufferWriter pooled = new(64 * 1024);
-        using (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter(), large ? 3 : 2))
+        using (HsstTwoByteSlotValueBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter(), offsetSize))
         {
             for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
             b.Build();
@@ -132,9 +148,10 @@ public class HsstTwoByteSlotValueTests
     public void RoundTrip_PayloadExceedsU16Cap_RequiresU24()
     {
         // 3000 × 32 = 96 KiB > ushort.MaxValue: this is the regime that forces the u24
-        // builder's wider offsets. Spot-check entries at the start, middle, and end —
-        // including ones whose data offset is > 65,535 — to ensure the u24 offset path
-        // resolves correctly.
+        // builder's wider offsets. Let the offset width be chosen automatically (as
+        // production does) and assert it promotes to the large variant. Spot-check entries
+        // at the start, middle, and end — including ones whose data offset is > 65,535 — to
+        // ensure the u24 offset path resolves correctly.
         const int n = 3000;
         byte[][] keys = new byte[n][];
         byte[][] vals = new byte[n][];
@@ -146,7 +163,7 @@ public class HsstTwoByteSlotValueTests
             for (int j = 0; j < 32; j++) vals[i][j] = (byte)((i * 7 + j) & 0xff);
         }
 
-        byte[] data = Build(large: true, keys, vals);
+        byte[] data = BuildAuto(keys, vals);
         Assert.That(data[0], Is.EqualTo((byte)IndexType.TwoByteSlotValueLarge));
 
         foreach (int idx in new[] { 0, n / 2, n - 1 })
