@@ -9,6 +9,10 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
+    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionView,
+    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
+    Nethermind.State.Flat.Hsst.NoOpPin>;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
@@ -22,20 +26,20 @@ internal static class PersistedSnapshotBloomBuilder
     /// </summary>
     internal static BloomFilter Build(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey)
     {
-        PersistedSnapshotScanner scanner = new(session, snapshot);
+        WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
 
         // Pass 1: count keys to size the bloom accurately.
         long capacity = 0;
-        foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
+        foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
             if (entry.HasAccount) capacity++;
             if (entry.SelfDestructFlag is not null) capacity++;
-            foreach (PersistedSnapshotScanner.SlotEntry _ in entry.Slots)
+            foreach (WholeReadScanner.SlotEntry _ in entry.Slots)
                 capacity += 2; // address key + (address, slot) key
         }
-        foreach (PersistedSnapshotScanner.StateNodeEntry _ in scanner.StateNodes)
+        foreach (WholeReadScanner.StateNodeEntry _ in scanner.StateNodes)
             capacity++;
-        foreach (PersistedSnapshotScanner.StorageNodeEntry _ in scanner.StorageNodes)
+        foreach (WholeReadScanner.StorageNodeEntry _ in scanner.StorageNodes)
             capacity++;
 
         if (capacity == 0)
@@ -44,23 +48,23 @@ internal static class PersistedSnapshotBloomBuilder
         BloomFilter bloom = new(capacity, bitsPerKey);
 
         // Pass 2: populate. Address/slot/SD keys.
-        foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
+        foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
             ulong addrKey = AddressKey(entry.Address);
             if (entry.HasAccount)
                 bloom.Add(addrKey);
             if (entry.SelfDestructFlag is not null)
                 bloom.Add(addrKey);
-            foreach (PersistedSnapshotScanner.SlotEntry slot in entry.Slots)
+            foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
             {
                 bloom.Add(addrKey);
                 bloom.Add(SlotKey(addrKey, slot.Slot));
             }
         }
         // Trie-node keys (state + storage).
-        foreach (PersistedSnapshotScanner.StateNodeEntry entry in scanner.StateNodes)
+        foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
             bloom.Add(StatePathKey(entry.Path));
-        foreach (PersistedSnapshotScanner.StorageNodeEntry entry in scanner.StorageNodes)
+        foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
             bloom.Add(StorageNodeKey(entry.AddressHash, entry.Path));
 
         return bloom;
