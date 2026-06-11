@@ -21,8 +21,7 @@ public class FlatScopeProvider(
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
 
-    // Read-only providers (eth_call, debug_traceCall, snapshot readers) never run the pump,
-    // so the pool is left null to avoid spawning its background threads at scope-open time.
+    // Read-only providers never run the pump — skip the pool so eth_call/traceCall don't spawn its threads.
     private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
     {
         int configured = configuration.WarmReadConcurrency;
