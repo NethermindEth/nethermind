@@ -178,7 +178,13 @@ public class PersistedSnapshotCompactor(
         _cancelTokenSource.Dispose();
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Compact the persisted snapshots ending at <paramref name="snapshotTo"/> over the block's
+    /// natural power-of-2 window. Produces sub-<c>CompactSize</c> intermediates and the
+    /// <c>&gt;CompactSize</c> hierarchical merges; the <c>CompactSize</c>-wide window is
+    /// reserved for <see cref="DoCompactPersistable"/>. Invoked by the background batch worker
+    /// (see <see cref="Enqueue"/>); not part of <see cref="IPersistedSnapshotCompactor"/>.
+    /// </summary>
     /// <remarks>
     /// Does nothing when the block's window is a single snapshot (nothing to merge), or exactly
     /// <c>CompactSize</c> — that window is the persistable's, produced by
@@ -206,7 +212,12 @@ public class PersistedSnapshotCompactor(
         CompactRange(snapshotTo, startingBlockNumber, alignment, isPersistable: false);
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Produce the <c>CompactSize</c>-wide persistable snapshot ending at the boundary
+    /// block <paramref name="snapshotTo"/> — the snapshot <c>PersistenceManager</c> writes to
+    /// RocksDB. Invoked by the background batch worker (see <see cref="Enqueue"/>); not part of
+    /// <see cref="IPersistedSnapshotCompactor"/>.
+    /// </summary>
     public void DoCompactPersistable(StateId snapshotTo)
     {
         long blockNumber = snapshotTo.BlockNumber;

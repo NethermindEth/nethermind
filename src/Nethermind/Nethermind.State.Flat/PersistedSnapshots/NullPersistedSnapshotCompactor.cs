@@ -17,10 +17,6 @@ public sealed class NullPersistedSnapshotCompactor : IPersistedSnapshotCompactor
 
     private NullPersistedSnapshotCompactor() { }
 
-    public void DoCompactSnapshot(StateId state) { }
-
-    public void DoCompactPersistable(StateId state) { }
-
     // Owns the batch per the IPersistedSnapshotCompactor.Enqueue contract — dispose it so
     // callers don't leak even though there is no compaction work to do.
     public void Enqueue(ArrayPoolList<StateId> batch) => batch.Dispose();
