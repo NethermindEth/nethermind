@@ -109,11 +109,17 @@ namespace Nethermind.Init.Steps.Migrations
         private void RunIfNeeded(CancellationToken cancellationToken)
         {
             // Note, it start in decreasing order from this high number.
-            ulong migrateToBlockNumber = _migrationStore.MigratedBlockNumber == ulong.MaxValue
-                ? _syncModeSelector.Current.NotSyncing()
+            ulong migrateToBlockNumber = 0;
+            if (_migrationStore.MigratedBlockNumber == ulong.MaxValue)
+            {
+                migrateToBlockNumber = _syncModeSelector.Current.NotSyncing()
                     ? _blockTree.Head?.Number ?? 0UL
-                    : _blockTree.BestKnownNumber
-                : _migrationStore.MigratedBlockNumber - 1;
+                    : _blockTree.BestKnownNumber;
+            }
+            else if (_migrationStore.MigratedBlockNumber > 0)
+            {
+                migrateToBlockNumber = _migrationStore.MigratedBlockNumber - 1;
+            }
 
             if (migrateToBlockNumber > 0)
             {
@@ -242,21 +248,29 @@ namespace Nethermind.Init.Steps.Migrations
                 }
             }
 
-            for (ulong i = to; i >= from; i--)
+            if (to >= from)
             {
-                if (token.IsCancellationRequested)
+                for (ulong i = to; ; i--)
                 {
-                    if (_logger.IsInfo) _logger.Info("Receipt migration cancelled");
-                    yield break;
-                }
+                    if (token.IsCancellationRequested)
+                    {
+                        if (_logger.IsInfo) _logger.Info("Receipt migration cancelled");
+                        yield break;
+                    }
 
-                if (TryGetMainChainBlockHashFromLevel(i, out Hash256? blockHash))
-                {
-                    yield return (i, blockHash!);
-                }
-                else
-                {
-                    pointerTracker?.ReportCompleted(i);
+                    if (TryGetMainChainBlockHashFromLevel(i, out Hash256? blockHash))
+                    {
+                        yield return (i, blockHash!);
+                    }
+                    else
+                    {
+                        pointerTracker?.ReportCompleted(i);
+                    }
+
+                    if (i == from)
+                    {
+                        break;
+                    }
                 }
             }
         }
