@@ -43,7 +43,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>
     /// Executes a frame over the preprocessed <see cref="InstructionStream"/> instead of the
     /// raw bytecode: per-basic-block static gas is charged once at each
-    /// <see cref="StreamOpKind.BlockStart"/> and the static-cost ops inside run their gas-free
+    /// <see cref="StreamOpKind.BlockFirst"/> and the static-cost ops inside run their gas-free
     /// cores; every other op runs the standard table handler with the standard per-op epilogue.
     /// </summary>
     /// <remarks>
@@ -87,9 +87,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref readonly StreamOp entry = ref ops[entryIndex];
                 Instruction instruction = (Instruction)entry.Opcode;
 
-                if (entry.Kind == StreamOpKind.BlockStart)
+                if (entry.Kind == StreamOpKind.BlockFirst)
                 {
-                    long cost = blockGas[entry.Arg];
+                    long cost = blockGas[entry.BlockIndex];
                     if (TGasPolicy.GetRemainingGas(in gas) >= cost)
                     {
                         TGasPolicy.Consume(ref gas, cost);
@@ -99,9 +99,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         metered = true;
                     }
-
-                    entryIndex++;
-                    continue;
                 }
 
                 if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0 && _txTracer.IsCancelled)
@@ -113,7 +110,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 programCounter++;
                 opCodeCount++;
 
-                if (entry.Kind == StreamOpKind.InBlock && !metered)
+                if (entry.Kind <= StreamOpKind.InBlock && !metered)
                 {
                     // Gas for this op was charged at the block start; run the gas-free core.
                     // MUST stay inline in the loop, same JIT constraint as the specialized
@@ -184,13 +181,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = stack.PushZero<OffFlag>();
                             break;
                         case Instruction.PUSH1:
-                            exceptionType = EvmInstructions.PushCore<EvmInstructions.Op1, OffFlag>(ref stack, ref programCounter);
-                            break;
-                        case Instruction.PUSH3:
-                            exceptionType = EvmInstructions.PushCore<EvmInstructions.Op3, OffFlag>(ref stack, ref programCounter);
-                            break;
-                        case Instruction.PUSH4:
-                            exceptionType = EvmInstructions.PushCore<EvmInstructions.Op4, OffFlag>(ref stack, ref programCounter);
+                        case >= Instruction.PUSH3 and <= Instruction.PUSH8:
+                            // The analyzer pre-decoded the immediates (full-width only; a
+                            // truncated trailing PUSH stays a boundary op).
+                            exceptionType = stack.PushUInt64<OffFlag>(entry.Operand);
+                            programCounter += instruction - Instruction.PUSH1 + 1;
                             break;
                         case >= Instruction.DUP1 and <= Instruction.DUP8:
                             exceptionType = stack.Dup<OffFlag>(instruction - Instruction.DUP1 + 1);
@@ -261,7 +256,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     continue;
 
                 // A fused handler can land one instruction INTO a block (EXTCODESIZE+ISZERO
-                // consumes the block's first op), skipping the BlockStart precharge — the rest
+                // consumes the block's first op), skipping the BlockFirst precharge — the rest
                 // of that block must then meter itself op by op.
                 metered = ops[entryIndex].Kind == StreamOpKind.InBlock;
             }

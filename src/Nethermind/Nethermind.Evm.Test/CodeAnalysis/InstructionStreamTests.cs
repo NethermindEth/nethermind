@@ -35,7 +35,9 @@ public class InstructionStreamTests
         Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
         Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.VeryLow),
             "two pushes and an add are one block charged as a single sum");
-        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockStart));
+        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst), "the first op of a block carries its charge");
+        Assert.That(stream.Ops[0].Operand, Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
+        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.InBlock));
         Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
             "STOP is not a static-cost op and must run the standard handler");
     }
@@ -59,7 +61,7 @@ public class InstructionStreamTests
     }
 
     [Test]
-    public void TryBuild_JumpAndPush2_AreJumpClass()
+    public void TryBuild_JumpAndPush2_AreBoundary()
     {
         byte[] code =
         [
@@ -71,8 +73,22 @@ public class InstructionStreamTests
 
         InstructionStream stream = InstructionStream.TryBuild(code)!;
 
-        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.JumpClass), "PUSH2 keeps the fused PUSH2+JUMP handler");
-        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.JumpClass), "JUMP recomputes the entry index from the landing pc");
+        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.Boundary), "PUSH2 keeps the fused PUSH2+JUMP handler");
+        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "JUMP recomputes the entry index from the landing pc");
+    }
+
+    [Test]
+    public void TryBuild_TruncatedTrailingPush_StaysBoundary()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH4, 0x01, 0x02,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.Boundary),
+            "partial immediates keep the table handler's exact padding semantics");
     }
 
     [Test]
@@ -86,11 +102,12 @@ public class InstructionStreamTests
 
         InstructionStream stream = InstructionStream.TryBuild(code)!;
 
-        Assert.That(stream.PcToEntry[0], Is.EqualTo(0), "PUSH3 opens the block, so its pc maps to the BlockStart entry");
+        Assert.That(stream.PcToEntry[0], Is.EqualTo(0), "PUSH3 opens the block as its first entry");
+        Assert.That(stream.Ops[0].Operand, Is.EqualTo(0x010203UL), "PUSH3 immediates are pre-decoded big-endian");
         Assert.That(stream.PcToEntry[1], Is.EqualTo(InstructionStream.InvalidEntry));
         Assert.That(stream.PcToEntry[2], Is.EqualTo(InstructionStream.InvalidEntry));
         Assert.That(stream.PcToEntry[3], Is.EqualTo(InstructionStream.InvalidEntry));
-        Assert.That(stream.PcToEntry[4], Is.EqualTo(2), "ADD continues the open block as a plain entry");
+        Assert.That(stream.PcToEntry[4], Is.EqualTo(1), "ADD continues the open block as a plain entry");
         Assert.That(stream.PcToEntry[5], Is.EqualTo(stream.Ops.Length), "pc one past the end terminates the stream loop");
     }
 
@@ -112,10 +129,10 @@ public class InstructionStreamTests
         Assert.That(cost, Is.EqualTo(expectedCost), "block sums diverging from GasCostOf is a consensus bug");
     }
 
-    [TestCase(Instruction.PUSH2, TestName = "Push2_IsJumpClassNotInBlock")]
+    [TestCase(Instruction.PUSH2, TestName = "Push2_KeepsFusedTableHandler")]
     [TestCase(Instruction.DUP9, TestName = "Dup9_OutsideExecutorSwitch")]
     [TestCase(Instruction.SWAP9, TestName = "Swap9_OutsideExecutorSwitch")]
-    [TestCase(Instruction.PUSH5, TestName = "Push5_OutsideExecutorSwitch")]
+    [TestCase(Instruction.PUSH9, TestName = "Push9_OutsideExecutorSwitch")]
     [TestCase(Instruction.MLOAD, TestName = "MLoad_DynamicMemoryGas")]
     [TestCase(Instruction.SLOAD, TestName = "SLoad_DynamicAccessGas")]
     [TestCase(Instruction.GAS, TestName = "Gas_MustObserveExactRemaining")]
