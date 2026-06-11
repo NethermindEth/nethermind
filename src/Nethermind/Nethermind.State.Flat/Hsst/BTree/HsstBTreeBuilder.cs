@@ -55,14 +55,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     // Count of trailing descriptors in <c>Buffers.CurrentLevel</c> that are still
     // Entry-kind candidates for a page-local leaf wrap. Each Add pushes one Entry
     // descriptor onto CurrentLevel and increments this counter;
-    // <see cref="EmitInlineLeaf"/> pops the trailing on-page run and replaces it
+    // <see cref="MaybeEmitInlineLeaf"/> pops the trailing on-page run and replaces it
     // with a single leaf descriptor; <see cref="FlushPendingAsEntries"/> and
     // <see cref="FlushPendingNotOnCurrentPage"/> simply drop entries from the
     // pending count (the descriptors stay in place, now sealed as direct Entry
     // children of whatever intermediate the index-build phase puts above them).
     private int _pendingCount;
 
-    // Set the first time <see cref="EmitInlineLeaf"/> actually writes a leaf node
+    // Set the first time <see cref="MaybeEmitInlineLeaf"/> actually writes a leaf node
     // (and stays set for the rest of the build). Lets <see cref="Build"/>'s
     // single-entry-HSST post-process distinguish a lone Entry descriptor (no leaf
     // ever wrapped — needs wrapping to keep rootSize in the u16 trailer) from a
@@ -159,15 +159,8 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Begin writing a value. Returns ref to the shared writer and snapshots Written.
-    /// After writing, call FinishValueWrite with just the key.
-    ///
-    /// Callers may advance the writer past leading padding bytes before writing the
-    /// real value bytes — e.g. to keep the value from crossing a 4 KiB page
-    /// boundary — and then close the entry with the padding-aware overload
-    /// <see cref="FinishValueWrite(ReadOnlySpan{byte}, long)"/>. Padding sits between
-    /// the BeginValueWrite snapshot and (Written - valueLength); the reader recovers
-    /// the value via ValueStart = MetadataStart - ValueLength, so leading pad bytes
-    /// are inert gap data that no index entry points at.
+    /// Close the entry with <see cref="FinishValueWrite(ReadOnlySpan{byte}, long)"/>, which
+    /// documents the leading-padding / page-alignment handling.
     ///
     /// Not supported in key-first mode (the value length must be known when the entry
     /// is laid down). Callers in key-first mode must use <see cref="Add"/>.
@@ -176,15 +169,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     {
         if (_keyFirst)
             throw new InvalidOperationException("Key-first BTree requires Add(key, value); BeginValueWrite/FinishValueWrite streaming is not supported.");
-        // Trigger 1: close out any pending entries before the streaming value
-        // starts flowing. The streaming bytes will straddle pages, so flushing now
-        // keeps any pending leaf colocated with its entries. Prune stranded pending
-        // first (key on a prior page) so the leaf only covers entries that share
-        // the writer's current page. A singleton pending set is pushed onto
-        // CurrentLevel as a direct Entry descriptor (see EmitInlineLeaf's singleton
-        // fast path) — the common all-streaming case where every entry becomes its
-        // own direct-Entry child of the intermediate level above.
-        if (_pendingCount > 0) EmitInlineLeaf();
+        // Trigger 1: a streaming value is about to flow and will straddle pages, so seal any
+        // pending leaf now to keep it colocated with its entries.
+        MaybeEmitInlineLeaf();
         _writtenBeforeValue = _writer.Written;
         return ref _writer;
     }
@@ -381,10 +368,8 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     public unsafe void Build()
     {
         // Trigger 3: flush any remaining unflushed entries so BuildIndex can skip its
-        // leaf phase entirely. EmitInlineLeaf does its own on-page trim, so older
-        // pending entries that no longer share the writer's current page stay sealed
-        // as direct Entry children of the intermediate level above.
-        if (_pendingCount > 0) EmitInlineLeaf();
+        // leaf phase entirely.
+        MaybeEmitInlineLeaf();
 
         // Single-entry-HSST post-process: if the build holds exactly one entry and
         // no leaf was ever written (e.g. the lone entry's value crossed pages, so
@@ -401,7 +386,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         // No data-section reader needed: every descriptor in <c>CurrentLevel</c> carries
         // its first-entry full key in the parallel <c>CurrentLevelFirstKeys</c> list,
-        // populated at descriptor-push time (EmitInlineLeaf, FlushPendingAsEntries,
+        // populated at descriptor-push time (MaybeEmitInlineLeaf, FlushPendingAsEntries,
         // FlushPendingNotOnCurrentPage). BuildIndex propagates first-keys as it walks
         // up the tree, so no read-back is required.
         int rootSize = BuildIndex(absoluteIndexStart);
@@ -565,7 +550,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         // Doesn't fit on the current page. Seal pending now and start fresh for
         // the new entry. A multi-entry pending set goes out as a page-local leaf;
-        // a singleton goes out as a direct Entry descriptor via EmitInlineLeaf's
+        // a singleton goes out as a direct Entry descriptor via MaybeEmitInlineLeaf's
         // singleton fast path (no leaf header + slot bytes spent on a degenerate
         // 1-entry node).
         // Edge case: the K-entry leaf itself may not fit (e.g., the previous entry
@@ -593,7 +578,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             Buffers.PendingMaxSepLen = 0;
         }
         else
-            EmitInlineLeaf();
+            MaybeEmitInlineLeaf();
 
         return lcp;
     }
@@ -625,7 +610,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// record length as rootSize) is handled separately in <see cref="Build"/>'s
     /// post-process — see <see cref="WrapLoneEntryAsLeaf"/>.
     /// </remarks>
-    private void EmitInlineLeaf()
+    private void MaybeEmitInlineLeaf()
     {
         if (_pendingCount == 0) return;
 
@@ -689,7 +674,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// when no leaf has been emitted. Wraps the lone direct Entry descriptor sitting
     /// in <c>CurrentLevel</c> as a 1-entry leaf node so the root is a bounded node
     /// and <see cref="BuildIndex"/>'s single-root early-return reports a u16-fittable
-    /// rootSize. Unlike <see cref="EmitInlineLeaf"/>, this bypasses the on-page
+    /// rootSize. Unlike <see cref="MaybeEmitInlineLeaf"/>, this bypasses the on-page
     /// filter — a cross-page leaf is acceptable here because the alternative (a
     /// direct Entry root) would overflow the u16 trailer for any value past ~64 KiB.
     /// </summary>
@@ -871,7 +856,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // IS the root — return its byte length without writing any intermediate. The
         // leaf was just written above, so its bytes occupy
         // <c>[only.ChildOffset, absoluteIndexStart)</c>. The leaf descriptor carries
-        // the planner-picked prefix length recorded at EmitInlineLeaf time; that
+        // the planner-picked prefix length recorded at MaybeEmitInlineLeaf time; that
         // becomes the root's prefix length for the trailer.
         if (currentNative.Count == 1)
         {
@@ -1000,7 +985,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Unified node writer: emit a <see cref="BTreeNodeKind.Intermediate"/> BTreeNode
     /// node covering the given <paramref name="children"/>. Used for both inline page-local
     /// nodes (each child wraps a single entry; pushed from
-    /// <see cref="EmitInlineLeaf"/>) and inner nodes (each child is a previously-emitted
+    /// <see cref="MaybeEmitInlineLeaf"/>) and inner nodes (each child is a previously-emitted
     /// node). The per-child separator length is <c>max(natural LCP + 1, children[i].PrefixLen)</c>:
     /// short separators are widened so the parent's slot always carries every byte of the
     /// child's planner-picked CommonKeyPrefix. The planner then picks this node's own
