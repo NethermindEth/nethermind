@@ -422,34 +422,34 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
+        // The whole capacity is zeroed up front so _lastZeroedSize lands on the array length:
+        // memory expansions within capacity then never re-enter this slow path. Solidity
+        // frames grow memory on almost every allocation, so the incremental-clear scheme this
+        // replaces paid a call plus an Array.Clear per expansion; one full clear per rent is
+        // cheaper and EVM memory is zero-initialized by definition, so over-zeroing is safe.
         const int MinRentSize = 1_024;
         if (_memory is null)
         {
             _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
-            Array.Clear(_memory, 0, TruncateToInt32(Size));
+            Array.Clear(_memory);
         }
-        else
+        else if (Size > (ulong)_memory.LongLength)
         {
+            byte[] beforeResize = _memory;
+            _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
+            Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
+            Array.Clear(_memory, beforeResize.Length, _memory.Length - beforeResize.Length);
+            SafeArrayPool<byte>.Shared.Return(beforeResize);
+        }
+        else if ((ulong)_memory.Length > _lastZeroedSize)
+        {
+            // A pre-invariant state (zeroed only up to a previous Size): finish the capacity
+            // once and the invariant holds from here on.
             int lastZeroedSize = (int)_lastZeroedSize;
-            if (Size > (ulong)_memory.LongLength)
-            {
-                byte[] beforeResize = _memory;
-                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
-                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-                SafeArrayPool<byte>.Shared.Return(beforeResize);
-            }
-            else if (Size > _lastZeroedSize)
-            {
-                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-            }
-            else
-            {
-                return;
-            }
+            Array.Clear(_memory, lastZeroedSize, _memory.Length - lastZeroedSize);
         }
 
-        _lastZeroedSize = Size;
+        _lastZeroedSize = (ulong)_memory.Length;
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a

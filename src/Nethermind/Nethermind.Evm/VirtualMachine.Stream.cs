@@ -78,6 +78,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         StreamOp[] ops = stream.Ops;
         long[] blockGas = stream.BlockGas;
         Nethermind.Int256.UInt256[] constants = stream.Constants;
+        byte[] constantBytes = stream.ConstantBytes;
         ushort[] pcToEntry = stream.PcToEntry;
         ref byte code = ref stack.Code;
         uint codeLength = (uint)stack.CodeLength;
@@ -186,16 +187,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpSGt>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.Eq:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpEqFused>(ref stack, in constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.And:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpAndFused>(ref stack, in constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.Or:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpOrFused>(ref stack, in constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.Xor:
-                            exceptionType = EvmInstructions.FusedConstBinaryCore<EvmInstructions.OpXorFused>(ref stack, in constants[(int)entry.Operand]);
+                            exceptionType = EvmInstructions.FusedConstBitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack, ref constantBytes[(int)entry.Operand * 32]);
                             break;
                         case (Instruction)FusedOpcode.Shl:
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShl>(ref stack, in constants[(int)entry.Operand]);

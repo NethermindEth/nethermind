@@ -144,6 +144,9 @@ public sealed class InstructionStream
     public readonly long[] BlockGas;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
     public readonly UInt256[] Constants;
+    /// <summary>The same pool in stack representation (32 big-endian bytes per constant), so
+    /// fused bitwise ops run as straight vector loads with no limb conversion.</summary>
+    public readonly byte[] ConstantBytes;
     /// <summary>Entry index for every entry-start pc; <see cref="InvalidEntry"/> for immediate
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
@@ -154,6 +157,12 @@ public sealed class InstructionStream
         BlockGas = blockGas;
         Constants = constants;
         PcToEntry = pcToEntry;
+
+        ConstantBytes = new byte[constants.Length * 32];
+        for (int i = 0; i < constants.Length; i++)
+        {
+            constants[i].ToBigEndian(ConstantBytes.AsSpan(i * 32, 32));
+        }
     }
 
     public static InstructionStream? TryBuild(ReadOnlySpan<byte> code)

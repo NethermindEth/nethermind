@@ -64,6 +64,27 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
+    /// <summary>
+    /// Body of a fused <c>PUSH const; bitwise-op</c> pair over the stack-representation pool:
+    /// one vector load per operand, no limb conversion.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedConstBitwiseCore<TOpBitwise>(ref EvmStack stack, ref byte constantSlot)
+        where TOpBitwise : struct, IOpBitwise
+    {
+        if (stack.Head == EvmStack.MaxStackSize - 1)
+            return EvmExceptionType.StackOverflow;
+
+        ref byte topRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
+
+        EvmWord a = ReadUnaligned<EvmWord>(ref constantSlot);
+        EvmWord b = ReadUnaligned<EvmWord>(ref topRef);
+        WriteUnaligned(ref topRef, TOpBitwise.Operation(in a, in b));
+        return EvmExceptionType.None;
+    }
+
     /// <summary>Bitwise AND over UInt256 for the fused-const path.</summary>
     public struct OpAndFused : IOpMath2Param
     {

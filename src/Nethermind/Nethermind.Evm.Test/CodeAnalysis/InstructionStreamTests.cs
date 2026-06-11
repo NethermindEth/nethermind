@@ -65,7 +65,7 @@ public class InstructionStreamTests
     }
 
     [Test]
-    public void TryBuild_JumpAndPush2_AreBoundary()
+    public void TryBuild_Push2JumpWithValidDest_BecomesStaticJump()
     {
         byte[] code =
         [
@@ -77,8 +77,28 @@ public class InstructionStreamTests
 
         InstructionStream stream = InstructionStream.TryBuild(code)!;
 
-        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.Boundary), "PUSH2 keeps the fused PUSH2+JUMP handler");
-        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "JUMP recomputes the entry index from the landing pc");
+        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.StaticJump),
+            "an analysis-validated PUSH2+JUMP pair jumps straight to its target entry");
+        Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5]),
+            "the operand is the pre-resolved target entry index");
+        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
+    }
+
+    [Test]
+    public void TryBuild_Push2JumpWithInvalidDest_StaysBoundary()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH2, 0x00, 0x04,
+            (byte)Instruction.JUMP,
+            (byte)Instruction.STOP,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.Boundary),
+            "a destination that is not a JUMPDEST keeps the table pair and fails at runtime exactly like a dynamic jump");
+        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "the JUMP itself stays a table op");
     }
 
     [Test]
