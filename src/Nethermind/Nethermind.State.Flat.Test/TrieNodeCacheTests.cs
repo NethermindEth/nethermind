@@ -267,7 +267,6 @@ public class TrieNodeCacheTests
         Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
         Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
 
-        // Clear the cache
         _cache.Clear();
 
         // Verify all nodes are removed
@@ -296,7 +295,6 @@ public class TrieNodeCacheTests
         Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
         Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
 
-        // Clear the cache
         _cache.Clear();
 
         // Verify all nodes are removed

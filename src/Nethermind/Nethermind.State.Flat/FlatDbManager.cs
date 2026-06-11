@@ -30,24 +30,21 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IResourcePool _resourcePool;
     private readonly IPersistedSnapshotRepository _persistedRepo;
 
-    // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
-    // it save a decent amount of CPU.
+    // ReadOnlySnapshotBundle assembly isn't slow per-call, but it's called ~1.8k/sec, so caching saves CPU.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
 
-    // First it go to here
+    // Pipeline stage 1: an added snapshot enters here for compaction.
     private readonly Task _compactorTask;
     private readonly Channel<StateId> _compactorJobs;
 
-    // And here in parallel.
-    // The node cache is kinda important for performance, so we want it populated as quickly as possible.
+    // Pipeline stage 1 (parallel): populate the trie-node cache ASAP — important for read performance.
     private readonly Task _populateTrieNodeCacheTask;
     private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
 
-    // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
+    // Pipeline stage 2: a compacted snapshot lands here, which decides what to persist.
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
-    // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
     private readonly Task _clearBundleCacheTask;
 
     private readonly int _compactSize;
@@ -129,7 +126,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
-        // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
         if (_snapshotCompactor.DoCompactSnapshot(stateId))
@@ -251,8 +247,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
     {
-        // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
-        // hard to pull of due to the constantly moving chain making invalidation hard.
+        // A linked list of snapshots was considered but rejected: the constantly-moving chain
+        // makes invalidation error-prone.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
 
         if (baseBlock == StateId.PreGenesis)

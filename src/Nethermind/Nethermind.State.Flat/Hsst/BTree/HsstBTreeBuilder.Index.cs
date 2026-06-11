@@ -497,7 +497,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         int commonLen = firstSepLen;
         ref HsstBTreeBuilderBuffers bufs = ref _buffers;
         // firstSep is filled once and read across the loop; sepBuf is refilled per candidate.
-        // Both reuse their list buffers across back-to-back Builds.
         NativeMemoryList<byte> firstSepList = bufs.IndexFirstSepScratch;
         NativeMemoryList<byte> sepBufList = bufs.IndexSepBufScratch;
         firstSepList.Clear();

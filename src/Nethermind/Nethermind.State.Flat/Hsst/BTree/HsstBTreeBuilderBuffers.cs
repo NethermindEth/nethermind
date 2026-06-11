@@ -21,26 +21,20 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 {
     // Current/next index-build level node lists. Populated during Add (one Entry-kind
-    // descriptor pushed per entry; the trailing pending run is collapsed into a leaf
-    // descriptor when a page-local leaf is emitted, or simply sealed in place when a
-    // flush decides not to wrap them); then consumed by HsstBTreeBuilder.BuildIndex
-    // as the bottom level and flipped between iterations as it walks up to the root.
-    // Using NativeMemoryList<T> (class) rather than NativeMemoryListRef<T> (ref
-    // struct) keeps the struct itself non-ref so it can live as a field of a class
-    // (see Container) and so HsstBTreeBuilder's borrowed-
-    // buffers ref field needs no Unsafe.AsPointer indirection.
+    // descriptor per entry; the trailing pending run becomes a leaf descriptor on inline-leaf
+    // emission, or is sealed in place when a flush declines to wrap it), then consumed by
+    // BuildIndex as the bottom level and flipped each iteration as it walks up to the root.
+    // NativeMemoryList<T> (class) rather than NativeMemoryListRef<T> (ref struct) keeps this
+    // struct non-ref so it can be a field of a class (see Container) and the builder's borrowed
+    // ref field needs no Unsafe.AsPointer indirection.
     internal NativeMemoryList<HsstIndexNodeInfo> CurrentLevel = new(expectedKeyCount);
     internal NativeMemoryList<HsstIndexNodeInfo> NextLevel = new(64);
 
-    // First-entry full key for every descriptor in <see cref="CurrentLevel"/> /
-    // <see cref="NextLevel"/>, in matching order. Flat (descriptorCount * keyLength)
-    // layout: the i-th descriptor's first-key occupies bytes
-    // [i * keyLength, (i + 1) * keyLength). Populated whenever a descriptor is
-    // pushed (per-entry Add, inline leaf, or freshly written intermediate) so that
-    // HsstBTreeBuilder.BuildIndex can read every child's first-key directly without
-    // reaching back into the already-written data region for a 20-byte address that
-    // may straddle a 4 KiB page. Flipped together with the level lists at the end
-    // of each Build iteration.
+    // First-entry full key for every descriptor in CurrentLevel / NextLevel, in matching
+    // order. Flat (descriptorCount * keyLength) layout: descriptor i's first-key occupies
+    // [i * keyLength, (i + 1) * keyLength). Populated on every descriptor push so BuildIndex
+    // can read each child's first-key without reaching back into the data region for an
+    // address that may straddle a 4 KiB page. Flipped with the level lists each iteration.
     internal NativeMemoryList<byte> CurrentLevelFirstKeys = new(64);
     internal NativeMemoryList<byte> NextLevelFirstKeys = new(64);
 

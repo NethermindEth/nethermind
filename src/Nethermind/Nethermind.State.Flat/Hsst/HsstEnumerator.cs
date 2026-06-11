@@ -237,10 +237,9 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         _ => 0,
     };
 
-    // Variants currently hold no resources that need release (HsstBTreeEnumerator's
-    // leaf buffer is plain managed memory). Kept on IDisposable so callers
-    // can stay on `using` without rewriting; if a variant later acquires
-    // resources, plumb the release through here.
+    // No variant holds releasable resources today (HsstBTreeEnumerator's leaf buffer is
+    // managed memory). Kept on IDisposable so callers can stay on `using`; if a variant
+    // later acquires resources, plumb the release through here.
     public void Dispose() { }
 
 }

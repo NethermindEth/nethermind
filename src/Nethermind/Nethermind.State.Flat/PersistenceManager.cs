@@ -48,7 +48,7 @@ public class PersistenceManager(
     private readonly IPersistedSnapshotRepository _repo = persistedSnapshotRepository;
     private readonly SnapshotGraphWalker _walker = new(snapshotRepository, persistedSnapshotRepository);
     private readonly ICompactionSchedule _schedule = compactionSchedule;
-    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
+    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // reused to presort trie-node keys before write
     private readonly Lock _persistenceLock = new();
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;

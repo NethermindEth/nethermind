@@ -50,7 +50,7 @@ internal static class BTreeNodeWriter<TWriter>
         byte flags = EncodeFlags(metadata.NodeKind, keyType: 0, EncodeValueSizeCode(emptyValueSlot), keyLe: false);
         Span<byte> span = writer.GetSpan(HeaderSize);
         span[0] = flags;
-        span[1..5].Clear();   // KeyCount(2) + KeySize(2) = 0
+        span[1..5].Clear();   // KeyCount + KeySize
         span[5] = 0;          // CommonPrefixLen
         ulong v = metadata.BaseOffset;
         span[6] = (byte)v;
@@ -119,9 +119,8 @@ internal static class BTreeNodeWriter<TWriter>
         // 3) Values section — always Uniform (no Variable-value shape for b-tree nodes).
         WriteUniformValues(ref writer, count, values, metadata.ValueSlotSize);
 
-        // When the keys section uses Variable encoding, its u16 offset table cannot
-        // address bytes past 64 KiB. We've already enforced that the section alone is
-        // below the cap. Cap the *whole* node at 64 KiB so any future Variable-relative
+        // Variable keys use a u16 offset table that can't address past 64 KiB. The section
+        // alone is already capped above; cap the whole node too so any Variable-relative
         // offset reasoning stays valid.
         if (metadata.KeyType == 0)
         {
@@ -179,7 +178,7 @@ internal static class BTreeNodeWriter<TWriter>
     private static void WriteHeader(ref TWriter writer, in BTreeNodeMetadata metadata, int count, int keySize, scoped ReadOnlySpan<byte> commonKeyPrefix)
     {
         // Header fields are sized for the 64 KiB per-node cap. ValueSize is encoded as a
-        // 2-bit code in Flags bits 3-4 (only {2,3,4,6} are valid); reject anything beyond
+        // 2-bit code in Flags bits 4-5 (only {2,3,4,6} are valid); reject anything beyond
         // the encodable range up-front rather than silently truncating.
         if ((uint)count > ushort.MaxValue)
             throw new InvalidOperationException($"Index node entry count {count} exceeds u16 header field");
@@ -278,9 +277,8 @@ internal static class BTreeNodeWriter<TWriter>
         int prefixArrSize = count * 2;
         int offsetArrSize = count * 2;
         Span<byte> prefixArr = writer.GetSpan(prefixArrSize)[..prefixArrSize];
-        // We need to fill prefixArr while walking the keys, but offsetArr depends on the
-        // running tail cursor that we also build during the same walk. Compute offsetArr
-        // into a temp buffer first, then emit prefix bytes, then offset bytes, then tails.
+        // Offsets depend on the running tail cursor built during the same walk, so stage
+        // them in a temp buffer; emit order is prefix bytes, offset bytes, then tails.
         Span<ushort> offsets = stackalloc ushort[count];
 
         int tailCursor = 0;

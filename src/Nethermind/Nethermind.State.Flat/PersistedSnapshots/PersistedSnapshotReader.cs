@@ -109,9 +109,7 @@ public static class PersistedSnapshotReader
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        // Per-address sub-tag step is always DenseByteIndex — resolve in one pinned trailer
-        // read. The slot-prefix step is a BTreeKeyFirst HSST; the slot-suffix step is a
-        // keys-first TwoByteSlotValue / -Large blob reached via the front-dispatch seek.
+        // Per-address sub-tag step is always DenseByteIndex — resolve in one pinned trailer read.
         if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
                 in reader, addressBound, PersistedSnapshotTags.SlotSubTagByte, out Bound slotSubTagBound) ||
             slotSubTagBound.Length == 0)
@@ -122,9 +120,9 @@ public static class PersistedSnapshotReader
         Span<byte> slotKey = stackalloc byte[32];
         index.ToBigEndian(slotKey);
         using HsstReader<TReader, TPin> r = new(in reader, slotSubTagBound);
-        // Outer 30-byte slot-prefix step is a BTreeKeyFirst HSST (tail-dispatched); the
-        // inner 2-byte suffix step is a keys-first TwoByteSlotValue / -Large blob whose
-        // IndexType byte leads at byte 0, so it dispatches forward with no tail seek.
+        // Outer 30-byte slot-prefix step is a tail-dispatched BTreeKeyFirst HSST; the inner
+        // 2-byte suffix step is a keys-first TwoByteSlotValue / -Large blob whose IndexType
+        // byte leads at byte 0, so it dispatches forward with no tail seek.
         if (!r.TrySeek(slotKey[..SlotPrefixLength], out _) ||
             !r.TrySeekTwoByteSlot(slotKey[SlotPrefixLength..], out _))
         {
@@ -151,8 +149,8 @@ public static class PersistedSnapshotReader
 
     /// <summary>
     /// Look up a state-trie node by tree path. Returns the local value <see cref="Bound"/>
-    /// — caller (<see cref="PersistedSnapshot"/>) checks <c>HasNodeRefs</c>, decodes the
-    /// NodeRef when present, and does the cross-snapshot dereference.
+    /// holding a <see cref="NodeRef"/>; the caller (<see cref="PersistedSnapshot"/>) decodes
+    /// it and dereferences into the blob arena.
     /// </summary>
     internal static bool TryLoadStateNodeRlp<TReader, TPin>(scoped in TReader reader, scoped in TreePath path, out Bound bound)
         where TPin : struct, IBufferPin, allows ref struct

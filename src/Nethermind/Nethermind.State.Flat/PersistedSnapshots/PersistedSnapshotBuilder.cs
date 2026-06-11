@@ -211,12 +211,9 @@ public static class PersistedSnapshotBuilder
     }
 
     /// <summary>
-    /// Estimate of the serialized Full snapshot size, used to size the destination arena
-    /// reservation. Capped at 2 GiB — the hard ceiling on a Full snapshot (see the
-    /// <see cref="NodeRef.RlpDataOffset"/> note on the class doc above). Returned as
-    /// <see cref="long"/> so callers feeding this into long-typed APIs (e.g. arena
-    /// reservations) don't truncate; the cap also keeps the value within
-    /// <see cref="int"/>.MaxValue for callers that need to allocate a contiguous buffer.
+    /// Estimate of the serialized snapshot size, used to size the destination arena
+    /// reservation. Capped at 2 GiB — the hard ceiling on a Full snapshot — which also
+    /// keeps the value within <see cref="int"/>.MaxValue for contiguous-buffer callers.
     /// </summary>
     public static long EstimateSize(Snapshot snapshot) =>
         Math.Min(2.GiB, snapshot.EstimateMemory() + 1.KiB);
@@ -280,35 +277,22 @@ public static class PersistedSnapshotBuilder
         ref TWriter addressWriter = ref outer.BeginValueWrite();
         using HsstBTreeBuilderBuffers.Container addressLevelBuffers = new(expectedKeyCount: uniqueAddresses.Count);
         using HsstBTreeBuilder<TWriter> addressLevel = new(ref addressWriter, ref addressLevelBuffers.Buffers, PersistedSnapshotTags.AddressKeyLength, expectedKeyCount: uniqueAddresses.Count);
-        // Slim-account RLP for any single account fits comfortably in 256 bytes (4×u256 fields
-        // plus framing). Pool the scratch so it doesn't allocate per WritePerAddressColumn call.
+        // Slim-account RLP fits in 256 bytes; pool the scratch to avoid per-call allocation.
         byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);
         RlpStream rlpStream = new(rlpBuffer);
         Span<byte> slotKey = stackalloc byte[32];
         Span<byte> currentPrefixBuf = stackalloc byte[slotPrefixLength];
-        // Reusable work buffer for the slot prefix (30-byte) HSST BTree builder.
-        // Constructed once per address. Sharing the buffers across every iteration of
-        // the address loop avoids the rent/return churn that would otherwise hit
-        // ArrayPool / NativeMemory once per slot subtree. Using the container class
-        // (rather than a stack local) lets us pass `ref Buffers` into the builder ctor
-        // and have the container's `using` handle Dispose at scope end.
+        // Reused across the address loop to avoid ArrayPool/NativeMemory churn per slot subtree.
         using HsstBTreeBuilderBuffers.Container slotPrefixBuffers = new();
 
-        // Pooled staging buffer for the per-prefix sub-slot HSST. The slot-prefix
-        // BTree is built in key-first mode (IndexType.BTreeKeyFirst) so its outer
-        // entry layout is [FullKey][LEB128][Value] — the value length must be known
-        // before laying down the LEB128, which means the sub-slot bytes have to be
-        // staged in their entirety first. The buffer is Reset() between iterations
-        // so the underlying NativeMemory allocation amortizes across the address
-        // and prefix loops.
+        // The slot-prefix BTree is key-first ([FullKey][LEB128][Value]), so the value length
+        // must be known before the LEB128 — stage the sub-slot bytes in full first. Reset()
+        // between iterations amortizes the NativeMemory allocation across the loops.
         using PooledByteBufferWriter slotSuffixBuffer = new(4096);
-        // Pooled staging buffer for the no-slots fast path: when an address has no
-        // storage slots, the per-address inner HSST collapses to at most {SD, Account}
-        // sub-tags plus the DenseByteIndex trailer — well under 256 bytes for any
-        // realistic slim account. Staging into a known-length buffer lets
-        // addressLevel.Add apply its own 4 KiB page-alignment pad (best-effort, via
-        // HsstBTreeBuilder.Add → TryAlign), keeping each EOA's per-address blob on a
-        // single OS page when the writer can accommodate it.
+        // No-slots fast path: stage the bounded per-address inner HSST ({SD, Account} +
+        // trailer, well under 256 bytes) so the outer value length is known up-front and
+        // addressLevel.Add can apply its 4 KiB page-alignment pad, keeping each EOA's blob
+        // on a single OS page.
         using PooledByteBufferWriter noStorageBuffer = new(256);
         int storageIdx = 0;
 
@@ -321,11 +305,6 @@ public static class PersistedSnapshotBuilder
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
             bloom.Add(addrBloomKey);
 
-            // No-slots fast path: when this address has no storage slots, the per-address
-            // inner HSST has bounded length (≤ 2 small sub-tags + trailer). Stage it into
-            // a pooled buffer so the outer entry's value length is known up-front; the
-            // leaf-write then applies the 4 KiB page-alignment pad (HsstBTreeBuilder.Add →
-            // TryAlign).
             bool hasSlots = storageIdx < sortedStorages.Count &&
                 sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes);
             if (!hasSlots)

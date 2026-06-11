@@ -206,7 +206,7 @@ internal static class HsstPackedArrayReader
             // Recompute per-level counts on the fly. Level start offsets aren't stored —
             // a rolling cursor walks backward through the summary section, starting at its
             // end (level Depth-1 is adjacent to the metadata block, level 0 sits right
-            // after Data). Depth ≤ MaxSummaryDepth (8), so this is a handful of integer ops.
+            // after Data). Depth ≤ MaxSummaryDepth, so this is a handful of integer ops.
             Span<long> counts = stackalloc long[HsstPackedArrayLayout.MaxSummaryDepth];
             if (!ComputeLevelCounts(in L, counts)) return false;
 

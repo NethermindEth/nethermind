@@ -7,9 +7,9 @@ namespace Nethermind.State.Flat.Hsst.PackedArray;
 internal static class HsstPackedArrayLayout
 {
     /// <summary>
-    /// Hard ceiling on the number of summary levels in a PackedArray HSST. With the 1 KiB
-    /// default stride, realistic Nethermind inputs (KeySize ≤ 32, EntryCount in the tens
-    /// of millions) stay at depth ≤ 4. Inputs that would push past this throw at build.
+    /// Hard ceiling on the number of summary levels in a PackedArray HSST. At the default
+    /// stride, realistic Nethermind inputs (KeySize ≤ 32, EntryCount in the tens of millions)
+    /// stay at depth ≤ 4. Inputs that would push past this throw at build.
     /// </summary>
     internal const int MaxSummaryDepth = 4;
 }

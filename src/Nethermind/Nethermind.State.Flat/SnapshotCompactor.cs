@@ -31,9 +31,8 @@ public class SnapshotCompactor(
     {
         if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
         {
-            using Snapshot _ = snapshot; // dispose
+            using Snapshot _ = snapshot;
 
-            // Actually do the compaction
             long sw = Stopwatch.GetTimestamp();
             using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);
 
@@ -165,7 +164,7 @@ public class SnapshotCompactor(
 
                 if (addressToClear.Count > 0)
                 {
-                    // Clear
+                    // Drop storage slots of accounts self-destructed in this snapshot.
                     foreach ((HashedKey<(Address, UInt256)> key, SlotValue? _) in storages)
                     {
                         if (addressToClear.Contains(key.Key.Item1))

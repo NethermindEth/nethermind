@@ -431,7 +431,7 @@ public class BTreeNodeTests
             "corpus must build a multi-level tree so lookups traverse the index");
 
         SpanByteReader reader = new(data);
-        // Count entries via the new enumerator and verify each key is reachable via TrySeek.
+        // Count entries via the enumerator and verify each key is reachable via TrySeek.
         int actualCount = 0;
         using (HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
         {

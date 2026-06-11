@@ -193,7 +193,6 @@ public class FlatWorldStateScopeProviderTests
         Account persistedAccount = TestItem.GenerateRandomAccount();
         byte[] persistedSlotValue = { 0xDE, 0xAD, 0xBE, 0xEF };
 
-        // Setup Persistence Reader
         ctx.PersistenceReader.GetAccount(testAddress).Returns(persistedAccount);
         SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero(persistedSlotValue);
         ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<SlotValue>())
@@ -423,7 +422,6 @@ public class FlatWorldStateScopeProviderTests
         expectedTree.UpdateRootHash();
         Hash256 expectedRoot = expectedTree.RootHash;
 
-        // Verify
         Account? resultAccount = scope.Get(testAddress);
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
     }
@@ -470,7 +468,6 @@ public class FlatWorldStateScopeProviderTests
         expectedTree.UpdateRootHash();
         Hash256 expectedRoot = expectedTree.RootHash;
 
-        // Verify
         Account? resultAccount = scope.Get(testAddress);
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
     }
@@ -525,7 +522,6 @@ public class FlatWorldStateScopeProviderTests
         expectedTree.UpdateRootHash();
         Hash256 expectedRoot = expectedTree.RootHash;
 
-        // Verify
         Account? resultAccount = scope.Get(testAddress);
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
     }

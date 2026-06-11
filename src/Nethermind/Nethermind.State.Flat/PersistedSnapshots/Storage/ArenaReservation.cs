@@ -89,15 +89,11 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// <c>madvise(MADV_POPULATE_READ)</c> over the page-aligned envelope of the range.
     /// </summary>
     /// <remarks>
-    /// Used by callers that know a contiguous span of data is about to be read and want to
-    /// coalesce the per-page pre-fault syscalls into one. <c>MADV_POPULATE_READ</c> is a
-    /// no-op on already-resident pages, so over-faulting the few hot pages inside the
-    /// range is harmless. The per-page tracker probes themselves are unchanged from
-    /// <see cref="TouchPage"/> — same arming, same clock eviction, same dispatch into
-    /// <see cref="IArenaManager.QueueEviction"/> for displaced pages.
-    /// If only a single probed page was non-<see cref="PageResidencyTracker.TouchOutcome.Hit"/>, the batched
-    /// <c>madvise</c> call is skipped — a one-page syscall is not amortized vs. the
-    /// inline minor fault the reader would otherwise take on that page.
+    /// Coalesces the per-page pre-fault syscalls into one for a contiguous read.
+    /// <c>MADV_POPULATE_READ</c> is a no-op on already-resident pages, so over-faulting the few
+    /// hot pages inside the range is harmless. When only a single probed page is cold the batched
+    /// <c>madvise</c> is skipped — a one-page syscall is not amortized vs. the inline minor fault
+    /// the reader would otherwise take.
     /// </remarks>
     internal void TouchRangePopulate(long localOffset, long length)
     {

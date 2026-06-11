@@ -81,11 +81,10 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
     {
         if (_lastTag == NoTagYet)
         {
-            // First write fixes the array size; values are streamed high-tag → low-tag,
-            // so the highest tag has prevEnd = 0 and lives at offset 0 in the data section.
-            // Count == _count so the indexer covers [0, _count); every slot is written before
-            // Build emits (gap-fill below + below-range fill in Build), so the uninitialised
-            // backing is fully overwritten.
+            // First write fixes the array size. Values stream high-tag → low-tag, so the
+            // highest tag has prevEnd = 0 and lives at data-section offset 0. Every slot in
+            // [0, _count) is written before Build (gap-fill here + below-range fill in Build),
+            // so the uninitialised backing is fully overwritten.
             _count = tag + 1;
             _ends = new NativeMemoryList<long>(_count, _count) { [tag] = _writer.Written - _baseOffset };
             _lastTag = tag;

@@ -118,9 +118,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
         _reservation.BeginWholeReadSession(adviseDontNeedOnDispose);
 
-    /// <summary>
-    /// Construct a reader over this snapshot's bytes.
-    /// </summary>
     internal ArenaByteReader CreateReader() => _reservation.CreateReader();
 
     /// <summary>
@@ -303,8 +300,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// Materialise the trie-node RLP at <paramref name="localBound"/>. The bound holds a
-    /// 6-byte <see cref="NodeRef"/>; the actual RLP bytes live in a blob arena.
+    /// Materialise the trie-node RLP at <paramref name="localBound"/>, which holds a
+    /// <see cref="NodeRef"/> pointing at the actual RLP bytes in a blob arena.
     /// </summary>
     internal byte[] ResolveTrieRlp(Bound localBound)
     {
@@ -745,8 +742,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         // Drain the iterator before disposing the reservation — the iterator reads through
         // the reservation's mmap via an ArenaByteReader, and this snapshot's own lease
         // (acquired at construction) keeps the mmap alive until it drops at the end of
-        // CleanUp. GetFile is a lock-free array read; the lease we acquired at construction
-        // kept the slot alive until now.
+        // CleanUp. GetFile is a lock-free array read kept valid by that same lease.
         foreach (ushort id in GetRefIdsEnumerator())
         {
             BlobArenaFile file = _blobManager.GetFile(id);

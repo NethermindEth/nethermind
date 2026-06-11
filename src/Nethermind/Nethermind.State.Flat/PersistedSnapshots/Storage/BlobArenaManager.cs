@@ -151,9 +151,8 @@ public sealed class BlobArenaManager : IDisposable
                 startOffset = 0;
             }
 
-            // The writer's lease keeps the file alive for the duration of the write. If
-            // the file is mid-cleanup (shouldn't happen — we hold _lock), TryAcquireLease
-            // returns false and we throw.
+            // The writer's lease keeps the file alive for the write. Mid-cleanup shouldn't happen
+            // under _lock, but guard against it.
             if (!file.TryAcquireLease())
                 throw new InvalidOperationException(
                     $"Blob arena {fileId} is mid-cleanup; cannot open writer.");
@@ -292,22 +291,18 @@ public sealed class BlobArenaManager : IDisposable
             long prev = file.ReportedFrontier;
             if (prev == 0)
             {
-                // Already at 0; make sure it's a packing candidate and exit.
                 _mutableFiles.Add(file.BlobArenaId);
                 return;
             }
 
-            // Take the file out of the packing pool BEFORE mutating Frontier. Strictly
-            // redundant with _lock + the HasOnlyManagerLease re-check (CreateWriter also
-            // takes _lock), but keeps the "files in _mutableFiles have a stable Frontier"
-            // invariant locally obvious. Re-added at frontier=0 below.
+            // Take the file out of the packing pool before mutating Frontier, preserving the
+            // "files in _mutableFiles have a stable Frontier" invariant. Re-added at frontier=0 below.
             _mutableFiles.Remove(file.BlobArenaId);
 
-            // Reclaim the orphaned [0, prev) range while still under _lock — a racing
-            // CreateWriter would otherwise lease this file and append at offset 0, and a
-            // truncate over a range that now holds fresh data would corrupt it. ftruncate
-            // zeros the logical length AND frees all disk blocks in a single syscall;
-            // the page cache for the truncated range is implicitly invalidated.
+            // Reclaim [0, prev) while still under _lock — a racing CreateWriter would otherwise
+            // lease this file and append at offset 0, and a truncate over fresh data would corrupt
+            // it. ftruncate zeros the logical length AND frees all disk blocks in one syscall; the
+            // page cache for the range is implicitly invalidated.
             file.SetFileLength(0);
 
             file.Frontier = 0;

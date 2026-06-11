@@ -453,6 +453,16 @@ public sealed class PersistedSnapshotRepository(
     }
 
     /// <summary>
+    /// Find the base snapshot whose <see cref="PersistedSnapshot.From"/> matches
+    /// <paramref name="fromState"/>, seeding the backward BFS from <see cref="LastRegisteredState"/>.
+    /// </summary>
+    internal PersistedSnapshot? TryGetSnapshotFrom(StateId fromState)
+    {
+        StateId? seed = LastRegisteredState;
+        return seed is null ? null : TryGetSnapshotFrom(fromState, seed.Value);
+    }
+
+    /// <summary>
     /// Find the base snapshot whose <see cref="PersistedSnapshot.From"/> matches <paramref name="fromState"/>,
     /// reaching it via a backward BFS from <paramref name="seedState"/> over the <c>To</c>-keyed dictionaries.
     /// </summary>
@@ -463,12 +473,6 @@ public sealed class PersistedSnapshotRepository(
     /// must be a recent (>= <paramref name="fromState"/>) state to walk back from; callers typically pass the
     /// in-memory snapshot repository's earliest <c>StateId</c>.
     /// </remarks>
-    internal PersistedSnapshot? TryGetSnapshotFrom(StateId fromState)
-    {
-        StateId? seed = LastRegisteredState;
-        return seed is null ? null : TryGetSnapshotFrom(fromState, seed.Value);
-    }
-
     internal PersistedSnapshot? TryGetSnapshotFrom(StateId fromState, StateId seedState)
     {
         if (seedState.BlockNumber <= fromState.BlockNumber) return null;

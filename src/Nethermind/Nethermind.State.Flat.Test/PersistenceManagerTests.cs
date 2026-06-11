@@ -149,7 +149,6 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
 
-        // Create snapshot (compacted or not based on parameter)
         using Snapshot expectedSnapshot = CreateSnapshot(persisted, target, compacted: useCompacted);
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
@@ -433,8 +432,6 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(CreateStateId(16).StateRoot.Bytes));
 
-        // Don't create any snapshots
-
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(latest);
 
         Assert.That(persistedToPersist, Is.Null);
@@ -478,7 +475,6 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
 
-        // Create snapshot with wrong "from" state
         using Snapshot wrongSnapshot = CreateSnapshot(wrongFrom, target, compacted: true);
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(latest);
@@ -499,7 +495,6 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target2.StateRoot.Bytes)); // target2 is finalized
 
-        // Create both snapshots
         using Snapshot snapshot1 = CreateSnapshot(persisted, target1, compacted: true);
         using Snapshot snapshot2 = CreateSnapshot(persisted, target2, compacted: true);
 
@@ -552,20 +547,16 @@ public class PersistenceManagerTests
     [Test]
     public void PersistSnapshot_WithAccountsStorageAndTrieNodes_WritesToBatch()
     {
-        // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-        // Add accounts
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
         snapshot.Content.Accounts[TestItem.AddressB] = new Account(2, 200);
 
-        // Add storage
         snapshot.Content.Storages[(TestItem.AddressA, (UInt256)1)] = SlotValue.FromSpanWithoutLeadingZero([42]);
         snapshot.Content.Storages[(TestItem.AddressA, (UInt256)2)] = SlotValue.FromSpanWithoutLeadingZero([99]);
 
-        // Add trie nodes
         TreePath path = TreePath.Empty;
         TrieNode node = new(NodeType.Leaf, Keccak.Zero);
         snapshot.Content.StateNodes[path] = node;
@@ -573,10 +564,8 @@ public class PersistenceManagerTests
         FakeWriteBatch writeBatch = new();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
-        // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
-        // Assert
         Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressA));
         Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressB));
         Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
@@ -588,7 +577,6 @@ public class PersistenceManagerTests
     [Test]
     public void PersistSnapshot_WithSelfDestructedAddresses_CallsSelfDestruct()
     {
-        // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
         using Snapshot snapshot = CreateSnapshotWithSelfDestruct(from, to);
@@ -596,17 +584,14 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
-        // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
-        // Assert
         writeBatch.Received().SelfDestruct(TestItem.AddressA);
     }
 
     [Test]
     public void PersistSnapshot_EmptySnapshot_CreatesWriteBatch()
     {
-        // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -614,22 +599,19 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
-        // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
-        // Assert
         _persistence.Received(1).CreateWriteBatch(from, to);
     }
 
     [Test]
     public void AddToPersistence_WithAvailableSnapshot_PersistsAndUpdatesState()
     {
-        // Arrange — finalized at the candidate block so the single-seed BFS lands directly on it.
+        // Finalized at the candidate block so the single-seed BFS lands directly on it.
         StateId from = Block0;
         StateId to = CreateStateId(16);
         StateId latest = CreateStateId(100);
 
-        // Create a snapshot that should be persisted
         using Snapshot snapshot = CreateSnapshot(from, to, compacted: true);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
@@ -638,34 +620,25 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        // Act
         _persistenceManager.AddToPersistence(latest);
 
-        // Assert
-        // Verify write batch was created (persistence happened)
         _persistence.Received().CreateWriteBatch(from, to);
-
-        // Verify current persisted state was updated
         Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(to));
     }
 
     [Test]
     public void FlushToPersistence_NoSnapshots_ReturnsCurrentPersistedState()
     {
-        // Arrange - no snapshots added
         StateId persisted = Block0;
 
-        // Act
         StateId result = _persistenceManager.FlushToPersistence();
 
-        // Assert
         Assert.That(result, Is.EqualTo(persisted));
     }
 
     [Test]
     public void FlushToPersistence_WithFinalizedSnapshots_PersistsFinalizedFirst()
     {
-        // Arrange
         StateId state16 = CreateStateId(16);
         StateId state32 = CreateStateId(32);
 
@@ -679,10 +652,8 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        // Act
         StateId result = _persistenceManager.FlushToPersistence();
 
-        // Assert
         Assert.That(result, Is.EqualTo(state32));
         _persistence.Received().CreateWriteBatch(Block0, state16);
         _persistence.Received().CreateWriteBatch(state16, state32);
@@ -691,7 +662,6 @@ public class PersistenceManagerTests
     [Test]
     public void FlushToPersistence_WithUnfinalizedSnapshots_FallsBackToFirstAvailable()
     {
-        // Arrange - no finalization info available
         StateId state16 = CreateStateId(16);
         _finalizedStateProvider.SetFinalizedBlockNumber(0); // Nothing finalized
 
@@ -700,10 +670,8 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        // Act
         StateId result = _persistenceManager.FlushToPersistence();
 
-        // Assert
         Assert.That(result, Is.EqualTo(state16));
         _persistence.Received().CreateWriteBatch(Block0, state16);
     }
@@ -711,7 +679,7 @@ public class PersistenceManagerTests
     [Test]
     public void FlushToPersistence_PrefersFinalizedOverUnfinalized()
     {
-        // Arrange - two snapshots at same block, one finalized. Set finalized block to the
+        // Two snapshots at the same block, one finalized. Set finalized block to the
         // candidate block so the BFS seed lands directly on the finalized state.
         StateId finalizedState = CreateStateId(16, rootByte: 1);
         StateId unfinalizedState = CreateStateId(16, rootByte: 2);
@@ -719,24 +687,21 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(finalizedState.StateRoot.Bytes));
 
-        // Create both snapshots
         using Snapshot finalizedSnapshot = CreateSnapshot(Block0, finalizedState, compacted: true);
         using Snapshot unfinalizedSnapshot = CreateSnapshot(Block0, unfinalizedState, compacted: true);
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        // Act
         StateId result = _persistenceManager.FlushToPersistence();
 
-        // Assert - should persist finalized state
+        // Should persist the finalized state.
         Assert.That(result.StateRoot.Bytes.ToArray(), Is.EqualTo(finalizedState.StateRoot.Bytes.ToArray()));
     }
 
     [Test]
     public void FlushToPersistence_PersistsMultipleSnapshots_InOrder()
     {
-        // Arrange
         StateId state1 = CreateStateId(1);
         StateId state2 = CreateStateId(2);
         StateId state3 = CreateStateId(3);
@@ -751,10 +716,8 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        // Act
         StateId result = _persistenceManager.FlushToPersistence();
 
-        // Assert
         Assert.That(result, Is.EqualTo(state3));
         Received.InOrder(() =>
         {

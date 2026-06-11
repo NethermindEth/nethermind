@@ -80,7 +80,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
 
         _handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
 
-        // Extend file to mappedSize if smaller (sparse on Linux via ftruncate)
+        // Extend to mappedSize (sparse on Linux via ftruncate).
         if (RandomAccess.GetLength(_handle) < mappedSize)
             RandomAccess.SetLength(_handle, mappedSize);
 
@@ -244,13 +244,11 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
         {
             if (adviseDontNeedOnDispose && OperatingSystem.IsLinux())
             {
-                // Round to full pages around the data range.
-                // NOTE: MADV_DONTNEED on a file-backed shared mapping drops the affected
-                // pages from the kernel page cache, so it also affects the arena's global
-                // random-access view (and any other independent mmap of the same file).
-                // That's intentional here — the whole-read session has finished sweeping
-                // the range and we want those pages out of cache rather than competing
-                // with the random-access working set.
+                // MADV_DONTNEED on a file-backed shared mapping drops the pages from the kernel
+                // page cache, so it also affects the arena's global random-access view (and any
+                // other mmap of the same file). Intentional: the whole-read session has finished
+                // sweeping the range and we want those pages out of cache rather than competing
+                // with the random-access working set. Rounds to full pages around the data range.
                 nuint pageSize = PageSize;
                 nuint addr = (nuint)dataPtr;
                 nuint start = (addr + pageSize - 1) & ~(pageSize - 1);

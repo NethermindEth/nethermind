@@ -693,11 +693,9 @@ public static class PersistedSnapshotMerger
         const int AddrKeyLen = PersistedSnapshotTags.AddressKeyLength;
         using LoserTreeState state = new(n, KeyStride);
 
-        // Reusable work buffers for the per-address slot prefix/suffix HSST builders.
-        // The container is a class so the value-merger can hold it as a regular field; the
-        // contained buffers live across every merged address — the prefix builder is created
-        // once per address and the suffix builder once per prefix group per address, so
-        // amortising the rentals matters.
+        // Reusable buffers for the per-address slot prefix/suffix HSST builders, shared across
+        // every merged address. The container is a class so the value-merger holds it as a
+        // field; amortising rentals matters since the suffix builder runs per prefix group.
         using HsstBTreeBuilderBuffers.Container slotPrefixBuffers = new();
         using ArrayPoolList<HsstEnumerator<TReader, TPin>> enumeratorsList = new(n, n);
         Span<HsstEnumerator<TReader, TPin>> enumerators = enumeratorsList.AsSpan();
@@ -825,11 +823,8 @@ public static class PersistedSnapshotMerger
         sourceStarts[n] = totalRefIdsBytes;
 
         // Pull every source's ref_ids bytes into one contiguous buffer (sourceBytes), then
-        // merge into mergedRefIds. Both buffers share the same upper bound, so they're
-        // sized to totalRefIdsBytes. NativeMemoryListRef — heap-rented buffer — sidesteps
-        // the >2 GiB stackalloc theoretical risk and matches the working-buffer pattern
-        // used by the other merge helpers in this file. In practice totalRefIdsBytes is
-        // ~tens of bytes.
+        // merge into mergedRefIds. Both share the totalRefIdsBytes upper bound. Heap-rented
+        // (not stackalloc) to avoid the >2 GiB risk; in practice this is ~tens of bytes.
         using NativeMemoryListRef<byte> sourceBytesBuf = new(totalRefIdsBytes, totalRefIdsBytes);
         using NativeMemoryListRef<byte> mergedRefIdsBuf = new(totalRefIdsBytes, totalRefIdsBytes);
         Span<byte> sourceBytes = sourceBytesBuf.AsSpan();

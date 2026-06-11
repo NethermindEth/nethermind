@@ -109,12 +109,10 @@ public sealed class BlobArenaFile : RefCountingDisposable
     internal bool HasOnlyManagerLease => Volatile.Read(ref _leases.Value) == 1;
 
     /// <summary>
-    /// Read <paramref name="destination"/>.Length bytes starting at
-    /// <paramref name="offset"/> from this blob arena file via
-    /// <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>. Loops over
-    /// short reads until either the destination is full or a 0-byte read signals
-    /// end-of-data. Returns the total bytes copied into <paramref name="destination"/>
-    /// (may be less than the destination length on short read at end-of-file).
+    /// Read into <paramref name="destination"/> starting at <paramref name="offset"/> via
+    /// <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>, looping over short reads
+    /// until the destination is full or a 0-byte read signals end-of-data. Returns the total bytes
+    /// copied (may be less than the destination length on a short read at EOF).
     /// </summary>
     public int RandomRead(long offset, Span<byte> destination)
     {

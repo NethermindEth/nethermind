@@ -276,7 +276,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             if (sl > bufs.PendingMaxSepLen) bufs.PendingMaxSepLen = sl;
         }
 
-        // Refresh PrevKeyBuf to this key for the next entry's LCP.
+        // PrevKeyBuf seeds the next entry's LCP.
         if (_keyLength > 0 && key.Length == _keyLength)
         {
             bufs.PrevKeyBuf.Clear();

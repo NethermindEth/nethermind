@@ -69,10 +69,9 @@ public sealed class ArenaWriter : IDisposable
         if (_completed) return;
         if (_dedicated)
         {
-            // Drop the manager's count=1 lease on the file — its own CleanUp closes the
-            // mmap + handle and deletes the on-disk file. Then notify the manager to clear
-            // its dict / metric state. The file ref is still readable post-dispose (Id /
-            // ReportedFrontier are just fields); the manager NEVER reopens it.
+            // Drop the manager's count=1 lease — the file's CleanUp closes mmap + handle and
+            // deletes it on disk. Then notify the manager to clear its dict / metric state; the
+            // file ref stays readable post-dispose (Id / ReportedFrontier are plain fields).
             _file.Dispose();
             _manager.OnWriteCancelledDedicated(_file);
         }

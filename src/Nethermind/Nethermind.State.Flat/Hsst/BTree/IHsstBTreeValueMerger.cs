@@ -10,15 +10,13 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// across the matching sources.
 /// </summary>
 /// <remarks>
-/// Implemented as a generic struct constraint
-/// (<c>TValueMerger : struct, IHsstBTreeValueMerger&lt;...&gt;</c>) so the JIT monomorphises
-/// the merger per callback type — every hook call resolves to a direct invocation, no
-/// virtual dispatch. Unlike <see cref="IHsstMergeKeyCallback"/> (key-only),
-/// <see cref="MergeValues"/> needs writer + cursor access because BTree collisions resolve
-/// by re-emitting a per-key inner structure rather than picking a winner.
-/// <para><typeparamref name="TReader"/>/<typeparamref name="TPin"/> describe the CURSOR
-/// (source) side; the destination <typeparamref name="TWriter"/> is write-only and therefore
-/// unconstrained at the interface level.</para>
+/// A generic struct constraint (<c>TValueMerger : struct, IHsstBTreeValueMerger&lt;...&gt;</c>)
+/// lets the JIT monomorphise per callback type, so every hook resolves to a direct, non-virtual
+/// call. Unlike <see cref="IHsstMergeKeyCallback"/> (key-only), <see cref="MergeValues"/> needs
+/// writer + cursor access because BTree collisions resolve by re-emitting a per-key inner
+/// structure rather than picking a winner.
+/// <para><typeparamref name="TReader"/>/<typeparamref name="TPin"/> describe the cursor (source)
+/// side; the destination <typeparamref name="TWriter"/> is write-only and unconstrained here.</para>
 /// </remarks>
 internal interface IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource, TFactory>
     where TPin : struct, IBufferPin, allows ref struct
