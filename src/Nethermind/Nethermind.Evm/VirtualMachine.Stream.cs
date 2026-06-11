@@ -284,6 +284,38 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.JUMPDEST:
                             exceptionType = EvmExceptionType.None;
                             break;
+                        case (Instruction)FusedOpcode.StaticJump:
+                            // PUSH2 const + JUMP with the JUMPDEST validated at analysis:
+                            // self-charges (jumps end blocks), then the shared epilogue's
+                            // increment lands on the pre-resolved target entry.
+                            TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Jump);
+                            if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                            {
+                                OpCodeCount += opCodeCount;
+                                goto OutOfGas;
+                            }
+
+                            opCodeCount++;
+                            entryIndex = (int)entry.Operand - 1;
+                            break;
+                        case (Instruction)FusedOpcode.StaticJumpI:
+                            TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.JumpI);
+                            if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                            {
+                                OpCodeCount += opCodeCount;
+                                goto OutOfGas;
+                            }
+
+                            if (EvmInstructions.TestJumpCondition(ref stack, out bool conditionUnderflow))
+                            {
+                                entryIndex = (int)entry.Operand - 1;
+                            }
+                            else if (conditionUnderflow)
+                            {
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                            }
+
+                            break;
                         default:
                             // The analyzer's in-block set diverged from this switch; the
                             // table handler is metered, so charge-free dispatch here would

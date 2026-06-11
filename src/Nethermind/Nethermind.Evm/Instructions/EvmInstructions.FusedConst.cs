@@ -26,8 +26,11 @@ public static partial class EvmInstructions
         ref byte topRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref topRef)) return EvmExceptionType.StackUnderflow;
 
+        // Copy the pooled constant to a local: UInt256 ops over an in-array ref defeat limb
+        // enregistration (defensive copies per operation).
+        UInt256 aLocal = a;
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpMath.Operation(in a, in b, out UInt256 result);
+        TOpMath.Operation(in aLocal, in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
         return EvmExceptionType.None;
     }
@@ -54,8 +57,9 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
+        UInt256 aLocal = a;
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpShift.Operation(in a, in b, out UInt256 result);
+        TOpShift.Operation(in aLocal, in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
         return EvmExceptionType.None;
     }

@@ -25,8 +25,14 @@ public enum StreamOpKind : byte
     /// <summary>Fused PUSH+op pair inside a precharged block: the op runs against the
     /// pre-decoded push operand directly on the stack top.</summary>
     FusedInBlock = 3,
+    /// <summary>PUSH2 const + JUMP with an analysis-validated JUMPDEST: jumps straight to the
+    /// pre-resolved target entry, self-charging its static gas.</summary>
+    StaticJump = 4,
+    /// <summary>PUSH2 const + JUMPI with an analysis-validated JUMPDEST: pops the condition
+    /// and jumps to the pre-resolved target entry or falls through.</summary>
+    StaticJumpI = 5,
     /// <summary>Any other op: standard table handler with the full per-op epilogue.</summary>
-    Boundary = 4,
+    Boundary = 6,
 }
 
 /// <summary>
@@ -54,6 +60,8 @@ public static class FusedOpcode
     public const byte Xor = 0x2B;
     public const byte Shl = 0x2C;
     public const byte Shr = 0x2D;
+    public const byte StaticJump = 0x2E;
+    public const byte StaticJumpI = 0x2F;
 
     /// <summary>
     /// Binary ops whose first operand is the stack top — a preceding in-block PUSH constant
@@ -229,10 +237,29 @@ public sealed class InstructionStream
                     ops.Add(new StreamOp((byte)instruction, kind, (ushort)pc, (ushort)openBlock, (byte)size, operand));
                 }
             }
+            else if (instruction == Instruction.PUSH2
+                && pc + 3 < code.Length
+                && (Instruction)code[pc + 3] is Instruction.JUMP or Instruction.JUMPI
+                && TryReadStaticJumpTarget(code, pc) is int dest and >= 0)
+            {
+                // PUSH2 const + JUMP/JUMPI with an analysis-validated JUMPDEST: one entry,
+                // jump target resolved to an entry index by the fixup pass below. Gas
+                // (push + jump) is self-charged at execution; the landing JUMPDEST's solo
+                // block charges itself exactly as a taken dynamic jump would.
+                bool conditional = (Instruction)code[pc + 3] == Instruction.JUMPI;
+                openBlock = -1;
+                ops.Add(new StreamOp(
+                    conditional ? FusedOpcode.StaticJumpI : FusedOpcode.StaticJump,
+                    conditional ? StreamOpKind.StaticJumpI : StreamOpKind.StaticJump,
+                    (ushort)pc, 0, 4, (ulong)dest));
+                pc += 4;
+                continue;
+            }
             else
             {
-                // Includes JUMP/JUMPI/PUSH2 (the table keeps the fused PUSH2+JUMP handler) and
-                // a trailing PUSH whose immediates are truncated by the end of code.
+                // Includes dynamic JUMP/JUMPI/PUSH2 (the table keeps the fused PUSH2+JUMP
+                // handler) and a trailing PUSH whose immediates are truncated by the end of
+                // code.
                 openBlock = -1;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, 0));
             }
@@ -246,6 +273,19 @@ public sealed class InstructionStream
             return null;
 
         pcToEntry[code.Length] = (ushort)ops.Count;
+
+        // Static jump targets were recorded as destination pcs; resolve them to entry
+        // indexes now that every entry exists (forward jumps included). A JUMPDEST is never
+        // merged into a pair, so its pc always maps to a real entry.
+        for (int i = 0; i < ops.Count; i++)
+        {
+            StreamOp op = ops[i];
+            if (op.Kind is StreamOpKind.StaticJump or StreamOpKind.StaticJumpI)
+            {
+                ops[i] = new StreamOp(op.Opcode, op.Kind, op.Pc, op.BlockIndex, op.Advance, pcToEntry[(int)op.Operand]);
+            }
+        }
+
         return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry);
     }
 
@@ -294,6 +334,15 @@ public sealed class InstructionStream
                 cost = 0;
                 return false;
         }
+    }
+
+    /// <summary>Reads the PUSH2 immediate at <paramref name="pc"/> and returns it when it
+    /// points at a JUMPDEST; -1 otherwise (the pair then stays a boundary op and fails at
+    /// runtime exactly like a dynamic jump).</summary>
+    private static int TryReadStaticJumpTarget(ReadOnlySpan<byte> code, int pc)
+    {
+        int dest = (code[pc + 1] << 8) | code[pc + 2];
+        return dest < code.Length && (Instruction)code[dest] == Instruction.JUMPDEST ? dest : -1;
     }
 
     private static bool TryTakePrecedingPush(List<StreamOp> ops, out StreamOp push)
