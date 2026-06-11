@@ -32,44 +32,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public sealed class PersistedSnapshot : RefCountingDisposable
 {
 
-    // Single 8-way set-associative clock (second-chance) address-bound cache mirroring
-    // <see cref="PageResidencyTracker"/>'s hot/miss-path split. One set ⇒ 8 ways × 8 bytes
-    // = 64 bytes stored inline as a <see cref="Vector512{T}"/> field directly on the
-    // snapshot — no separate heap allocation. The runtime gives <see cref="Vector512{T}"/>
-    // its natural 64-byte alignment for the field offset within the object, matching the
-    // single-cache-line layout the previous <see cref="NativeMemory.AlignedAlloc(nuint,nuint)"/>
-    // -based variant relied on. The <see cref="Vector512{T}"/> is never used as a SIMD
-    // vector here — it is purely an alignment-bearing 64-byte storage cell, reinterpreted
-    // as <c>Span&lt;long&gt;</c> via <see cref="MemoryMarshal.CreateSpan{T}(ref T,int)"/>.
-    //
-    // Each slot packs:
-    //   bit 63: REF — armed on every hit and insert, cleared by the clock hand on a miss-pass.
-    //   bit 62: VALID — distinguishes an empty (0L) slot from a stored (tag=0, offset=0) entry.
-    //   bits 46..61: 16-bit tag (bytes 4..6 of the raw Address).
-    //   bits 0..45: 46-bit absolute offset of the entry's FlagByte in the outer
-    //               column 0x01 entry. 46 bits = 64 TiB, ample for any real snapshot.
-    // Layout: keyFirst=false BTree entry shape is [Value][FlagByte][LEB128][FullKey]. On a
-    // tag match we read 27 bytes at the FlagByte covering it, the LEB128 (≤ 6 bytes) and the
-    // 20-byte stored raw Address, then compare to the lookup Address to catch tag collisions /
-    // layout drift. The cached Bound is (flagByteOffset - valueLength, valueLength).
-    //
-    // Hot path: lock-free 8-way Volatile.Read scan; <see cref="Interlocked.Or"/> re-arms REF
-    // after the disk probe confirms the cached tag isn't a collision. Miss path: take the
-    // 1-bit spin-lock in <see cref="_addressBoundCacheMeta"/> (also holding the 3-bit clock
-    // hand), re-scan for an existing matching entry, then for an empty way, then advance
-    // the clock hand clearing REF bits until an unreferenced way is evicted.
-    private const long AddressBoundCacheRefBit = unchecked((long)0x8000_0000_0000_0000UL);
-    private const long AddressBoundCacheValidBit = 0x4000_0000_0000_0000L;
-    private const long AddressBoundCacheKeyMask = ~AddressBoundCacheRefBit;
-    private const long AddressBoundCacheOffsetMask = (1L << 46) - 1;
-    private const int AddressBoundCacheTagShift = 46;
-    private const int AddressBoundCacheWays = 8;
-    private const int AddressBoundCacheWayMask = AddressBoundCacheWays - 1;
-    private const int AddressBoundCacheMetaLockBit = 1 << 7;
-    private const int AddressBoundCacheMetaHandMask = 0x7;
-    // FlagByte (1) + LEB128 value-length (≤ 6) + raw Address (20).
-    private const int AddressBoundCacheProbeBytes = 1 + 6 + PersistedSnapshotTags.AddressKeyLength;
-
     // On address-bound cache miss, pre-fault the trailing slice of the per-address inner HSST
     // in one madvise(MADV_POPULATE_READ) syscall over a fixed window at the tail of the bound.
     // The DenseByteIndex layout streams values in descending-tag order, so the hot small-blob
@@ -80,8 +42,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // skipping the per-read tracker probe loop for the rest of the lookup.
     private const long AddressBoundWarmupBytes = 32 * 1024;
 
-    private Vector512<long> _addressBoundCache;
-    private int _addressBoundCacheMeta;
+    private AddressBoundCache _addrCache;
 
     // Cached descriptor of the outer address-column BTree's root, snapshotted once at
     // construction. The address column is immutable for the life of the snapshot, so the
@@ -344,30 +305,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         out Bound addressBound, out bool useSpanReader)
     {
         useSpanReader = false;
-        Span<long> slots = MemoryMarshal.CreateSpan(
-            ref Unsafe.As<Vector512<long>, long>(ref _addressBoundCache), AddressBoundCacheWays);
-        ushort hashTag = MemoryMarshal.Read<ushort>(address.Bytes.Slice(4, 2));
-        // Lock-free 8-way scan: a tag match is a candidate, still verified against the
-        // 20-byte stored raw Address on disk to filter out the inevitable collisions.
-        for (int w = 0; w < AddressBoundCacheWays; w++)
+        if (_addrCache.TryGet(in reader, address, out addressBound))
         {
-            long s = Volatile.Read(ref slots[w]);
-            if ((s & AddressBoundCacheValidBit) == 0) continue;
-            if ((ushort)((s >>> AddressBoundCacheTagShift) & 0xFFFF) != hashTag) continue;
-
-            long flagOffset = s & AddressBoundCacheOffsetMask;
-            Span<byte> probe = stackalloc byte[AddressBoundCacheProbeBytes];
-            if (!reader.TryRead(flagOffset, probe)) continue;
-            // probe[0] is the entry's FlagByte; the LEB128 value-length starts at probe[1].
-            int pos = 1;
-            long valueLength = Leb128.Read(probe, ref pos);
-            if (!probe.Slice(pos, PersistedSnapshotTags.AddressKeyLength)
-                    .SequenceEqual(address.Bytes))
-                continue;
-
-            if ((s & AddressBoundCacheRefBit) == 0)
-                Interlocked.Or(ref slots[w], AddressBoundCacheRefBit);
-            addressBound = new Bound(flagOffset - valueLength, valueLength);
             useSpanReader = addressBound.Length <= AddressBoundWarmupBytes;
             return true;
         }
@@ -395,93 +334,178 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
         // keyFirst=false bound is (flagByteOffset - valueLength, valueLength), so the
         // entry's FlagByte offset = bound.Offset + bound.Length.
-        long newFlagOffset = addressBound.Offset + addressBound.Length;
-        long newEntry = AddressBoundCacheValidBit
-                      | AddressBoundCacheRefBit
-                      | ((long)hashTag << AddressBoundCacheTagShift)
-                      | (newFlagOffset & AddressBoundCacheOffsetMask);
-        InsertAddressBound(newEntry);
+        _addrCache.Insert(address, addressBound.Offset + addressBound.Length);
         return true;
     }
 
-    private void InsertAddressBound(long newEntry)
+    /// <summary>
+    /// Single 8-way set-associative clock (second-chance) address-bound cache, mirroring
+    /// <see cref="PageResidencyTracker"/>'s hot/miss-path split. One set ⇒ 8 ways × 8 bytes
+    /// = 64 bytes stored inline as a <see cref="Vector512{T}"/> field — no separate heap
+    /// allocation. The runtime gives <see cref="Vector512{T}"/> its natural 64-byte alignment for
+    /// the field offset, matching the single-cache-line layout the previous
+    /// <see cref="NativeMemory.AlignedAlloc(nuint,nuint)"/>-based variant relied on. The
+    /// <see cref="Vector512{T}"/> is never used as a SIMD vector — it is purely an
+    /// alignment-bearing 64-byte storage cell, reinterpreted as <c>Span&lt;long&gt;</c> via
+    /// <see cref="MemoryMarshal.CreateSpan{T}(ref T,int)"/>.
+    /// </summary>
+    /// <remarks>
+    /// Each slot packs:
+    /// <list type="bullet">
+    ///   <item>bit 63: REF — armed on every hit and insert, cleared by the clock hand on a miss-pass.</item>
+    ///   <item>bit 62: VALID — distinguishes an empty (0L) slot from a stored (tag=0, offset=0) entry.</item>
+    ///   <item>bits 46..61: 16-bit tag (bytes 4..6 of the raw Address).</item>
+    ///   <item>bits 0..45: 46-bit absolute offset of the entry's FlagByte in the outer column 0x01
+    ///         entry. 46 bits = 64 TiB, ample for any real snapshot.</item>
+    /// </list>
+    /// keyFirst=false BTree entry shape is [Value][FlagByte][LEB128][FullKey]; on a tag match the
+    /// FlagByte, LEB128 (≤ 6 bytes) and 20-byte stored raw Address are read and compared to the
+    /// lookup Address to catch tag collisions / layout drift. The cached Bound is
+    /// (flagByteOffset - valueLength, valueLength). Must be accessed only as an in-place field —
+    /// the lock-free scans and the per-cache spin-lock operate on the storage by ref.
+    /// </remarks>
+    private struct AddressBoundCache
     {
-        ref int meta = ref _addressBoundCacheMeta;
-        AcquireAddressBoundCacheLock(ref meta);
-        try
+        private const long RefBit = unchecked((long)0x8000_0000_0000_0000UL);
+        private const long ValidBit = 0x4000_0000_0000_0000L;
+        private const long KeyMask = ~RefBit;
+        private const long OffsetMask = (1L << 46) - 1;
+        private const int TagShift = 46;
+        private const int Ways = 8;
+        private const int WayMask = Ways - 1;
+        private const int MetaLockBit = 1 << 7;
+        private const int MetaHandMask = 0x7;
+        // FlagByte (1) + LEB128 value-length (≤ 6) + raw Address (20).
+        private const int ProbeBytes = 1 + 6 + PersistedSnapshotTags.AddressKeyLength;
+
+        private Vector512<long> _slots;
+        private int _meta;
+
+        /// <summary>
+        /// Hot-path lookup: lock-free 8-way scan. A tag match is a candidate, verified against the
+        /// 20-byte stored raw Address on disk via <paramref name="reader"/> to filter the
+        /// inevitable collisions; the matching slot's REF bit is re-armed before returning.
+        /// </summary>
+        public bool TryGet(in ArenaByteReader reader, Address address, out Bound bound)
         {
             Span<long> slots = MemoryMarshal.CreateSpan(
-                ref Unsafe.As<Vector512<long>, long>(ref _addressBoundCache), AddressBoundCacheWays);
-            // Re-scan under the lock — another miss-path racer may already have installed
-            // this exact (tag, offset) pair, in which case just re-arm its REF bit.
-            for (int w = 0; w < AddressBoundCacheWays; w++)
+                ref Unsafe.As<Vector512<long>, long>(ref _slots), Ways);
+            ushort hashTag = MemoryMarshal.Read<ushort>(address.Bytes.Slice(4, 2));
+            for (int w = 0; w < Ways; w++)
             {
-                long s = slots[w];
-                if ((s & AddressBoundCacheKeyMask) == (newEntry & AddressBoundCacheKeyMask))
-                {
-                    Volatile.Write(ref slots[w], s | AddressBoundCacheRefBit);
-                    return;
-                }
-            }
+                long s = Volatile.Read(ref slots[w]);
+                if ((s & ValidBit) == 0) continue;
+                if ((ushort)((s >>> TagShift) & 0xFFFF) != hashTag) continue;
 
-            // Look for an empty way (VALID=0). New arrivals already carry REF=1 in
-            // <paramref name="newEntry"/> so they survive the first clock pass.
-            for (int w = 0; w < AddressBoundCacheWays; w++)
-            {
-                if (slots[w] == 0L)
-                {
-                    Volatile.Write(ref slots[w], newEntry);
-                    return;
-                }
-            }
-
-            // Set is full — run the clock. Worst case: 8 set-REFs ⇒ one full pass clears
-            // them, the second pass finds an unreferenced way. Bound at 2*Ways iterations.
-            int hand = meta & AddressBoundCacheMetaHandMask;
-            for (int i = 0; i < 2 * AddressBoundCacheWays; i++)
-            {
-                long s = slots[hand];
-                if ((s & AddressBoundCacheRefBit) != 0)
-                {
-                    Volatile.Write(ref slots[hand], s & ~AddressBoundCacheRefBit);
-                    hand = (hand + 1) & AddressBoundCacheWayMask;
+                long flagOffset = s & OffsetMask;
+                Span<byte> probe = stackalloc byte[ProbeBytes];
+                if (!reader.TryRead(flagOffset, probe)) continue;
+                // probe[0] is the entry's FlagByte; the LEB128 value-length starts at probe[1].
+                int pos = 1;
+                long valueLength = Leb128.Read(probe, ref pos);
+                if (!probe.Slice(pos, PersistedSnapshotTags.AddressKeyLength)
+                        .SequenceEqual(address.Bytes))
                     continue;
+
+                if ((s & RefBit) == 0)
+                    Interlocked.Or(ref slots[w], RefBit);
+                bound = new Bound(flagOffset - valueLength, valueLength);
+                return true;
+            }
+            bound = default;
+            return false;
+        }
+
+        /// <summary>
+        /// Miss-path insert of the entry whose FlagByte sits at <paramref name="flagByteOffset"/>.
+        /// Takes the per-cache spin-lock, then re-scans for an existing matching entry, an empty
+        /// way, and finally the clock victim.
+        /// </summary>
+        public void Insert(Address address, long flagByteOffset)
+        {
+            ushort hashTag = MemoryMarshal.Read<ushort>(address.Bytes.Slice(4, 2));
+            long newEntry = ValidBit
+                          | RefBit
+                          | ((long)hashTag << TagShift)
+                          | (flagByteOffset & OffsetMask);
+
+            ref int meta = ref _meta;
+            AcquireLock(ref meta);
+            try
+            {
+                Span<long> slots = MemoryMarshal.CreateSpan(
+                    ref Unsafe.As<Vector512<long>, long>(ref _slots), Ways);
+                // Re-scan under the lock — another miss-path racer may already have installed
+                // this exact (tag, offset) pair, in which case just re-arm its REF bit.
+                for (int w = 0; w < Ways; w++)
+                {
+                    long s = slots[w];
+                    if ((s & KeyMask) == (newEntry & KeyMask))
+                    {
+                        Volatile.Write(ref slots[w], s | RefBit);
+                        return;
+                    }
                 }
 
-                Volatile.Write(ref slots[hand], newEntry);
-                hand = (hand + 1) & AddressBoundCacheWayMask;
-                meta = (meta & ~AddressBoundCacheMetaHandMask) | hand;
-                return;
-            }
+                // Look for an empty way (VALID=0). New arrivals already carry REF=1 so they
+                // survive the first clock pass.
+                for (int w = 0; w < Ways; w++)
+                {
+                    if (slots[w] == 0L)
+                    {
+                        Volatile.Write(ref slots[w], newEntry);
+                        return;
+                    }
+                }
 
-            Debug.Fail("Clock scan failed to find a victim");
-        }
-        finally
-        {
-            ReleaseAddressBoundCacheLock(ref meta);
-        }
-    }
+                // Set is full — run the clock. Worst case: 8 set-REFs ⇒ one full pass clears
+                // them, the second pass finds an unreferenced way. Bound at 2*Ways iterations.
+                int hand = meta & MetaHandMask;
+                for (int i = 0; i < 2 * Ways; i++)
+                {
+                    long s = slots[hand];
+                    if ((s & RefBit) != 0)
+                    {
+                        Volatile.Write(ref slots[hand], s & ~RefBit);
+                        hand = (hand + 1) & WayMask;
+                        continue;
+                    }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void AcquireAddressBoundCacheLock(ref int meta)
-    {
-        SpinWait spinner = default;
-        while (true)
-        {
-            int observed = Volatile.Read(ref meta);
-            if ((observed & AddressBoundCacheMetaLockBit) == 0)
-            {
-                int withLock = observed | AddressBoundCacheMetaLockBit;
-                if (Interlocked.CompareExchange(ref meta, withLock, observed) == observed)
+                    Volatile.Write(ref slots[hand], newEntry);
+                    hand = (hand + 1) & WayMask;
+                    meta = (meta & ~MetaHandMask) | hand;
                     return;
-            }
-            spinner.SpinOnce();
-        }
-    }
+                }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ReleaseAddressBoundCacheLock(ref int meta) =>
-        Volatile.Write(ref meta, meta & ~AddressBoundCacheMetaLockBit);
+                Debug.Fail("Clock scan failed to find a victim");
+            }
+            finally
+            {
+                ReleaseLock(ref meta);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void AcquireLock(ref int meta)
+        {
+            SpinWait spinner = default;
+            while (true)
+            {
+                int observed = Volatile.Read(ref meta);
+                if ((observed & MetaLockBit) == 0)
+                {
+                    int withLock = observed | MetaLockBit;
+                    if (Interlocked.CompareExchange(ref meta, withLock, observed) == observed)
+                        return;
+                }
+                spinner.SpinOnce();
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ReleaseLock(ref int meta) =>
+            Volatile.Write(ref meta, meta & ~MetaLockBit);
+    }
 
     public bool TryGetAccount(Address address, out Account? account)
     {
