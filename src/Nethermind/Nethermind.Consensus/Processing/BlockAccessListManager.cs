@@ -159,9 +159,26 @@ public partial class BlockAccessListManager(
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
 
-        _balWarmupTask = BatchReadEnabled && suggestedBlock.BlockAccessList is not null && stateProvider.IsInScope
-            ? stateProvider.HintBal(suggestedBlock.BlockAccessList)
-            : null;
+        // Only the parallel executor drains the hint (BlockProcessor.ParallelBlockValidationTransactionsExecutor),
+        // and synchronous execution contends with the warming reads instead of benefiting from them — so fire
+        // only when ParallelExecutionEnabled is also true.
+        if (BatchReadEnabled && ParallelExecutionEnabled && suggestedBlock.BlockAccessList is not null)
+        {
+            try
+            {
+                _balWarmupTask = stateProvider.HintBal(suggestedBlock.BlockAccessList);
+            }
+            catch (Exception ex)
+            {
+                // Warming is best-effort — never let a synchronous throw from HintBal fail the block.
+                if (_logger.IsDebug) _logger.Debug($"BAL read warming hint failed to start: {ex}");
+                _balWarmupTask = null;
+            }
+        }
+        else
+        {
+            _balWarmupTask = null;
+        }
     }
 
     public void WaitForBalWarmup()
