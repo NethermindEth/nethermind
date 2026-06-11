@@ -123,6 +123,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
+        Task? touchReplay = null;
         try
         {
             if (cancellationToken.IsCancellationRequested) return;
@@ -132,8 +133,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (!addressWarmer.HasBal)
             {
                 // BAL warming reads the current block's exact access set; the temporal replay is
-                // only worth running when that set is not known upfront.
-                WarmupPreviousBlockTouches(parallelOptions, parent);
+                // only worth running when that set is not known upfront. It runs concurrently
+                // with the speculative warmup so it never delays the current block's own signal.
+                touchReplay = Task.Run(() => WarmupPreviousBlockTouches(parallelOptions, parent));
                 WarmupTransactions(blockState, parallelOptions);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
@@ -146,7 +148,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         finally
         {
-            // Don't complete the task until address warmer is also done.
+            // Don't complete the task until the replay and address warmer are also done; a
+            // replay outliving this task would repopulate caches cleared for the next block.
+            touchReplay?.GetAwaiter().GetResult();
             addressWarmer.Wait();
             addressWarmer.Dispose();
         }
