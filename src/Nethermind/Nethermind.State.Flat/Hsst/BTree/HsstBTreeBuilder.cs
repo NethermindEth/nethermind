@@ -1036,8 +1036,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // cross-entry LCP the planner needs.
         int crossEntryLcp = ComputeCrossEntryLcp(children, commonPrefixArr);
 
-        BTreeNodeLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
-            out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
+        BTreeNodeLayoutPlan plan = BTreeNodeLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength);
+        int prefixLen = plan.CommonKeyPrefixLen;
+        int keyType = plan.KeyType;
+        int keySlotSize = plan.KeySlotSize;
+        bool keyLittleEndian = plan.KeyLittleEndian;
 
         // BaseOffset + per-entry value-slot width from child offsets.
         long minOff = children[0].ChildOffset;
