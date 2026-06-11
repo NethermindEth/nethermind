@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -375,7 +376,10 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            SafeArrayPool<byte>.Shared.Return(memory);
+            // The clean-pool invariant: writes never pass Size, so clearing that extent
+            // returns a fully zeroed array.
+            Array.Clear(memory, 0, (int)Math.Min(Size, (ulong)memory.Length));
+            s_cleanPool.Return(memory);
         }
     }
 
@@ -419,34 +423,32 @@ public struct EvmPooledMemory
         }
     }
 
+    /// <summary>
+    /// Every array in this pool is fully zeroed: <see cref="Dispose"/> clears the dirtied
+    /// extent before returning, and the runtime hands out zeroed arrays on pool misses.
+    /// Rents and in-capacity expansions therefore never clear at all — the zeroing moves to
+    /// frame teardown and shrinks to the bytes actually written. EVM memory is
+    /// zero-initialized by definition, so a fully zeroed backing array is always correct.
+    /// </summary>
+    private static readonly ArrayPool<byte> s_cleanPool = ArrayPool<byte>.Create(1 << 23, 64);
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
-        // The whole capacity is zeroed up front so _lastZeroedSize lands on the array length:
-        // memory expansions within capacity then never re-enter this slow path. Solidity
-        // frames grow memory on almost every allocation, so the incremental-clear scheme this
-        // replaces paid a call plus an Array.Clear per expansion; one full clear per rent is
-        // cheaper and EVM memory is zero-initialized by definition, so over-zeroing is safe.
         const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
-            Array.Clear(_memory);
+            _memory = s_cleanPool.Rent((int)Math.Max((uint)Size, MinRentSize));
         }
         else if (Size > (ulong)_memory.LongLength)
         {
             byte[] beforeResize = _memory;
-            _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
+            _memory = s_cleanPool.Rent(TruncateToInt32(Size));
+            // The new array is clean past the copy; the old one returns cleaned (its dirty
+            // extent is bounded by its length — writes never pass Size).
             Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            Array.Clear(_memory, beforeResize.Length, _memory.Length - beforeResize.Length);
-            SafeArrayPool<byte>.Shared.Return(beforeResize);
-        }
-        else if ((ulong)_memory.Length > _lastZeroedSize)
-        {
-            // A pre-invariant state (zeroed only up to a previous Size): finish the capacity
-            // once and the invariant holds from here on.
-            int lastZeroedSize = (int)_lastZeroedSize;
-            Array.Clear(_memory, lastZeroedSize, _memory.Length - lastZeroedSize);
+            Array.Clear(beforeResize);
+            s_cleanPool.Return(beforeResize);
         }
 
         _lastZeroedSize = (ulong)_memory.Length;
