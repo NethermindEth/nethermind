@@ -79,7 +79,7 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = toCtx.Resolve<IEraImporter>();
-        await sut.Import(destinationPath, 0, long.MaxValue, Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
+        await sut.Import(destinationPath, 0, ulong.MaxValue, Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
     }
 
     [Test]
@@ -103,7 +103,7 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
-        Func<Task> importTask = () => sut.Import(destinationPath, 0, long.MaxValue,
+        Func<Task> importTask = () => sut.Import(destinationPath, 0, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
@@ -129,7 +129,7 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
-        Func<Task> importTask = () => sut.Import(destinationPath, 0, long.MaxValue,
+        Func<Task> importTask = () => sut.Import(destinationPath, 0, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
@@ -166,7 +166,7 @@ public class EraImporterTest
         };
 
         EraImporter sut = (EraImporter)inCtx.Resolve<IEraImporter>();
-        Task importTask = sut.Import(destinationPath, 0, long.MaxValue,
+        Task importTask = sut.Import(destinationPath, 0, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
         // Pacer is created when import starts; spin briefly until it's published.
@@ -202,7 +202,7 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
-        Func<Task> act = () => sut.Import(destinationPath, 30, long.MaxValue,
+        Func<Task> act = () => sut.Import(destinationPath, 30, ulong.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
         Assert.That(async () => await act(), Throws.TypeOf<ArgumentException>());
