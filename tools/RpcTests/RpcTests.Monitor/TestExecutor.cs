@@ -35,6 +35,23 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
 
     private async Task<JsonNode> SendAsync(Uri url, JsonNode requestData, CancellationToken ct)
     {
+        const int maxAttempts = 3;
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await SendOnceAsync(url, requestData, ct);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException
+                                       && !ct.IsCancellationRequested && attempt < maxAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5 << (attempt - 1)), ct);
+            }
+        }
+    }
+
+    private async Task<JsonNode> SendOnceAsync(Uri url, JsonNode requestData, CancellationToken ct)
+    {
         stats.RecordRequestRun();
 
         using HttpRequestMessage request = new(HttpMethod.Post, url) {Content = JsonContent.Create(requestData)};

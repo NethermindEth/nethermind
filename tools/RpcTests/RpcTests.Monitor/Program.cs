@@ -71,7 +71,7 @@ rootCommand.SetAction(async (parseResult, ct) =>
     };
 
     string name = parseResult.GetValue(nameOption) ?? string.Join('|', parseResult.GetRequiredValue(testsOption));
-    using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(1) };
+    using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(60) };
     using INotifier notifier = GetNotifier(name, parseResult.GetRequiredValue(devOption));
 
     TimeSpan? reportAt = parseResult.GetValue(reportAtOption);
