@@ -1308,7 +1308,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // OnBeforeInstructionTrace doesn't force a per-instruction VmState.Env chase.
             int callDepth = VmState.Env.CallDepth;
 
-            // IL-EVM (experimental, NETHERMIND_ILEVM=1): resolve compiled segments for this
+            // IL-EVM (experimental, --Evm.IlEvm): resolve compiled segments for this
             // frame. The guards are JIT constants for tracing and non-Ethereum gas policy
             // instantiations, so this block and the per-iteration check below fold away there;
             // otherwise the common case is a single static read plus a null result.
