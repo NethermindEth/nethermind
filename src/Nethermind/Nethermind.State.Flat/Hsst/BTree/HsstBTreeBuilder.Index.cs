@@ -46,14 +46,14 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     /// <summary>Byte budget per intermediate node — accumulation stops when the next child
     /// would push the estimated node size over this threshold. Higher values flatten the
     /// tree (fewer levels = fewer cache misses per lookup) at the cost of a larger per-node
-    /// binary search. Set to one 4 KiB page so each intermediate fits in a single
-    /// page-aligned pin window.</summary>
-    private const int MaxIntermediateBytes = 4096;
+    /// binary search. Set to <see cref="PageLayout.PageSize"/> so each intermediate fits in a
+    /// single page-aligned pin window.</summary>
+    private const int MaxIntermediateBytes = PageLayout.PageSize;
 
     /// <summary>Minimum children per intermediate node — accumulation always reaches this
     /// before the dynamic-split heuristics (max-sep growth, value-slot widening, 4 KiB
     /// page-crossing) are allowed to fire.</summary>
-    private const int MinIntermediateChildren = 16;
+    private const int MinIntermediateChildren = 4;
 
     /// <summary>
     /// Cap on the common-key-prefix length stored in node metadata. Bounded by
@@ -85,17 +85,16 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     /// <summary>
     /// Decide the tightest index-node layout — common-key-prefix length plus
     /// (KeyType, KeySlotSize) — for a node whose per-entry separator lengths are supplied in
-    /// <paramref name="lengths"/>, given the cross-entry LCP in <paramref name="crossEntryLcp"/>.
-    /// The layout is chosen against post-strip (effective) lengths so a node whose mixed-length
-    /// keys collapse to fixed-width suffixes after stripping gets the tightest layout the data
-    /// supports.
+    /// <paramref name="lengths"/>. The cross-entry LCP is derived as the chain-min of
+    /// <paramref name="commonPrefixArr"/> over the entry range the <paramref name="children"/>
+    /// cover (by construction <c>commonPrefixArr[curr.FirstEntry]</c> is the LCP between adjacent
+    /// subtrees, so the chain-min is the prefix shared by every key in the node). The layout is
+    /// chosen against post-strip (effective) lengths so a node whose mixed-length keys collapse to
+    /// fixed-width suffixes after stripping gets the tightest layout the data supports.
     /// </summary>
     /// <param name="lengths">Per-entry separator length. Length determines count.</param>
-    /// <param name="crossEntryLcp">
-    /// Cross-entry common-prefix-length across all separators (the chain-min of adjacent
-    /// key LCPs over the entries this node covers). May exceed individual <paramref name="lengths"/>;
-    /// capped via <c>min(minLen, crossEntryLcp)</c>.
-    /// </param>
+    /// <param name="children">Child descriptors covering this node's entry range; count matches <paramref name="lengths"/>.</param>
+    /// <param name="commonPrefixArr">Shared per-entry LCP array, indexed by global entry index.</param>
     /// <param name="keyLength">
     /// Per-key byte budget — the uniform key length declared by the HSST. Bounds how far a short
     /// uniform separator can be widened to a SIMD-eligible {2,4,8} slot (the writer pads the slot
@@ -104,12 +103,25 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     /// <returns>The chosen layout — see <see cref="LayoutPlan"/>.</returns>
     internal static LayoutPlan ComputeLayout(
         ReadOnlySpan<int> lengths,
-        int crossEntryLcp,
+        scoped ReadOnlySpan<HsstIndexNodeInfo> children,
+        scoped ReadOnlySpan<byte> commonPrefixArr,
         int keyLength)
     {
         int count = lengths.Length;
         if (count == 0)
             return default;
+
+        // Cross-entry LCP: chain-min of commonPrefixArr over [first.FirstEntry + 1 .. last.LastEntry].
+        // The index-0 boundary against the (nonexistent) prior subtree is conventionally 0; a
+        // single-child range is empty and leaves crossEntryLcp at MaxKeyLen (clamped to minLen below).
+        int crossEntryLcp = MaxKeyLen;
+        int rangeStart = children[0].FirstEntry;
+        int rangeEnd = children[^1].LastEntry;
+        for (int j = rangeStart + 1; j <= rangeEnd; j++)
+        {
+            byte v = commonPrefixArr[j];
+            if (v < crossEntryLcp) crossEntryLcp = v;
+        }
 
         int firstLen = lengths[0];
         int minLen = firstLen;
@@ -229,8 +241,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         ref NativeMemoryList<HsstIndexNodeInfo> nextNative = ref bufs.NextLevel;
         ref NativeMemoryList<byte> currentFirstKeys = ref bufs.CurrentLevelFirstKeys;
         ref NativeMemoryList<byte> nextFirstKeys = ref bufs.NextLevelFirstKeys;
-        nextNative.Clear();
-        nextFirstKeys.Clear();
 
         int lastNodeLen = 0;
         int lastNodePrefixLen = 0;
@@ -248,8 +258,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             CaptureRootFirstKey(ref bufs, currentFirstKeys.AsSpan());
             return checked((int)(absoluteIndexStart - only.ChildOffset));
         }
-
-        bool firstNode = true;
 
         // Build internal levels until single root.
         while (currentNative.Count > 1)
@@ -271,12 +279,10 @@ public ref partial struct HsstBTreeBuilder<TWriter>
                     ? default
                     : currentFirstKeysSpan.Slice(childIdx * _keyLength, childCount * _keyLength);
 
-                // First intermediate of the index region: skip the leading pad so we
-                // don't insert a hole between the last page-local leaf (data region)
-                // and the first intermediate. From the second intermediate onward,
-                // pad to a fresh page if we're close to the boundary.
-                if (!firstNode) MaybePadToNextPage();
-                firstNode = false;
+                // Pad to a fresh page when close to the boundary so each intermediate
+                // starts page-aligned. Padding bytes are inert — parent nodes record
+                // exact child offsets, so readers never look at the gap.
+                MaybePadToNextPage();
 
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
@@ -335,17 +341,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         return _rootPrefixLen;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CommonPrefixLength(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-    {
-        int minLen = Math.Min(a.Length, b.Length);
-        for (int i = 0; i < minLen; i++)
-        {
-            if (a[i] != b[i]) return i;
-        }
-        return minLen;
-    }
-
     private int WriteEmptyIndexNode()
     {
         long nodeStart = _writer.Written;
@@ -398,12 +393,9 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         }
         Span<int> sepLengths = sepLengthsList.AsSpan();
 
-        // Shared per-entry LCP array — cp[entry j] is identical at every level by
-        // construction, so the chain-min across the children's entry range is the
-        // cross-entry LCP the planner needs.
-        int crossEntryLcp = ComputeCrossEntryLcp(children, commonPrefixArr);
-
-        LayoutPlan plan = ComputeLayout(sepLengths, crossEntryLcp, _keyLength);
+        // ComputeLayout derives the cross-entry LCP from the shared per-entry LCP array
+        // (cp[entry j] is identical at every level by construction) over the children's range.
+        LayoutPlan plan = ComputeLayout(sepLengths, children, commonPrefixArr, _keyLength);
         int prefixLen = plan.CommonKeyPrefixLen;
         int keyType = plan.KeyType;
         int keySlotSize = plan.KeySlotSize;
@@ -463,21 +455,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             values,
             commonPrefixBuf);
         nodePrefixLen = prefixLen;
-    }
-
-    /// <summary>Chain-min of <c>commonPrefixArr</c> over the entry range covered by <paramref name="children"/>; the index-0 boundary against the (nonexistent) prior subtree is conventionally 0.</summary>
-    private static int ComputeCrossEntryLcp(scoped ReadOnlySpan<HsstIndexNodeInfo> children, scoped ReadOnlySpan<byte> commonPrefixArr)
-    {
-        if (children.Length == 0) return MaxKeyLen;
-        int rangeStart = children[0].FirstEntry;
-        int rangeEnd = children[children.Length - 1].LastEntry;
-        int chainLcp = MaxKeyLen;
-        for (int j = rangeStart + 1; j <= rangeEnd; j++)
-        {
-            byte v = commonPrefixArr[j];
-            if (v < chainLcp) chainLcp = v;
-        }
-        return chainLcp;
     }
 
     /// <summary>Pick the next intermediate node's child count: accumulate values + keys bytes until the next child would exceed <see cref="MaxIntermediateBytes"/>, capped at <see cref="MaxIntermediateEntries"/>, always at least one child.</summary>
@@ -559,7 +536,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             int boundary = Math.Min(commonLen, sepLen);
             int newCommonLen = commonLen == 0
                 ? 0
-                : CommonPrefixLength(firstSep[..boundary], sepBuf[..boundary]);
+                : firstSep[..boundary].CommonPrefixLength(sepBuf[..boundary]);
 
             int newCount = childCount + 1;
             // Keys-section size as the writer emits it: a Uniform node packs newCount
@@ -607,7 +584,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
                 sepBuf = sepBufList.AsSpan();
                 effCommonLen = effCommonLen == 0
                     ? 0
-                    : CommonPrefixLength(firstSep[..next2Boundary], sepBuf[..next2Boundary]);
+                    : firstSep[..next2Boundary].CommonPrefixLength(sepBuf[..next2Boundary]);
             }
             int newEffSepLen = effMaxSepLen - effCommonLen;
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newKeysBytes, valueSlotSize);

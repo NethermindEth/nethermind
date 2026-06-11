@@ -557,9 +557,8 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         // CurrentLevel with its first-key in CurrentLevelFirstKeys; just seal.
         if (_pendingCount == 1)
         {
-            ref HsstBTreeBuilderBuffers bufsSingleton = ref _buffers;
             _pendingCount = 0;
-            bufsSingleton.PendingMaxSepLen = 0;
+            _buffers.PendingMaxSepLen = 0;
             return;
         }
 
