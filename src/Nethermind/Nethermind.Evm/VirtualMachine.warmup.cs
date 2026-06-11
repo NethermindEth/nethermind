@@ -52,7 +52,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             value: 0,
             inputData: default);
 
-        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
+        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, vm.MemoryArena, env, new StackAccessTracker(), state.TakeSnapshot()))
         {
             vm.VmState = vmState;
             vm._worldState = state;

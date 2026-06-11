@@ -237,6 +237,7 @@ public static partial class EvmInstructions
             executionType: TOpCreate.ExecutionType,
             isStatic: vm.VmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
+            memoryArena: vm.MemoryArena,
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);

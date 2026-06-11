@@ -7,22 +7,33 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
+/// <summary>
+/// A call frame's EVM memory: a view over the region <c>[_base, _base + Size)</c> of the
+/// transaction's <see cref="EvmMemoryArena"/>. Frame entry captures the arena cursor, frame
+/// exit releases it — no per-frame buffer rent, clear, or return.
+/// </summary>
 public struct EvmPooledMemory
 {
     public const int WordSize = 32;
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
     internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
+    private EvmMemoryArena? _arena;
+    private int _base;
     private ulong _lastZeroedSize;
 
-    private byte[]? _memory;
     public ulong Size { get; private set; }
+
+    public EvmPooledMemory(EvmMemoryArena arena)
+    {
+        _arena = arena;
+        _base = arena.Top;
+    }
 
     public bool TrySaveWord(in UInt256 location, Span<byte> word)
     {
@@ -34,8 +45,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         EvmWord word1 = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
-        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
+        Unsafe.WriteUnaligned(ref FrameRef(offset), word1);
         return true;
     }
 
@@ -46,7 +56,7 @@ public struct EvmPooledMemory
 
         int offset = TruncateToInt32(location.u0);
         UpdateSize(newLength);
-        _memory![offset] = value;
+        FrameRef(offset) = value;
         return true;
     }
 
@@ -61,7 +71,7 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
-        value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
+        value.CopyTo(FrameSpan(TruncateToInt32(location.u0), value.Length));
         return true;
     }
 
@@ -120,7 +130,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
+        value.CopyTo(FrameSpan(TruncateToInt32(location.u0), value.Length));
         return true;
     }
 
@@ -139,17 +149,13 @@ public struct EvmPooledMemory
         UpdateSize(newLength);
 
         int intLocation = TruncateToInt32(location.u0);
-        value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
+        value.Span.CopyTo(FrameSpan(intLocation, value.Span.Length));
         if (value.PaddingLength > 0)
         {
-            ClearPadding(_memory, intLocation + value.Span.Length, value.PaddingLength);
+            FrameSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
         }
 
         return true;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static void ClearPadding(byte[] memory, int offset, int length)
-            => memory.AsSpan(offset, length).Clear();
     }
 
     public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
@@ -201,7 +207,11 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        data = _memory.AsMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        // The slice aliases the arena buffer. It stays correct for as long as callers need it:
+        // a deeper frame only writes at or above its own base (this frame's current end), and
+        // arena growth abandons the old buffer to the GC, so an outstanding slice keeps reading
+        // the frozen snapshot — which is exactly the calldata semantics the callers rely on.
+        data = _arena!.Buffer.AsMemory(_base + TruncateToInt32(location.u0), TruncateToInt32(length.u0));
         return true;
     }
 
@@ -217,32 +227,38 @@ public struct EvmPooledMemory
             return new byte[(long)length];
         }
 
-        if (_memory is null)
+        if (_arena is null || location >= Size)
         {
             return default;
         }
 
-        if (location >= Size)
-        {
-            return default;
-        }
         UInt256 largeSize = location + length;
-        if (largeSize > _memory.Length)
+        if (largeSize > BackedCapacity)
         {
             return default;
         }
 
         ClearForTracing((ulong)largeSize);
-        return _memory.AsMemory((int)location, (int)length);
+        return _arena.Buffer.AsMemory(_base + (int)location, (int)length);
     }
+
+    /// <summary>Bytes physically available to this frame without growing the arena buffer.</summary>
+    private ulong BackedCapacity => _arena is null ? 0 : (ulong)(_arena.Buffer.Length - _base);
 
     private void ClearForTracing(ulong size)
     {
-        if (_memory is not null && size > _lastZeroedSize)
+        if (_arena is not null && size > _lastZeroedSize)
         {
-            int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
-            Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
-            _lastZeroedSize += (uint)lengthToClear;
+            ulong clearEnd = Math.Min(size, BackedCapacity);
+            int lengthToClear = (int)(clearEnd - _lastZeroedSize);
+            if (lengthToClear > 0)
+            {
+                Array.Clear(_arena.Buffer, _base + (int)_lastZeroedSize, lengthToClear);
+                // The watermark must never pass Size: bytes beyond it are zeroed here only for
+                // the tracer's view and can be dirtied again by a deeper frame reusing the
+                // space, so expansion has to re-zero them.
+                _lastZeroedSize = Math.Min(clearEnd, Size);
+            }
         }
     }
 
@@ -281,8 +297,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         PrepareAccessAfterGas(location.u0 + WordSize);
-        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
+        Unsafe.WriteUnaligned(ref FrameRef(offset), value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -291,7 +306,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + 1);
-        _memory![offset] = value;
+        FrameRef(offset) = value;
     }
 
     /// <summary>
@@ -299,9 +314,8 @@ public struct EvmPooledMemory
     /// expanding the buffer (and charging gas) as needed.
     /// </summary>
     /// <remarks>
-    /// The returned ref aliases the internal memory buffer. The caller MUST consume the ref before
-    /// performing any other operation that may re-rent or grow the underlying storage, otherwise the
-    /// ref becomes dangling.
+    /// The returned ref aliases the arena buffer. The caller MUST consume the ref before
+    /// performing any other operation that may grow the arena, otherwise the ref becomes dangling.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal ref byte Load32BytesAfterGas(in UInt256 location)
@@ -309,7 +323,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + WordSize);
-        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), offset);
+        return ref FrameRef(offset);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -319,7 +333,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         int intLength = TruncateToInt32(length);
         PrepareAccessAfterGas(location.u0 + length);
-        return _memory!.AsSpan(offset, intLength);
+        return FrameSpan(offset, intLength);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -335,7 +349,7 @@ public struct EvmPooledMemory
         int intLength = TruncateToInt32(length);
 
         PrepareAccessAfterGas(destination.u0 + length);
-        _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
+        FrameSpan(sourceOffset, intLength).CopyTo(FrameSpan(destinationOffset, intLength));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -356,7 +370,7 @@ public struct EvmPooledMemory
             ((newActiveWords * newActiveWords) >> 9) -
             ((activeWords * activeWords) >> 9);
 
-        UpdateSize(newSize, rentIfNeeded: false);
+        UpdateSize(newSize, backIfNeeded: false);
 
         return cost;
     }
@@ -365,21 +379,24 @@ public struct EvmPooledMemory
     {
         ulong size = Size;
         ClearForTracing(size);
-        return new(size, _memory);
+        // Size can exceed the backed extent when expansion was charged but never accessed;
+        // TraceMemory zero-pads reads past the end of the memory it is given.
+        int backedLength = (int)Math.Min(size, BackedCapacity);
+        return new(size, _arena is null ? default : _arena.Buffer.AsMemory(_base, backedLength));
     }
 
     public void Dispose()
     {
-        byte[] memory = _memory;
+        EvmMemoryArena? arena = _arena;
 
-        if (memory is not null)
+        if (arena is not null)
         {
-            _memory = null;
-            SafeArrayPool<byte>.Shared.Return(memory);
+            _arena = null;
+            arena.Release(_base);
         }
     }
 
-    private void UpdateSize(ulong length, bool rentIfNeeded = true)
+    private void UpdateSize(ulong length, bool backIfNeeded = true)
     {
         // CheckMemoryAccessViolation has already proven length <= MaxMemorySize, so
         // (length + 31) cannot overflow. Branchless align-up replaces the original
@@ -389,9 +406,9 @@ public struct EvmPooledMemory
             Size = (length + (WordSize - 1UL)) & ~(WordSize - 1UL);
         }
 
-        if (rentIfNeeded)
+        if (backIfNeeded)
         {
-            EnsureRented();
+            EnsureBacked();
         }
     }
 
@@ -399,58 +416,55 @@ public struct EvmPooledMemory
     private Span<byte> LoadSpan(ulong newLength, int offset, int length)
     {
         UpdateSize(newLength);
-        return _memory!.AsSpan(offset, length);
+        return FrameSpan(offset, length);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareAccessAfterGas(ulong newLength)
     {
         Debug.Assert(newLength <= Size);
-        EnsureRented();
+        EnsureBacked();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void EnsureRented()
+    private void EnsureBacked()
     {
-        byte[]? memory = _memory;
-        if (memory is null || Size > (ulong)memory.Length || Size > _lastZeroedSize)
+        if (_arena is null || Size > _lastZeroedSize)
         {
-            RentSlow();
+            BackSlow();
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void RentSlow()
+    private void BackSlow()
     {
-        const int MinRentSize = 1_024;
-        if (_memory is null)
+        EvmMemoryArena? arena = _arena;
+        if (arena is null)
         {
-            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
-            Array.Clear(_memory, 0, TruncateToInt32(Size));
-        }
-        else
-        {
-            int lastZeroedSize = (int)_lastZeroedSize;
-            if (Size > (ulong)_memory.LongLength)
-            {
-                byte[] beforeResize = _memory;
-                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
-                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-                SafeArrayPool<byte>.Shared.Return(beforeResize);
-            }
-            else if (Size > _lastZeroedSize)
-            {
-                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-            }
-            else
-            {
-                return;
-            }
+            // Standalone use (tests, tools): the frame owns a private arena.
+            _arena = arena = new EvmMemoryArena();
+            _base = arena.Top;
         }
 
-        _lastZeroedSize = Size;
+        if (Size > _lastZeroedSize)
+        {
+            int zeroedLength = (int)_lastZeroedSize;
+            int sizeLength = TruncateToInt32(Size);
+            // Everything below the zeroed extent is this frame's live data; everything between
+            // it and Size is stale bytes from released frames and must read as zeros.
+            arena.Advance(_base + sizeLength, liveLength: _base + zeroedLength);
+            Array.Clear(arena.Buffer, _base + zeroedLength, sizeLength - zeroedLength);
+            _lastZeroedSize = Size;
+        }
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref byte FrameRef(int offset)
+        => ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_arena!.Buffer), _base + offset);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Span<byte> FrameSpan(int offset, int length)
+        => _arena!.Buffer.AsSpan(_base + offset, length);
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
     // direct ulong->int narrowing (treats it as a signed truncation and keeps the operation

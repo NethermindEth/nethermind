@@ -323,6 +323,7 @@ public static partial class EvmInstructions
                 executionType: TOpCall.ExecutionType,
                 isStatic: TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
                 isCreateOnPreExistingAccount: false,
+                memoryArena: vm.MemoryArena,
                 env: callEnv,
                 stateForAccessLists: in vm.VmState.AccessTracker,
                 snapshot: in snapshot);

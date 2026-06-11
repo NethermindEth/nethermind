@@ -102,6 +102,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
+    /// <summary>
+    /// Memory backing for every call frame of the transaction being executed. Valid because a
+    /// virtual machine executes one transaction at a time and frames release LIFO; the buffer's
+    /// capacity persists across transactions, so steady state allocates nothing.
+    /// </summary>
+    public EvmMemoryArena MemoryArena { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
 

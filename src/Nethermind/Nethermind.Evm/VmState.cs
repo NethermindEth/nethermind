@@ -56,6 +56,7 @@ public class VmState<TGasPolicy> : IDisposable
     public static VmState<TGasPolicy> RentTopLevel(
         TGasPolicy gas,
         ExecutionType executionType,
+        EvmMemoryArena memoryArena,
         ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
         in Snapshot snapshot)
@@ -69,6 +70,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: true,
             isStatic: false,
             isCreateOnPreExistingAccount: false,
+            memoryArena: memoryArena,
             env: env,
             stateForAccessLists: accessedItems,
             snapshot: snapshot);
@@ -85,6 +87,7 @@ public class VmState<TGasPolicy> : IDisposable
         ExecutionType executionType,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        EvmMemoryArena memoryArena,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot,
@@ -99,6 +102,7 @@ public class VmState<TGasPolicy> : IDisposable
             isTopLevel: isTopLevel,
             isStatic: isStatic,
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
+            memoryArena: memoryArena,
             env: env,
             stateForAccessLists: stateForAccessLists,
             snapshot: snapshot);
@@ -117,10 +121,14 @@ public class VmState<TGasPolicy> : IDisposable
         bool isTopLevel,
         bool isStatic,
         bool isCreateOnPreExistingAccount,
+        EvmMemoryArena memoryArena,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
         in Snapshot snapshot)
     {
+        // Captures the arena cursor as this frame's memory base; Dispose releases it, so
+        // frames must be disposed strictly LIFO (which the call stack guarantees).
+        _memory = new EvmPooledMemory(memoryArena);
         _env = env;
         _snapshot = snapshot;
         _accessTracker = stateForAccessLists;
