@@ -52,6 +52,8 @@ public class PrewarmerScopeProvider(
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
+    public bool SupportsConcurrentScopes => baseProvider.SupportsConcurrentScopes;
+
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider, baseBlock, preBlockCaches, logManager, isPrewarmer);
 
     public PreBlockCaches? Caches => preBlockCaches;
@@ -68,6 +70,11 @@ public class PrewarmerScopeProvider(
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
         private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
+
+        // The prefetcher needs an isolated read scope over the same parent; only providers whose
+        // scopes can coexist (flat's pooled snapshot bundles) support that. The trie store's scope
+        // is a global gate that must not be nested mid-block.
+        private readonly bool _stridePrefetchEnabled = !isPrewarmer && baseProvider.SupportsConcurrentScopes;
 
         // Per contract per block; bounded so a block touching many contracts cannot accumulate
         // reader threads.
@@ -98,7 +105,7 @@ public class PrewarmerScopeProvider(
                 storageCache,
                 address,
                 isPrewarmer,
-                isPrewarmer ? null : GetOrCreateStridePrefetcher(address));
+                _stridePrefetchEnabled ? GetOrCreateStridePrefetcher(address) : null);
 
         private StorageStridePrefetcher? GetOrCreateStridePrefetcher(Address address)
         {

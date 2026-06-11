@@ -19,6 +19,17 @@ public interface IWorldStateScopeProvider
     bool HasRoot(BlockHeader? baseBlock);
     IScope BeginScope(BlockHeader? baseBlock);
 
+    /// <summary>
+    /// Whether <see cref="BeginScope"/> may be called while another scope from this provider is
+    /// active, e.g. to give background readers an isolated view.
+    /// </summary>
+    /// <remarks>
+    /// The flat layout supports this (scopes lease pooled snapshot bundles); the trie store does
+    /// not — its scope is a global gate (scope/pruning locks, commit-buffer transitions) that must
+    /// not be nested from within an active block.
+    /// </remarks>
+    bool SupportsConcurrentScopes => false;
+
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }

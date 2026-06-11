@@ -338,13 +338,27 @@ public class ScopeProviderTests(bool useFlat)
                 storage.Get(in index);
             }
 
-            // A far-ahead slot the consumer never read must show up in the pre-block cache.
+            // A far-ahead slot the consumer never read must show up in the pre-block cache —
+            // but only on the flat layout; the trie store cannot host the prefetcher's
+            // concurrent read scope, so there the detector must stay inert.
             StorageCell farCell = new(TestItem.AddressA, start + (stride * 200));
-            await Eventually.AssertAsync<AssertionException>(() =>
+            if (useFlat)
             {
-                Assert.That(caches.StorageCache.TryGetValue(in farCell, out byte[] value), Is.True);
-                Assert.That(value, Is.EqualTo(new byte[] { 201, 1 }));
-            }, attempts: 200, delayMilliseconds: 10);
+                await Eventually.AssertAsync<AssertionException>(() =>
+                {
+                    Assert.That(caches.StorageCache.TryGetValue(in farCell, out byte[] value), Is.True);
+                    Assert.That(value, Is.EqualTo(new byte[] { 201, 1 }));
+                }, attempts: 200, delayMilliseconds: 10);
+            }
+            else
+            {
+                for (int i = 0; i < 60; i++)
+                {
+                    Assert.That(caches.StorageCache.TryGetValue(in farCell, out _), Is.False,
+                        "Stride prefetcher engaged on a provider without concurrent-scope support.");
+                    await Task.Delay(5);
+                }
+            }
         }
         // Scope disposal joined the reader threads without hanging.
     }
@@ -387,12 +401,16 @@ public class ScopeProviderTests(bool useFlat)
                 storage.Get(in index);
             }
 
-            // Readers are live once a slot inside the initial lookahead window shows up.
-            StorageCell windowCell = new(TestItem.AddressA, start + (stride * 100));
-            await Eventually.AssertAsync<AssertionException>(() =>
+            // Readers are live once a slot inside the initial lookahead window shows up; on the
+            // trie layout the prefetcher never engages, and the invariant below holds trivially.
+            if (useFlat)
             {
-                Assert.That(caches.StorageCache.TryGetValue(in windowCell, out _), Is.True);
-            }, attempts: 200, delayMilliseconds: 10);
+                StorageCell windowCell = new(TestItem.AddressA, start + (stride * 100));
+                await Eventually.AssertAsync<AssertionException>(() =>
+                {
+                    Assert.That(caches.StorageCache.TryGetValue(in windowCell, out _), Is.True);
+                }, attempts: 200, delayMilliseconds: 10);
+            }
 
             // The executing block now writes a slot the readers have not reached yet.
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
