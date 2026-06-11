@@ -103,5 +103,11 @@ namespace Nethermind.Config
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
 
         public int? BlockProductionBlobLimit { get; set; }
+
+        public long SlowBlockThresholdMs { get; set; } = -1;
+
+        public long SlowBlockPerTxThresholdMs { get; set; } = -1;
+
+        public long MaxGasLimit { get; set; } = 1_000_000_000;
     }
 }

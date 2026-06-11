@@ -3,7 +3,6 @@
 
 using System;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -49,7 +48,7 @@ public class SignatureTests
         string fromConverter = JsonSerializer.Serialize(signature, options);
         string fromToString = $"\"{signature}\"";
 
-        fromConverter.Should().Be(fromToString, "the converter must produce the same wire format as Signature.ToString()");
+        Assert.That(fromConverter, Is.EqualTo(fromToString), "the converter must produce the same wire format as Signature.ToString()");
     }
 
     [Test]
@@ -68,6 +67,6 @@ public class SignatureTests
         Hash256 keccak = Keccak.Compute(Bytes.Concat(messageType, data));
         Span<byte> publicKey = stackalloc byte[65];
         bool result = SecP256k1.RecoverKeyFromCompact(publicKey, keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 }

@@ -126,7 +126,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.CodeChange, Is.Not.Null);
-                Assert.That(ac.CodeChange!.Value.Code, Is.EquivalentTo(code));
+                Assert.That(ac.CodeChange!.Value.Code, Is.EqualTo(code));
             }
         }
     }
@@ -248,7 +248,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(codeForCodeOp), codeForCodeOp, Spec);
             }),
             (Action<TracedAccessWorldState>)(tws =>
-                Assert.That(tws.GetCode(TestItem.AddressA), Is.EquivalentTo(codeForCodeOp))))
+                Assert.That(tws.GetCode(TestItem.AddressA), Is.EqualTo(codeForCodeOp))))
             .SetName("GetCode_RecordsAccountRead");
 
         yield return new TestCaseData(
@@ -473,7 +473,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.CodeChange, Is.Not.Null);
-                Assert.That(ac.CodeChange!.Value.Code, Is.EquivalentTo(code2));
+                Assert.That(ac.CodeChange!.Value.Code, Is.EqualTo(code2));
             }
         }
     }

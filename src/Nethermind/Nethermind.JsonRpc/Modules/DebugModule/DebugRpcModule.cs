@@ -538,7 +538,7 @@ public class DebugRpcModule(
             return ResultWrapper<OwnedByteMemory>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 
-        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Hash);
+        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash);
 
         return balRlp is null
             ? ResultWrapper<OwnedByteMemory>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
@@ -710,7 +710,7 @@ public class DebugRpcModule(
         // decides "explicit vs default" from the request's Gas field, so we set it here to opt out of the
         // engine's BlockGasLeft fallback. eth_simulateV1 deliberately does not do this.
         // When gasCap is unset/0 ("no cap"), we leave Gas null so the engine's normal fallback applies.
-        if (jsonRpcConfig.GasCap is not null and not 0)
+        if (jsonRpcConfig.GasCap.IsGasCapped())
         {
             foreach (TransactionBundle bundle in bundles)
             {

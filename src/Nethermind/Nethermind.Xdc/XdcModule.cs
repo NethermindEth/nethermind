@@ -19,9 +19,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -31,9 +31,11 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -56,6 +58,9 @@ public class XdcModule : Module
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
 
             .Add<StartXdcBlockProducer>()
+            .AddSingleton<XdcBlockProducerFactory>()
+            .Bind<IBlockProducerFactory, XdcBlockProducerFactory>()
+            .Bind<IBlockProducerRunnerFactory, XdcBlockProducerFactory>()
 
 
             // stores
@@ -102,7 +107,9 @@ public class XdcModule : Module
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
+            .AddDatabase(XdcRocksDbConfigFactory.XdcRewardsDbName)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
+            .AddSingleton<IRewardsStore, RewardsStore>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
@@ -130,15 +137,16 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
-            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
+
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
 
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();
 
-        // Overrides DiscoveryApp and NodeLifecycleManagerFactory registered in DiscoveryModule (via NethermindModule).
+        // Overrides DiscoveryApp registered in DiscoveryModule (via NethermindModule).
         // Safe: plugins are always loaded after NethermindModule in NethermindRunnerModule, so last-registration-wins is guaranteed.
         builder.RegisterType<XdcDiscoveryApp>().As<DiscoveryApp>().WithAttributeFiltering().SingleInstance().ExternallyOwned();
-        builder.RegisterType<XdcNodeLifecycleManagerFactory>().As<INodeLifecycleManagerFactory>().SingleInstance();
     }
 
     private IMasternodeVotingContract CreateVotingContract(

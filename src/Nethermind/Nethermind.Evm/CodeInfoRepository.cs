@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -23,7 +24,10 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo> _codeInfoLoader;
+    /// <remarks>
+    /// Kept null on the production path so <see cref="LoadCodeInfoDefault"/> can be called directly and inlined instead of going through a no-op delegate.
+    /// </remarks>
+    private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? _codeInfoLoader;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
         : this(worldState, precompileProvider, codeInfoLoader: null)
@@ -34,10 +38,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
-
-        CodeInfo DefaultLoad(Address address, ValueHash256 codeHash, IReleaseSpec spec) =>
-            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, address, in codeHash);
+        _codeInfoLoader = codeInfoLoader;
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -65,8 +66,15 @@ public class CodeInfoRepository : ICodeInfoRepository
     private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
     {
         ValueHash256 codeHash = _worldState.GetCodeHash(codeSource);
-        return _codeInfoLoader(codeSource, codeHash, vmSpec);
+        Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? codeInfoLoader = _codeInfoLoader;
+        return codeInfoLoader is not null
+            ? codeInfoLoader(codeSource, codeHash, vmSpec)
+            : LoadCodeInfoDefault(codeSource, in codeHash);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private CodeInfo LoadCodeInfoDefault(Address address, in ValueHash256 codeHash) =>
+        codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(_worldState, address, in codeHash);
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
@@ -76,6 +84,13 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             MissingCode(in codeHash);
         }
+
+        // Counts code reads that miss the in-memory code cache (i.e. require a DB fetch via
+        // IWorldState.GetCode). Cache hits served by CacheCodeInfoRepository.GetOrCacheCodeInfo
+        // are counted separately as Metrics.CodeDbCache, so state_reads.code in the slow-block
+        // JSON tracks DB-backed code reads only and equals cache.code.misses by construction.
+        Metrics.IncrementCodeReads();
+        Metrics.IncrementCodeBytesRead(code.Length);
 
         return CodeInfoFactory.CreateCodeInfo(code);
 
@@ -117,7 +132,20 @@ public class CodeInfoRepository : ICodeInfoRepository
             codeHash = ValueKeccak.OfAnEmptyString;
         }
 
-        return worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
+        bool result = worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
+        if (result)
+        {
+            if (codeSource != Address.Zero)
+            {
+                Metrics.IncrementEip7702DelegationsSet();
+            }
+            else
+            {
+                Metrics.IncrementEip7702DelegationsCleared();
+            }
+        }
+
+        return result;
     }
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress)

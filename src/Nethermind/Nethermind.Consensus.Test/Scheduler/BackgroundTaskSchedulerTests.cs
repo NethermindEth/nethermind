@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
@@ -108,41 +107,44 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task Test_task_scheduled_during_block_processing_gets_cancelled_token()
     {
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
         int cancelledCount = 0;
+        CountdownEvent expiredRan = new(5);
         for (int i = 0; i < 5; i++)
         {
             scheduler.TryScheduleTask(1, (_, token) =>
             {
                 if (token.IsCancellationRequested)
                     Interlocked.Increment(ref cancelledCount);
+                expiredRan.Signal();
                 return Task.CompletedTask;
             }, TimeSpan.FromMilliseconds(1));
         }
 
-        // Expired tasks during block processing run with a cancelled token
-        Assert.That(() => Volatile.Read(ref cancelledCount), Is.EqualTo(5).After(2000, 10));
+        Assert.That(expiredRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Expired tasks did not all run within 30s");
+        Assert.That(cancelledCount, Is.EqualTo(5));
 
-        // After block processing, new tasks execute with active token
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
 
         int postBlockCount = 0;
+        CountdownEvent postBlockRan = new(3);
         for (int i = 0; i < 3; i++)
         {
             scheduler.TryScheduleTask(1, (_, token) =>
             {
                 if (!token.IsCancellationRequested)
                     Interlocked.Increment(ref postBlockCount);
+                postBlockRan.Signal();
                 return Task.CompletedTask;
             });
         }
 
-        Assert.That(() => Volatile.Read(ref postBlockCount), Is.EqualTo(3).After(2000, 10));
+        Assert.That(postBlockRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Post-block tasks did not all run within 30s");
+        Assert.That(postBlockCount, Is.EqualTo(3));
     }
 
     [Test]
@@ -160,8 +162,8 @@ public class BackgroundTaskSchedulerTests
             return Task.CompletedTask;
         }, TimeSpan.FromMilliseconds(1));
 
-        (await waitSignal.WaitOneAsync(CancellationToken.None)).Should().BeTrue();
-        wasCancelled.Should().BeTrue("expired task should receive a cancelled token during block processing");
+        Assert.That((await waitSignal.WaitOneAsync(CancellationToken.None)), Is.True);
+        Assert.That(wasCancelled, Is.True, "expired task should receive a cancelled token during block processing");
 
         // After block processing, new tasks execute normally
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
@@ -172,7 +174,7 @@ public class BackgroundTaskSchedulerTests
             postBlockSignal.Set();
             return Task.CompletedTask;
         });
-        (await postBlockSignal.WaitOneAsync(CancellationToken.None)).Should().BeTrue();
+        Assert.That((await postBlockSignal.WaitOneAsync(CancellationToken.None)), Is.True);
     }
 
     [Test]
@@ -197,7 +199,7 @@ public class BackgroundTaskSchedulerTests
         for (int i = 0; i < capacity; i++)
         {
             bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
-            accepted.Should().BeTrue($"Task {i} should be accepted after expired tasks freed queue space");
+            Assert.That(accepted, Is.True, $"Task {i} should be accepted after expired tasks freed queue space");
         }
 
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
@@ -215,7 +217,7 @@ public class BackgroundTaskSchedulerTests
         // Fill the queue with short-lived tasks
         for (int i = 0; i < capacity; i++)
         {
-            scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1)).Should().BeTrue();
+            Assert.That(scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1)), Is.True);
         }
 
         // Wait for deadlines to pass and expired tasks to be drained with cancelled tokens
@@ -225,7 +227,7 @@ public class BackgroundTaskSchedulerTests
         for (int i = 0; i < capacity; i++)
         {
             bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
-            accepted.Should().BeTrue($"Task {i} should be accepted after expired tasks were drained");
+            Assert.That(accepted, Is.True, $"Task {i} should be accepted after expired tasks were drained");
         }
 
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
@@ -246,7 +248,7 @@ public class BackgroundTaskSchedulerTests
         for (int i = 0; i < capacity; i++)
         {
             bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(10));
-            accepted.Should().BeTrue($"Phase 1: task {i} should be accepted up to capacity");
+            Assert.That(accepted, Is.True, $"Phase 1: task {i} should be accepted up to capacity");
         }
 
         // Wait for expired tasks to drain (consumer wakes every 100ms to check for expired tasks)
@@ -263,7 +265,7 @@ public class BackgroundTaskSchedulerTests
                 Interlocked.Increment(ref executedCount);
                 return Task.CompletedTask;
             });
-            accepted.Should().BeTrue($"Phase 2: task {i} should be accepted after queue drained");
+            Assert.That(accepted, Is.True, $"Phase 2: task {i} should be accepted after queue drained");
         }
 
         Assert.That(
@@ -277,8 +279,7 @@ public class BackgroundTaskSchedulerTests
         int totalPhase3 = capacity / 2 + capacity / 4;
         for (int i = 0; i < totalPhase3; i++)
         {
-            scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(5))
-                .Should().BeTrue($"Phase 3: task {i} should be accepted");
+            Assert.That(scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(5)), Is.True, $"Phase 3: task {i} should be accepted");
         }
 
         // Wait for expired tasks to drain with cancelled tokens
@@ -309,11 +310,11 @@ public class BackgroundTaskSchedulerTests
 
         for (int i = 0; i < capacity; i++)
         {
-            scheduler.TryScheduleTask(1, (_, _) =>
+            Assert.That(scheduler.TryScheduleTask(1, (_, _) =>
             {
                 Interlocked.Increment(ref executedCount);
                 return Task.CompletedTask;
-            }).Should().BeTrue($"Phase 4: task {i} should be accepted in fully recovered queue");
+            }), Is.True, $"Phase 4: task {i} should be accepted in fully recovered queue");
         }
 
         Assert.That(

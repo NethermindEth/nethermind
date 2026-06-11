@@ -104,14 +104,17 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-        Assert.That(_handler.Name, Is.EqualTo("eth70"));
-        Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
-        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
-        Assert.That(_handler.IncludeInTxPool, Is.True);
-        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-        Assert.That(_handler.HeadHash, Is.Null);
-        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth70"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(70));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(18));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -140,7 +143,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_return_empty_receipts_block_when_local_block_has_no_receipts()
+    public void Should_return_empty_receipts_block_when_local_block_has_no_transactions()
     {
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
@@ -150,6 +153,19 @@ public class Eth70ProtocolHandlerTests
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
             m.TxReceipts.Count == 1 && m.TxReceipts[0].Length == 0 && !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_stop_response_when_receipts_are_not_known_locally()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns((TxReceipt[]?)null);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.TxReceipts.Count == 0 && !m.LastBlockIncomplete));
     }
 
     [Test]
@@ -281,10 +297,13 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
 
-        Assert.That(result.Count, Is.EqualTo(1));
-        AssertReceiptsEqual(result[0], receipts);
-        Assert.That(requestCount, Is.EqualTo(2));
-        Assert.That(blockHashes.IndexerReadCount, Is.EqualTo(blockHashes.Count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(1));
+            AssertReceiptsEqual(result[0], receipts);
+            Assert.That(requestCount, Is.EqualTo(2));
+            Assert.That(blockHashes.IndexerReadCount, Is.EqualTo(blockHashes.Count));
+        }
     }
 
     [Test]
@@ -351,11 +370,14 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(2));
-        Assert.That(result[0], Is.Empty);
-        Assert.That(result[1], Has.Length.EqualTo(block2Receipts.Length));
-        Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
-        Assert.That(result[1][0].Logs, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Has.Count.EqualTo(2));
+            Assert.That(result[0], Is.Empty);
+            Assert.That(result[1], Has.Length.EqualTo(block2Receipts.Length));
+            Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
+            Assert.That(result[1][0].Logs, Is.Empty);
+        }
     }
 
     [TestCaseSource(nameof(EmptyReceiptsPayloadCases))]
@@ -811,9 +833,8 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
         ];
 
-        _syncManager.FindHeader(TestItem.KeccakA).Returns((BlockHeader?)null);
         _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
-        _syncManager.GetReceipts(TestItem.KeccakA).Returns([]);
+        _syncManager.GetReceipts(TestItem.KeccakA).Returns((TxReceipt[]?)null);
         _syncManager.GetReceipts(TestItem.KeccakB).Returns(
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
@@ -821,20 +842,19 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
 
-        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
-        Assert.That(response.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
-        Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
-        Assert.That(response.LastBlockIncomplete, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+            Assert.That(response.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
+            Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
+            Assert.That(response.LastBlockIncomplete, Is.False);
+        }
     }
 
     [Test]
     public void Should_return_empty_receipts_response_when_first_hash_is_unknown()
     {
-        _syncManager.FindHeader(Keccak.Zero).Returns((BlockHeader?)null);
-        _syncManager.GetReceipts(Keccak.Zero).Returns(
-        [
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
-        ]);
+        _syncManager.GetReceipts(Keccak.Zero).Returns((TxReceipt[]?)null);
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
@@ -992,11 +1012,14 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero);
 
-        Assert.That(fullResponseLength, Is.GreaterThan((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
-        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
-        Assert.That(response.TxReceipts[0], Has.Length.EqualTo(1));
-        Assert.That(response.LastBlockIncomplete, Is.True);
-        Assert.That(GetReceiptsMessageLength(response), Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fullResponseLength, Is.GreaterThan((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+            Assert.That(response.TxReceipts[0], Has.Length.EqualTo(1));
+            Assert.That(response.LastBlockIncomplete, Is.True);
+            Assert.That(GetReceiptsMessageLength(response), Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+        }
     }
 
     [Test]

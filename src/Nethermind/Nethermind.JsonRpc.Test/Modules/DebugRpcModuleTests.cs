@@ -6,9 +6,6 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
-using FluentAssertions.Execution;
-using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -55,10 +52,10 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs);
 
         JToken result = JToken.Parse(response)["result"]!;
-        ((bool)result["failed"]!).Should().BeTrue("pre-flight failures surface as failed:true under streaming");
-        ((string)result["returnValue"]!).Should().Be("0x");
-        ((string)result["error"]!).Should().StartWith(expectedErrorPrefix, "Geth-compatible wording must be preserved verbatim");
-        ((int)result["errorCode"]!).Should().Be(expectedErrorCode, "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
+        Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
+        Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
+        Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
     }
 
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
@@ -66,7 +63,7 @@ public partial class DebugRpcModuleTests
         Address freshA = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshA}", to = $"{TestItem.AddressC}", value = 50.Ether.ToString("X") },
-            "tracing failed: insufficient funds for transfer: address ",
+            "tracing failed: insufficient funds for gas * price + value: address ",
             ErrorCodes.InvalidInput)
         { TestName = "InsufficientFundsForTransfer" };
 
@@ -103,7 +100,7 @@ public partial class DebugRpcModuleTests
             $"{lastBlockHash}"
         );
 
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        RpcTest.AssertSuccess(response);
     }
 
     [TestCase(
@@ -140,14 +137,20 @@ public partial class DebugRpcModuleTests
         );
 
         JToken result = JToken.Parse(response)["result"]!;
-        ((bool)result["failed"]!).Should().BeFalse($"trace for case '{name}' must succeed");
+        Assert.That(((bool)result["failed"]!), Is.False, $"trace for case '{name}' must succeed");
 
         if (expectedValue is not null)
         {
             byte[] returnValueBytes = Bytes.FromHexString((string)result["returnValue"]!);
-            Convert.ToHexString(returnValueBytes).Should().BeEquivalentTo(expectedValue);
+            Assert.That(returnValueBytes.ToHexString(), Is.EqualTo(expectedValue));
         }
     }
+
+    // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+    // Returns gas available at start of execution as a 32-byte uint256.
+    private const string GasReturnContractAddress = "0xc200000000000000000000000000000000000000";
+    private static object GasReturnContractStateOverride() => JsonSerializer.Deserialize<object>(
+        $$$"""{"{{{GasReturnContractAddress}}}":{"code":"0x5a60005260206000f3"}}""")!;
 
     [Test]
     public async Task Debug_traceCall_caps_gas_to_gas_cap()
@@ -157,21 +160,16 @@ public partial class DebugRpcModuleTests
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a 32-byte uint256
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
-
         // Request 100K gas — should be capped to 50K by GasCap
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = "0xc200000000000000000000000000000000000000", gas = "0x186A0" },
+            new { to = GasReturnContractAddress, gas = "0x186A0" },
             null,
-            new { stateOverrides = stateOverride }
+            new { stateOverrides = GasReturnContractStateOverride() }
         );
 
         long gasAvailable = (long)ParseReturnValue(response).ToUInt256();
-        gasAvailable.Should().BeLessThan(gasCap);
-        gasAvailable.Should().BeGreaterThan(0);
+        Assert.That(gasAvailable, Is.LessThan(gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(0));
     }
 
     [Test]
@@ -184,21 +182,42 @@ public partial class DebugRpcModuleTests
         IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a uint256
-        object? stateOverride = JsonSerializer.Deserialize<object>(
-            """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
-
-        // No gas field — should default to gasCap, not blockGasLimit
-        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = "0xc200000000000000000000000000000000000000" },
+        string omittedGasResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = GasReturnContractAddress },
             null,
-            new { stateOverrides = stateOverride }
+            new { stateOverrides = GasReturnContractStateOverride() }
         );
 
-        UInt256 gasAvailable = ParseReturnValue(response).ToUInt256();
-        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
-            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
+        string explicitGasCapResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = GasReturnContractAddress, gas = $"0x{gasCap:x}" },
+            null,
+            new { stateOverrides = GasReturnContractStateOverride() }
+        );
+
+        UInt256 omittedGasAvailable = ParseReturnValue(omittedGasResponse).ToUInt256();
+        UInt256 explicitGasCapAvailable = ParseReturnValue(explicitGasCapResponse).ToUInt256();
+
+        Assert.That(omittedGasAvailable, Is.EqualTo(explicitGasCapAvailable));
+        Assert.That(omittedGasAvailable > (UInt256)blockGasLimit, Is.True);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_with_zero_gas_keeps_literal_zero_gas_semantics()
+    {
+        using Context ctx = await Context.Create();
+        long gasCap = 50_000;
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.GasCap = gasCap;
+
+        // No state override needed: tx fails at intrinsic-gas validation before the EVM runs.
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = GasReturnContractAddress, gas = "0x0" }
+        );
+
+        JToken result = JToken.Parse(response)["result"]!;
+        Assert.That(result["failed"]?.Value<bool>(), Is.True);
+        Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
+        Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
     }
 
     private static byte[] ParseReturnValue(string responseJson)
@@ -259,11 +278,8 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        using (new AssertionScope())
-        {
-            JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
-            JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
-        }
+        Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -297,7 +313,7 @@ public partial class DebugRpcModuleTests
             string result = await RpcTest.TestSerializedRequest(
                 ctx.DebugRpcModule, "debug_traceCall", transaction, null, tracerOptions);
 
-            result.Should().Contain("\"code\":\"0x00\"",
+            Assert.That(result, Does.Contain("\"code\":\"0x00\""),
                 $"call #{i} must complete and report the deployed runtime in post.code — " +
                 "the persisted-code hint must not survive overlay reset");
         }

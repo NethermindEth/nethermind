@@ -25,6 +25,11 @@ public class Hash256ConverterTests
         Assert.That(result, Is.EqualTo(null));
     }
 
+    [TestCase("\"0x5102190bcfd53cc6a15761c9d2da43a628d0ca713bfad5a1e311b531c294b77\"", TestName = "63 hex digits (odd, short)")]
+    [TestCase("\"0x45102190bcfd53cc6a15761c9d2da43a628d0ca713bfad5a1e311b531c294b770\"", TestName = "65 hex digits (odd, long)")]
+    public void Rejects_odd_length_hex(string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<Hash256>(json, options), Throws.InstanceOf<FormatException>());
+
     [TestCaseSource(nameof(WriteTestCases))]
     public void Writes_correct_hex(Hash256 hash, string expected)
     {
@@ -49,6 +54,18 @@ public class Hash256ConverterTests
     {
         string json = JsonSerializer.Serialize(hash, options);
         Hash256? deserialized = JsonSerializer.Deserialize<Hash256>(json, options);
+        Assert.That(deserialized, Is.EqualTo(hash));
+    }
+
+    [Test]
+    public void Value_hash_writes_roundtrip()
+    {
+        JsonSerializerOptions valueOptions = new() { Converters = { new ValueHash256Converter() } };
+        ValueHash256 hash = new(CreateSequentialBytes(32));
+
+        string json = JsonSerializer.Serialize(hash, valueOptions);
+        ValueHash256 deserialized = JsonSerializer.Deserialize<ValueHash256>(json, valueOptions);
+
         Assert.That(deserialized, Is.EqualTo(hash));
     }
 

@@ -105,12 +105,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 }
 
                 Hash256 blockHash = hashes[blockIndex];
-                if (SyncServer.FindHeader(blockHash) is null)
+                TxReceipt[]? receipts = SyncServer.GetReceipts(blockHash);
+                if (receipts is null)
                 {
                     break;
                 }
 
-                TxReceipt[] receipts = SyncServer.GetReceipts(blockHash);
                 long requestedStartIndex = blockIndex == 0 ? getReceiptsMessage.FirstBlockReceiptIndex : 0;
                 // ulong (not uint) so an adversarial negative long isn't truncated.
                 if ((ulong)requestedStartIndex > (ulong)(uint)receipts.Length)

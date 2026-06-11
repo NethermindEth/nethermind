@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -18,17 +17,19 @@ public class NativeMemoryListTests
     public void Empty_list_and_zero_capacity_growth()
     {
         using NativeMemoryList<int> list = new(1024);
-        list.Count.Should().Be(0);
-        list.Capacity.Should().Be(1024);
-
         using NativeMemoryList<int> empty = new(0);
-        empty.Should().BeEmpty();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(1024));
+            Assert.That(empty, Is.Empty);
+        }
         empty.Add(1);
-        empty.Count.Should().Be(1);
-        empty.Remove(1).Should().BeTrue();
-        empty.Count.Should().Be(0);
+        Assert.That(empty.Count, Is.EqualTo(1));
+        Assert.That(empty.Remove(1), Is.True);
+        Assert.That(empty.Count, Is.EqualTo(0));
         empty.Add(2);
-        empty[0].Should().Be(2);
+        Assert.That(empty[0], Is.EqualTo(2));
     }
 
     [Test]
@@ -36,12 +37,15 @@ public class NativeMemoryListTests
     {
         using NativeMemoryList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50).ToArray());
-        list.Should().BeEquivalentTo(Enumerable.Range(0, 50));
-        list.Count.Should().Be(50);
-        list.Capacity.Should().BeGreaterThanOrEqualTo(50);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EquivalentTo(Enumerable.Range(0, 50)));
+            Assert.That(list.Count, Is.EqualTo(50));
+            Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(50));
+        }
 
         list.Add(123);
-        list[50].Should().Be(123);
+        Assert.That(list[50], Is.EqualTo(123));
     }
 
     [Test]
@@ -51,10 +55,10 @@ public class NativeMemoryListTests
         list.AddRange(stackalloc int[] { 1, 2, 3 });
         int before = list.Capacity;
         list.Clear();
-        list.Count.Should().Be(0);
-        list.Capacity.Should().Be(before);
+        Assert.That(list.Count, Is.EqualTo(0));
+        Assert.That(list.Capacity, Is.EqualTo(before));
         list.Add(99);
-        list[0].Should().Be(99);
+        Assert.That(list[0], Is.EqualTo(99));
     }
 
     [TestCase(0)]
@@ -65,23 +69,29 @@ public class NativeMemoryListTests
         using NativeMemoryList<int> list = new(8);
         list.AddRange(stackalloc int[] { 0, 1, 2, 3, 4 });
         list.Insert(index, 99);
-        list[index].Should().Be(99);
-        list.Count.Should().Be(6);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list[index], Is.EqualTo(99));
+            Assert.That(list.Count, Is.EqualTo(6));
+        }
 
         list.RemoveAt(index);
-        list.Should().BeEquivalentTo(new[] { 0, 1, 2, 3, 4 });
+        Assert.That(list, Is.EquivalentTo(new[] { 0, 1, 2, 3, 4 }));
     }
 
     [Test]
     public void IndexOf_Contains_Remove_work()
     {
         using NativeMemoryList<int> list = new(4, [10, 20, 30]);
-        list.IndexOf(20).Should().Be(1);
-        list.Contains(30).Should().BeTrue();
-        list.Contains(99).Should().BeFalse();
-        list.Remove(20).Should().BeTrue();
-        list.Should().BeEquivalentTo(new[] { 10, 30 });
-        list.Remove(99).Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.IndexOf(20), Is.EqualTo(1));
+            Assert.That(list.Contains(30), Is.True);
+            Assert.That(list.Contains(99), Is.False);
+        }
+        Assert.That(list.Remove(20), Is.True);
+        Assert.That(list, Is.EquivalentTo(new[] { 10, 30 }));
+        Assert.That(list.Remove(99), Is.False);
     }
 
     [Test]
@@ -90,7 +100,7 @@ public class NativeMemoryListTests
         using NativeMemoryList<int> list = new(2, 2);
         ref int slot = ref list.GetRef(1);
         slot = 42;
-        list[1].Should().Be(42);
+        Assert.That(list[1], Is.EqualTo(42));
     }
 
     [Test]
@@ -98,8 +108,8 @@ public class NativeMemoryListTests
     {
         using NativeMemoryList<int> list = new(4);
         list.AddRange(stackalloc int[] { 1, 2, 3 });
-        list.AsSpan().Length.Should().Be(3);
-        list.AsSpan()[1].Should().Be(2);
+        Assert.That(list.AsSpan().Length, Is.EqualTo(3));
+        Assert.That(list.AsSpan()[1], Is.EqualTo(2));
     }
 
     [Test]
@@ -107,9 +117,9 @@ public class NativeMemoryListTests
     {
         using NativeMemoryList<int> list = new(4, [3, 1, 4, 1, 5, 9, 2, 6]);
         list.Sort((a, b) => a.CompareTo(b));
-        list.Should().BeEquivalentTo(new[] { 1, 1, 2, 3, 4, 5, 6, 9 }, o => o.WithStrictOrdering());
+        Assert.That(list, Is.EqualTo(new[] { 1, 1, 2, 3, 4, 5, 6, 9 }));
         list.Reverse();
-        list.Should().BeEquivalentTo(new[] { 9, 6, 5, 4, 3, 2, 1, 1 }, o => o.WithStrictOrdering());
+        Assert.That(list, Is.EqualTo(new[] { 9, 6, 5, 4, 3, 2, 1, 1 }));
     }
 
     [Test]
@@ -119,11 +129,11 @@ public class NativeMemoryListTests
         list.AddRange(Enumerable.Range(0, 50).ToArray());
 
         list.Truncate(10);
-        list.Count.Should().Be(10);
+        Assert.That(list.Count, Is.EqualTo(10));
 
         list.ReduceCount(2);
-        list.Count.Should().Be(2);
-        list.Should().BeEquivalentTo(new[] { 0, 1 }, o => o.WithStrictOrdering());
+        Assert.That(list.Count, Is.EqualTo(2));
+        Assert.That(list, Is.EqualTo(new[] { 0, 1 }));
     }
 
     [Test]
@@ -132,7 +142,7 @@ public class NativeMemoryListTests
         using NativeMemoryList<int> list = new(4, [1, 2, 3]);
         int[] dest = new int[5];
         list.CopyTo(dest, 1);
-        dest.Should().BeEquivalentTo(new[] { 0, 1, 2, 3, 0 }, o => o.WithStrictOrdering());
+        Assert.That(dest, Is.EqualTo(new[] { 0, 1, 2, 3, 0 }));
     }
 
     [Test]
@@ -142,7 +152,7 @@ public class NativeMemoryListTests
         list.Dispose();
         list.Dispose();
         Action act = () => _ = list[0];
-        act.Should().Throw<ObjectDisposedException>();
+        Assert.That(act, Throws.TypeOf<ObjectDisposedException>());
     }
 
     [Test]
@@ -150,16 +160,16 @@ public class NativeMemoryListTests
     {
         using NativeMemoryList<int> list = new(4);
         IList ilist = list;
-        ilist.Add(1).Should().Be(0);
-        ilist.Add(2).Should().Be(1);
-        ilist.Contains(1).Should().BeTrue();
-        ilist.IndexOf(2).Should().Be(1);
+        Assert.That(ilist.Add(1), Is.EqualTo(0));
+        Assert.That(ilist.Add(2), Is.EqualTo(1));
+        Assert.That(ilist.Contains(1), Is.True);
+        Assert.That(ilist.IndexOf(2), Is.EqualTo(1));
         ilist[0] = 99;
-        ilist[0].Should().Be(99);
+        Assert.That(ilist[0], Is.EqualTo(99));
         ilist.Insert(0, 7);
-        ilist[0].Should().Be(7);
+        Assert.That(ilist[0], Is.EqualTo(7));
         ilist.Remove(7);
-        ilist.Count.Should().Be(2);
+        Assert.That(ilist.Count, Is.EqualTo(2));
     }
 
     [Test]
@@ -169,17 +179,17 @@ public class NativeMemoryListTests
         try
         {
             r.AddRange(stackalloc int[] { 1, 2, 3 });
-            r.Count.Should().Be(3);
-            r[1].Should().Be(2);
-            r.AsSpan().ToArray().Should().BeEquivalentTo(new[] { 1, 2, 3 }, o => o.WithStrictOrdering());
+            Assert.That(r.Count, Is.EqualTo(3));
+            Assert.That(r[1], Is.EqualTo(2));
+            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 2, 3 }));
             r.Add(4);
-            r.AsSpan()[3].Should().Be(4);
+            Assert.That(r.AsSpan()[3], Is.EqualTo(4));
             r.Insert(0, 0);
-            r.AsSpan().ToArray().Should().BeEquivalentTo(new[] { 0, 1, 2, 3, 4 }, o => o.WithStrictOrdering());
+            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 0, 1, 2, 3, 4 }));
             r.RemoveAt(0);
-            r.AsSpan().ToArray().Should().BeEquivalentTo(new[] { 1, 2, 3, 4 }, o => o.WithStrictOrdering());
+            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 2, 3, 4 }));
             r.Clear();
-            r.Count.Should().Be(0);
+            Assert.That(r.Count, Is.EqualTo(0));
         }
         finally
         {
@@ -195,10 +205,13 @@ public class NativeMemoryListTests
         try
         {
             for (int i = 0; i < 1000; i++) r.Add(i);
-            r.Count.Should().Be(1000);
-            r.Capacity.Should().BeGreaterThanOrEqualTo(1000);
-            r[0].Should().Be(0L);
-            r[999].Should().Be(999L);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(r.Count, Is.EqualTo(1000));
+                Assert.That(r.Capacity, Is.GreaterThanOrEqualTo(1000));
+                Assert.That(r[0], Is.EqualTo(0L));
+                Assert.That(r[999], Is.EqualTo(999L));
+            }
         }
         finally { r.Dispose(); }
     }
@@ -210,7 +223,7 @@ public class NativeMemoryListTests
         try
         {
             r.EnsureCapacity(4096);
-            r.Capacity.Should().BeGreaterThanOrEqualTo(4096);
+            Assert.That(r.Capacity, Is.GreaterThanOrEqualTo(4096));
         }
         finally { r.Dispose(); }
     }
@@ -219,8 +232,8 @@ public class NativeMemoryListTests
     public void Empty_constructor_returns_disposable_zero_capacity()
     {
         using NativeMemoryList<int> empty = NativeMemoryList<int>.Empty();
-        empty.Count.Should().Be(0);
-        empty.Capacity.Should().Be(0);
+        Assert.That(empty.Count, Is.EqualTo(0));
+        Assert.That(empty.Capacity, Is.EqualTo(0));
     }
 
     // Capacity*sizeof(T) is well under the 1024-byte pool threshold here, so the underlying
@@ -233,23 +246,29 @@ public class NativeMemoryListTests
     public void Sub_threshold_capacity_round_trips(int capacity)
     {
         using NativeMemoryList<byte> list = new(capacity);
-        list.Count.Should().Be(0);
-        list.Capacity.Should().BeGreaterThanOrEqualTo(capacity);
+        Assert.That(list.Count, Is.EqualTo(0));
+        Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(capacity));
 
         list.AddRange(Bytes.FromHexString("deadbeef"));
-        list.Count.Should().Be(4);
-        list[0].Should().Be(0xde);
-        list[3].Should().Be(0xef);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Count, Is.EqualTo(4));
+            Assert.That(list[0], Is.EqualTo(0xde));
+            Assert.That(list[3], Is.EqualTo(0xef));
+        }
 
         list.Insert(0, 0x01);
-        list[0].Should().Be(0x01);
-        list[4].Should().Be(0xef);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list[0], Is.EqualTo(0x01));
+            Assert.That(list[4], Is.EqualTo(0xef));
+        }
 
         list.RemoveAt(0);
-        list.AsSpan().ToArray().Should().BeEquivalentTo(Bytes.FromHexString("deadbeef"), o => o.WithStrictOrdering());
+        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("deadbeef")));
 
         list.Reverse();
-        list[0].Should().Be(0xef);
+        Assert.That(list[0], Is.EqualTo(0xef));
     }
 
     // Cross the pool/native boundary inside one list lifetime: start in the pool (16 bytes),
@@ -263,9 +282,12 @@ public class NativeMemoryListTests
         for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i & 0xFF);
         list.AddRange(payload);
 
-        list.Count.Should().Be(payload.Length);
-        list.Capacity.Should().BeGreaterThanOrEqualTo(payload.Length);
-        list.AsSpan().ToArray().Should().BeEquivalentTo(payload, o => o.WithStrictOrdering());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Count, Is.EqualTo(payload.Length));
+            Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(payload.Length));
+            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(payload));
+        }
     }
 
     // ReduceCount shrinks below the byte threshold; the internal reallocation must route to
@@ -277,9 +299,12 @@ public class NativeMemoryListTests
         for (int i = 0; i < 256; i++) list.Add(i);
 
         list.ReduceCount(8);  // 8 * 8 = 64 bytes → pool
-        list.Count.Should().Be(8);
-        list[0].Should().Be(0L);
-        list[7].Should().Be(7L);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Count, Is.EqualTo(8));
+            Assert.That(list[0], Is.EqualTo(0L));
+            Assert.That(list[7], Is.EqualTo(7L));
+        }
     }
 
     // Regression for an issue where the (capacity, count) ctor would zero-clear `count` elements

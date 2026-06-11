@@ -10,27 +10,26 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
-public class AddressConverter : JsonConverter<Address>
+public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Address>
 {
+    public AddressConverter() : this(false) { }
+
+    private readonly bool _strictHexFormat = strictHexFormat;
+
     public override Address? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options) => ReadAddress(ref reader);
+        JsonSerializerOptions options) => ReadAddress(ref reader, _strictHexFormat);
 
-    internal static Address? ReadAddress(ref Utf8JsonReader reader)
+    internal static Address? ReadAddress(ref Utf8JsonReader reader, bool strictHexFormat = false)
     {
-        if (reader.TokenType == JsonTokenType.Null)
-        {
-            return null;
-        }
-
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (TryReadAddressBytes(ref reader, bytes))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
         {
             return new Address(bytes);
         }
 
-        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? addressBytes = ByteArrayConverter.ConvertData(ref reader, strictHexFormat);
         return addressBytes is null ? null : new Address(addressBytes);
     }
 
@@ -40,7 +39,7 @@ public class AddressConverter : JsonConverter<Address>
         JsonSerializerOptions options) => ByteArrayConverter.Convert(writer, address.Bytes, skipLeadingZeros: false);
 
     public override Address ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        ReadAddressPropertyName(ref reader);
+        ReadAddressPropertyName(ref reader, _strictHexFormat);
 
     [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer,
@@ -48,15 +47,15 @@ public class AddressConverter : JsonConverter<Address>
         JsonSerializerOptions options) => WriteAddressPropertyName(writer, value);
 
     [SkipLocalsInit]
-    internal static Address ReadAddressPropertyName(ref Utf8JsonReader reader)
+    internal static Address ReadAddressPropertyName(ref Utf8JsonReader reader, bool strictHexFormat = false)
     {
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (TryReadAddressBytes(ref reader, bytes))
+        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
         {
             return new Address(bytes);
         }
 
-        return new Address(ByteArrayConverter.Convert(ref reader) ?? throw new JsonException("Invalid address property name"));
+        return new Address(ByteArrayConverter.ConvertData(ref reader, strictHexFormat) ?? throw new JsonException("Invalid address property name"));
     }
 
     [SkipLocalsInit]
@@ -70,25 +69,4 @@ public class AddressConverter : JsonConverter<Address>
         writer.WritePropertyName(addressBytes);
     }
 
-    private static bool TryReadAddressBytes(ref Utf8JsonReader reader, scoped Span<byte> bytes)
-    {
-        if (reader.HasValueSequence)
-        {
-            return false;
-        }
-
-        ReadOnlySpan<byte> hex = reader.ValueSpan;
-        if (hex.Length >= 2 && hex[0] == (byte)'0' && hex[1] == (byte)'x')
-        {
-            hex = hex[2..];
-        }
-
-        if (hex.Length != Address.Size * 2)
-        {
-            return false;
-        }
-
-        Bytes.FromUtf8HexString(hex, bytes);
-        return true;
-    }
 }

@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -32,7 +33,7 @@ namespace Ethereum.Test.Base
 {
     public abstract class GeneralStateTestBase
     {
-        private static ILogger _logger;
+        protected static ILogger _logger;
         private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
 
@@ -75,6 +76,9 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
+            // Patricia by default (the production default); opt into the flat state layout with
+            // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
@@ -128,7 +132,7 @@ namespace Ethereum.Test.Base
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
                 ParentBeaconBlockRoot = test.CurrentBeaconRoot,
                 ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork.IsEip4844Enabled ? 0ul : null),
-                SlotNumber = test.CurrentSlotNumber,
+                SlotNumber = test.CurrentSlotNumber ?? (test.Fork.IsEip7843Enabled ? 0ul : null),
                 BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
                 RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
                 BlockAccessListHash = spec.IsEip7928Enabled ? Keccak.OfAnEmptySequenceRlp : null,

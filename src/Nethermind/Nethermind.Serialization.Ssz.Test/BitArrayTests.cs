@@ -6,9 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
-using Shouldly;
 
 namespace Nethermind.Serialization.Ssz.Test
 {
@@ -23,11 +22,11 @@ namespace Nethermind.Serialization.Ssz.Test
 
             // Act
             byte[] encoded = new byte[(input.Length + 7) / 8];
-            Ssz.EncodeVector(encoded, input);
+            Ssz.Encode(encoded, input);
 
             // Assert
             string byteString = Bytes.ToHexString(encoded);
-            byteString.ShouldBe(expectedByteString);
+            Assert.That(byteString, Is.EqualTo(expectedByteString));
         }
 
         [TestCaseSource(nameof(GetBitvectorData))]
@@ -42,7 +41,7 @@ namespace Nethermind.Serialization.Ssz.Test
 
             // Assert
             BitArray expected = new(value);
-            decoded.ShouldBe(expected);
+            Assert.That(decoded, Is.EqualTo(expected));
         }
 
         [TestCaseSource(nameof(GetBitvectorData))]
@@ -57,7 +56,7 @@ namespace Nethermind.Serialization.Ssz.Test
             root.ToLittleEndian(hashTreeRoot);
 
             // Assert
-            hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
+            Assert.That(hashTreeRoot.ToArray(), Is.EqualTo(expectedHashTreeRoot));
         }
 
         [TestCaseSource(nameof(GetBitlistData))]
@@ -68,11 +67,11 @@ namespace Nethermind.Serialization.Ssz.Test
 
             // Act
             byte[] encoded = new byte[(input.Length + 8) / 8];
-            Ssz.EncodeList(encoded, input);
+            Ssz.Encode(encoded, input, (int)limit);
 
             // Assert
             string byteString = Bytes.ToHexString(encoded);
-            byteString.ShouldBe(expectedByteString);
+            Assert.That(byteString, Is.EqualTo(expectedByteString));
         }
 
         [TestCaseSource(nameof(GetBitlistData))]
@@ -86,7 +85,7 @@ namespace Nethermind.Serialization.Ssz.Test
 
             // Assert
             BitArray expected = new(value);
-            decoded.ShouldBe(expected);
+            Assert.That(decoded, Is.EqualTo(expected));
         }
 
         [TestCaseSource(nameof(GetBitlistData))]
@@ -101,7 +100,7 @@ namespace Nethermind.Serialization.Ssz.Test
             root.ToLittleEndian(hashTreeRoot);
 
             // Assert
-            hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
+            Assert.That(hashTreeRoot.ToArray(), Is.EqualTo(expectedHashTreeRoot));
         }
 
         public static IEnumerable<TestCaseData> GetBitvectorData()

@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Runtime.Intrinsics;
-using FluentAssertions;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -26,7 +25,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(destination).Should().Be(isValid);
+            Assert.That(codeInfo.ValidateJump(destination), Is.EqualTo(isValid));
         }
 
         [Test]
@@ -40,7 +39,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(1).Should().BeFalse();
+            Assert.That(codeInfo.ValidateJump(1), Is.False);
         }
 
         [Test]
@@ -55,7 +54,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(11).Should().BeTrue();
+            Assert.That(codeInfo.ValidateJump(11), Is.True);
         }
 
         [Test]
@@ -70,7 +69,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(31).Should().BeTrue();
+            Assert.That(codeInfo.ValidateJump(31), Is.True);
         }
 
         [Test]
@@ -83,7 +82,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeTrue();
+            Assert.That(codeInfo.ValidateJump(10), Is.True);
         }
 
         [Test]
@@ -96,7 +95,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeFalse();
+            Assert.That(codeInfo.ValidateJump(10), Is.False);
         }
 
         [Test]
@@ -106,7 +105,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeTrue();
+            Assert.That(codeInfo.ValidateJump(10), Is.True);
         }
 
         [Test]
@@ -116,7 +115,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeFalse();
+            Assert.That(codeInfo.ValidateJump(10), Is.False);
         }
 
         [Test]
@@ -130,8 +129,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeFalse();
-            codeInfo.ValidateJump(11).Should().BeFalse(); // 0x5b but not JUMPDEST but data
+            Assert.That(codeInfo.ValidateJump(10), Is.False);
+            Assert.That(codeInfo.ValidateJump(11), Is.False); // 0x5b but not JUMPDEST but data
         }
 
         [TestCase(1)]
@@ -197,15 +196,15 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             for (i = 0; i < Vector256<byte>.Count * 2 + Vector128<byte>.Count; i++)
             {
-                codeInfo.ValidateJump(i).Should().BeTrue();
+                Assert.That(codeInfo.ValidateJump(i), Is.True);
             }
             for (; i < Vector256<byte>.Count * 3; i++)
             {
-                codeInfo.ValidateJump(i).Should().BeFalse();
+                Assert.That(codeInfo.ValidateJump(i), Is.False);
             }
             for (; i < code.Length; i++)
             {
-                codeInfo.ValidateJump(i).Should().BeFalse(); // Are 0x5b but not JUMPDEST but data
+                Assert.That(codeInfo.ValidateJump(i), Is.False); // Are 0x5b but not JUMPDEST but data
             }
         }
 
@@ -220,8 +219,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 long[] vector512 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector512(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
                 long[] vector128 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector128(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
 
-                Assert.That(vector512, Is.EquivalentTo(scalar));
-                Assert.That(vector128, Is.EquivalentTo(scalar));
+                Assert.That(vector512, Is.EqualTo(scalar));
+                Assert.That(vector128, Is.EqualTo(scalar));
             }
         }
 

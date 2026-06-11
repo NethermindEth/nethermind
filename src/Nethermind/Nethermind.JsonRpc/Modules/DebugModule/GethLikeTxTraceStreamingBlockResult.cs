@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 /// <see cref="Count"/> is always 0 and <see cref="GetEnumerator"/> is always empty.
 /// </summary>
 [JsonConverter(typeof(GethLikeTxTraceStreamingBlockResultConverter))]
-public sealed class GethLikeTxTraceStreamingBlockResult : StreamingResultBase, IReadOnlyCollection<GethLikeTxTrace>
+public sealed class GethLikeTxTraceStreamingBlockResult : JsonStreamingResultBase, IReadOnlyCollection<GethLikeTxTrace>
 {
     private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runBlockTrace;
 

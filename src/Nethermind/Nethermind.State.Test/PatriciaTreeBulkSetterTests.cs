@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -307,13 +306,13 @@ public class PatriciaTreeBulkSetterTests
                 }
             }
 
-            newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
-            pTree.RootHash.Should().Be(root);
+            Assert.That(newWriteCount, Is.LessThanOrEqualTo(baselineWriteCount));
+            Assert.That(pTree.RootHash, Is.EqualTo(root));
         }
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Bulk: {newTime}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Bulk: {newWriteCount}");
-        newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
+        Assert.That(newWriteCount, Is.LessThanOrEqualTo(baselineWriteCount));
     }
 
     [TestCaseSource(nameof(BulkSetTestGen))]
@@ -342,7 +341,7 @@ public class PatriciaTreeBulkSetterTests
 
         pTree.BulkSet(entries);
         pTree.UpdateRootHash();
-        pTree.RootHash.Should().Be(root);
+        Assert.That(pTree.RootHash, Is.EqualTo(root));
     }
 
     [TestCaseSource(nameof(BulkSetTestGen))]
@@ -393,12 +392,12 @@ public class PatriciaTreeBulkSetterTests
                 }
             }
 
-            pTree.RootHash.Should().Be(root);
+            Assert.That(pTree.RootHash, Is.EqualTo(root));
         }
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Sorted Bulk: {preSortedTime}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Sorted Bulk: {preSortedWriteCount}");
-        preSortedWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
+        Assert.That(preSortedWriteCount, Is.LessThanOrEqualTo(baselineWriteCount));
     }
 
     [TestCaseSource(nameof(BulkSetTestGen))]
@@ -449,12 +448,12 @@ public class PatriciaTreeBulkSetterTests
                 }
             }
 
-            pTree.RootHash.Should().Be(root);
+            Assert.That(pTree.RootHash, Is.EqualTo(root));
         }
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, One by one time: {bulkSetOne}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Write count: {writeCount}");
-        writeCount.Should().BeLessOrEqualTo(baselineWriteCount);
+        Assert.That(writeCount, Is.LessThanOrEqualTo(baselineWriteCount));
     }
 
     private static (Hash256, TimeSpan, long, string originalDump) CalculateBaseline(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items, bool recordDump)
@@ -524,7 +523,7 @@ public class PatriciaTreeBulkSetterTests
             thrown = true;
         }
 
-        thrown.Should().BeTrue();
+        Assert.That(thrown, Is.True);
     }
 
     public static IEnumerable<TestCaseData> BucketSortTestCase()
@@ -692,20 +691,20 @@ public class PatriciaTreeBulkSetterTests
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
         using ArrayPoolList<PatriciaTree.BulkSetEntry> buffer = new(paths.Count, paths.Count);
 
-        int resultMask = PatriciaTree.BucketSort16Small(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).Should().BeEquivalentTo(expectedPaths);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
-        resultMask.Should().Be(expectedMask);
+        AssertBucketSort(PatriciaTree.BucketSort16Small(items.AsSpan(), buffer.AsSpan(), nibIndex, result), buffer, result, expectedPaths, expectedResult, expectedMask);
+        AssertBucketSort(PatriciaTree.BucketSort16Large(items.AsSpan(), buffer.AsSpan(), nibIndex, result), buffer, result, expectedPaths, expectedResult, expectedMask);
+        AssertBucketSort(PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibIndex, result), buffer, result, expectedPaths, expectedResult, expectedMask);
+    }
 
-        resultMask = PatriciaTree.BucketSort16Large(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).Should().BeEquivalentTo(expectedPaths);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
-        resultMask.Should().Be(expectedMask);
-
-        resultMask = PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        buffer.Select((it) => it.Path).Should().BeEquivalentTo(expectedPaths);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
-        resultMask.Should().Be(expectedMask);
+    private static void AssertBucketSort(int resultMask, ArrayPoolList<PatriciaTree.BulkSetEntry> buffer, Span<int> result, List<ValueHash256> expectedPaths, int[] expectedResult, ushort expectedMask)
+    {
+        int[] resultCopy = result.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.Select((it) => it.Path), Is.EquivalentTo(expectedPaths));
+            Assert.That(resultCopy, Is.EquivalentTo(expectedResult));
+            Assert.That(resultMask, Is.EqualTo(expectedMask));
+        }
     }
 
     [TestCaseSource(nameof(BucketSortTestCase))]
@@ -719,18 +718,19 @@ public class PatriciaTreeBulkSetterTests
         items.AsSpan().Sort((a, b) => a.GetPathNibble(nibIndex).CompareTo(b.GetPathNibble(nibIndex)));
 
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
-        int resultMask = PatriciaTree.HexarySearchAlreadySortedSmall(items.AsSpan(), nibIndex, result);
-        resultMask.Should().Be(expectedMask);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
+        AssertHexarySearch(PatriciaTree.HexarySearchAlreadySortedSmall(items.AsSpan(), nibIndex, result), result, expectedResult, expectedMask);
+        AssertHexarySearch(PatriciaTree.HexarySearchAlreadySortedLarge(items.AsSpan(), nibIndex, result), result, expectedResult, expectedMask);
+        AssertHexarySearch(PatriciaTree.HexarySearchAlreadySorted(items.AsSpan(), nibIndex, result), result, expectedResult, expectedMask);
+    }
 
-        resultMask = PatriciaTree.HexarySearchAlreadySortedLarge(items.AsSpan(), nibIndex, result);
-        resultMask.Should().Be(expectedMask);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
-
-        resultMask = PatriciaTree.HexarySearchAlreadySorted(items.AsSpan(), nibIndex, result);
-        resultMask.Should().Be(expectedMask);
-        result.ToArray().Should().BeEquivalentTo(expectedResult);
-
+    private static void AssertHexarySearch(int resultMask, Span<int> result, int[] expectedResult, ushort expectedMask)
+    {
+        int[] resultCopy = result.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultMask, Is.EqualTo(expectedMask));
+            Assert.That(resultCopy, Is.EqualTo(expectedResult));
+        }
     }
 
     public class StrictRawScopedTrieStore(IScopedTrieStore baseTrieStore) : IScopedTrieStore

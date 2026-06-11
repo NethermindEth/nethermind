@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Tracing;
@@ -150,8 +149,8 @@ internal class SpecialTransactionsTests
         Transaction[] receipts = blockChain.TxPool.GetPendingTransactions();
 
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec();
-        receipts.Any(r => r.To == spec.BlockSignerContract
-                       || r.To == spec.RandomizeSMCBinary).Should().BeFalse();
+        Assert.That(receipts.Any(r => r.To == spec.BlockSignerContract
+                       || r.To == spec.RandomizeSMCBinary), Is.False);
     }
 
     [TestCase(false)]
@@ -262,11 +261,11 @@ internal class SpecialTransactionsTests
 
         if (blackListingActivated)
         {
-            result.Value.Error.Should().Be(XdcTransactionResult.ContainsBlacklistedAddressError);
+            Assert.That(result.Value.Error, Is.EqualTo(XdcTransactionResult.ContainsBlacklistedAddressError));
         }
         else
         {
-            result.Value.Error.Should().NotBe(XdcTransactionResult.ContainsBlacklistedAddressError);
+            Assert.That(result.Value.Error, Is.Not.EqualTo(XdcTransactionResult.ContainsBlacklistedAddressError));
         }
     }
 
@@ -326,11 +325,11 @@ internal class SpecialTransactionsTests
 
         if (blackListingActivated)
         {
-            result.Value.Error.Should().Be(XdcTransactionResult.ContainsBlacklistedAddressError);
+            Assert.That(result.Value.Error, Is.EqualTo(XdcTransactionResult.ContainsBlacklistedAddressError));
         }
         else
         {
-            result.Value.Error.Should().NotBe(XdcTransactionResult.ContainsBlacklistedAddressError);
+            Assert.That(result.Value.Error, Is.Not.EqualTo(XdcTransactionResult.ContainsBlacklistedAddressError));
         }
     }
 
@@ -421,7 +420,7 @@ internal class SpecialTransactionsTests
             result = TransactionResult.Ok;
         }
 
-        result.Value.Error.Should().Be(XdcTransactionResult.NonceTooLowError);
+        Assert.That(result.Value.Error, Is.EqualTo(XdcTransactionResult.NonceTooLowError));
     }
 
     [TestCase(true)]
@@ -478,7 +477,7 @@ internal class SpecialTransactionsTests
             result = TransactionResult.Ok;
         }
 
-        result.Value.Error.Should().Be(XdcTransactionResult.NonceTooHighError);
+        Assert.That(result.Value.Error, Is.EqualTo(XdcTransactionResult.NonceTooHighError));
     }
 
 
@@ -535,8 +534,11 @@ internal class SpecialTransactionsTests
             result = TransactionResult.Ok;
         }
 
-        result.Value.Error.Should().NotBe(XdcTransactionResult.NonceTooHighError);
-        result.Value.Error.Should().NotBe(XdcTransactionResult.NonceTooLowError);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value.Error, Is.Not.EqualTo(XdcTransactionResult.NonceTooHighError));
+            Assert.That(result.Value.Error, Is.Not.EqualTo(XdcTransactionResult.NonceTooLowError));
+        }
     }
 
     [TestCase(true)]
@@ -742,19 +744,17 @@ internal class SpecialTransactionsTests
 
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-
-        Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
-        Assert.That(finalBalance, Is.EqualTo(initialBalance));
-
         int finalCountOfReceipts = receiptsTracer.TxReceipts.Length;
-
-        Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
-
         TxReceipt? finalReceipt = receiptsTracer.TxReceipts[^1];
 
-        Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
-
-        Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(spec.BlockSignerContract));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
+            Assert.That(finalBalance, Is.EqualTo(initialBalance));
+            Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
+            Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
+            Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(spec.BlockSignerContract));
+        }
     }
 
     [TestCase(true)]
@@ -828,20 +828,17 @@ internal class SpecialTransactionsTests
 
             UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
             UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-
-            Assert.That(finalNonce, Is.EqualTo(initialNonce), $"specialTx to {address} does not increment nonce, initialNonce: {initialNonce}, finalNonce: {finalNonce}");
-
-            Assert.That(initialBalance, Is.EqualTo(finalBalance), $"specialTx to {address} does not increment nonce, initialBalance: {initialNonce}, finalBalance: {finalNonce}");
-
             int finalCountOfReceipts = receiptsTracer.TxReceipts.Length;
-
-            Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
-
             TxReceipt? finalReceipt = receiptsTracer.TxReceipts[^1];
 
-            Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
-
-            Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(address));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(finalNonce, Is.EqualTo(initialNonce), $"specialTx to {address} does not increment nonce, initialNonce: {initialNonce}, finalNonce: {finalNonce}");
+                Assert.That(initialBalance, Is.EqualTo(finalBalance), $"specialTx to {address} does not increment nonce, initialBalance: {initialNonce}, finalBalance: {finalNonce}");
+                Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
+                Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
+                Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(address));
+            }
         }
         receiptsTracer.EndBlockTrace();
 
@@ -887,9 +884,11 @@ internal class SpecialTransactionsTests
         // Get receipts of the block after (i.e., the block that included the SignTx)
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block.Hash!);
         Assert.That(receipts, Is.Not.Null);
-        Assert.That(receipts, Is.Not.Empty);
-
-        receipts.Any(r => r.Recipient == spec.BlockSignerContract).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts, Is.Not.Empty);
+            Assert.That(receipts.Any(r => r.Recipient == spec.BlockSignerContract), Is.True);
+        }
     }
 
     [TestCase(false)]
@@ -946,17 +945,18 @@ internal class SpecialTransactionsTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        result.Error.Should().Be(TransactionResult.ErrorType.None);
-
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-
-        finalNonce.Should().Be(initialNonce + 1);
-        finalBalance.Should().Be(initialBalance); // zero gas price => no balance change
-
-        receiptsTracer.TxReceipts.Length.Should().NotBe(0);
         TxReceipt receipt = receiptsTracer.TxReceipts[^1];
-        receipt.GasUsed.Should().BeGreaterThan(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
+            Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
+            Assert.That(finalBalance, Is.EqualTo(initialBalance)); // zero gas price => no balance change
+            Assert.That(receiptsTracer.TxReceipts.Length, Is.Not.EqualTo(0));
+            Assert.That(receipt.GasUsed, Is.GreaterThan(0));
+        }
     }
 
 
@@ -1017,16 +1017,17 @@ internal class SpecialTransactionsTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        result.Error.Should().Be(TransactionResult.ErrorType.None);
-
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-
-        finalNonce.Should().Be(initialNonce + 1);
-        finalBalance.Should().Be(initialBalance); // zero gas price => no balance change
-
-        receiptsTracer.TxReceipts.Length.Should().NotBe(0);
         TxReceipt receipt = receiptsTracer.TxReceipts[^1];
-        receipt.GasUsed.Should().BeGreaterThan(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
+            Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
+            Assert.That(finalBalance, Is.EqualTo(initialBalance)); // zero gas price => no balance change
+            Assert.That(receiptsTracer.TxReceipts.Length, Is.Not.EqualTo(0));
+            Assert.That(receipt.GasUsed, Is.GreaterThan(0));
+        }
     }
 }

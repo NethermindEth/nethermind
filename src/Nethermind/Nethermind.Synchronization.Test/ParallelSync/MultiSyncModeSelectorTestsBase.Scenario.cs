@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FastEnumUtility;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -16,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
 {
@@ -305,6 +305,23 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "mid fast sync and fast blocks";
+                        }
+                    );
+                    return this;
+                }
+
+                public ScenarioBuilder IfThisNodeIsBehindThePivotInFastSync()
+                {
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(MidWayToPivot.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(0);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                            SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+                            return "behind the pivot in fast sync";
                         }
                     );
                     return this;
@@ -624,6 +641,25 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder AndAPeerExactlyAtThePivotIsKnown()
+                {
+                    AddPeeringSetup("peer at pivot", AddPeer(Pivot));
+                    return this;
+                }
+
+                public ScenarioBuilder WhenStaticSnapPivotIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.SnapSync = true;
+                        SyncConfig.StaticSnapPivot = true;
+                        return "static snap pivot";
+                    });
+
+                    return this;
+                }
+
                 public ScenarioBuilder WhenSynchronizationIsDisabled()
                 {
                     _overwrites.Add(() => SyncConfig.SynchronizationEnabled = false);
@@ -780,7 +816,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance);
                         selector.StopAsync().Wait();
                         selector.Update();
-                        selector.Current.Should().Be(syncMode);
+                        Assert.That(selector.Current, Is.EqualTo(syncMode));
                     }
 
                     SetDefaults();

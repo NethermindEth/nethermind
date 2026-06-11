@@ -20,6 +20,8 @@ jobs:
     name: Run ${{ matrix.project }}${{ matrix.label && format(' [{0}]', matrix.label) || '' }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
@@ -221,6 +223,9 @@ jobs:
 
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
         with:
           submodules: ${{ startsWith(matrix.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
 

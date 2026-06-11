@@ -14,7 +14,7 @@ using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -466,7 +466,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         _server.DisposeAsync().AsTask();
 
     [Test]
-    [Retry(5)]
+    [Category("Flaky"), Retry(5)]
     public async Task FullSync()
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
@@ -482,7 +482,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Retry(5)]
+    [Category("Flaky"), Retry(5)]
     public async Task FastSync()
     {
         // After the nodedata satellite protocol was removed, fast sync without snap can no longer
@@ -522,7 +522,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Retry(5)]
+    [Category("Flaky"), Retry(5)]
     public async Task SnapSync()
     {
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
@@ -564,7 +564,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static IEnumerable<int> StressIterations() => Enumerable.Range(0, StressIterationCount);
 
     [Test]
-    [Retry(2)]
+    [Category("Flaky"), Retry(2)]
     public async Task FastSync_downloads_block_access_lists_over_eth71()
     {
         if (!isPostMerge || dbMode != DbMode.Default)
@@ -589,7 +589,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(BalSyncChainLength));
 
         IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
-        using (MemoryManager<byte>? serverBal = serverBalStore.GetRlp(serverBlockTree.FindBlock(1)!.Hash!))
+        using (MemoryManager<byte>? serverBal = serverBalStore.GetRlp(1, serverBlockTree.FindBlock(1)!.Hash!))
         {
             Assert.That(serverBal, Is.Not.Null);
         }
@@ -617,7 +617,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Retry(5)]
+    [Category("Flaky"), Retry(5)]
     public async Task SnapSync_HalfPathServer_HashClient()
     {
         if (dbMode != DbMode.Default) Assert.Ignore("This test only runs on the Default (HalfPath) server fixture");
@@ -643,7 +643,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Retry(2)]
+    [Category("Flaky"), Retry(2)]
     public async Task FastSync_skips_pre_eip7928_block_access_lists_over_eth71()
     {
         if (!isPostMerge || dbMode != DbMode.Default)
@@ -671,12 +671,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         Block lastPreActivationBlock = serverBlockTree.FindBlock(PartialBalActivationBlock - 1)!;
         Block firstActivatedBlock = serverBlockTree.FindBlock(PartialBalActivationBlock)!;
         Assert.That(lastPreActivationBlock.Header.BlockAccessListHash, Is.Null);
-        using (MemoryManager<byte>? preActivationBal = serverBalStore.GetRlp(lastPreActivationBlock.Hash!))
+        using (MemoryManager<byte>? preActivationBal = serverBalStore.GetRlp(lastPreActivationBlock.Number, lastPreActivationBlock.Hash!))
         {
             Assert.That(preActivationBal, Is.Null);
         }
         Assert.That(firstActivatedBlock.Header.BlockAccessListHash, Is.Not.Null);
-        using (MemoryManager<byte>? firstActivatedBal = serverBalStore.GetRlp(firstActivatedBlock.Hash!))
+        using (MemoryManager<byte>? firstActivatedBal = serverBalStore.GetRlp(firstActivatedBlock.Number, firstActivatedBlock.Hash!))
         {
             Assert.That(firstActivatedBal, Is.Not.Null);
         }
@@ -812,12 +812,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             long finalizedBlockNumber = Math.Max(0, otherBlockTree.Head!.Number - finalizedDistanceFromHead);
             Block finalizedBlock = otherBlockTree.FindBlock(finalizedBlockNumber)!;
             Block headBlock = otherBlockTree.Head!;
-            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
-            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
+            blockCacheService.TryAddBlock(finalizedBlock);
+            blockCacheService.TryAddBlock(headBlock);
             blockCacheService.FinalizedHash = finalizedBlock.Hash!;
 
             await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
-            mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
+            mergeSyncController.InitBeaconHeaderSync(headBlock.Header);
 
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken, finalizedDistanceFromHead);
         }
@@ -1090,8 +1090,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 Block sourceBlock = sourceBlockTree.FindBlock(blockNumber)!;
                 Block syncedBlock = blockTree.FindBlock(blockNumber)!;
 
-                byte[]? sourceBal = GetBlockAccessListRlp(sourceBlockAccessListStore, sourceBlock.Hash!);
-                byte[]? syncedBal = GetBlockAccessListRlp(blockAccessListStore, syncedBlock.Hash!);
+                byte[]? sourceBal = GetBlockAccessListRlp(sourceBlockAccessListStore, sourceBlock.Number, sourceBlock.Hash!);
+                byte[]? syncedBal = GetBlockAccessListRlp(blockAccessListStore, syncedBlock.Number, syncedBlock.Hash!);
                 bool balEnabled = sourceBlock.Header.BlockAccessListHash is not null;
 
                 if (!balEnabled)
@@ -1105,9 +1105,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                             $"syncedBalHash={syncedBlock.Header.BlockAccessListHash}");
                     }
 
-                    Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
-                    Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
-                    Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
+                        Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
+                        Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    }
                     return;
                 }
 
@@ -1117,7 +1120,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                         $"BAL debug block {blockNumber}: sourceBal={(sourceBal is null ? "null" : sourceBal.Length)}, " +
                         $"syncedBal={(syncedBal is null ? "null" : syncedBal.Length)}, " +
                         $"syncedEncoded={(syncedBlock.EncodedBlockAccessList is null ? "null" : syncedBlock.EncodedBlockAccessList.Length)}, " +
-                        $"syncedHasStore={blockAccessListStore.Exists(syncedBlock.Hash!)}, " +
+                        $"syncedHasStore={blockAccessListStore.Exists(syncedBlock.Number, syncedBlock.Hash!)}, " +
                         $"headerBalHash={syncedBlock.Header.BlockAccessListHash}");
                 }
 
@@ -1129,9 +1132,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
         }
 
-        private static byte[]? GetBlockAccessListRlp(IBlockAccessListStore blockAccessListStore, Hash256 blockHash)
+        private static byte[]? GetBlockAccessListRlp(IBlockAccessListStore blockAccessListStore, long blockNumber, Hash256 blockHash)
         {
-            using MemoryManager<byte>? rlp = blockAccessListStore.GetRlp(blockHash);
+            using MemoryManager<byte>? rlp = blockAccessListStore.GetRlp(blockNumber, blockHash);
             return rlp?.Memory.ToArray();
         }
     }

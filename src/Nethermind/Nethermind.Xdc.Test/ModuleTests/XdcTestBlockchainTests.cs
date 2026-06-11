@@ -8,7 +8,7 @@ using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
 using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
 internal class XdcTestBlockchainTests
 {

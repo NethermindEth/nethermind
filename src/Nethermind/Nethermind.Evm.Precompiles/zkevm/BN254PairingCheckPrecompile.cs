@@ -10,9 +10,9 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class BN254PairingCheckPrecompile
 {
-    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        if (!ValidateInputLength(inputData, releaseSpec))
+        if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
         if (inputData.Length == 0)

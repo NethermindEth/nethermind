@@ -3,11 +3,11 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -61,7 +61,7 @@ public class DbBlocksLoaderTests
                 .WithSpecProvider(OlympicSpecProvider.Instance)
                 .TestObject;
 
-            DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
+            using DbBlocksLoader loader = new(blockTree, NoErrorLimboLogs.Instance);
             await blockTree.Accept(loader, CancellationToken.None);
 
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
@@ -106,7 +106,7 @@ public class DbBlocksLoaderTests
                 .WithSpecProvider(OlympicSpecProvider.Instance)
                 .TestObject;
 
-            DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
+            using DbBlocksLoader loader = new(blockTree, NoErrorLimboLogs.Instance);
             await blockTree.Accept(loader, CancellationToken.None);
 
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(testTree.Head.Hash), $"head {chainLength}");
@@ -167,20 +167,23 @@ public class DbBlocksLoaderTests
             }
         };
 
-        DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
+        using DbBlocksLoader loader = new(tree2, NoErrorLimboLogs.Instance, null, 1);
         await tree2.Accept(loader, tokenSource.Token);
 
-        Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
-        tree2.Head!.Header.Should().BeEquivalentTo(block3B.Header);
-        tree2.BestSuggestedHeader.Should().BeEquivalentTo(block3B.Header);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
+            Assert.That(tree2.Head!.Header, Is.EqualTo(block3B.Header).UsingBlockHeaderComparer());
+            Assert.That(tree2.BestSuggestedHeader, Is.EqualTo(block3B.Header).UsingBlockHeaderComparer());
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+            Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
+            Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
+            Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
 
-        Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
-        Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
-        Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
+            Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
+            Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
+            Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -227,21 +230,24 @@ public class DbBlocksLoaderTests
             }
         };
 
-        DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
+        using DbBlocksLoader loader = new(tree2, NoErrorLimboLogs.Instance, null, 1);
         await tree2.Accept(loader, tokenSource.Token);
 
         /* note the block tree historically loads one less block than it could */
 
-        Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
-        Assert.That(tree2.Head!.Hash, Is.EqualTo(block0.Hash), "head");
-        Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block0.Hash), "suggested");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
+            Assert.That(tree2.Head!.Hash, Is.EqualTo(block0.Hash), "head");
+            Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block0.Hash), "suggested");
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+            Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
+            Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
+            Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
 
-        Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
-        Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+            Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
+            Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+        }
     }
 }

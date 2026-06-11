@@ -12,10 +12,11 @@
     <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.History/Nethermind.History.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.JsonRpc.SourceGenerator.Build/Nethermind.JsonRpc.SourceGenerator.Build.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.JsonRpc.SourceGenerator/Nethermind.JsonRpc.SourceGenerator.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.Merkleization/Nethermind.Merkleization.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />

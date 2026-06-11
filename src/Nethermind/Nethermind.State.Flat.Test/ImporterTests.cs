@@ -3,7 +3,6 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -32,7 +31,7 @@ public class ImporterTests
         _trieDb = new MemDb();
         _stateTree = new StateTree(new RawScopedTrieStore(_trieDb), LimboLogs.Instance);
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
         _importer = new Importer(new NodeStorage(_trieDb), _persistence, LimboLogs.Instance);
     }
 
@@ -67,9 +66,9 @@ public class ImporterTests
         foreach ((Address addr, Account expected) in accounts)
         {
             byte[]? rlp = reader.GetAccountRaw(new Hash256(addr.ToAccountPath.Bytes));
-            rlp.Should().NotBeNull($"account {addr} should have been imported");
-            Rlp.ValueDecoderContext ctx = new(rlp);
-            AccountDecoder.Instance.Decode(ref ctx).Should().Be(expected);
+            Assert.That(rlp, Is.Not.Null, $"account {addr} should have been imported");
+            Rlp.ValueDecoderContext ctx = new(rlp!);
+            Assert.That(AccountDecoder.Instance.Decode(ref ctx), Is.EqualTo(expected));
         }
     }
 
@@ -82,7 +81,7 @@ public class ImporterTests
         await _importer.Copy(target);
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        reader.CurrentState.Should().Be(target);
+        Assert.That(reader.CurrentState, Is.EqualTo(target));
     }
 
     [Test]

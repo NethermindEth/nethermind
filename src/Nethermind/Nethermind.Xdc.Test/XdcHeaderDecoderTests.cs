@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test
 {
@@ -54,8 +54,7 @@ namespace Nethermind.Xdc.Test
 
             XdcBlockHeader decoded = (XdcBlockHeader)decodedBase!;
 
-            // Hash is excluded since decoder sets it from RLP, but original is often not set
-            decoded.Should().BeEquivalentTo(original, options => options.Excluding(h => h.Hash));
+            Assert.That(decoded, Is.EqualTo(original).UsingXdcComparer(compareHash: false));
         }
 
         [Test]

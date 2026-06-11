@@ -17,6 +17,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
+using EvmMetrics = Nethermind.Evm.Metrics;
 using Nethermind.Logging;
 
 namespace Nethermind.State;
@@ -55,6 +56,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
+
+    public override void Set(in StorageCell storageCell, byte[] newValue)
+    {
+        EvmMetrics.IncrementStorageWrites();
+        base.Set(in storageCell, newValue);
+    }
 
     /// <summary>
     /// Get the current value at the specified location
@@ -268,7 +275,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             LoadFromTree(in storageCell);
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) => GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
+    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
+        GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
@@ -503,20 +511,46 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
+            // Inserts/updates must be applied before deletes. Final root is identical regardless of order
+            // (an MPT is canonical for its key set), but a delete can collapse a branch (compression) which needs
+            // resolving the surviving sibling node. Applying deletes last keeps the trie traversal aligned with
+            // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
+            // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
+            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
+
+            using ArrayPoolListRef<KeyValuePair<UInt256, StorageChangeTrace>> deferredDeletes = new(0);
+
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
                 {
-                    BlockChange[kvp.Key] = new(after, after);
-                    storageWriteBatch.Set(kvp.Key, after);
+                    if (after.IsZero())
+                    {
+                        deferredDeletes.Add(kvp);
+                    }
+                    else
+                    {
+                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
+                        BlockChange[kvp.Key] = new(after, after);
+                        storageWriteBatch.Set(kvp.Key, after);
 
-                    writes++;
+                        writes++;
+                    }
                 }
                 else
                 {
                     skipped++;
                 }
+            }
+
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in deferredDeletes.AsSpan())
+            {
+                byte[] after = kvp.Value.After;
+                BlockChange[kvp.Key] = new(after, after);
+                storageWriteBatch.Set(kvp.Key, after);
+
+                writes++;
             }
 
             return (writes, skipped);

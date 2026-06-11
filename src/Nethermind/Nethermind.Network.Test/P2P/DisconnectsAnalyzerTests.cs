@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test.P2P
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
 
             // GitHub actions not handling these tests well
-            // ctx.TestLogger.LogList.Any(l => l.Contains("Local")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
+            // Assert.That(ctx.TestLogger.LogList.Any(l => l.Contains("Local")), Is.True, string.Join(", ", ctx.TestLogger.LogList));
         }
 
         [Test]
@@ -55,8 +55,8 @@ namespace Nethermind.Network.Test.P2P
             Thread.Sleep(15);
 
             // GitHub actions not handling these tests well
-            // ctx.TestLogger.LogList.Any(l => l.Contains("Remote")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
-            // ctx.TestLogger.LogList.Any(l => l.Contains("Local")).Should().BeTrue(string.Join(", ", ctx.TestLogger.LogList));
+            // Assert.That(ctx.TestLogger.LogList.Any(l => l.Contains("Remote")), Is.True, string.Join(", ", ctx.TestLogger.LogList));
+            // Assert.That(ctx.TestLogger.LogList.Any(l => l.Contains("Local")), Is.True, string.Join(", ", ctx.TestLogger.LogList));
         }
 
         [Test]

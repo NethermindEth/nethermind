@@ -263,6 +263,24 @@ namespace Nethermind.Monitoring.Metrics
                 return true;
             }
 
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<HistogramMetricAttribute>() is HistogramMetricAttribute explicitHistogramAttribute)
+            {
+                CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
+
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description,
+                    new HistogramConfiguration()
+                    {
+                        LabelNames = explicitHistogramAttribute.LabelNames,
+                        Buckets = explicitHistogramAttribute.Buckets
+                    });
+
+                metricUpdater = new HistogramMetricUpdater(histogram);
+                memberInfo.SetValue(metricUpdater);
+
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
+
             if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<ExponentialPowerHistogramMetric>() is ExponentialPowerHistogramMetric histogramAttribute)
             {
                 CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);

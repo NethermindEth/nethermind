@@ -16,13 +16,6 @@ public class LogEntryDecoderTests
     private static LogEntry CreateSampleLogEntry() =>
         new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
 
-    private static void AssertLogEntriesEqual(LogEntry expected, LogEntry actual)
-    {
-        Assert.That(actual.Data, Is.EqualTo(expected.Data), "data");
-        Assert.That(actual.Address, Is.EqualTo(expected.Address), "address");
-        Assert.That(actual.Topics, Is.EqualTo(expected.Topics), "topics");
-    }
-
     [TestCase(true, false)]
     [TestCase(false, false)]
     [TestCase(false, true)]
@@ -48,8 +41,7 @@ public class LogEntryDecoderTests
                 : Rlp.Decode<LogEntry?>(rlp);
         }
 
-        Assert.That(decoded, Is.Not.Null);
-        AssertLogEntriesEqual(logEntry, decoded);
+        Assert.That(decoded, Is.EqualTo(logEntry).UsingPropertiesComparer());
     }
 
     [Test]
@@ -60,8 +52,11 @@ public class LogEntryDecoderTests
         Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
         LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
 
-        Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
-        Assert.That(logEntry.Address == decoded.Address, "address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
+            Assert.That(logEntry.Address == decoded.Address, "address");
+        }
 
         Span<byte> buffer = stackalloc byte[32];
         KeccaksIterator iterator = new(decoded.TopicsRlp, buffer);

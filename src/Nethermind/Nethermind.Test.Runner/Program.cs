@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -151,7 +151,9 @@ internal class Program
 
         if (parseResult.GetValue(Options.FlatDb))
         {
-            PseudoNethermindModule.TestUseFlat = true;
+            // The test fixture bases read TEST_USE_FLAT per test, so setting it here covers
+            // both blockchain/engine and state test runs without plumbing a flag through.
+            Environment.SetEnvironmentVariable("TEST_USE_FLAT", "1");
         }
 
         // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).

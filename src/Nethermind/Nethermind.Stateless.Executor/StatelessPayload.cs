@@ -12,5 +12,6 @@ internal readonly record struct StatelessPayload
     Block Block,
     ExecutionWitness Witness,
     ChainConfig ChainConfig,
+    ReadOnlyMemory<SszPublicKeys> PublicKeys,
     Hash256 NewPayloadRequestRoot
 );
