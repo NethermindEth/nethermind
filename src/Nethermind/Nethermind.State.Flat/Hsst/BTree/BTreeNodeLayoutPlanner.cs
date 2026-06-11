@@ -4,6 +4,25 @@
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
+/// The index-node layout chosen by <see cref="BTreeNodeLayoutPlanner.Plan"/>:
+/// common-key-prefix length plus (KeyType, KeySlotSize) and the little-endian flag.
+/// </summary>
+/// <param name="CommonKeyPrefixLen">Post-gating LCP. 0 if not worth stripping.</param>
+/// <param name="KeyType">0=Variable, 1=Uniform.</param>
+/// <param name="KeySlotSize">Post-strip slot size for Uniform; 0 for Variable.</param>
+/// <param name="KeyLittleEndian">
+/// When true, callers should set <c>BTreeNodeMetadata.IsKeyLittleEndian</c> so each
+/// fixed-width key slot is byte-reversed on disk (Flags bit 5). Set for the SIMD-eligible
+/// shapes: Uniform with <see cref="KeySlotSize"/> ∈ {2,4,8} and Variable (whose 2-byte
+/// prefixArr is uniformly LE-encoded).
+/// </param>
+internal readonly record struct BTreeNodeLayoutPlan(
+    int CommonKeyPrefixLen,
+    int KeyType,
+    int KeySlotSize,
+    bool KeyLittleEndian);
+
+/// <summary>
 /// Decides the optimal index-node layout — common-key-prefix length plus
 /// (KeyType, KeySlotSize) — from per-entry separator lengths and a pre-computed
 /// cross-entry LCP.
@@ -44,34 +63,16 @@ internal static class BTreeNodeLayoutPlanner
     /// LE compare). Widening only fires when the post-strip total
     /// <c>prefixLen + keySlotSize</c> stays within this budget.
     /// </param>
-    /// <param name="commonKeyPrefixLen">Out: post-gating LCP. 0 if not worth stripping.</param>
-    /// <param name="keyType">Out: 0=Variable, 1=Uniform.</param>
-    /// <param name="keySlotSize">Out: post-strip slot size for Uniform; 0 for Variable.</param>
-    /// <param name="keyLittleEndian">
-    /// Out: when true, callers should set <c>BTreeNodeMetadata.IsKeyLittleEndian</c> so each
-    /// fixed-width key slot is byte-reversed on disk (Flags bit 5). Set for the SIMD-eligible
-    /// shapes: Uniform with <paramref name="keySlotSize"/> ∈ {2,4,8} and Variable (whose 2-byte
-    /// prefixArr is uniformly LE-encoded).
-    /// </param>
-    public static void Plan(
+    /// <returns>The chosen layout — see <see cref="BTreeNodeLayoutPlan"/>.</returns>
+    public static BTreeNodeLayoutPlan Plan(
         ReadOnlySpan<int> lengths,
         int crossEntryLcp,
         int keyLength,
-        out int commonKeyPrefixLen,
-        out int keyType,
-        out int keySlotSize,
-        out bool keyLittleEndian,
         bool disablePrefix = false)
     {
         int count = lengths.Length;
         if (count == 0)
-        {
-            commonKeyPrefixLen = 0;
-            keyType = 0;
-            keySlotSize = 0;
-            keyLittleEndian = false;
-            return;
-        }
+            return default;
 
         int firstLen = lengths[0];
         int minLen = firstLen;
@@ -133,6 +134,8 @@ internal static class BTreeNodeLayoutPlanner
         //     gate keeps within-leaf length variance small, so this path is rare.
         int effMaxLen = maxLen - lcp;
 
+        int keyType;
+        int keySlotSize;
         if (allSameLen || effMaxLen <= 8)
         {
             keyType = 1;
@@ -149,12 +152,13 @@ internal static class BTreeNodeLayoutPlanner
             keySlotSize = 0;
         }
 
-        commonKeyPrefixLen = lcp;
         // Auto-enable LE storage where the SIMD/integer-compare floor scan can exploit it:
         // Uniform 2/4/8, and Variable (prefixArr is uniformly 2B/slot).
-        keyLittleEndian =
+        bool keyLittleEndian =
             keyType == 0 ||
             (keyType == 1 && keySlotSize is 2 or 4 or 8);
+
+        return new BTreeNodeLayoutPlan(lcp, keyType, keySlotSize, keyLittleEndian);
     }
 
     /// <summary>
