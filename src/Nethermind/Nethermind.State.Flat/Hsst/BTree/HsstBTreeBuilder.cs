@@ -437,16 +437,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
                 ? precomputedLcp
                 : MemoryExtensions.CommonPrefixLength(prevKey.AsSpan(0, Math.Min(prevKey.Length, _keyLength)), key);
         }
-        // CommonPrefixArr was primed at construction to max(expectedKeyCount, 64) bytes
-        // and grows monotonically. Hot path: tight bounds check + direct write. Cold
-        // path: out-of-line helper preserves the bytes already written for entries
-        // 0..entryIdx before swapping in the larger pool array.
-        byte[] cpArr = bufs.CommonPrefixArr!;
-        if ((uint)entryIdx >= (uint)cpArr.Length)
-        {
-            cpArr = GrowCommonPrefixArr(ref bufs, entryIdx + 1);
-        }
-        cpArr[entryIdx] = (byte)cp;
+        bufs.AddCommonPrefix(entryIdx, (byte)cp);
 
         // Incremental update of PendingMaxSepLen so MaybeFlushBeforeEntry can skip
         // its O(pending) scan. Mirrors the loop it replaces: sepLen for an entry is
@@ -474,21 +465,6 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             }
             key.CopyTo(prev);
         }
-    }
-
-    /// <summary>Cold-path rent-and-copy for <c>CommonPrefixArr</c>, kept out-of-line so the per-Add hot path can inline.</summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[] GrowCommonPrefixArr(ref HsstBTreeBuilderBuffers bufs, int needed)
-    {
-        byte[]? oldArr = bufs.CommonPrefixArr;
-        byte[] newArr = System.Buffers.ArrayPool<byte>.Shared.Rent(needed);
-        if (oldArr is not null)
-        {
-            Array.Copy(oldArr, newArr, oldArr.Length);
-            System.Buffers.ArrayPool<byte>.Shared.Return(oldArr);
-        }
-        bufs.CommonPrefixArr = newArr;
-        return newArr;
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
 
@@ -114,6 +115,37 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
             if (slot is not null) ArrayPool<T>.Shared.Return(slot);
             slot = ArrayPool<T>.Shared.Rent(minSize);
         }
+    }
+
+    /// <summary>
+    /// Record entry <paramref name="entryIdx"/>'s common-prefix length in
+    /// <see cref="CommonPrefixArr"/>. <see cref="CommonPrefixArr"/> is primed at build start and
+    /// grows monotonically, so the hot path is a bounds check + direct write; the out-of-line
+    /// grow rents a larger pool array, preserving the bytes already written for entries
+    /// <c>0..entryIdx</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void AddCommonPrefix(int entryIdx, byte commonPrefixLength)
+    {
+        byte[] cpArr = CommonPrefixArr!;
+        if ((uint)entryIdx >= (uint)cpArr.Length)
+            cpArr = GrowCommonPrefixArr(entryIdx + 1);
+        cpArr[entryIdx] = commonPrefixLength;
+    }
+
+    /// <summary>Cold-path rent-and-copy for <see cref="CommonPrefixArr"/>, kept out-of-line so <see cref="AddCommonPrefix"/> inlines.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private byte[] GrowCommonPrefixArr(int needed)
+    {
+        byte[]? oldArr = CommonPrefixArr;
+        byte[] newArr = ArrayPool<byte>.Shared.Rent(needed);
+        if (oldArr is not null)
+        {
+            Array.Copy(oldArr, newArr, oldArr.Length);
+            ArrayPool<byte>.Shared.Return(oldArr);
+        }
+        CommonPrefixArr = newArr;
+        return newArr;
     }
 
     public void Dispose()
