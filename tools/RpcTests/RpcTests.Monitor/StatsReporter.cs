@@ -20,11 +20,13 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt) : IStatsRepo
     private static DateTime FromUnix(ulong seconds) => DateTimeOffset.FromUnixTimeSeconds((long)seconds).UtcDateTime;
 
     private ulong _since = UnixNow();
+    private long _headUpdates;
     private long _testRuns;
     private long _requestRuns;
     private long _testFailures;
     private long _errors;
 
+    public void RecordHeadUpdate() => Interlocked.Increment(ref _headUpdates);
     public void RecordTestRun() => Interlocked.Increment(ref _testRuns);
     public void RecordRequestRun() => Interlocked.Increment(ref _requestRuns);
     public void RecordTestFailure() => Interlocked.Increment(ref _testFailures);
@@ -32,6 +34,7 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt) : IStatsRepo
 
     private MonitorStats GetAndReset() => new(
         FromUnix(Interlocked.Exchange(ref _since, UnixNow())),
+        Interlocked.Exchange(ref _headUpdates, 0),
         Interlocked.Exchange(ref _testRuns, 0),
         Interlocked.Exchange(ref _requestRuns, 0),
         Interlocked.Exchange(ref _testFailures, 0),

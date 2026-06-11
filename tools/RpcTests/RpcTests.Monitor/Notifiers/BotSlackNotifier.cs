@@ -81,6 +81,7 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
                 Channel = config.ChannelId,
                 Text = $"""
                         ℹ {_prefix} statistic since `{stats.Since:u}`:
+                        - `{stats.HeadUpdates}` head updates
                         - `{stats.TestRuns}` tests executed
                         - `{stats.RequestRuns}` requests sent
                         - `{stats.TestFailures}` test failures

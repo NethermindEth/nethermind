@@ -26,6 +26,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
             Console.WriteLine($"Monitoring {args.TargetUrl}");
             await foreach (BlockInfo head in headMonitor.SubscribeAsync(ct))
             {
+                stats.RecordHeadUpdate();
                 Console.WriteLine($"New head: {head}");
 
                 if (!startBlock.Post(head))

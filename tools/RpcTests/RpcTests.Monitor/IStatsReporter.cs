@@ -3,10 +3,11 @@
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal record MonitorStats(DateTime Since, long TestRuns, long RequestRuns, long TestFailures, long Errors) { }
+internal record MonitorStats(DateTime Since, long HeadUpdates, long TestRuns, long RequestRuns, long TestFailures, long Errors) { }
 
 internal interface IStatsReporter
 {
+    void RecordHeadUpdate();
     void RecordTestRun();
     void RecordRequestRun();
     void RecordTestFailure();
@@ -19,6 +20,7 @@ internal sealed class NullStatsReporter : IStatsReporter
 {
     public static readonly NullStatsReporter Instance = new();
 
+    public void RecordHeadUpdate() { }
     public void RecordTestRun() { }
     public void RecordRequestRun() { }
     public void RecordTestFailure() { }
