@@ -19,13 +19,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public static class PersistedSnapshotScanner
 {
     /// <summary>
-    /// A scanner reading through a <see cref="WholeReadSession"/>'s whole-buffer mmap view. The
-    /// caller owns the session lifetime — it must outlive the returned scanner and any enumerator
-    /// derived from it.
+    /// A scanner reading <paramref name="snapshot"/> through a plain <see cref="ArenaByteReader"/>
+    /// over its reservation. The reservation stays valid for the snapshot's lifetime, which the
+    /// caller must keep alive for the returned scanner and any enumerator derived from it.
     /// </summary>
-    public static PersistedSnapshotScanner<WholeReadSessionView, WholeReadSessionReader, NoOpPin> ForWholeRead(
-        WholeReadSession session, PersistedSnapshot snapshot) =>
-        new(session.GetView(), snapshot);
+    public static PersistedSnapshotScanner<ArenaReservation, ArenaByteReader, NoOpPin> For(
+        PersistedSnapshot snapshot) =>
+        new(snapshot.Reservation, snapshot);
 }
 
 /// <summary>

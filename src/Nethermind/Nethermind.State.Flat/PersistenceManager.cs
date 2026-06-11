@@ -15,9 +15,9 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
-    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionView,
-    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
+using Scanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
+    Nethermind.State.Flat.PersistedSnapshots.Storage.ArenaReservation,
+    Nethermind.State.Flat.PersistedSnapshots.Storage.ArenaByteReader,
     Nethermind.State.Flat.Hsst.NoOpPin>;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
@@ -576,8 +576,7 @@ public class PersistenceManager(
         }
         Metrics.FlatPersistenceBlobWarmedSize.Observe(warmedBlobBytes);
 
-        using WholeReadSession session = snapshot.BeginWholeReadSession();
-        WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
+        Scanner scanner = PersistedSnapshotScanner.For(snapshot);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
             // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
@@ -585,7 +584,7 @@ public class PersistenceManager(
             // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
             // is preserved within the row; cross-address ordering is irrelevant to the
             // write batch.
-            foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+            foreach (Scanner.PerAddressEntry entry in scanner.PerAddresses)
             {
                 if (entry.SelfDestructFlag is false)
                     batch.SelfDestruct(entry.Address);
@@ -593,14 +592,14 @@ public class PersistenceManager(
                 if (entry.HasAccount)
                     batch.SetAccount(entry.Address, entry.Account);
 
-                foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
+                foreach (Scanner.SlotEntry slot in entry.Slots)
                     batch.SetStorage(entry.Address, slot.Slot, slot.Value);
             }
 
-            foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
+            foreach (Scanner.StateNodeEntry entry in scanner.StateNodes)
                 batch.SetStateTrieNode(entry.Path, entry.Rlp);
 
-            foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
+            foreach (Scanner.StorageNodeEntry entry in scanner.StorageNodes)
                 batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
         }
 
@@ -608,6 +607,10 @@ public class PersistenceManager(
         // page cache rather than leaving them hot until the base snapshots are pruned.
         foreach (PersistedSnapshot baseSnapshot in bases)
             baseSnapshot.AdviseDontNeedBlobRange();
+
+        // Drop the snapshot's own scanned HSST pages too (MADV_DONTNEED + page-residency-tracker
+        // forget); the persistable just written to RocksDB supersedes them.
+        snapshot.Reservation.AdviseDontNeed();
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
     }

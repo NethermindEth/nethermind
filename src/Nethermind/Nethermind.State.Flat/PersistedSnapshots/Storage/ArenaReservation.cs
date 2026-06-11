@@ -9,8 +9,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// A reservation of space within an arena. Delegates span access to the owning <see cref="IArenaManager"/>.
+/// Doubles as an <see cref="IHsstReaderSource{TReader,TPin}"/> so the persisted-snapshot scanner and
+/// N-way merger can mint a fresh <see cref="ArenaByteReader"/> over its bytes on demand.
 /// </summary>
-public sealed class ArenaReservation : RefCountingDisposable
+public sealed class ArenaReservation : RefCountingDisposable, IHsstReaderSource<ArenaByteReader, NoOpPin>
 {
     private readonly IArenaManager _arenaManager;
     // The owning file. Held directly so read-path operations skip the manager's id →
@@ -130,20 +132,6 @@ public sealed class ArenaReservation : RefCountingDisposable
     }
 
     /// <summary>
-    /// Begin a scoped whole-buffer read. The returned session holds a lease on this
-    /// reservation; disposing it releases the lease and (by default) issues
-    /// <c>madvise(MADV_DONTNEED)</c> on the mapped range. Pass
-    /// <paramref name="adviseDontNeedOnDispose"/> = <c>false</c> when the caller has
-    /// arranged an explicit eviction elsewhere and a redundant madvise on session close
-    /// would be wasteful.
-    /// </summary>
-    public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
-        new(this, adviseDontNeedOnDispose);
-
-    internal IArenaWholeView OpenWholeView(bool adviseDontNeedOnDispose) =>
-        _arenaFile.OpenWholeView(Offset, Size, adviseDontNeedOnDispose);
-
-    /// <summary>
     /// Construct an <see cref="ArenaByteReader"/> over this reservation's bytes. The reader
     /// reports each read/pin to the arena's <see cref="PageResidencyTracker"/> so collision-displaced
     /// OS pages can be advised <c>MADV_DONTNEED</c> on eviction. Pointer-backed so &gt;2 GiB
@@ -159,14 +147,6 @@ public sealed class ArenaReservation : RefCountingDisposable
         _arenaManager.ForgetTrackerRange(ArenaId, Offset, footprint);
     }
 
-    /// <summary>
-    /// Forget every PageResidencyTracker entry that points into this reservation. Skips the
-    /// <c>madvise(MADV_DONTNEED)</c> step that <see cref="AdviseDontNeed"/> does; use this
-    /// when the page-cache side has already been advised away (e.g. by a freshly-closed
-    /// <see cref="WholeReadSession"/> over the same range) and only the tracker needs cleaning.
-    /// </summary>
-    public void ForgetTracker() =>
-        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Footprint);
 
     /// <summary>
     /// Demote variant of <see cref="AdviseDontNeed"/>: <c>madvise(MADV_DONTNEED)</c> plus

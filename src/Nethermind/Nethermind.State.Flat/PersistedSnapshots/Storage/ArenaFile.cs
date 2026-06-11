@@ -95,8 +95,8 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
 
     public ReadOnlySpan<byte> GetSpan(long offset, long size) =>
         // Span<T> is intrinsically int-bounded; a single GetSpan can't materialise a
-        // >2 GiB region. Use OpenWholeView for chunk-aware whole-reservation access
-        // once that path is widened to long.
+        // >2 GiB region. Use ArenaReservation.CreateReader (long-offset, pointer-backed)
+        // for whole-reservation access past the 2 GiB ceiling.
         new(_basePtr + offset, checked((int)size));
 
     /// <summary>
@@ -213,55 +213,6 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// unsynced pages.
     /// </summary>
     internal void Fsync() => PosixReclaim.Fsync((int)_handle.DangerousGetHandle());
-
-    /// <summary>
-    /// Open a fresh per-reservation mmap view over <c>[offset, offset+size)</c> with
-    /// <c>MADV_NORMAL</c> hint, distinct from the global random-access view used by point
-    /// queries. When <paramref name="adviseDontNeedOnDispose"/> is true, disposing the
-    /// returned view applies <c>MADV_DONTNEED</c> to the range before releasing the
-    /// mapping; when false the disposer just unmaps.
-    /// </summary>
-    internal IArenaWholeView OpenWholeView(long offset, long size, bool adviseDontNeedOnDispose)
-    {
-        MemoryMappedViewAccessor accessor = _mmf.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
-        byte* ptr = null;
-        accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
-        // The accessor's pointer is offset by an internal page-aligned skew; add it
-        // so the span starts at the requested offset's first byte.
-        byte* dataPtr = ptr + accessor.PointerOffset;
-        if (OperatingSystem.IsLinux())
-            Madvise(dataPtr, (nuint)size, MADV_NORMAL);
-        return new MmapWholeView(accessor, dataPtr, size, adviseDontNeedOnDispose);
-    }
-
-    private sealed unsafe class MmapWholeView(
-        MemoryMappedViewAccessor accessor, byte* dataPtr, long size, bool adviseDontNeedOnDispose) : IArenaWholeView
-    {
-        public byte* DataPtr => dataPtr;
-        public long Size => size;
-
-        public void Dispose()
-        {
-            if (adviseDontNeedOnDispose && OperatingSystem.IsLinux())
-            {
-                // Round to full pages around the data range.
-                // NOTE: MADV_DONTNEED on a file-backed shared mapping drops the affected
-                // pages from the kernel page cache, so it also affects the arena's global
-                // random-access view (and any other independent mmap of the same file).
-                // That's intentional here — the whole-read session has finished sweeping
-                // the range and we want those pages out of cache rather than competing
-                // with the random-access working set.
-                nuint pageSize = PageSize;
-                nuint addr = (nuint)dataPtr;
-                nuint start = (addr + pageSize - 1) & ~(pageSize - 1);
-                nuint end = (addr + (nuint)size) & ~(pageSize - 1);
-                if (end > start)
-                    Madvise((byte*)start, end - start, MADV_DONTNEED);
-            }
-            accessor.SafeMemoryMappedViewHandle.ReleasePointer();
-            accessor.Dispose();
-        }
-    }
 
     /// <summary>
     /// Mark this file as "preserve on disk when its refcount hits zero". Set by

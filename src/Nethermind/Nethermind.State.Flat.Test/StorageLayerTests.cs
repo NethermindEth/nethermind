@@ -175,8 +175,13 @@ public class StorageLayerTests
         }
 
         // Read back and verify
-        using (WholeReadSession session = manager.Open(location).BeginWholeReadSession())
-            Assert.That(session.AsSpanIntBounded().ToArray(), Is.EqualTo(data));
+        using (ArenaReservation reservation = manager.Open(location))
+        {
+            ArenaByteReader reader = reservation.CreateReader();
+            byte[] readBack = new byte[data.Length];
+            reader.TryRead(0, readBack);
+            Assert.That(readBack, Is.EqualTo(data));
+        }
         Assert.That(location.Size, Is.EqualTo(data.Length));
     }
 
@@ -276,8 +281,11 @@ public class StorageLayerTests
         }
 
         Assert.That(new FileInfo(dedicatedFile).Length, Is.EqualTo(data.Length));
-        using WholeReadSession session = manager.Open(location).BeginWholeReadSession();
-        Assert.That(session.AsSpanIntBounded().ToArray(), Is.EqualTo(data));
+        using ArenaReservation reservation = manager.Open(location);
+        ArenaByteReader reader = reservation.CreateReader();
+        byte[] readBack = new byte[data.Length];
+        reader.TryRead(0, readBack);
+        Assert.That(readBack, Is.EqualTo(data));
     }
 
     [Test]

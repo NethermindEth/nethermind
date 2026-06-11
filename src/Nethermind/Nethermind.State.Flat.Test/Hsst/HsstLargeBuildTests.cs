@@ -3,8 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.IO;
-using System.IO.MemoryMappedFiles;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -17,9 +15,17 @@ namespace Nethermind.State.Flat.Test.Hsst;
 /// <summary>
 /// End-to-end smoke for the HSST builder/reader/merge path at single-HSST sizes
 /// above the 2 GiB single-Span ceiling. Exercises the long-aware code paths
-/// (Bound.Length, HSST index offsets, mmap-backed long-offset WholeReadSessionReader)
+/// (Bound.Length, HSST index offsets, mmap-backed long-offset <see cref="ArenaByteReader"/>)
 /// and verifies — on every yielded entry — that the bytes round-trip exactly,
 /// not just that the entry count matches.
+///
+/// Each HSST is written into its own dedicated arena via a page-tracker-disabled
+/// <see cref="TempDirArenaManager"/> (pageCacheBytes == 0). With the tracker disabled the
+/// <see cref="ArenaByteReader"/> returned by <see cref="ArenaReservation.CreateReader"/>
+/// degenerates to a pure long-offset pointer reader — no residency tracking, no madvise —
+/// which is exactly what these correctness checks want. Dedicated arenas are sparse-sized
+/// to a generous estimate and truncated to the bytes actually written on
+/// <see cref="ArenaWriter.Complete"/>, so over-estimating costs no disk.
 ///
 /// Two scaling strategies are used, picked by the index type's structural cap:
 /// - Multi-byte-keyed indexes (BTree, PackedArray) hit &gt;2 GiB through entry
@@ -62,375 +68,302 @@ public class HsstLargeBuildTests
     private static readonly int ByteKeyEntryCount = 256;
     private static readonly int ByteKeyValueSize = 10 * 1024 * 1024;
 
+    // Generous, sparse-backed upper bound on an N-entry HSST's on-disk footprint. The
+    // dedicated arena is SetLength-sized to this (sparse, so free) and Complete trims it to
+    // the bytes written, so over-estimating is harmless; under-estimating would leave the
+    // mmap shorter than the data and is unsafe, hence the wide margin.
+    private static long EstimateBytes(long entryCount) => entryCount * 48L + (1L << 30);
+
     [TestCase(IndexType.BTree)]
     [TestCase(IndexType.PackedArray)]
-    public unsafe void Hsst_BeyondTwoGiB_RoundTripAndMerge(IndexType indexType)
+    public void Hsst_BeyondTwoGiB_RoundTripAndMerge(IndexType indexType)
     {
-        string tmp = Path.GetTempPath();
-        string pathA = Path.Combine(tmp, $"hsst-large-a-{Guid.NewGuid():N}.bin");
-        string pathB = Path.Combine(tmp, $"hsst-large-b-{Guid.NewGuid():N}.bin");
-        string pathMerged = Path.Combine(tmp, $"hsst-large-m-{Guid.NewGuid():N}.bin");
+        using TempDirArenaManager manager = new();
+        manager.Initialize([]);
 
+        long count = EntryCountFor(indexType);
+
+        // -------- write --------
+        ArenaReservation resA = WriteLargeHsst(manager, indexType, baseKey: 0L, count: count);
+        ArenaReservation resB = WriteLargeHsst(manager, indexType, baseKey: count, count: count);
+        ArenaReservation? resMerged = null;
         try
         {
-            long count = EntryCountFor(indexType);
-
-            // -------- write --------
-            WriteLargeHsst(indexType, pathA, baseKey: 0L, count: count);
-            WriteLargeHsst(indexType, pathB, baseKey: count, count: count);
-
-            long sizeA = new FileInfo(pathA).Length;
-            long sizeB = new FileInfo(pathB).Length;
-            Assert.That(sizeA, Is.GreaterThan((long)int.MaxValue),
+            Assert.That(resA.Size, Is.GreaterThan((long)int.MaxValue),
                 $"{indexType} HSST A is supposed to exceed the 2 GiB single-Span ceiling");
-            Assert.That(sizeB, Is.GreaterThan((long)int.MaxValue),
+            Assert.That(resB.Size, Is.GreaterThan((long)int.MaxValue),
                 $"{indexType} HSST B is supposed to exceed the 2 GiB single-Span ceiling");
 
             // -------- iterate each, verifying every key+value --------
-            IterateAndVerify(indexType, pathA, baseKey: 0L, expectedCount: count);
-            IterateAndVerify(indexType, pathB, baseKey: count, expectedCount: count);
+            IterateAndVerify(indexType, resA, baseKey: 0L, expectedCount: count);
+            IterateAndVerify(indexType, resB, baseKey: count, expectedCount: count);
 
             // -------- merge --------
-            MergeTwo(indexType, pathA, pathB, pathMerged);
+            resMerged = MergeTwo(manager, indexType, resA, resB);
 
-            long sizeMerged = new FileInfo(pathMerged).Length;
-            Assert.That(sizeMerged, Is.GreaterThan((long)int.MaxValue),
+            Assert.That(resMerged.Size, Is.GreaterThan((long)int.MaxValue),
                 $"merged {indexType} HSST is supposed to also exceed 2 GiB");
 
-            IterateAndVerify(indexType, pathMerged, baseKey: 0L, expectedCount: count * 2);
+            IterateAndVerify(indexType, resMerged, baseKey: 0L, expectedCount: count * 2);
         }
         finally
         {
-            TryDelete(pathA);
-            TryDelete(pathB);
-            TryDelete(pathMerged);
+            resMerged?.Dispose();
+            resB.Dispose();
+            resA.Dispose();
         }
     }
 
     [TestCase(IndexType.DenseByteIndex)]
-    public unsafe void Hsst_BeyondTwoGiB_LargeValues_RoundTrip(IndexType indexType)
+    public void Hsst_BeyondTwoGiB_LargeValues_RoundTrip(IndexType indexType)
     {
-        string tmp = Path.GetTempPath();
-        string path = Path.Combine(tmp, $"hsst-large-v-{Guid.NewGuid():N}.bin");
+        using TempDirArenaManager manager = new();
+        manager.Initialize([]);
 
+        ArenaReservation res = WriteLargeValuesHsst(manager, indexType);
         try
         {
-            WriteLargeValuesHsst(indexType, path);
-
-            long size = new FileInfo(path).Length;
             if ((long)ByteKeyValueSize * ByteKeyEntryCount >= int.MaxValue)
-                Assert.That(size, Is.GreaterThan((long)int.MaxValue),
+                Assert.That(res.Size, Is.GreaterThan((long)int.MaxValue),
                     $"{indexType} HSST is supposed to exceed the 2 GiB single-Span ceiling");
 
-            IterateAndVerifyLargeValues(indexType, path);
+            IterateAndVerifyLargeValues(indexType, res);
         }
         finally
         {
-            TryDelete(path);
+            res.Dispose();
         }
     }
 
     // ---------------- writers ----------------
 
-    private static void WriteLargeHsst(IndexType indexType, string path, long baseKey, long count)
+    private static ArenaReservation WriteLargeHsst(IArenaManager manager, IndexType indexType, long baseKey, long count)
     {
-        using FileStream fs = new(path, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
-        ArenaBufferWriter writer = new(fs, firstOffset: 0);
-        try
+        using ArenaWriter arenaWriter = manager.CreateWriter(EstimateBytes(count));
+        ref ArenaBufferWriter writer = ref arenaWriter.GetWriter();
+        switch (indexType)
         {
-            switch (indexType)
-            {
-                case IndexType.BTree:
+            case IndexType.BTree:
+                {
+                    using HsstBTreeBuilderBuffers.Container hsstBuffers = new(checked((int)count));
+                    using HsstBTreeBuilder<ArenaBufferWriter> hsst = new(ref writer, ref hsstBuffers.Buffers, KeySize, expectedKeyCount: checked((int)count));
+                    Span<byte> keyBuf = stackalloc byte[8];
+                    Span<byte> valueBuf = stackalloc byte[1];
+                    valueBuf[0] = BTreeValueByte;
+                    for (long i = 0; i < count; i++)
                     {
-                        using HsstBTreeBuilderBuffers.Container hsstBuffers = new(checked((int)count));
-                        using HsstBTreeBuilder<ArenaBufferWriter> hsst = new(ref writer, ref hsstBuffers.Buffers, KeySize, expectedKeyCount: checked((int)count));
-                        Span<byte> keyBuf = stackalloc byte[8];
-                        Span<byte> valueBuf = stackalloc byte[1];
-                        valueBuf[0] = BTreeValueByte;
-                        for (long i = 0; i < count; i++)
-                        {
-                            BinaryPrimitives.WriteInt64BigEndian(keyBuf, baseKey + i);
-                            hsst.Add(keyBuf[(8 - KeySize)..], valueBuf);
-                        }
-                        hsst.Build();
-                        break;
+                        BinaryPrimitives.WriteInt64BigEndian(keyBuf, baseKey + i);
+                        hsst.Add(keyBuf[(8 - KeySize)..], valueBuf);
                     }
-                case IndexType.PackedArray:
+                    hsst.Build();
+                    break;
+                }
+            case IndexType.PackedArray:
+                {
+                    using HsstPackedArrayBuilder<ArenaBufferWriter> hsst = new(
+                        ref writer, keySize: KeySize, valueSize: PackedValueSize,
+                        expectedKeyCount: checked((int)count));
+                    Span<byte> keyBuf = stackalloc byte[8];
+                    Span<byte> valueBuf = stackalloc byte[PackedValueSize];
+                    for (long i = 0; i < count; i++)
                     {
-                        using HsstPackedArrayBuilder<ArenaBufferWriter> hsst = new(
-                            ref writer, keySize: KeySize, valueSize: PackedValueSize,
-                            expectedKeyCount: checked((int)count));
-                        Span<byte> keyBuf = stackalloc byte[8];
-                        Span<byte> valueBuf = stackalloc byte[PackedValueSize];
-                        for (long i = 0; i < count; i++)
-                        {
-                            BinaryPrimitives.WriteInt64BigEndian(keyBuf, baseKey + i);
-                            FillPackedValuePattern(baseKey + i, valueBuf);
-                            hsst.Add(keyBuf[(8 - KeySize)..], valueBuf);
-                        }
-                        hsst.Build();
-                        break;
+                        BinaryPrimitives.WriteInt64BigEndian(keyBuf, baseKey + i);
+                        FillPackedValuePattern(baseKey + i, valueBuf);
+                        hsst.Add(keyBuf[(8 - KeySize)..], valueBuf);
                     }
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(indexType));
-            }
-            writer.Flush();
+                    hsst.Build();
+                    break;
+                }
+            default:
+                throw new ArgumentOutOfRangeException(nameof(indexType));
         }
-        finally
-        {
-            writer.Dispose();
-        }
+        return arenaWriter.Complete().Reservation;
     }
 
-    private static void WriteLargeValuesHsst(IndexType indexType, string path)
+    private static ArenaReservation WriteLargeValuesHsst(IArenaManager manager, IndexType indexType)
     {
-        using FileStream fs = new(path, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
-        ArenaBufferWriter writer = new(fs, firstOffset: 0);
+        long estimate = (long)ByteKeyValueSize * ByteKeyEntryCount + (1L << 30);
+        using ArenaWriter arenaWriter = manager.CreateWriter(estimate);
+        ref ArenaBufferWriter writer = ref arenaWriter.GetWriter();
         byte[] valueBuf = new byte[ByteKeyValueSize];
-        try
+        switch (indexType)
         {
-            switch (indexType)
-            {
-                case IndexType.DenseByteIndex:
+            case IndexType.DenseByteIndex:
+                {
+                    using HsstDenseByteIndexBuilder<ArenaBufferWriter> hsst = new(ref writer);
+                    // Builder requires strictly descending insertion order.
+                    for (int i = ByteKeyEntryCount - 1; i >= 0; i--)
                     {
-                        using HsstDenseByteIndexBuilder<ArenaBufferWriter> hsst = new(ref writer);
-                        // Builder requires strictly descending insertion order.
-                        for (int i = ByteKeyEntryCount - 1; i >= 0; i--)
-                        {
-                            FillLargeValuePattern((byte)i, valueBuf);
-                            hsst.Add((byte)i, valueBuf);
-                        }
-                        hsst.Build();
-                        break;
+                        FillLargeValuePattern((byte)i, valueBuf);
+                        hsst.Add((byte)i, valueBuf);
                     }
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(indexType));
-            }
-            writer.Flush();
+                    hsst.Build();
+                    break;
+                }
+            default:
+                throw new ArgumentOutOfRangeException(nameof(indexType));
         }
-        finally
-        {
-            writer.Dispose();
-        }
+        return arenaWriter.Complete().Reservation;
     }
 
     // ---------------- iterators ----------------
 
-    private static unsafe void IterateAndVerify(IndexType indexType, string path, long baseKey, long expectedCount)
+    private static void IterateAndVerify(IndexType indexType, ArenaReservation reservation, long baseKey, long expectedCount)
     {
-        using FileStream fs = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        long size = fs.Length;
-        using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(
-            fs, mapName: null, capacity: 0, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
-        using MemoryMappedViewAccessor accessor = mmf.CreateViewAccessor(0, size, MemoryMappedFileAccess.Read);
-        byte* ptr = null;
-        accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
-        try
+        ArenaByteReader reader = reservation.CreateReader();
+        long size = reservation.Size;
+        using HsstEnumerator<ArenaByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
+        Span<byte> expectedKey = stackalloc byte[8];
+        Span<byte> expectedValue = stackalloc byte[PackedValueSize];
+        Span<byte> keyBuf = stackalloc byte[KeySize];
+        long i = 0;
+        while (e.MoveNext(in reader))
         {
-            byte* dataPtr = ptr + accessor.PointerOffset;
-            WholeReadSessionReader reader = new(dataPtr, size);
-            using HsstEnumerator<WholeReadSessionReader, NoOpPin> e = new(in reader, new Bound(0, size));
-            Span<byte> expectedKey = stackalloc byte[8];
-            Span<byte> expectedValue = stackalloc byte[PackedValueSize];
-            Span<byte> keyBuf = stackalloc byte[KeySize];
-            long i = 0;
-            while (e.MoveNext(in reader))
-            {
-                ReadOnlySpan<byte> kSpan = e.CopyCurrentLogicalKey(in reader, keyBuf);
-                Bound vb = e.CurrentValue;
-                using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
+            ReadOnlySpan<byte> kSpan = e.CopyCurrentLogicalKey(in reader, keyBuf);
+            Bound vb = e.CurrentValue;
+            using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
 
-                BinaryPrimitives.WriteInt64BigEndian(expectedKey, baseKey + i);
-                if (!kSpan.SequenceEqual(expectedKey[(8 - KeySize)..]))
-                    Assert.Fail($"key mismatch at entry {i} (baseKey {baseKey})");
-
-                switch (indexType)
-                {
-                    case IndexType.BTree:
-                        if (vb.Length != 1 || vp.Buffer[0] != BTreeValueByte)
-                            Assert.Fail($"value mismatch at entry {i}: len {vb.Length}, byte 0x{(vb.Length > 0 ? vp.Buffer[0] : 0):X2}");
-                        break;
-                    case IndexType.PackedArray:
-                        FillPackedValuePattern(baseKey + i, expectedValue);
-                        if (!vp.Buffer.SequenceEqual(expectedValue))
-                            Assert.Fail($"value mismatch at entry {i}");
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(indexType));
-                }
-                i++;
-            }
-            Assert.That(i, Is.EqualTo(expectedCount));
-        }
-        finally
-        {
-            accessor.SafeMemoryMappedViewHandle.ReleasePointer();
-        }
-    }
-
-    private static unsafe void IterateAndVerifyLargeValues(IndexType indexType, string path)
-    {
-        using FileStream fs = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        long size = fs.Length;
-        using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(
-            fs, mapName: null, capacity: 0, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
-        using MemoryMappedViewAccessor accessor = mmf.CreateViewAccessor(0, size, MemoryMappedFileAccess.Read);
-        byte* ptr = null;
-        accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
-        try
-        {
-            byte* dataPtr = ptr + accessor.PointerOffset;
-            WholeReadSessionReader reader = new(dataPtr, size);
+            BinaryPrimitives.WriteInt64BigEndian(expectedKey, baseKey + i);
+            if (!kSpan.SequenceEqual(expectedKey[(8 - KeySize)..]))
+                Assert.Fail($"key mismatch at entry {i} (baseKey {baseKey})");
 
             switch (indexType)
             {
-                case IndexType.DenseByteIndex:
-                    {
-                        // DenseByteIndex has no HsstEnumerator support — it's point-lookup only.
-                        // Verify every tag 0..ByteKeyEntryCount-1 round-trips via HsstReader.TrySeek.
-                        Span<byte> keyBuf = stackalloc byte[1];
-                        for (int i = 0; i < ByteKeyEntryCount; i++)
-                        {
-                            // Match HsstDenseByteIndexTests' pattern: a fresh reader per lookup.
-                            using HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader);
-                            keyBuf[0] = (byte)i;
-                            Assert.That(r.TrySeek(keyBuf, out _), Is.True, $"DenseByteIndex missing tag {i}");
-                            Bound vb = r.GetBound();
-                            using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
-                            Assert.That(vb.Length, Is.EqualTo(ByteKeyValueSize), $"DenseByteIndex value length at tag {i}");
-                            if (!LargeValueMatches((byte)i, vp.Buffer))
-                                Assert.Fail($"DenseByteIndex value byte mismatch at tag {i}");
-                        }
-                        break;
-                    }
+                case IndexType.BTree:
+                    if (vb.Length != 1 || vp.Buffer[0] != BTreeValueByte)
+                        Assert.Fail($"value mismatch at entry {i}: len {vb.Length}, byte 0x{(vb.Length > 0 ? vp.Buffer[0] : 0):X2}");
+                    break;
+                case IndexType.PackedArray:
+                    FillPackedValuePattern(baseKey + i, expectedValue);
+                    if (!vp.Buffer.SequenceEqual(expectedValue))
+                        Assert.Fail($"value mismatch at entry {i}");
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(indexType));
             }
+            i++;
         }
-        finally
+        Assert.That(i, Is.EqualTo(expectedCount));
+    }
+
+    private static void IterateAndVerifyLargeValues(IndexType indexType, ArenaReservation reservation)
+    {
+        ArenaByteReader reader = reservation.CreateReader();
+
+        switch (indexType)
         {
-            accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+            case IndexType.DenseByteIndex:
+                {
+                    // DenseByteIndex has no HsstEnumerator support — it's point-lookup only.
+                    // Verify every tag 0..ByteKeyEntryCount-1 round-trips via HsstReader.TrySeek.
+                    Span<byte> keyBuf = stackalloc byte[1];
+                    for (int i = 0; i < ByteKeyEntryCount; i++)
+                    {
+                        // Match HsstDenseByteIndexTests' pattern: a fresh reader per lookup.
+                        using HsstReader<ArenaByteReader, NoOpPin> r = new(in reader);
+                        keyBuf[0] = (byte)i;
+                        Assert.That(r.TrySeek(keyBuf, out _), Is.True, $"DenseByteIndex missing tag {i}");
+                        Bound vb = r.GetBound();
+                        using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
+                        Assert.That(vb.Length, Is.EqualTo(ByteKeyValueSize), $"DenseByteIndex value length at tag {i}");
+                        if (!LargeValueMatches((byte)i, vp.Buffer))
+                            Assert.Fail($"DenseByteIndex value byte mismatch at tag {i}");
+                    }
+                    break;
+                }
+            default:
+                throw new ArgumentOutOfRangeException(nameof(indexType));
         }
     }
 
     // ---------------- merge ----------------
 
-    private static unsafe void MergeTwo(IndexType indexType, string pathA, string pathB, string pathOut)
+    private static ArenaReservation MergeTwo(IArenaManager manager, IndexType indexType, ArenaReservation resA, ArenaReservation resB)
     {
-        using FileStream fsA = new(pathA, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using FileStream fsB = new(pathB, FileMode.Open, FileAccess.Read, FileShare.Read);
-        long sizeA = fsA.Length;
-        long sizeB = fsB.Length;
+        ArenaByteReader rA = resA.CreateReader();
+        ArenaByteReader rB = resB.CreateReader();
 
-        using MemoryMappedFile mmfA = MemoryMappedFile.CreateFromFile(
-            fsA, mapName: null, capacity: 0, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
-        using MemoryMappedFile mmfB = MemoryMappedFile.CreateFromFile(
-            fsB, mapName: null, capacity: 0, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
-        using MemoryMappedViewAccessor accA = mmfA.CreateViewAccessor(0, sizeA, MemoryMappedFileAccess.Read);
-        using MemoryMappedViewAccessor accB = mmfB.CreateViewAccessor(0, sizeB, MemoryMappedFileAccess.Read);
-        byte* ptrA = null, ptrB = null;
-        accA.SafeMemoryMappedViewHandle.AcquirePointer(ref ptrA);
-        accB.SafeMemoryMappedViewHandle.AcquirePointer(ref ptrB);
-        try
+        using HsstEnumerator<ArenaByteReader, NoOpPin> eA = new(in rA, new Bound(0, resA.Size));
+        using HsstEnumerator<ArenaByteReader, NoOpPin> eB = new(in rB, new Bound(0, resB.Size));
+        bool moreA = eA.MoveNext(in rA);
+        bool moreB = eB.MoveNext(in rB);
+
+        long merged = EntryCountFor(indexType) * 2;
+        using ArenaWriter arenaWriter = manager.CreateWriter(EstimateBytes(merged));
+        ref ArenaBufferWriter writer = ref arenaWriter.GetWriter();
+        int mergedCount = checked((int)merged);
+        switch (indexType)
         {
-            byte* dataA = ptrA + accA.PointerOffset;
-            byte* dataB = ptrB + accB.PointerOffset;
-            WholeReadSessionReader rA = new(dataA, sizeA);
-            WholeReadSessionReader rB = new(dataB, sizeB);
-
-            using HsstEnumerator<WholeReadSessionReader, NoOpPin> eA = new(in rA, new Bound(0, sizeA));
-            using HsstEnumerator<WholeReadSessionReader, NoOpPin> eB = new(in rB, new Bound(0, sizeB));
-            bool moreA = eA.MoveNext(in rA);
-            bool moreB = eB.MoveNext(in rB);
-
-            using FileStream outFs = new(pathOut, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
-            ArenaBufferWriter writer = new(outFs, firstOffset: 0);
-            try
-            {
-                int merged = checked((int)(EntryCountFor(indexType) * 2));
-                switch (indexType)
+            case IndexType.BTree:
                 {
-                    case IndexType.BTree:
+                    using HsstBTreeBuilderBuffers.Container outHsstBuffers = new(mergedCount);
+                    using HsstBTreeBuilder<ArenaBufferWriter> outHsst = new(ref writer, ref outHsstBuffers.Buffers, KeySize, expectedKeyCount: mergedCount);
+                    Span<byte> keyBufA = stackalloc byte[KeySize];
+                    Span<byte> keyBufB = stackalloc byte[KeySize];
+                    while (moreA || moreB)
+                    {
+                        int cmp = ComparePins(in rA, in rB, in eA, in eB, moreA, moreB);
+                        if (cmp <= 0)
                         {
-                            using HsstBTreeBuilderBuffers.Container outHsstBuffers = new(merged);
-                            using HsstBTreeBuilder<ArenaBufferWriter> outHsst = new(ref writer, ref outHsstBuffers.Buffers, KeySize, expectedKeyCount: merged);
-                            Span<byte> keyBufA = stackalloc byte[KeySize];
-                            Span<byte> keyBufB = stackalloc byte[KeySize];
-                            while (moreA || moreB)
-                            {
-                                int cmp = ComparePins(in rA, in rB, in eA, in eB, moreA, moreB);
-                                if (cmp <= 0)
-                                {
-                                    ReadOnlySpan<byte> key = eA.CopyCurrentLogicalKey(in rA, keyBufA);
-                                    Bound vb = eA.CurrentValue;
-                                    using NoOpPin valPin = rA.PinBuffer(vb.Offset, vb.Length);
-                                    outHsst.Add(key, valPin.Buffer);
-                                    moreA = eA.MoveNext(in rA);
-                                    if (cmp == 0) moreB = eB.MoveNext(in rB);
-                                }
-                                else
-                                {
-                                    ReadOnlySpan<byte> key = eB.CopyCurrentLogicalKey(in rB, keyBufB);
-                                    Bound vb = eB.CurrentValue;
-                                    using NoOpPin valPin = rB.PinBuffer(vb.Offset, vb.Length);
-                                    outHsst.Add(key, valPin.Buffer);
-                                    moreB = eB.MoveNext(in rB);
-                                }
-                            }
-                            outHsst.Build();
-                            break;
+                            ReadOnlySpan<byte> key = eA.CopyCurrentLogicalKey(in rA, keyBufA);
+                            Bound vb = eA.CurrentValue;
+                            using NoOpPin valPin = rA.PinBuffer(vb.Offset, vb.Length);
+                            outHsst.Add(key, valPin.Buffer);
+                            moreA = eA.MoveNext(in rA);
+                            if (cmp == 0) moreB = eB.MoveNext(in rB);
                         }
-                    case IndexType.PackedArray:
+                        else
                         {
-                            using HsstPackedArrayBuilder<ArenaBufferWriter> outHsst = new(
-                                ref writer, keySize: KeySize, valueSize: PackedValueSize, expectedKeyCount: merged);
-                            Span<byte> keyBufA = stackalloc byte[KeySize];
-                            Span<byte> keyBufB = stackalloc byte[KeySize];
-                            while (moreA || moreB)
-                            {
-                                int cmp = ComparePins(in rA, in rB, in eA, in eB, moreA, moreB);
-                                if (cmp <= 0)
-                                {
-                                    ReadOnlySpan<byte> key = eA.CopyCurrentLogicalKey(in rA, keyBufA);
-                                    Bound vb = eA.CurrentValue;
-                                    using NoOpPin valPin = rA.PinBuffer(vb.Offset, vb.Length);
-                                    outHsst.Add(key, valPin.Buffer);
-                                    moreA = eA.MoveNext(in rA);
-                                    if (cmp == 0) moreB = eB.MoveNext(in rB);
-                                }
-                                else
-                                {
-                                    ReadOnlySpan<byte> key = eB.CopyCurrentLogicalKey(in rB, keyBufB);
-                                    Bound vb = eB.CurrentValue;
-                                    using NoOpPin valPin = rB.PinBuffer(vb.Offset, vb.Length);
-                                    outHsst.Add(key, valPin.Buffer);
-                                    moreB = eB.MoveNext(in rB);
-                                }
-                            }
-                            outHsst.Build();
-                            break;
+                            ReadOnlySpan<byte> key = eB.CopyCurrentLogicalKey(in rB, keyBufB);
+                            Bound vb = eB.CurrentValue;
+                            using NoOpPin valPin = rB.PinBuffer(vb.Offset, vb.Length);
+                            outHsst.Add(key, valPin.Buffer);
+                            moreB = eB.MoveNext(in rB);
                         }
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(indexType));
+                    }
+                    outHsst.Build();
+                    break;
                 }
-                writer.Flush();
-            }
-            finally
-            {
-                writer.Dispose();
-            }
+            case IndexType.PackedArray:
+                {
+                    using HsstPackedArrayBuilder<ArenaBufferWriter> outHsst = new(
+                        ref writer, keySize: KeySize, valueSize: PackedValueSize, expectedKeyCount: mergedCount);
+                    Span<byte> keyBufA = stackalloc byte[KeySize];
+                    Span<byte> keyBufB = stackalloc byte[KeySize];
+                    while (moreA || moreB)
+                    {
+                        int cmp = ComparePins(in rA, in rB, in eA, in eB, moreA, moreB);
+                        if (cmp <= 0)
+                        {
+                            ReadOnlySpan<byte> key = eA.CopyCurrentLogicalKey(in rA, keyBufA);
+                            Bound vb = eA.CurrentValue;
+                            using NoOpPin valPin = rA.PinBuffer(vb.Offset, vb.Length);
+                            outHsst.Add(key, valPin.Buffer);
+                            moreA = eA.MoveNext(in rA);
+                            if (cmp == 0) moreB = eB.MoveNext(in rB);
+                        }
+                        else
+                        {
+                            ReadOnlySpan<byte> key = eB.CopyCurrentLogicalKey(in rB, keyBufB);
+                            Bound vb = eB.CurrentValue;
+                            using NoOpPin valPin = rB.PinBuffer(vb.Offset, vb.Length);
+                            outHsst.Add(key, valPin.Buffer);
+                            moreB = eB.MoveNext(in rB);
+                        }
+                    }
+                    outHsst.Build();
+                    break;
+                }
+            default:
+                throw new ArgumentOutOfRangeException(nameof(indexType));
         }
-        finally
-        {
-            accA.SafeMemoryMappedViewHandle.ReleasePointer();
-            accB.SafeMemoryMappedViewHandle.ReleasePointer();
-        }
+        return arenaWriter.Complete().Reservation;
     }
 
     private static int ComparePins(
-        scoped in WholeReadSessionReader rA, scoped in WholeReadSessionReader rB,
-        scoped in HsstEnumerator<WholeReadSessionReader, NoOpPin> eA,
-        scoped in HsstEnumerator<WholeReadSessionReader, NoOpPin> eB,
+        scoped in ArenaByteReader rA, scoped in ArenaByteReader rB,
+        scoped in HsstEnumerator<ArenaByteReader, NoOpPin> eA,
+        scoped in HsstEnumerator<ArenaByteReader, NoOpPin> eB,
         bool moreA, bool moreB)
     {
         if (!moreA) return 1;
@@ -467,11 +400,5 @@ public class HsstLargeBuildTests
         for (int j = 0; j < actual.Length; j++)
             if (actual[j] != (byte)((tag + j) & 0xFF)) return false;
         return true;
-    }
-
-    private static void TryDelete(string path)
-    {
-        try { if (File.Exists(path)) File.Delete(path); }
-        catch { /* best-effort cleanup */ }
     }
 }

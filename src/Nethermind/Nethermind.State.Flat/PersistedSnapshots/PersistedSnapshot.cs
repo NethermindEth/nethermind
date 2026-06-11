@@ -110,15 +110,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal ArenaReservation Reservation => _reservation;
 
     /// <summary>
-    /// Begin a scoped whole-buffer read over this snapshot's reservation. By default the
-    /// session madvises the mmap range cold on dispose; callers that perform their own
-    /// explicit eviction can pass <paramref name="adviseDontNeedOnDispose"/> = <c>false</c>
-    /// to avoid a redundant <c>madvise</c> syscall.
-    /// </summary>
-    public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
-        _reservation.BeginWholeReadSession(adviseDontNeedOnDispose);
-
-    /// <summary>
     /// Construct a reader over this snapshot's bytes.
     /// </summary>
     internal ArenaByteReader CreateReader() => _reservation.CreateReader();
@@ -228,14 +219,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// the ref_ids HSST value little-endian-ushort at a time.
     /// </summary>
     /// <remarks>
-    /// Backed by a plain <see cref="ArenaByteReader"/> over the snapshot's reservation
-    /// rather than a <see cref="WholeReadSession"/>: ref_ids is a tiny, frequently-accessed
-    /// metadata entry that fits in a single OS page, so the page-residency tracker (touched
-    /// on each <c>ArenaByteReader.TryRead</c>) is the right consumer of these reads. A
-    /// session would either bypass the tracker and drop pages from the kernel page cache on
-    /// dispose, or skip the dispose-time <c>MADV_DONTNEED</c> only to keep paying for the
-    /// per-session mmap view + lease bookkeeping for a 2-byte read. The reader holds no
-    /// resources of its own; the surrounding snapshot's lease keeps the mmap alive.
+    /// Backed by a plain <see cref="ArenaByteReader"/> over the snapshot's reservation:
+    /// ref_ids is a tiny, frequently-accessed metadata entry that fits in a single OS page,
+    /// so the page-residency tracker (touched on each <c>ArenaByteReader.TryRead</c>) is the
+    /// right consumer of these reads. The reader holds no resources of its own; the
+    /// surrounding snapshot's lease keeps the mmap alive.
     /// </remarks>
     private RefIdsEnumerator<ArenaByteReader, NoOpPin> GetRefIdsEnumerator() => new(_reservation.CreateReader());
 

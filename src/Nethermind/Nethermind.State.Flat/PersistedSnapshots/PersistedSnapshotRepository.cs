@@ -696,8 +696,15 @@ public sealed class PersistedSnapshotRepository(
 
     private BloomFilter BuildBloomFor(PersistedSnapshot snap)
     {
-        using WholeReadSession session = snap.BeginWholeReadSession();
-        return PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey);
+        try
+        {
+            return PersistedSnapshotBloomBuilder.Build(snap, _bloomBitsPerKey);
+        }
+        finally
+        {
+            // Drop the pages the full bloom scan brought in (MADV_DONTNEED + tracker forget).
+            snap.Reservation.AdviseDontNeed();
+        }
     }
 
     public void Dispose()

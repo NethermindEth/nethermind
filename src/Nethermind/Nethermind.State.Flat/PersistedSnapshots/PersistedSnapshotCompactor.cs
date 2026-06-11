@@ -251,29 +251,22 @@ public class PersistedSnapshotCompactor(
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
 
-        // Open one WholeReadSession per source for the whole compaction. Every column
-        // helper inside NWayMergeSnapshots reads through these views — one mmap +
-        // MADV_NORMAL on open and one MADV_DONTNEED on close per source, regardless of
-        // how many columns we walk. ForgetTracker after the merge cleans the page-tracker
-        // side; AdviseDontNeed on session dispose handles the page cache. The ref_ids
-        // union is computed inside the merger directly from each source's metadata
-        // value span — no pre-pass on this side.
+        // Each source is read through a plain ArenaByteReader created on demand from its
+        // reservation; every column helper inside NWayMergeSnapshots walks these reservations
+        // directly, regardless of how many columns we touch. The post-merge AdviseDontNeed in
+        // the finally drops each source's pages (MADV_DONTNEED) and clears the matching
+        // page-residency-tracker entries. The ref_ids union is computed inside the merger
+        // directly from each source's metadata value span — no pre-pass on this side.
         int n = snapshots.Count;
-        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryListRef<WholeReadSessionView> viewsList = new(n, n);
-        WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
-        Span<WholeReadSessionView> views = viewsList.AsSpan();
+        using ArrayPoolList<ArenaReservation> reservationsList = new(n, n);
+        Span<ArenaReservation> reservations = reservationsList.AsSpan();
         try
         {
             long estimatedSize = 0;
             long bloomCapacity = 0;
             for (int i = 0; i < n; i++)
             {
-                // Session dispose madvises the source's mmap range cold — the compacted
-                // snapshot that supersedes these sources warms its own cache lazily on the
-                // first read of each address, so there's no value in keeping these pages.
-                sessionArr[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessionArr[i].GetView();
+                reservations[i] = snapshots[i].Reservation;
 
                 estimatedSize += snapshots[i].Size;
                 // Each source carries its own bloom; sum their key counts to size the merge.
@@ -299,8 +292,8 @@ public class PersistedSnapshotCompactor(
             using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
             {
                 long sw = Stopwatch.GetTimestamp();
-                PersistedSnapshotMerger.NWayMergeSnapshots<ArenaBufferWriter, WholeReadSessionView, WholeReadSessionReader, NoOpPin>(
-                    views, ref arenaWriter.GetWriter(), mergedBloom);
+                PersistedSnapshotMerger.NWayMergeSnapshots<ArenaBufferWriter, ArenaReservation, ArenaByteReader, NoOpPin>(
+                    reservations, ref arenaWriter.GetWriter(), mergedBloom);
 
                 long len = arenaWriter.GetWriter().Written;
                 StringLabel sizeLabel = GetSizeLabel(compactSize);
@@ -349,7 +342,11 @@ public class PersistedSnapshotCompactor(
         }
         finally
         {
-            for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
+            // Drop each source's scanned pages cold: MADV_DONTNEED over the reservation range
+            // plus the matching page-residency-tracker forget. The compacted snapshot that
+            // supersedes these sources warms its own cache lazily on first read, so there is
+            // no value in keeping these pages resident.
+            for (int i = 0; i < n; i++) reservations[i]?.AdviseDontNeed();
         }
     }
 

@@ -40,8 +40,10 @@ internal static class PersistedSnapshotBuilderTestExtensions
         if (snapshots.Count == 0) throw new ArgumentException("Cannot merge empty snapshot list");
         if (snapshots.Count == 1)
         {
-            using WholeReadSession session = snapshots[0].BeginWholeReadSession();
-            return session.AsSpanIntBounded().ToArray();
+            ArenaReservation reservation = snapshots[0].Reservation;
+            ArenaByteReader reader = reservation.CreateReader();
+            using NoOpPin pin = reader.PinBuffer(0, reservation.Size);
+            return pin.Buffer.ToArray();
         }
 
         long totalSize = 0;
@@ -50,24 +52,11 @@ internal static class PersistedSnapshotBuilderTestExtensions
 
         using PooledByteBufferWriter pooled = new(checked((int)totalSize));
         int n = snapshots.Count;
-        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryListRef<WholeReadSessionView> viewsList = new(n, n);
-        WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
-        Span<WholeReadSessionView> views = viewsList.AsSpan();
-        try
-        {
-            for (int i = 0; i < n; i++)
-            {
-                sessionArr[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessionArr[i].GetView();
-            }
-            PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSessionView, WholeReadSessionReader, NoOpPin>(
-                views, ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
-        }
+        using ArrayPoolList<ArenaReservation> reservationsList = new(n, n);
+        Span<ArenaReservation> reservations = reservationsList.AsSpan();
+        for (int i = 0; i < n; i++) reservations[i] = snapshots[i].Reservation;
+        PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, ArenaReservation, ArenaByteReader, NoOpPin>(
+            reservations, ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());
         return pooled.WrittenSpan.ToArray();
     }
 }
