@@ -78,7 +78,7 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // MaybeFlushBeforeEntry's leaf-fit estimate can read it in O(1) instead of
     // rescanning the pending CommonPrefixArr slice on every Add. Reset to 0 on
     // every full pending flush (MaybeEmitInlineLeaf / FlushPendingAsEntries); recomputed
-    // by a bounded rescan in FlushPendingNotOnCurrentPage's partial-trim path.
+    // by a bounded rescan in FinalizePendingNotOnCurrentPage's partial-trim path.
     internal byte PendingMaxSepLen = 0;
 
     /// <summary>

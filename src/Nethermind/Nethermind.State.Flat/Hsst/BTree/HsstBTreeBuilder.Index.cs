@@ -26,7 +26,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     //
     // Per-key state during this build phase is one <c>long</c> position. Per-entry
     // common-prefix lengths against the prior entry's key are precomputed online in
-    // <see cref="EmitEntryBookkeeping"/> into <c>Buffers.CommonPrefixArr</c>; leaf separators
+    // <see cref="EmitEntryBookkeeping"/> into <c>_buffers.CommonPrefixArr</c>; leaf separators
     // are derived as <c>min(commonPrefix + 1, currKeyLen)</c>. Internal-node
     // separators are derived the same way — adjacency of <see cref="HsstIndexNodeInfo"/>
     // ranges means <c>commonPrefixArr[curr.FirstEntry]</c> already holds the LCP
@@ -211,7 +211,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         // Root prefix tracking: the final node emitted is the root.
         _rootPrefixLen = 0;
-        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        ref HsstBTreeBuilderBuffers bufs = ref _buffers;
         if (_entryCount == 0)
         {
             // Empty index: write a single empty index node.
@@ -328,7 +328,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     private int CopyRootPrefixBytes(scoped Span<byte> dest)
     {
         if (_rootPrefixLen == 0) return 0;
-        ReadOnlySpan<byte> rootFirstKey = Buffers.RootFirstKey.AsSpan();
+        ReadOnlySpan<byte> rootFirstKey = _buffers.RootFirstKey.AsSpan();
         if (rootFirstKey.Length < _rootPrefixLen)
             throw new InvalidOperationException("Root first-key cache not populated by BuildIndex.");
         rootFirstKey[.._rootPrefixLen].CopyTo(dest);
@@ -383,7 +383,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         out int nodePrefixLen)
     {
         int count = children.Length;
-        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        ref HsstBTreeBuilderBuffers bufs = ref _buffers;
 
         // Per-child separator length: natural LCP-derived length widened to at least
         // the child's own planner-picked prefix so the parent slot can hand the child
@@ -518,7 +518,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         // on the pooled buffers struct so back-to-back Builds reuse the rent instead of
         // re-stackallocating 510 bytes per ChooseIntermediateChildCount call.
         int commonLen = firstSepLen;
-        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+        ref HsstBTreeBuilderBuffers bufs = ref _buffers;
         // firstSep is filled once and read across the loop; sepBuf is refilled per candidate.
         // Both reuse their list buffers across back-to-back Builds.
         NativeMemoryList<byte> firstSepList = bufs.IndexFirstSepScratch;
