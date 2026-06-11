@@ -222,7 +222,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             return true;
         }
 
-        using SnapshotPooledList path = AssembleSnapshotsUntil(head, blockNumber, estimatedSize: 16);
+        using SnapshotPooledList path = AssembleSnapshotsUntil(head, blockNumber, estimatedSize: 16); // BFS initial capacity hint
         if (path.Count == 0)
         {
             ancestor = default;

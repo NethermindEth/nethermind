@@ -509,6 +509,31 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void FlushToPersistence_UnfinalizedForkAtBoundary_PersistsHeadReachableFork()
+    {
+        // Two unfinalized forks at the boundary block 16; the head's chain runs through target2. The flush
+        // must persist target2 (head-reachable), not the arbitrary first fork target1.
+        StateId target1 = CreateStateId(16, rootByte: 1); // arbitrary "first" (lowest root)
+        StateId target2 = CreateStateId(16, rootByte: 2); // on the head's chain
+        StateId head = CreateStateId(32);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(0); // nothing finalized
+
+        using Snapshot fork1 = CreateSnapshot(Block0, target1, compacted: true);
+        using Snapshot fork2 = CreateSnapshot(Block0, target2, compacted: true);
+        using Snapshot toHead = CreateSnapshot(target2, head, compacted: true); // head reachable only via target2
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        Assert.That(result, Is.EqualTo(head));
+        _persistence.Received().CreateWriteBatch(Block0, target2);
+        _persistence.DidNotReceive().CreateWriteBatch(Block0, target1);
+    }
+
+    [Test]
     public void FlushToPersistence_PrefersFinalizedOverUnfinalized()
     {
         // Arrange - two snapshots at same block, one finalized
