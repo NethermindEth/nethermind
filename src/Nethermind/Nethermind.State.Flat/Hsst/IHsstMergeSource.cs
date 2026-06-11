@@ -18,14 +18,10 @@ namespace Nethermind.State.Flat.Hsst;
 /// type so <see cref="CreateReader"/> / <see cref="Bound"/> resolve to direct calls in the
 /// cursor's hot loop.
 /// </remarks>
-internal interface IHsstMergeSource<TReader, TPin>
+internal interface IHsstMergeSource<TReader, TPin> : IHsstReaderSource<TReader, TPin>
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    /// <summary>Materialise a fresh reader scoped to this source. Called once per cursor
-    /// advance and once per value pin during the merge.</summary>
-    TReader CreateReader();
-
     /// <summary>The scope this source is positioned over. The cursor uses this to build
     /// the per-slot enumerator at construction time.</summary>
     Bound Bound { get; }

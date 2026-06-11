@@ -17,6 +17,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// contract as <see cref="WholeReadSession.GetView"/> / <see cref="WholeReadSessionReader"/>.
 /// </remarks>
 public readonly unsafe struct WholeReadSessionView(IntPtr ptr, long length)
+    : IHsstReaderSource<WholeReadSessionReader, NoOpPin>
 {
     public IntPtr Ptr => ptr;
     public long Length => length;
