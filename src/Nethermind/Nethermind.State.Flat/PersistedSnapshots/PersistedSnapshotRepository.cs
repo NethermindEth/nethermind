@@ -282,7 +282,7 @@ public sealed class PersistedSnapshotRepository(
         using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize);
         using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize))
         {
-            PersistedSnapshotBuilder.Build<ArenaBufferWriter, WholeReadSessionReader, NoOpPin>(
+            PersistedSnapshotBuilder.Build<ArenaBufferWriter>(
                 snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
             Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written, _tierLabel);
             (location, reservation) = arenaWriter.Complete();

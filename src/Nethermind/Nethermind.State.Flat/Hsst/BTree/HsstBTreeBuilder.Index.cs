@@ -11,13 +11,11 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Index-region construction for <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}"/> — see
+/// Index-region construction for <see cref="HsstBTreeBuilder{TWriter}"/> — see
 /// the partial in <c>HsstBTreeBuilder.cs</c> for the data-region (entry-add) phase.
 /// </summary>
-public ref partial struct HsstBTreeBuilder<TWriter, TReader, TPin>
-    where TWriter : IByteBufferWriterWithReader<TReader, TPin>
-    where TReader : IHsstByteReader<TPin>, allows ref struct
-    where TPin : struct, IBufferPin, allows ref struct
+public ref partial struct HsstBTreeBuilder<TWriter>
+    where TWriter : IByteBufferWriter
 {
     // ─────────── Index-region construction ───────────
     //

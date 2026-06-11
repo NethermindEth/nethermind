@@ -29,7 +29,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
         using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
         using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
             Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
-        PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+        PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer>(
             snapshot, ref pooled.GetWriter(), blobWriter, bloom);
         blobWriter.Complete();
         return pooled.WrittenSpan.ToArray();
@@ -61,7 +61,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
                 views[i] = sessionArr[i].GetView();
             }
-            PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+            PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<PooledByteBufferWriter.Writer>(
                 views, ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());
         }
         finally

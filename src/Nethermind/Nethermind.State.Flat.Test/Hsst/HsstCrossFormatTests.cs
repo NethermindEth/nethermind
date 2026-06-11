@@ -195,7 +195,7 @@ public class HsstCrossFormatTests
             case Format.BTreeKeyFirst:
                 {
                     using HsstBTreeBuilderBuffersContainer buffers = new(keys.Length);
-                    HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b
+                    HsstBTreeBuilder<PooledByteBufferWriter.Writer> b
                         = new(ref pooled.GetWriter(), ref buffers.Buffers, keySize, keyFirst: format == Format.BTreeKeyFirst);
                     try
                     {

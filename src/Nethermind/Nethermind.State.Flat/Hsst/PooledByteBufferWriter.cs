@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.Hsst;
@@ -22,7 +21,7 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
 
     public void Dispose() => _writer.ReturnBuffer();
 
-    public unsafe struct Writer : IByteBufferWriterWithReader<PooledByteBufferWriter.WriterReader, NoOpPin>
+    public unsafe struct Writer : IByteBufferWriter
     {
         internal byte* _buffer;
         private int _capacity;
@@ -51,20 +50,6 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
         /// <summary>Rewind the cursor to 0; keeps the backing buffer for reuse.</summary>
         public void Reset() => _written = 0;
 
-        /// <summary>
-        /// Reader covering [Written − pastSize, Written). The reader resolves the
-        /// current backing pointer through <c>ref Writer</c> on every access, so a
-        /// later <see cref="Grow"/> reallocation is safe between reads. Pins
-        /// returned by <see cref="WriterReader.PinBuffer"/> however hold a span over
-        /// the buffer at pin time and must not be held across writes that could
-        /// trigger a grow.
-        /// </summary>
-        [UnscopedRef]
-        public WriterReader OpenReader(long pastSize)
-            => new(ref this, _written - checked((int)pastSize), checked((int)pastSize));
-
-        public void DisposeActiveReader() { }
-
         private void Grow(int sizeHint)
         {
             int needed = _written + sizeHint;
@@ -88,44 +73,5 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
             _capacity = 0;
             if (buffer is not null) NativeMemory.Free(buffer);
         }
-    }
-
-    /// <summary>
-    /// Reader over a fixed window of a <see cref="Writer"/>. Holds a <c>ref</c> to
-    /// the writer so the current backing pointer is resolved fresh on each access —
-    /// safe across <see cref="Writer.GetSpan"/>-triggered reallocation.
-    /// </summary>
-    public readonly unsafe ref struct WriterReader : IHsstByteReader<NoOpPin>
-    {
-        private readonly ref Writer _writer;
-        private readonly int _start;
-        private readonly int _length;
-
-        internal WriterReader(ref Writer writer, int start, int length)
-        {
-            _writer = ref writer;
-            _start = start;
-            _length = length;
-        }
-
-        public long Length => _length;
-
-        public bool TryRead(long offset, scoped Span<byte> output)
-        {
-            if ((ulong)offset > (ulong)(_length - output.Length)) return false;
-            int from = _start + (int)offset;
-            new ReadOnlySpan<byte>(_writer._buffer + from, output.Length).CopyTo(output);
-            return true;
-        }
-
-        public NoOpPin PinBuffer(long offset, long size)
-        {
-            if ((ulong)offset + (ulong)size > (ulong)_length)
-                throw new ArgumentOutOfRangeException(nameof(offset));
-            int from = _start + (int)offset;
-            return new NoOpPin(new ReadOnlySpan<byte>(_writer._buffer + from, (int)size));
-        }
-
-        public void Prefetch(long offset) { }
     }
 }

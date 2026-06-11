@@ -7,17 +7,15 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// N-way merge driver that emits a single <see cref="IndexType.BTree"/> HSST from N
 /// pre-positioned source enumerators. Drives a <see cref="NWayMergeCursor{TReader,TPin,TSource}"/>
 /// over the sources; on every cursor advance opens
-/// <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.BeginValueWrite"/> and delegates to
+/// <see cref="HsstBTreeBuilder{TWriter}.BeginValueWrite"/> and delegates to
 /// <typeparamref name="TValueMerger"/>.<see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource}.MergeValues"/>
 /// for conflict resolution (a single matching source is the degenerate case of the same merge).
 /// </summary>
 /// <remarks>
-/// Writer-side and cursor-side reader/pin types are independent — the cursor reads from
-/// the merge sources, the builder reads back from the destination writer during the index
-/// build; the two can have entirely different storage backings. Hence the two separate
-/// generic trios: (<typeparamref name="TWriter"/>, <typeparamref name="TWriterReader"/>,
-/// <typeparamref name="TWriterPin"/>) for the builder and (<typeparamref name="TReader"/>,
-/// <typeparamref name="TPin"/>, <typeparamref name="TSource"/>) for the cursor. Generic
+/// The destination writer (<typeparamref name="TWriter"/>) and the cursor's reader/pin/source
+/// trio (<typeparamref name="TReader"/>, <typeparamref name="TPin"/>,
+/// <typeparamref name="TSource"/>) are independent — the cursor reads from the merge sources
+/// while the builder only writes, so they can have entirely different storage backings. Generic
 /// over <typeparamref name="TValueMerger"/> (struct constraint with
 /// <c>allows ref struct</c>) so the JIT monomorphises each merger call site and resolves
 /// every hook to a direct invocation — no virtual dispatch, no allocation.
@@ -33,16 +31,14 @@ internal static class HsstBTreeMerger
     /// value for each key, resolving conflicts across the matching sources.</param>
     /// <param name="expectedKeyCount">Forwarded to the underlying builder (sizing hint).</param>
     /// <param name="keyFirst">Forwarded to the underlying builder (entry layout selector).</param>
-    internal static void NWayMerge<TWriter, TWriterReader, TWriterPin, TReader, TPin, TSource, TFactory, TValueMerger>(
+    internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TValueMerger>(
         ref TWriter writer,
         int keyLength,
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
         TValueMerger valueMerger,
         int expectedKeyCount = 16,
         bool keyFirst = false)
-        where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin>
-        where TWriterPin : struct, IBufferPin, allows ref struct
-        where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct
+        where TWriter : IByteBufferWriter
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TSource : struct, IHsstMergeSource<TReader, TPin>
@@ -50,7 +46,7 @@ internal static class HsstBTreeMerger
         where TValueMerger : struct, IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource, TFactory>
     {
         using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount);
-        NWayMerge<TWriter, TWriterReader, TWriterPin, TReader, TPin, TSource, TFactory, TValueMerger>(
+        NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TValueMerger>(
             ref writer, keyLength, ref cursor, valueMerger,
             ref buffers.Buffers, expectedKeyCount, keyFirst);
     }
@@ -62,7 +58,7 @@ internal static class HsstBTreeMerger
     /// per-address slot-prefix BTree reuses the same container for every address in a
     /// per-address column merge.
     /// </summary>
-    internal static void NWayMerge<TWriter, TWriterReader, TWriterPin, TReader, TPin, TSource, TFactory, TValueMerger>(
+    internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TValueMerger>(
         ref TWriter writer,
         int keyLength,
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
@@ -70,9 +66,7 @@ internal static class HsstBTreeMerger
         scoped ref HsstBTreeBuilderBuffers externalBuffers,
         int expectedKeyCount = 16,
         bool keyFirst = false)
-        where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin>
-        where TWriterPin : struct, IBufferPin, allows ref struct
-        where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct
+        where TWriter : IByteBufferWriter
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TSource : struct, IHsstMergeSource<TReader, TPin>
@@ -82,7 +76,7 @@ internal static class HsstBTreeMerger
         // builder is referenced indirectly across MergeValues via BeginValueWrite; the
         // compiler refuses `ref` to a `using`-declared local, so manage disposal manually
         // via try/finally (same pattern as PersistedSnapshotMerger's BTree call sites).
-        HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> builder =
+        HsstBTreeBuilder<TWriter> builder =
             new(ref writer, ref externalBuffers, keyLength, expectedKeyCount, keyFirst);
         try
         {
@@ -103,7 +97,7 @@ internal static class HsstBTreeMerger
     }
 
     /// <summary>
-    /// Key-first variant of <see cref="NWayMerge{TWriter,TWriterReader,TWriterPin,TReader,TPin,TSource,TValueMerger}(ref TWriter,int,ref NWayMergeCursor{TReader,TPin,TSource},TValueMerger,ref HsstBTreeBuilderBuffers,int,bool)"/>:
+    /// Key-first variant of <see cref="NWayMerge{TWriter,TReader,TPin,TSource,TFactory,TValueMerger}(ref TWriter,int,ref NWayMergeCursor{TReader,TPin,TSource,TFactory},TValueMerger,ref HsstBTreeBuilderBuffers,int,bool)"/>:
     /// drives an <see cref="IndexType.BTreeKeyFirst"/> outer build, where the BTree
     /// builder requires the value's full length up front. Stages each emitted entry's
     /// value through an internal <see cref="PooledByteBufferWriter"/> (the value-merger
@@ -112,16 +106,14 @@ internal static class HsstBTreeMerger
     /// writer type is therefore fixed to <see cref="PooledByteBufferWriter.Writer"/>,
     /// independent of the outer builder's writer type.
     /// </summary>
-    internal static void NWayMergeKeyFirst<TBuilderWriter, TBuilderReader, TBuilderPin, TReader, TPin, TSource, TFactory, TValueMerger>(
+    internal static void NWayMergeKeyFirst<TBuilderWriter, TReader, TPin, TSource, TFactory, TValueMerger>(
         ref TBuilderWriter writer,
         int keyLength,
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
         TValueMerger valueMerger,
         scoped ref HsstBTreeBuilderBuffers externalBuffers,
         int expectedKeyCount = 16)
-        where TBuilderWriter : IByteBufferWriterWithReader<TBuilderReader, TBuilderPin>
-        where TBuilderPin : struct, IBufferPin, allows ref struct
-        where TBuilderReader : IHsstByteReader<TBuilderPin>, allows ref struct
+        where TBuilderWriter : IByteBufferWriter
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TSource : struct, IHsstMergeSource<TReader, TPin>
@@ -129,7 +121,7 @@ internal static class HsstBTreeMerger
         where TValueMerger : struct, IHsstBTreeValueMerger<PooledByteBufferWriter.Writer, TReader, TPin, TSource, TFactory>
     {
         using PooledByteBufferWriter staging = new(4096);
-        HsstBTreeBuilder<TBuilderWriter, TBuilderReader, TBuilderPin> builder =
+        HsstBTreeBuilder<TBuilderWriter> builder =
             new(ref writer, ref externalBuffers, keyLength, expectedKeyCount, keyFirst: true);
         try
         {
