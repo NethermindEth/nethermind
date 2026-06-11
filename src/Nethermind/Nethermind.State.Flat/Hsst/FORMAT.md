@@ -543,7 +543,7 @@ node header** — they arrive from outside:
   no parent to inherit from).
 
 **`CommonPrefixLen` is picked per node by the layout planner**
-(`BTreeNodeLayoutPlanner.Plan`) from the per-entry LCP array and the
+(`HsstBTreeBuilder.ComputeLayout`) from the per-entry LCP array and the
 node's separator lengths. The per-entry LCP array
 (`commonPrefixArr[i]` = LCP between entry `i-1` and entry `i`) is
 computed once during `Add`/`FinishValueWrite` and shared across every
@@ -679,8 +679,8 @@ Writers / encoders:
 - `Hsst/BTree/BTreeNodeWriter.cs` — writes a single B-tree index node's
   bytes (`Metadata | Keys section | Values section`, with the fixed 12-byte
   metadata header at the front).
-- `Hsst/BTree/BTreeNodeLayoutPlanner.cs` — picks key/value section encodings
-  (Variable / Uniform), section sizes, and per-node `CommonPrefixLen`.
+- `Hsst/BTree/HsstBTreeBuilder.Index.cs` (`ComputeLayout` / `LayoutPlan`) — picks key/value
+  section encodings (Variable / Uniform), section sizes, and per-node `CommonPrefixLen`.
 - `Hsst/BTree/BTreeNodeMetadata.cs` / `Hsst/BTree/NodeMetadata.cs` — node
   header field encode/decode and the flag-byte / `NodeKind` accessors.
 - `Hsst/BTree/BTreeNodeKind.cs` — `NodeKind` enum (low 2 bits of the shared
