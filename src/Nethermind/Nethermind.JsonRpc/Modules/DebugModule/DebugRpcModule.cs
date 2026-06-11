@@ -886,39 +886,4 @@ public class DebugRpcModule(
         }
         return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(parent, block));
     }
-
-    public ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null)
-    {
-        blockParameter ??= BlockParameter.Latest;
-
-        BlockHeader? header = blockFinder.FindHeader(blockParameter);
-        if (header is null)
-        {
-            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
-        }
-
-        if (header.Number == 0)
-        {
-            return ResultWrapper<Witness>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
-        }
-
-        callRequest.Gas ??= header.GasLimit;
-
-        Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: false);
-        if (!txResult.Success(out Transaction? tx, out string? error))
-        {
-            return ResultWrapper<Witness>.Fail(error, ErrorCodes.InvalidInput);
-        }
-
-        tx.SenderAddress ??= Address.Zero;
-
-        // Clone header (avoid mutating caller's) and zero GasUsed so the budget check
-        // (block.GasUsed + tx.GasLimit <= block.GasLimit) doesn't reject default-gas calls.
-        BlockHeader callHeader = header.Clone();
-        callHeader.GasUsed = 0;
-
-        if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data.Length}");
-
-        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(callHeader, tx));
-    }
 }

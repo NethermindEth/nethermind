@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -31,6 +33,16 @@ public static class BasePersistence
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
+    private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
+
+    /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
+    internal const byte SlotEncodingRaw = 0;
+
+    /// <summary>RLP storage slot encoding: the stripped value is stored as an RLP byte string.</summary>
+    internal const byte SlotEncodingRlp = 1;
+
+    private const string RawSlotDeprecationMessage =
+        "Flat DB uses the legacy raw storage slot encoding, which is deprecated and will be removed in a future release. Please resync to adopt the RLP slot encoding.";
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
@@ -105,6 +117,62 @@ public static class BasePersistence
         if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
         {
             SetLayout(metadataBatch, layout);
+        }
+    }
+
+    private static byte? ReadSlotEncoding(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(SlotEncodingKey);
+        return bytes is null || bytes.Length == 0 ? null : bytes[0];
+    }
+
+    [SkipLocalsInit]
+    private static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
+    {
+        Span<byte> bytes = stackalloc byte[1];
+        bytes[0] = version;
+        kv.PutSpan(SlotEncodingKey, bytes);
+    }
+
+    /// <summary>
+    /// Decides whether storage slot values are RLP-wrapped for this DB. Brand-new DBs always wrap; the recorded
+    /// version of an existing DB always wins so its on-disk format is read back correctly.
+    /// </summary>
+    /// <remarks>
+    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a DB synced before this
+    /// feature existed both lack it. They are distinguished via the <see cref="LayoutKey"/>, which any
+    /// previously-synced DB will already have recorded — its presence means raw legacy data, so wrapping is
+    /// disabled (with a deprecation warning) to avoid misreading raw values as RLP.
+    /// </remarks>
+    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ILogger logger)
+    {
+        IReadOnlyKeyValueStore meta = db.GetColumnDb(FlatDbColumns.Metadata);
+        bool rlpWrap = ReadSlotEncoding(meta) switch
+        {
+            SlotEncodingRlp => true,
+            SlotEncodingRaw => false,
+            // No recorded version: a brand-new DB wraps; a previously-synced DB (Layout present) is legacy raw.
+            null => ReadLayout(meta) is null,
+            byte version => throw new InvalidConfigurationException(
+                $"Flat DB metadata contains an unrecognized slot encoding version '{version}'. The DB may be corrupt or was written by a newer version.",
+                -1),
+        };
+
+        if (!rlpWrap) WarnRawDeprecated(logger);
+        return rlpWrap;
+    }
+
+    /// <summary>Warns that the DB is on the deprecated raw slot encoding and should be resynced.</summary>
+    private static void WarnRawDeprecated(ILogger logger)
+    {
+        if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
+    }
+
+    internal static void RecordSlotEncodingOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, bool rlpWrap)
+    {
+        if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
+        {
+            SetSlotEncoding(metadataBatch, rlpWrap ? SlotEncodingRlp : SlotEncodingRaw);
         }
     }
 
@@ -189,6 +257,9 @@ public static class BasePersistence
 
         public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value);
 
+        /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
+        public void SetStorageEncoded(in ValueHash256 address, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
+
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
@@ -213,7 +284,8 @@ public static class BasePersistence
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
+        /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account);
 
@@ -267,8 +339,8 @@ public static class BasePersistence
             _flatWriteBatch.SetStorage(addr.ToAccountPath, hashBuffer, value);
         }
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
-            _flatWriteBatch.SetStorage(addrHash, slotHash, value);
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
+            _flatWriteBatch.SetStorageEncoded(addrHash, slotHash, rlpValue);
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
@@ -407,8 +479,8 @@ public static class BasePersistence
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
             _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
-            _flatWriter.SetStorageRaw(addrHash, slotHash, value);
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
+            _flatWriter.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
             _flatWriter.SetAccountRaw(addrHash, account);

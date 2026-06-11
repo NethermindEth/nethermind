@@ -151,6 +151,28 @@ public readonly ref struct TransactionSubstate
         return null;
     }
 
+    /// <summary>
+    /// Builds the user-facing revert message: <c>"execution reverted: &lt;reason&gt;"</c> when the
+    /// revert payload carries a decodable <c>Error(string)</c>/<c>Panic(uint256)</c> selector and a
+    /// reason was parsed, otherwise the bare <c>"execution reverted"</c> sentinel.
+    /// </summary>
+    /// <remarks>
+    /// Shared by <c>eth_call</c>/<c>eth_estimateGas</c> and <c>proof_call</c> so they report identical
+    /// text for the same revert. The selector is checked on the raw payload (not the decoded string) to
+    /// avoid a sentinel collision — e.g. <c>require(false, "execution reverted")</c> must not be taken
+    /// for the bare sentinel.
+    /// </remarks>
+    public static string BuildRevertMessage(ReadOnlySpan<byte> revertPayload, string? reason)
+    {
+        bool isKnownRevertType = revertPayload.Length >= RevertPrefix &&
+            (revertPayload[..RevertPrefix].SequenceEqual(ErrorFunctionSelector) ||
+             revertPayload[..RevertPrefix].SequenceEqual(PanicFunctionSelector));
+
+        return isKnownRevertType && !string.IsNullOrEmpty(reason)
+            ? "execution reverted: " + reason
+            : "execution reverted";
+    }
+
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
         try
