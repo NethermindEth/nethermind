@@ -507,6 +507,24 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_header_with_require_canonical_returns_null_when_chain_level_is_missing()
+    {
+        // Regression test for issue #8029: an unclean shutdown between the header write and the chain level
+        // write leaves a header without a level. When the beacon search guard skips level creation,
+        // FindHeader with RequireCanonical used to throw NullReferenceException on the missing level.
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = builder.TestObject;
+
+        BlockHeader headerWithoutLevel = Build.A.BlockHeader.WithNumber(2).WithTotalDifficulty(3_000_000).TestObject;
+        Assert.That(blockTree.Insert(headerWithoutLevel, BlockTreeInsertHeaderOptions.BeaconHeaderMetadata), Is.EqualTo(AddBlockResult.Added));
+        builder.ChainLevelInfoRepository.Delete(headerWithoutLevel.Number);
+
+        Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
+            "test setup must take the path where the level-creation guard skips creating the missing level");
+        Assert.That(blockTree.FindHeader(headerWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_by_number_basic()
     {
         BlockTree blockTree = BuildBlockTree();

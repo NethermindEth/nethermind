@@ -578,7 +578,8 @@ namespace Nethermind.Blockchain
 
                 if (requiresCanonical)
                 {
-                    bool isMain = level.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
+                    // A missing level (e.g. after an unclean shutdown between header and level writes) means the header is not canonical.
+                    bool isMain = level?.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
                     header = isMain ? header : null;
                 }
             }
