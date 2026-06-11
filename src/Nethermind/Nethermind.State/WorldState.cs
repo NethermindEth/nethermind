@@ -100,7 +100,7 @@ namespace Nethermind.State
         public void SetStorageReadJournaling(bool enabled)
         => _persistentStorageProvider.JournalReads = enabled;
 
-    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+        public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.GetOriginal(storageCell);
