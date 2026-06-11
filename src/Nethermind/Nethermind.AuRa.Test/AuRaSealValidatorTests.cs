@@ -142,7 +142,7 @@ namespace Nethermind.AuRa.Test
         public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaChainSpecEngineParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
         {
             _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber(parentBlock.Number - 1).TestObject));
-            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.AsAuRa().AuRaStep!.Value, out _).Returns(isValidSealer);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.GetAuRaStep()!.Value, out _).Returns(isValidSealer);
 
             object cause = null;
 

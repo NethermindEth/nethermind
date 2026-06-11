@@ -213,7 +213,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 using McsLock.Disposable _ = _lock.Acquire();
 
-                long step = header.AsAuRa().AuRaStep!.Value;
+                long step = header.GetAuRaStep()!.Value;
                 Address author = header.Beneficiary;
                 Hash256 hash = header.Hash;
                 int index = BinarySearch(step);

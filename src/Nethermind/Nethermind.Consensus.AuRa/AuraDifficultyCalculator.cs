@@ -27,6 +27,6 @@ namespace Nethermind.Consensus.AuRa
         }
 
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
-            CalculateDifficulty(parent.GetAuRaStep() ?? 0, _auRaStepCalculator.CurrentStep);
+            CalculateDifficulty(parent.GetAuRaStepOrZero(), _auRaStepCalculator.CurrentStep);
     }
 }

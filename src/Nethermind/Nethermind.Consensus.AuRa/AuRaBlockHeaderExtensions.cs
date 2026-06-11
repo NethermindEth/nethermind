@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa;
@@ -16,7 +18,11 @@ namespace Nethermind.Consensus.AuRa;
 /// </remarks>
 public static class AuRaBlockHeaderExtensions
 {
+    /// <summary>Returns the AuRa step on <paramref name="header"/>, or <c>null</c> when the header is not AuRa-typed or the step is unset.</summary>
     public static long? GetAuRaStep(this BlockHeader header) => (header as AuRaBlockHeader)?.AuRaStep;
+
+    /// <summary>Returns the AuRa step on <paramref name="header"/>, or <c>0</c> when the header is not AuRa-typed or the step is unset.</summary>
+    public static long GetAuRaStepOrZero(this BlockHeader? header) => (header as AuRaBlockHeader)?.AuRaStep ?? 0;
 
     public static byte[]? GetAuRaSignature(this BlockHeader header) => (header as AuRaBlockHeader)?.AuRaSignature;
 
@@ -24,4 +30,17 @@ public static class AuRaBlockHeaderExtensions
     /// Hard cast — use from AuRa-only code paths where the runtime type is guaranteed.
     /// </summary>
     public static AuRaBlockHeader AsAuRa(this BlockHeader header) => (AuRaBlockHeader)header;
+
+    /// <summary>
+    /// Cast <paramref name="header"/> to <see cref="AuRaBlockHeader"/>, throwing a uniform
+    /// <see cref="InvalidOperationException"/> when the header is not AuRa-typed. The optional
+    /// <paramref name="operation"/> is included in the message (defaults to the calling method
+    /// name) so the failure points to the actual call site.
+    /// </summary>
+    public static AuRaBlockHeader RequireAuRa(this BlockHeader header, [CallerMemberName] string? operation = null)
+    {
+        if (header is AuRaBlockHeader aura) return aura;
+        throw new InvalidOperationException(
+            $"{operation} requires an AuRa header (block {header.Number}, hash {header.Hash}).");
+    }
 }
