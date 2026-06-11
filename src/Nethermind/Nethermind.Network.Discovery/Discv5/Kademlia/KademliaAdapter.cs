@@ -82,11 +82,7 @@ public sealed class KademliaAdapter(
             Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
             for (int i = 0; i < nodes.Length; i++)
             {
-                Node? node = nodes[i];
-                if (node is null)
-                {
-                    continue;
-                }
+                Node node = nodes[i];
 
                 if (excludedHash is not null && node.IdHash.Equals(excludedHash))
                 {
@@ -630,11 +626,7 @@ public sealed class KademliaAdapter(
         Hash256 requesterHash = requester.IdHash;
         for (int i = 0; i < nodes.Length && result.Count < MaxFindNodeRecords; i++)
         {
-            Node? node = nodes[i];
-            if (node is null)
-            {
-                continue;
-            }
+            Node node = nodes[i];
 
             if (node.IdHash.Equals(requesterHash) || string.IsNullOrEmpty(node.Enr) || !seen.Add(node.Id.Hash))
             {

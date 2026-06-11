@@ -5,10 +5,13 @@ using System;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
+using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -20,9 +23,17 @@ namespace Nethermind.Network.Discovery.Test.Discv5;
 public class KademliaAdapterTests
 {
     private IKademlia<PublicKey, Node> _kademlia = null!;
+    private PacketCodec? _packetCodec;
 
     [SetUp]
     public void SetUp() => _kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+
+    [TearDown]
+    public void TearDown()
+    {
+        _packetCodec?.Dispose();
+        _packetCodec = null;
+    }
 
     [Test]
     public void GetNodesAtDistances_ShouldMapEachDistanceToKademliaTable()
@@ -55,20 +66,6 @@ public class KademliaAdapterTests
         KademliaAdapter adapter = CreateAdapter();
 
         Node[] result = adapter.GetNodesAtDistances([10], requester);
-
-        Assert.That(result, Is.EqualTo(new[] { returned }));
-    }
-
-    [Test]
-    public void GetNodesAtDistances_ShouldIgnoreRuntimeNullEntries()
-    {
-        Node returned = CreateNode(TestItem.PublicKeyB, 2);
-
-        _kademlia.GetAllAtDistance(10).Returns([null!, returned]);
-
-        KademliaAdapter adapter = CreateAdapter();
-
-        Node[] result = adapter.GetNodesAtDistances([10]);
 
         Assert.That(result, Is.EqualTo(new[] { returned }));
     }
@@ -135,15 +132,26 @@ public class KademliaAdapterTests
             Is.True);
     }
 
-    private KademliaAdapter CreateAdapter() => new(
-        new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
-        null!,
-        null!,
-        null!,
-        new DiscoveryConfig(),
-        new CryptoRandom(),
-        Hash256KademliaDistance.Instance,
-        LimboLogs.Instance);
+    private KademliaAdapter CreateAdapter()
+    {
+        INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
+        nodeRecordProvider.Current.Returns(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback));
+        _packetCodec = new PacketCodec(
+            new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
+            nodeRecordProvider,
+            new CryptoRandom(),
+            new EthereumEcdsa(0));
+
+        return new(
+            new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
+            new NettyDiscoveryV5Handler(LimboLogs.Instance),
+            _packetCodec,
+            nodeRecordProvider,
+            new DiscoveryConfig(),
+            new CryptoRandom(),
+            Hash256KademliaDistance.Instance,
+            LimboLogs.Instance);
+    }
 
     private static Node CreateNode(PublicKey publicKey, int hostSuffix) =>
         new(publicKey, $"192.168.1.{hostSuffix}", 30303);

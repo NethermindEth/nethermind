@@ -114,44 +114,6 @@ public class LookupKNearestNeighbourTests
 
     [Test]
     [CancelAfter(10000)]
-    public async Task Lookup_should_ignore_runtime_null_nodes(CancellationToken token)
-    {
-        Hash256 seedHash = ValueHashKeyOperator<ValueHash256>.ToHash(Seed1);
-        Hash256 neighbourHash = ValueHashKeyOperator<ValueHash256>.ToHash(N1);
-        IRoutingTable<string, Hash256> routing = Substitute.For<IRoutingTable<string, Hash256>>();
-        routing.GetKNearestNeighbour(Arg.Any<Hash256>(), Arg.Any<bool>()).Returns(["seed", null!]);
-
-        INodeHealthTracker<string> health = Substitute.For<INodeHealthTracker<string>>();
-        LookupKNearestNeighbour<string, string, Hash256> lookup = new(
-            routing,
-            new StringHashProvider(new Dictionary<string, Hash256>
-            {
-                ["seed"] = seedHash,
-                ["neighbour"] = neighbourHash,
-            }),
-            Hash256KademliaDistance.Instance,
-            health,
-            new KademliaConfig<string>
-            {
-                CurrentNodeId = "self",
-                Alpha = 1,
-                KSize = 8,
-                LookupFindNeighbourHardTimeout = TimeSpan.FromSeconds(10),
-            });
-
-        string[] result = await lookup.Lookup(
-            seedHash,
-            8,
-            (_, _) => Task.FromResult<string[]?>([null!, "neighbour"]),
-            token);
-
-        Assert.That(result, Does.Contain("seed"));
-        Assert.That(result, Does.Contain("neighbour"));
-        health.Received(1).OnIncomingMessageFrom("seed");
-    }
-
-    [Test]
-    [CancelAfter(10000)]
     public async Task Lookup_should_record_peer_failure_on_find_neighbour_timeout(CancellationToken token)
     {
         (LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
@@ -227,11 +189,5 @@ public class LookupKNearestNeighbourTests
             token);
 
         Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
-    }
-
-    private sealed class StringHashProvider(Dictionary<string, Hash256> hashes) : INodeHashProvider<string, Hash256>
-    {
-        public Hash256 GetHash(string node) =>
-            hashes.GetValueOrDefault(node, ValueHashKeyOperator<ValueHash256>.ToHash(ValueKeccak.Compute(node)));
     }
 }
