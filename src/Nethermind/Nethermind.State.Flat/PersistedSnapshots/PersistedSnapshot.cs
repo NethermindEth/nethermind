@@ -58,6 +58,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private readonly long _addressBtreeScopeEnd;
     private readonly byte[] _addressBtreeRootPrefix = [];
 
+    // Scope of the metadata column (tag 0x00), resolved once at construction. ReadBlobRange and
+    // every ref_ids walk (construction, CleanUp, PersistOnShutdown) seek within it instead of
+    // re-walking the HSST root each time. Length == 0 = column absent.
+    private readonly Bound _metadataScope;
+
     private readonly ArenaReservation _reservation;
     // Manager that owns the per-id blob arena slots. The repository acquires one lease per
     // referenced id before this ctor runs and releases them in CleanUp / PersistOnShutdown,
@@ -151,9 +156,16 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         int acquired = 0;
         try
         {
+            // Resolve the metadata column's scope once; ReadBlobRange and every ref_ids walk
+            // (lease acquisition below, CleanUp, PersistOnShutdown) seek within it instead of
+            // each re-walking the HSST root.
+            ArenaByteReader metaReader = _reservation.CreateReader();
+            HsstReader<ArenaByteReader, NoOpPin> metaRoot = new(in metaReader, new Bound(0, metaReader.Length));
+            _metadataScope = metaRoot.TrySeek(PersistedSnapshotTags.MetadataTag, out Bound metaScope) ? metaScope : default;
+
             // Read this snapshot's contiguous blob run from its own metadata HSST. Absent on
             // compacted / persistable snapshots, which resolve to BlobRange.None.
-            BlobRange = ReadBlobRange();
+            BlobRange = ReadBlobRange(in metaReader);
 
             RefIdsEnumerator<ArenaByteReader, NoOpPin> e = GetRefIdsEnumerator();
             while (e.MoveNext())
@@ -234,19 +246,18 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// per-session mmap view + lease bookkeeping for a 2-byte read. The reader holds no
     /// resources of its own; the surrounding snapshot's lease keeps the mmap alive.
     /// </remarks>
-    private RefIdsEnumerator<ArenaByteReader, NoOpPin> GetRefIdsEnumerator() => new(_reservation.CreateReader());
+    private RefIdsEnumerator<ArenaByteReader, NoOpPin> GetRefIdsEnumerator() => new(_reservation.CreateReader(), _metadataScope);
 
     /// <summary>
     /// Read the <c>blob_range</c> metadata entry (column 0x00) — the contiguous trie-RLP run
     /// recorded by base snapshots. Returns <see cref="BlobRange.None"/> when the key is absent
     /// (compacted / persistable snapshots) or malformed.
     /// </summary>
-    private BlobRange ReadBlobRange()
+    private BlobRange ReadBlobRange(scoped in ArenaByteReader reader)
     {
-        ArenaByteReader reader = _reservation.CreateReader();
-        HsstReader<ArenaByteReader, NoOpPin> root = new(in reader, new Bound(0, reader.Length));
-        if (root.TrySeek(PersistedSnapshotTags.MetadataTag, out _) &&
-            root.TrySeek(PersistedSnapshotTags.MetadataBlobRangeKey, out Bound b) &&
+        if (_metadataScope.Length == 0) return BlobRange.None;
+        HsstReader<ArenaByteReader, NoOpPin> meta = new(in reader, _metadataScope);
+        if (meta.TrySeek(PersistedSnapshotTags.MetadataBlobRangeKey, out Bound b) &&
             b.Length == BlobRange.SerializedSize)
         {
             Span<byte> buf = stackalloc byte[BlobRange.SerializedSize];
@@ -271,12 +282,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         private long _end;
         private ushort _current;
 
-        internal RefIdsEnumerator(TReader reader)
+        internal RefIdsEnumerator(TReader reader, Bound metadataScope)
         {
             _reader = reader;
-            HsstReader<TReader, TPin> root = new(in _reader, new Bound(0, _reader.Length));
-            if (root.TrySeek(PersistedSnapshotTags.MetadataTag, out _) &&
-                root.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out Bound rb) &&
+            if (metadataScope.Length == 0) return;
+            HsstReader<TReader, TPin> meta = new(in _reader, metadataScope);
+            if (meta.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out Bound rb) &&
                 rb.Length > 0 && rb.Length % 2 == 0)
             {
                 _cursor = rb.Offset;
