@@ -55,7 +55,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// per-op interpretation exactly.
     /// </remarks>
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private CallResult RunStream<TCancelable>(
         InstructionStream stream,
         scoped ref EvmStack stack,
@@ -451,7 +450,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         bool Metered,
         EvmExceptionType Exception);
 
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private MeteredResult RunMeteredSegment<TCancelable>(
         InstructionStream stream,
         scoped ref EvmStack stack,
