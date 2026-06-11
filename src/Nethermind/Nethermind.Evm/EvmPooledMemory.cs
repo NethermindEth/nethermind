@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -375,10 +376,9 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            // The clean-pool invariant: writes never pass Size, so clearing that extent
-            // returns a fully zeroed array.
-            Array.Clear(memory, 0, (int)Math.Min(Size, (ulong)memory.Length));
-            s_cleanPool.Return(memory);
+            // The clean-cache invariant: writes never pass Size, so clearing that extent
+            // hands back a fully zeroed array.
+            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
         }
     }
 
@@ -422,32 +422,62 @@ public struct EvmPooledMemory
         }
     }
 
-    /// <summary>
-    /// Every array in this pool is fully zeroed: <see cref="Dispose"/> clears the dirtied
-    /// extent before returning, and the runtime hands out zeroed arrays on pool misses.
-    /// Rents and in-capacity expansions therefore never clear at all — the zeroing moves to
-    /// frame teardown and shrinks to the bytes actually written. EVM memory is
-    /// zero-initialized by definition, so a fully zeroed backing array is always correct.
-    /// </summary>
-    private static readonly ArrayPool<byte> s_cleanPool = ArrayPool<byte>.Create(1 << 23, 64);
+    // Every cached array is fully zeroed: Dispose clears the dirtied extent before caching,
+    // and cache misses allocate runtime-zeroed arrays. Rents and in-capacity expansions
+    // therefore never clear at all. The cache is thread-static because a frame's memory is
+    // rented and disposed on its executing thread — a shared pool's bucket locks cost more
+    // than the clears they saved (measured).
+    private const int MinRentSize = 1_024;
+    private const int MaxCachedArrayLength = 1 << 16;
+    private const int CleanCacheSlots = 16;
+
+    [ThreadStatic] private static byte[]?[]? t_cleanArrays;
+    [ThreadStatic] private static int t_cleanArrayCount;
+
+    private static byte[] RentClean(int minLength)
+    {
+        byte[]?[]? cache = t_cleanArrays;
+        for (int i = t_cleanArrayCount - 1; i >= 0; i--)
+        {
+            byte[] candidate = cache![i]!;
+            if (candidate.Length >= minLength)
+            {
+                t_cleanArrayCount--;
+                cache[i] = cache[t_cleanArrayCount];
+                cache[t_cleanArrayCount] = null;
+                return candidate;
+            }
+        }
+
+        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+    }
+
+    private static void ReturnClean(byte[] array, int dirtyLength)
+    {
+        Array.Clear(array, 0, dirtyLength);
+        if (array.Length > MaxCachedArrayLength)
+            return;
+
+        byte[]?[] cache = t_cleanArrays ??= new byte[CleanCacheSlots][];
+        if (t_cleanArrayCount < CleanCacheSlots)
+            cache[t_cleanArrayCount++] = array;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
-        const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            _memory = s_cleanPool.Rent((int)Math.Max((uint)Size, MinRentSize));
+            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
         }
         else if (Size > (ulong)_memory.LongLength)
         {
             byte[] beforeResize = _memory;
-            _memory = s_cleanPool.Rent(TruncateToInt32(Size));
-            // The new array is clean past the copy; the old one returns cleaned (its dirty
-            // extent is bounded by its length — writes never pass Size).
+            _memory = RentClean(TruncateToInt32(Size));
+            // The new array is clean past the copy; the old one is cached fully cleaned
+            // (its dirty extent is bounded by its length — writes never pass Size).
             Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            Array.Clear(beforeResize);
-            s_cleanPool.Return(beforeResize);
+            ReturnClean(beforeResize, beforeResize.Length);
         }
 
         _lastZeroedSize = (ulong)_memory.Length;
