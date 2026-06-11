@@ -164,10 +164,7 @@ namespace Nethermind.Consensus.AuRa
 
         private Address GetSealer(BlockHeader header)
         {
-            if (header is not AuRaBlockHeader auraHeader)
-            {
-                throw new InvalidOperationException($"GetSealer called on a non-AuRa header (block {header.Number}, hash {header.Hash}).");
-            }
+            AuRaBlockHeader auraHeader = header.RequireAuRa();
             Signature signature = new(auraHeader.AuRaSignature);
             signature.V += Signature.VOffset;
             ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);

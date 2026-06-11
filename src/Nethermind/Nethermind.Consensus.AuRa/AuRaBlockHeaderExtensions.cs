@@ -27,9 +27,12 @@ public static class AuRaBlockHeaderExtensions
     public static byte[]? GetAuRaSignature(this BlockHeader header) => (header as AuRaBlockHeader)?.AuRaSignature;
 
     /// <summary>
-    /// Hard cast — use from AuRa-only code paths where the runtime type is guaranteed.
+    /// Hard cast to the seal-accessor contract — use from AuRa-only code paths where the runtime
+    /// type is guaranteed. Returns <see cref="IAuRaSealedHeader"/> rather than the concrete
+    /// <see cref="AuRaBlockHeader"/> so callers can't accidentally lean on subclass-specific
+    /// state; use a direct cast when the concrete type is genuinely needed.
     /// </summary>
-    public static AuRaBlockHeader AsAuRa(this BlockHeader header) => (AuRaBlockHeader)header;
+    public static IAuRaSealedHeader AsAuRa(this BlockHeader header) => (IAuRaSealedHeader)header;
 
     /// <summary>
     /// Cast <paramref name="header"/> to <see cref="AuRaBlockHeader"/>, throwing a uniform
