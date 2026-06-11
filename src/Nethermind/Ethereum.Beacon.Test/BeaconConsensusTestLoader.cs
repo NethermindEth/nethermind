@@ -27,7 +27,14 @@ public static class BeaconConsensusTestLoader
     /// e.g. GetHandlerPath("electra", "Checkpoint") returns .../tests/mainnet/electra/ssz_static/Checkpoint.
     /// </summary>
     public static string GetHandlerPath(string fork, string handler) =>
-        Path.Combine(GetTestsRoot(), "tests", "mainnet", fork, "ssz_static", handler);
+        GetTestPath(fork, "ssz_static", handler);
+
+    /// <summary>
+    /// Returns the path to a test handler directory, e.g. GetTestPath("fulu", "epoch_processing", "slashings")
+    /// returns .../tests/mainnet/fulu/epoch_processing/slashings.
+    /// </summary>
+    public static string GetTestPath(string fork, string runner, string handler) =>
+        Path.Combine(GetTestsRoot(), "tests", "mainnet", fork, runner, handler);
 
     /// <summary>
     /// Reads and decompresses a .ssz_snappy file.
