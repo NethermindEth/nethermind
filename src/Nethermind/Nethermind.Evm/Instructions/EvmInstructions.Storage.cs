@@ -670,9 +670,10 @@ public static partial class EvmInstructions
         // previous one pushed, so the whole run can execute here without per-opcode dispatch or
         // stack traffic; only the final value is pushed. Disabled under instruction, access, or
         // storage tracing, which require per-opcode observability.
-        if (!TTracingInst.IsActive && !isTracingAccess && !tracer.IsTracingStorage
+        if (!TTracingInst.IsActive
             && (uint)programCounter < (uint)stack.CodeLength
-            && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD)
+            && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD
+            && !isTracingAccess && !tracer.IsTracingStorage)
         {
             int extraOps = 0;
             int codeLength = stack.CodeLength;
