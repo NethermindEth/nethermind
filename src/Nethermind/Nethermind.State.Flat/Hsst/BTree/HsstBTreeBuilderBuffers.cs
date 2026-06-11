@@ -27,7 +27,7 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // as the bottom level and flipped between iterations as it walks up to the root.
     // Using NativeMemoryList<T> (class) rather than NativeMemoryListRef<T> (ref
     // struct) keeps the struct itself non-ref so it can live as a field of a class
-    // (see HsstBTreeBuilderBuffersContainer) and so HsstBTreeBuilder's borrowed-
+    // (see Container) and so HsstBTreeBuilder's borrowed-
     // buffers ref field needs no Unsafe.AsPointer indirection.
     internal NativeMemoryList<HsstIndexNodeInfo> CurrentLevel = new(expectedKeyCount);
     internal NativeMemoryList<HsstIndexNodeInfo> NextLevel = new(64);
@@ -109,6 +109,21 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         IndexSepLengthsScratch.Dispose();
         RootFirstKey.Dispose();
         PrevKeyBuf.Dispose();
+    }
+
+    /// <summary>
+    /// Reference-type (heap) container for an <see cref="HsstBTreeBuilderBuffers"/>, letting it be
+    /// held in a non-ref field and reused across many builds. Used by the persisted-snapshot
+    /// builder/merger and <see cref="HsstBTreeMerger"/> to amortise per-build buffer rentals.
+    /// </summary>
+    internal sealed class Container(int expectedKeyCount = 16) : IDisposable
+    {
+        private HsstBTreeBuilderBuffers _buffers = new(expectedKeyCount);
+
+        /// <summary>The contained buffers, returned by <c>ref</c> into the field.</summary>
+        public ref HsstBTreeBuilderBuffers Buffers => ref _buffers;
+
+        public void Dispose() => _buffers.Dispose();
     }
 }
 

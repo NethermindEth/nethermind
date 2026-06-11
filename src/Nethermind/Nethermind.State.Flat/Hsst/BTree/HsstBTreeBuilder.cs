@@ -84,7 +84,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     /// Create a builder that writes via <paramref name="writer"/> and uses
     /// <paramref name="buffers"/> as its working storage. The caller owns the
     /// buffer's lifetime — allocate one (typically via
-    /// <c>using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount);</c>,
+    /// <c>using HsstBTreeBuilderBuffers.Container buffers = new(expectedKeyCount);</c>,
     /// then pass <c>ref buffers.Buffers</c>) and dispose it after the build.
     /// </summary>
     /// <remarks>

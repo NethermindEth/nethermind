@@ -31,7 +31,7 @@ public class HsstBTreeKeyFirstTests
     public void BeginValueWrite_Throws_InKeyFirstMode()
     {
         using PooledByteBufferWriter pooled = new(1024);
-        using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount: 4);
+        using HsstBTreeBuilderBuffers.Container buffers = new(expectedKeyCount: 4);
         HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder = new(
             ref pooled.GetWriter(), ref buffers.Buffers, keyLength: 4, expectedKeyCount: 4, keyFirst: true);
         try

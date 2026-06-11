@@ -139,10 +139,10 @@ public static class PersistedSnapshotMerger
     /// DenseByteIndex builder and the nested slot-prefix merger. Per-source reader factories
     /// come via the cursor (<c>cursor.CreateMinReader</c>, <c>cursor.Sources</c>).
     /// The shared <see cref="HsstBTreeBuilderBuffers"/> arena (re-used across every emitted
-    /// address) is held via <see cref="HsstBTreeBuilderBuffersContainer"/> — a class handle
+    /// address) is held via <see cref="HsstBTreeBuilderBuffers.Container"/> — a class handle
     /// that hides the ref-to-ref-struct workaround.</remarks>
     private readonly struct PerAddressColumnValueMerger<TWriter>(
-        BloomFilter bloom, HsstBTreeBuilderBuffersContainer slotPrefixBuffers)
+        BloomFilter bloom, HsstBTreeBuilderBuffers.Container slotPrefixBuffers)
         : IHsstBTreeValueMerger<TWriter, WholeReadSessionReader, NoOpPin, WholeReadSessionMergeSource, TailDispatchEnumeratorFactory>
         where TWriter : IByteBufferWriter
     {
@@ -676,7 +676,7 @@ public static class PersistedSnapshotMerger
         // contained buffers live across every merged address — the prefix builder is created
         // once per address and the suffix builder once per prefix group per address, so
         // amortising the rentals matters.
-        using HsstBTreeBuilderBuffersContainer slotPrefixBuffers = new();
+        using HsstBTreeBuilderBuffers.Container slotPrefixBuffers = new();
         using ArrayPoolList<HsstEnumerator> enumeratorsList = new(n, n);
         Span<HsstEnumerator> enumerators = enumeratorsList.AsSpan();
 
@@ -845,7 +845,7 @@ public static class PersistedSnapshotMerger
             }
         }
 
-        using HsstBTreeBuilderBuffersContainer buffers = new();
+        using HsstBTreeBuilderBuffers.Container buffers = new();
         using HsstBTreeBuilder<TWriter> builder = new(ref writer, ref buffers.Buffers, PersistedSnapshotTags.MetadataKeyLength);
 
         // Emit all keys in sorted ASCII order. NUL-padding to 10 bytes preserves the

@@ -45,7 +45,7 @@ internal static class HsstBTreeMerger
         where TFactory : struct, IHsstEnumeratorFactory<TReader, TPin>
         where TValueMerger : struct, IHsstBTreeValueMerger<TWriter, TReader, TPin, TSource, TFactory>
     {
-        using HsstBTreeBuilderBuffersContainer buffers = new(expectedKeyCount);
+        using HsstBTreeBuilderBuffers.Container buffers = new(expectedKeyCount);
         NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TValueMerger>(
             ref writer, keyLength, ref cursor, valueMerger,
             ref buffers.Buffers, expectedKeyCount, keyFirst);

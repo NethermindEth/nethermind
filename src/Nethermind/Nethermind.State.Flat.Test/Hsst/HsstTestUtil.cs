@@ -22,7 +22,7 @@ internal static class HsstTestUtil
     public static byte[] BuildToArray(BuildAction buildAction, int keyLength = -1, bool keyFirst = false)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
-        using HsstBTreeBuilderBuffersContainer buffers = new();
+        using HsstBTreeBuilderBuffers.Container buffers = new();
         HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), ref buffers.Buffers, keyLength, keyFirst: keyFirst);
         try
         {

@@ -675,7 +675,7 @@ public class HsstTests
 
         using PooledByteBufferWriter pooled = new(4096);
         ref PooledByteBufferWriter.Writer writer = ref pooled.GetWriter();
-        using HsstBTreeBuilderBuffersContainer buffers = new();
+        using HsstBTreeBuilderBuffers.Container buffers = new();
         HsstBTreeBuilder<PooledByteBufferWriter.Writer> b = new(ref writer, ref buffers.Buffers, keyLength: -1);
         try
         {
@@ -705,13 +705,13 @@ public class HsstTests
         // Outer HSST with one entry whose value is an inner HSST
         using PooledByteBufferWriter pooled = new(4096);
         ref PooledByteBufferWriter.Writer writer = ref pooled.GetWriter();
-        using HsstBTreeBuilderBuffersContainer outerBuffers = new();
+        using HsstBTreeBuilderBuffers.Container outerBuffers = new();
         HsstBTreeBuilder<PooledByteBufferWriter.Writer> outer = new(ref writer, ref outerBuffers.Buffers, keyLength: -1);
         try
         {
             ref PooledByteBufferWriter.Writer innerWriter = ref outer.BeginValueWrite();
             long innerStart = innerWriter.Written;
-            using HsstBTreeBuilderBuffersContainer innerBuffers = new();
+            using HsstBTreeBuilderBuffers.Container innerBuffers = new();
             using HsstBTreeBuilder<PooledByteBufferWriter.Writer> inner = new(ref innerWriter, ref innerBuffers.Buffers, keyLength: -1);
             inner.Add("key1"u8, "val1"u8);
             inner.Add("key2"u8, "val2"u8);
@@ -738,14 +738,14 @@ public class HsstTests
         // Outer HSST with 3 columns, each an inner HSST built via shared writer
         using PooledByteBufferWriter pooled = new(65536);
         ref PooledByteBufferWriter.Writer writer = ref pooled.GetWriter();
-        using HsstBTreeBuilderBuffersContainer outerBuffers = new();
+        using HsstBTreeBuilderBuffers.Container outerBuffers = new();
         HsstBTreeBuilder<PooledByteBufferWriter.Writer> outer = new(ref writer, ref outerBuffers.Buffers, keyLength: -1);
         try
         {
             {
                 ref PooledByteBufferWriter.Writer iw = ref outer.BeginValueWrite();
                 long start = iw.Written;
-                using HsstBTreeBuilderBuffersContainer innerBuffers = new();
+                using HsstBTreeBuilderBuffers.Container innerBuffers = new();
                 using HsstBTreeBuilder<PooledByteBufferWriter.Writer> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 inner.Add("from"u8, "block0"u8);
                 inner.Add("to\0\0"u8, "block1"u8);
@@ -755,7 +755,7 @@ public class HsstTests
             {
                 ref PooledByteBufferWriter.Writer iw = ref outer.BeginValueWrite();
                 long start = iw.Written;
-                using HsstBTreeBuilderBuffersContainer innerBuffers = new();
+                using HsstBTreeBuilderBuffers.Container innerBuffers = new();
                 using HsstBTreeBuilder<PooledByteBufferWriter.Writer> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 byte[] addr = new byte[20]; addr[0] = 0xAB;
                 inner.Add(addr, [0xC0, 0x80]);
@@ -765,7 +765,7 @@ public class HsstTests
             {
                 ref PooledByteBufferWriter.Writer iw = ref outer.BeginValueWrite();
                 long start = iw.Written;
-                using HsstBTreeBuilderBuffersContainer innerBuffers = new();
+                using HsstBTreeBuilderBuffers.Container innerBuffers = new();
                 using HsstBTreeBuilder<PooledByteBufferWriter.Writer> inner = new(ref iw, ref innerBuffers.Buffers, keyLength: -1);
                 inner.Build();
                 outer.FinishValueWrite([0x02], iw.Written - start);
