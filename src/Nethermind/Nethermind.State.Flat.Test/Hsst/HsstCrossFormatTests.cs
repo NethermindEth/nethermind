@@ -84,7 +84,7 @@ public class HsstCrossFormatTests
         }
 
         // DenseByteIndex is the persisted-snapshot outer / per-address container and is
-        // intentionally not wired into HsstRefEnumerator (production paths use TryGet
+        // intentionally not wired into HsstEnumerator (production paths use TryGet
         // directly). Skip enumeration for this format — the seek + miss assertions above
         // already cover the round-trip.
         if (format == Format.DenseByteIndex) return;
@@ -93,14 +93,14 @@ public class HsstCrossFormatTests
         Span<byte> keyScratch = stackalloc byte[64];
         // Keys-first two-byte-slot blobs carry their IndexType byte at byte 0, so they
         // open via the front-dispatch factory; every other format tail-dispatches.
-        using (HsstRefEnumerator<SpanByteReader, NoOpPin> e = IsTwoByteSlot(format)
-                   ? HsstRefEnumerator<SpanByteReader, NoOpPin>.CreateTwoByteSlot(in reader, new Bound(0, data.Length))
-                   : new HsstRefEnumerator<SpanByteReader, NoOpPin>(in reader, new Bound(0, data.Length)))
+        using (HsstEnumerator<SpanByteReader, NoOpPin> e = IsTwoByteSlot(format)
+                   ? HsstEnumerator<SpanByteReader, NoOpPin>.CreateTwoByteSlot(in reader, new Bound(0, data.Length))
+                   : new HsstEnumerator<SpanByteReader, NoOpPin>(in reader, new Bound(0, data.Length)))
         {
-            while (e.MoveNext())
+            while (e.MoveNext(in reader))
             {
-                ReadOnlySpan<byte> logicalKey = e.CopyCurrentLogicalKey(keyScratch);
-                Bound vb = e.CurrentValueBound;
+                ReadOnlySpan<byte> logicalKey = e.CopyCurrentLogicalKey(in reader, keyScratch);
+                Bound vb = e.CurrentValue;
                 enumerated.Add((
                     logicalKey.ToArray(),
                     data.AsSpan().Slice((int)vb.Offset, (int)vb.Length).ToArray()));

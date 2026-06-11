@@ -50,6 +50,10 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     // iteration state lives on the heap-allocated variant objects, so copies
     // of this struct (e.g. via ArrayPoolList<T>'s by-value indexer) still
     // observe / advance the same underlying cursor.
+    //
+    // default(HsstEnumerator) has _kind == Empty, so MoveNext returns false and
+    // Current is empty. Callers like PersistedSnapshotScanner's enumerators rely on
+    // this when they reset a field to `default` between nested scopes.
     private readonly VariantKind _kind;
     private readonly HsstPackedArrayEnumerator<TReader, TPin>? _packed;
     private readonly HsstBTreeEnumerator<TReader, TPin>? _btree;
