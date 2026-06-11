@@ -33,6 +33,7 @@ using Microsoft.Extensions.Primitives;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -100,22 +101,17 @@ public class Startup : IStartup
             options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
             options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
 
-            options.Limits.Http2.InitialConnectionWindowSize = 1 * 1024 * 1024;
-            options.Limits.Http2.InitialStreamWindowSize = 1 * 1024 * 1024;
+            options.Limits.Http2.InitialConnectionWindowSize = (int)1.MiB;
+            options.Limits.Http2.InitialStreamWindowSize = (int)1.MiB;
 
             options.ConfigureEndpointDefaults(listenOptions =>
             {
-                int port = (listenOptions.EndPoint as System.Net.IPEndPoint)?.Port ?? 0;
+                int port = (listenOptions.EndPoint as IPEndPoint)?.Port ?? 0;
                 if (engineApiPorts.Contains(port))
                 {
                     // Keep HTTP/1.1 + HTTP/2 on the engine port: SSZ-REST uses HTTP/2, while legacy
                     // Engine API JSON-RPC still relies on HTTP/1.1 and shares the same listener.
                     listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-                }
-                else
-                {
-                    listenOptions.Protocols = HttpProtocols.Http1;
-                    listenOptions.DisableAltSvcHeader = true;
                 }
             });
         });
