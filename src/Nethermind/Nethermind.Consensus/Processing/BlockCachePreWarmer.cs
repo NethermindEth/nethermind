@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,6 +75,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             CacheType result = _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
+            // The previous block's captured touch set becomes this block's temporal replay set.
+            _preBlockCaches.RotateStorageTouches();
             if (result != default)
             {
                 if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
@@ -128,6 +131,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (!addressWarmer.HasBal)
             {
+                // BAL warming reads the current block's exact access set; the temporal replay is
+                // only worth running when that set is not known upfront.
+                WarmupPreviousBlockTouches(parallelOptions, parent);
                 WarmupTransactions(blockState, parallelOptions);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
@@ -145,6 +151,72 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             addressWarmer.Dispose();
         }
     }
+
+    /// <summary>
+    /// Replays the previous block's storage touch set as parent-state reads, populating the
+    /// pre-block caches before execution needs them.
+    /// </summary>
+    /// <remarks>
+    /// Hot contracts touch nearly the same slots block after block, so last block's set is a
+    /// cheap predictor of this block's cold reads. Mispredictions only cost wasted reads — the
+    /// values read here are this block's parent state, the same contract every other warmup
+    /// path follows.
+    /// </remarks>
+    private void WarmupPreviousBlockTouches(ParallelOptions parallelOptions, BlockHeader? parent)
+    {
+        if (parallelOptions.CancellationToken.IsCancellationRequested) return;
+
+        ConcurrentQueue<StorageCell> touches = _preBlockCaches!.PreviousBlockStorageTouches;
+        if (touches.IsEmpty) return;
+
+        try
+        {
+            StorageCell[] cells = touches.ToArray();
+            int chunks = (cells.Length + TouchReplayChunkSize - 1) / TouchReplayChunkSize;
+            ParallelUnbalancedWork.For(0, chunks, parallelOptions, (EnvPool: _envPool, Cells: cells, Parent: parent),
+                static (i, state) =>
+                {
+                    IReadOnlyTxProcessorSource env = state.EnvPool.Get();
+                    try
+                    {
+                        using IReadOnlyTxProcessingScope scope = env.Build(state.Parent);
+                        IWorldState worldState = scope.WorldState;
+                        Address? lastAddress = null;
+                        int end = Math.Min(state.Cells.Length, (i + 1) * TouchReplayChunkSize);
+                        for (int c = i * TouchReplayChunkSize; c < end; c++)
+                        {
+                            ref readonly StorageCell cell = ref state.Cells[c];
+                            if (cell.Address != lastAddress)
+                            {
+                                lastAddress = cell.Address;
+                                worldState.WarmUp(lastAddress);
+                            }
+
+                            worldState.Get(in cell);
+                        }
+                    }
+                    catch (MissingTrieNodeException)
+                    {
+                    }
+                    finally
+                    {
+                        state.EnvPool.Return(env);
+                    }
+
+                    return state;
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore, block completed cancel
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError("Error pre-warming previous block touches", ex);
+        }
+    }
+
+    private const int TouchReplayChunkSize = 512;
 
     private void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, BlockHeader? parent)
     {

@@ -296,6 +296,47 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public void Test_ConsumerScope_CapturesStorageTouchesForTemporalReplay()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        BlockHeader header = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+
+        // The consumer (main processing) scope records what it reads...
+        PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+        using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(header))
+        {
+            scope.CreateStorageTree(TestItem.AddressA).Get(1);
+        }
+
+        // ...while a populator (prewarmer) scope replaying reads must not feed the capture.
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
+        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(header))
+        {
+            scope.CreateStorageTree(TestItem.AddressA).Get(2);
+        }
+
+        caches.RotateStorageTouches();
+        Assert.That(caches.PreviousBlockStorageTouches.ToArray(),
+            Is.EqualTo(new[] { new StorageCell(TestItem.AddressA, 1) }));
+    }
+
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
@@ -45,6 +46,49 @@ public class PreBlockCaches
         }
 
         return isDirty;
+    }
+
+    /// <summary>
+    /// Bounds the per-block touch capture so pathological blocks cannot grow the replay set
+    /// (and the next block's replay work) without limit.
+    /// </summary>
+    private const int MaxTrackedStorageTouches = 1 << 17;
+
+    private ConcurrentQueue<StorageCell> _currentStorageTouches = new();
+    private ConcurrentQueue<StorageCell> _previousStorageTouches = new();
+    private int _storageTouchCount;
+
+    /// <summary>
+    /// Storage cells the previous block touched; hot contracts touch nearly the same set every
+    /// block, so the prewarmer replays these as parent-state reads at the start of the next
+    /// block. Valid until <see cref="RotateStorageTouches"/> is called again.
+    /// </summary>
+    public ConcurrentQueue<StorageCell> PreviousBlockStorageTouches => _previousStorageTouches;
+
+    /// <summary>Records a storage cell the executing block touched.</summary>
+    /// <remarks>
+    /// Called once per distinct cell per block (repeat reads are served above the caches), so
+    /// the queue holds the block's distinct touch set in access order.
+    /// </remarks>
+    public void LogStorageTouch(in StorageCell cell)
+    {
+        if (Interlocked.Increment(ref _storageTouchCount) <= MaxTrackedStorageTouches)
+        {
+            _currentStorageTouches.Enqueue(cell);
+        }
+    }
+
+    /// <summary>
+    /// Starts a new capture window: the just-captured set becomes
+    /// <see cref="PreviousBlockStorageTouches"/> and capture continues into a recycled queue.
+    /// </summary>
+    public void RotateStorageTouches()
+    {
+        ConcurrentQueue<StorageCell> recycled = _previousStorageTouches;
+        recycled.Clear();
+        _previousStorageTouches = _currentStorageTouches;
+        _currentStorageTouches = recycled;
+        Interlocked.Exchange(ref _storageTouchCount, 0);
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>

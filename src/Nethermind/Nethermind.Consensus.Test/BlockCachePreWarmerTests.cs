@@ -240,6 +240,55 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// Verifies that storage cells captured during the previous block are replayed into the
+    /// storage cache when the next block's prewarm starts (cross-block temporal locality).
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WithPreviousBlockTouches_ReplaysThemIntoStorageCache()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        // Simulate the previous block having touched the seeded slots.
+        preBlockCaches.LogStorageTouch(new StorageCell(TestItem.AddressA, 1));
+        preBlockCaches.LogStorageTouch(new StorageCell(TestItem.AddressA, 2));
+        preBlockCaches.LogStorageTouch(new StorageCell(TestItem.AddressB, 10));
+
+        Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out byte[]? slotA1), Is.True, "replayed slot (A,1) should be in the storage cache");
+            Assert.That(slotA1, Is.EqualTo(new byte[] { 0x42 }));
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out byte[]? slotA2), Is.True, "replayed slot (A,2) should be in the storage cache");
+            Assert.That(slotA2, Is.EqualTo(new byte[] { 0x43 }));
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out byte[]? slotB10), Is.True, "replayed slot (B,10) should be in the storage cache");
+            Assert.That(slotB10, Is.EqualTo(new byte[] { 0x99 }));
+        }
+    }
+
+    /// <summary>
+    /// Verifies the capture window rotation: each prewarm consumes the previous block's set, so
+    /// cells captured two blocks ago are not replayed again.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_TouchesFromTwoBlocksAgo_AreNotReplayed()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        preBlockCaches.LogStorageTouch(new StorageCell(TestItem.AddressA, 1));
+
+        Block block = Build.A.Block.WithGasLimit(30_000_000).TestObject;
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+        // Nothing touched during the block; the second prewarm must replay an empty set.
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _), Is.False, "the touch window must have rotated out");
+    }
+
+    /// <summary>
     /// Verifies that the prewarmer does not inherit the <see cref="ProcessingThread.IsBlockProcessingThread"/>
     /// flag from the caller, so speculative EVM work is attributed to the _other* metric counters.
     /// </summary>

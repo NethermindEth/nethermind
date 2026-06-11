@@ -81,7 +81,10 @@ public class PrewarmerScopeProvider(
                 baseScope.CreateStorageTree(address),
                 storageCache,
                 address,
-                isPrewarmer);
+                isPrewarmer,
+                // Only the consumer sees the block's real touch set; populators replaying it
+                // must not feed it back into the capture.
+                isPrewarmer ? null : preBlockCaches);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -187,7 +190,8 @@ public class PrewarmerScopeProvider(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
-        bool isPrewarmer) : IWorldStateScopeProvider.IStorageTree
+        bool isPrewarmer,
+        PreBlockCaches? touchSink) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
@@ -202,6 +206,11 @@ public class PrewarmerScopeProvider(
         public byte[] Get(in UInt256 index)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
+            // Reads arrive here once per distinct cell per block (repeats are served by the
+            // in-block layers above), so this captures the block's touch set for the next
+            // block's temporal replay.
+            touchSink?.LogStorageTouch(in storageCell);
+
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
             {
