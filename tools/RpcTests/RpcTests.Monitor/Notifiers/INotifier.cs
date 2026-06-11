@@ -6,7 +6,7 @@ namespace Nethermind.RpcTests.Monitor.Notifiers;
 internal interface INotifier : IDisposable
 {
     Task NotifyFailureAsync(TestFailure failure, CancellationToken ct);
-    Task NotifyErrorAsync(string error);
+    Task NotifyErrorAsync(string error, Exception? ex = null);
     Task NotifyStatsAsync(MonitorStats stats);
 }
 
@@ -15,7 +15,7 @@ internal class NullNotifier : INotifier
     public static readonly NullNotifier Instance = new();
 
     public Task NotifyFailureAsync(TestFailure failure, CancellationToken ct) => Task.CompletedTask;
-    public Task NotifyErrorAsync(string error) => Task.CompletedTask;
+    public Task NotifyErrorAsync(string error, Exception? ex = null) => Task.CompletedTask;
     public Task NotifyStatsAsync(MonitorStats stats) => Task.CompletedTask;
     public void Dispose() { }
 }

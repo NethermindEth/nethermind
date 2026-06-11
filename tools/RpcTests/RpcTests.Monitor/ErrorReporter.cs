@@ -7,12 +7,11 @@ namespace Nethermind.RpcTests.Monitor;
 
 internal class ErrorReporter(INotifier notifier, IStatsReporter stats)
 {
-    public void Report(string details, Exception ex) => Report($"{details}: {ex}");
-
-    public void Report(string error)
+    public void Report(string error, Exception ex)
     {
         stats.RecordError();
-        Console.Error.WriteLine(error);
-        _ = notifier.NotifyErrorAsync(error);
+
+        Console.Error.WriteLine($"{error}: {ex}");
+        _ = notifier.NotifyErrorAsync(error, ex);
     }
 }

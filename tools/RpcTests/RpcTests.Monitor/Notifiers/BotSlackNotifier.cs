@@ -53,18 +53,33 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
         }
     }
 
-    public async Task NotifyErrorAsync(string error)
+    public async Task NotifyErrorAsync(string error, Exception? exception = null)
     {
         try
         {
-            await _slack.Chat.PostMessage(new Message
+            string text = $"{_prefix}\n{error}";
+
+            if (exception is null)
             {
-                Channel = config.ChannelId,
-                Text = $"""
-                        ⚠ {_prefix} error:
-                        ```{error}```
-                        """
-            });
+                await _slack.Chat.PostMessage(new Message
+                {
+                    Channel = config.ChannelId,
+                    Text = text
+                });
+            }
+            else
+            {
+                text = $"{text}\n```{exception.Message}```";
+
+                ExternalFileReference fileRef = await UploadFileAsync(
+                    "exception.txt", exception.ToString(), CancellationToken.None
+                );
+
+                await _slack.Files.CompleteUploadExternal(
+                    [fileRef], channelId: config.ChannelId, initialComment: text,
+                    cancellationToken: CancellationToken.None
+                );
+            }
         }
         catch (Exception ex)
         {
