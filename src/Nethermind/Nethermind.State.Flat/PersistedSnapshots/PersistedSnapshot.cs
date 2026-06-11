@@ -493,8 +493,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         }
         if (useSpanReader)
         {
-            ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
-            SpanByteReader spanReader = new(warmedSpan);
+            using NoOpPin pin = reader.PinBuffer(addrBound.Offset, addrBound.Length);
+            SpanByteReader spanReader = new(pin.Buffer);
             return TryGetAccountInner<SpanByteReader, NoOpPin>(
                 in spanReader, new Bound(0, addrBound.Length), out account);
         }
@@ -532,8 +532,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             return false;
         if (useSpanReader)
         {
-            ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
-            SpanByteReader spanReader = new(warmedSpan);
+            using NoOpPin pin = reader.PinBuffer(addrBound.Offset, addrBound.Length);
+            SpanByteReader spanReader = new(pin.Buffer);
             return TryGetSlotInner<SpanByteReader, NoOpPin>(
                 in spanReader, new Bound(0, addrBound.Length), in index, ref slotValue);
         }
@@ -561,8 +561,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             return null;
         if (useSpanReader)
         {
-            ReadOnlySpan<byte> warmedSpan = reader.GetSpanWithoutTouch(addrBound.Offset, addrBound.Length);
-            SpanByteReader spanReader = new(warmedSpan);
+            using NoOpPin pin = reader.PinBuffer(addrBound.Offset, addrBound.Length);
+            SpanByteReader spanReader = new(pin.Buffer);
             return PersistedSnapshotReader.TryGetSelfDestructFlag<SpanByteReader, NoOpPin>(
                 in spanReader, new Bound(0, addrBound.Length));
         }

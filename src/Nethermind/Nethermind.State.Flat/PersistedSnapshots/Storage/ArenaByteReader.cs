@@ -76,20 +76,6 @@ public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
         Sse.Prefetch0(p + 128);
     }
 
-    /// <summary>
-    /// Get a <see cref="ReadOnlySpan{T}"/> over <c>[offset, offset + size)</c> without
-    /// reporting the access to the <see cref="ArenaReservation"/>'s page tracker. Only
-    /// legal when the caller has already arranged page residency for the range (e.g. via
-    /// <see cref="ArenaReservation.TouchRangePopulate"/>) and intends to feed the span
-    /// to a zero-touch reader such as <see cref="SpanByteReader"/>.
-    /// </summary>
-    public ReadOnlySpan<byte> GetSpanWithoutTouch(long offset, long size)
-    {
-        if ((ulong)offset + (ulong)size > (ulong)_length)
-            throw new ArgumentOutOfRangeException(nameof(offset));
-        return new ReadOnlySpan<byte>(_basePtr + offset, checked((int)size));
-    }
-
     private void TouchRange(long localOffset, long length)
     {
         if (length <= 0) return;
