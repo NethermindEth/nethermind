@@ -90,6 +90,28 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
     }
 
+    [Test]
+    public void Repeated_get_cache_does_not_survive_restore()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, _values[1]);
+        provider.Commit(Frontier.Instance);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+
+        provider.Set(cell, _values[2]);
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[2]));
+
+        provider.Restore(snapshot);
+
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+    }
+
     [TestCase(-1)]
     [TestCase(0)]
     [TestCase(1)]

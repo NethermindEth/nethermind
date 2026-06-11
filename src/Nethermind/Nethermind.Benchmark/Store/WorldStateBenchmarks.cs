@@ -197,6 +197,21 @@ public class WorldStateBenchmarks
     }
 
     [Benchmark]
+    public void SameSlotRead()
+    {
+        IWorldState worldState = _globalWorldState;
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
+        StorageCell cell = new(_bigContract, _bigContractSlots[0]);
+
+        for (int i = 0; i < _loopSize; i++)
+        {
+            worldState.Get(cell);
+        }
+
+        worldState.Reset();
+    }
+
+    [Benchmark]
     public void SameContractReadWrite()
     {
         Random rand = new(1);
