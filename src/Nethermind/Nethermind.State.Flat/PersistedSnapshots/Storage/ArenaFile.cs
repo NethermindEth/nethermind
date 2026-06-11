@@ -103,7 +103,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// Create a write stream backed by a <see cref="FileStream"/> seeked to <paramref name="startOffset"/>.
     /// The caller is responsible for disposing the returned stream.
     /// </summary>
-    public FileStream CreateWriteStream(long startOffset)
+    internal FileStream CreateWriteStream(long startOffset)
     {
         FileStream fs = new(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, bufferSize: 1);
         fs.Seek(startOffset, SeekOrigin.Begin);
@@ -221,7 +221,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// returned view applies <c>MADV_DONTNEED</c> to the range before releasing the
     /// mapping; when false the disposer just unmaps.
     /// </summary>
-    public IArenaWholeView OpenWholeView(long offset, long size, bool adviseDontNeedOnDispose)
+    internal IArenaWholeView OpenWholeView(long offset, long size, bool adviseDontNeedOnDispose)
     {
         MemoryMappedViewAccessor accessor = _mmf.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
         byte* ptr = null;
