@@ -25,7 +25,7 @@ using Nethermind.Evm.Tracing.State;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class TransactionProcessor<TGasPolicy>(
+    public sealed class TransactionProcessor<TGasPolicy>(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
@@ -43,7 +43,7 @@ namespace Nethermind.Evm.TransactionProcessing
     /// <summary>
     /// Non-generic TransactionProcessor for backward compatibility with EthereumGasPolicy.
     /// </summary>
-    public class EthereumTransactionProcessor(
+    public sealed class EthereumTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,

@@ -26,12 +26,7 @@ public interface ITransactionProcessorFactory
         bool parallel);
 }
 
-/// <summary>
-/// Default factory producing a plain <see cref="TransactionProcessor{TGasPolicy}"/>. Consensus
-/// engines that need a custom system-tx processor subclass <see cref="TransactionProcessor{TGasPolicy}"/>
-/// and override <c>CreateSystemTransactionProcessor</c>; the engine-specific factory then
-/// constructs that subclass.
-/// </summary>
+/// <summary>Default factory producing a plain <see cref="TransactionProcessor{TGasPolicy}"/>.</summary>
 public class TransactionProcessorFactory<TGasPolicy> : ITransactionProcessorFactory
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {

@@ -11,11 +11,11 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.AuRa;
 
 /// <summary>
-/// AuRa-flavoured <see cref="EthereumTransactionProcessor"/> — overrides system-tx creation so
+/// AuRa-flavoured <see cref="EthereumTransactionProcessorBase"/> — overrides system-tx creation so
 /// every TransactionProcessor instance built for the AuRa chain (DI singleton, BAL workers,
 /// tests) routes system transactions through <see cref="AuRaSystemTransactionProcessor{TGasPolicy}"/>.
 /// </summary>
-public class AuRaEthereumTransactionProcessor(
+public sealed class AuRaEthereumTransactionProcessor(
     ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider? specProvider,
     IWorldState? worldState,
@@ -23,7 +23,7 @@ public class AuRaEthereumTransactionProcessor(
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager,
     bool parallel = false)
-    : EthereumTransactionProcessor(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
+    : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
 {
     protected override SystemTransactionProcessor<EthereumGasPolicy> CreateSystemTransactionProcessor() =>
         new AuRaSystemTransactionProcessor<EthereumGasPolicy>(

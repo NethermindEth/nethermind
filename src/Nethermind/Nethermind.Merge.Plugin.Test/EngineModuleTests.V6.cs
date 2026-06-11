@@ -412,8 +412,7 @@ public partial class EngineModuleTests
 
         if (customWithdrawalContractAddress is not null)
         {
-            // The AuRa withdrawal-contract call runs as a system transaction, which surfaces
-            // SYSTEM_ADDRESS in the BAL on AuRa chains.
+            // The AuRa withdrawal-contract system tx surfaces SYSTEM_ADDRESS in the BAL.
             expectedBalBuilder.WithAccountChanges([new(new Address(customWithdrawalContractAddress)), new(Address.SystemUser)]);
         }
 
