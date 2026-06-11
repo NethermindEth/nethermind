@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
@@ -16,27 +16,27 @@ public class PreBlockCaches
 {
     private const int InitialCapacity = 4096 * 8;
 
-    /// <summary>
-    /// 2^(17+1) = 262144 entries — above the distinct-slot working set of storage-heavy blocks
-    /// (~140K slots at 300M gas), so prewarmed values survive until the main loop reads them.
-    /// </summary>
-    private const int StorageCacheSetsBits = 17;
-
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new(StorageCacheSetsBits);
+    private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
     private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
 
-    public PreBlockCaches() => _clearCaches =
+    public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
+
+    public PreBlockCaches(PreBlockCachesConfig config)
+    {
+        _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
+        _clearCaches =
         [
             () => { _storageCache.Clear(); return CacheType.None; },
             () => { _stateCache.Clear(); return CacheType.None; },
             () => { _precompileCache.NoResizeClear(); return CacheType.None; }
         ];
+    }
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
@@ -62,6 +62,23 @@ public class PreBlockCaches
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
+}
+
+/// <summary>
+/// Tuning knobs for the per-block warm caches owned by <see cref="PreBlockCaches"/>.
+/// </summary>
+public sealed record PreBlockCachesConfig
+{
+    /// <summary>
+    /// Set-index bits for the per-block storage cache (2^bits sets × 2 ways entries total).
+    /// </summary>
+    /// <remarks>
+    /// Default 17 → 2^17 sets × 2 ways = 262144 entries — above the distinct-slot working
+    /// set of storage-heavy blocks (~140K slots at 300M gas), so prewarmed values survive
+    /// until the main loop reads them. Tests override this to a smaller value to keep
+    /// memory pressure low when many independent test blockchains run in the same process.
+    /// </remarks>
+    public int StorageCacheSetsBits { get; init; } = 17;
 }
 
 [Flags]
