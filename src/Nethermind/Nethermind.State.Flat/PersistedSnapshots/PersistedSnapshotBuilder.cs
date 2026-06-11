@@ -192,7 +192,7 @@ public static class PersistedSnapshotBuilder
             WritePerAddressColumn<TWriter>(ref outer, snapshot, sortedStorages, uniqueAddresses, blobWriter, bloom);
 
             // Column 0x00: Metadata
-            WriteMetadataColumn<TWriter>(ref outer, snapshot, blobWriter.BlobArenaId);
+            WriteMetadataColumn<TWriter>(ref outer, snapshot, blobWriter);
 
             outer.Build();
         }
@@ -221,27 +221,38 @@ public static class PersistedSnapshotBuilder
     public static long EstimateSize(Snapshot snapshot) =>
         Math.Min(2.GiB, snapshot.EstimateMemory() + 1.KiB);
 
-    private static void WriteMetadataColumn<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, ushort blobArenaId) where TWriter : IByteBufferWriter
+    private static void WriteMetadataColumn<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, BlobArenaWriter blobWriter) where TWriter : IByteBufferWriter
     {
         // Metadata keys must be in sorted ASCII order:
-        // "from_block" < "from_hash" < "ref_ids" < "to_block" < "to_hash" < "version"
-        // ref_ids carries this snapshot's referenced blob arena id(s). For a freshly built
-        // base snapshot it's a single int — the id of the blob arena the builder just wrote
-        // its trie RLPs into. Compactor's NWayMetadataMerge replaces this with the union
-        // of input snapshots' referenced ids.
+        // "blob_range" < "from_block" < "from_hash" < "ref_ids" < "to_block" < "to_hash" < "version"
+        // blob_range is this base snapshot's contiguous trie-RLP run in the single blob arena
+        // it targeted — every column above wrote through this same blobWriter, so the run is
+        // final here (the last column written). ref_ids carries this snapshot's referenced
+        // blob arena id(s). For a freshly built base snapshot it's a single int — the id of
+        // the blob arena the builder just wrote its trie RLPs into. Compactor's
+        // NWayMetadataMerge replaces this with the union of input snapshots' referenced ids
+        // and emits noderefs instead of blob_range.
+        BlobRange blobRange = blobWriter.Written > blobWriter.StartOffset
+            ? new BlobRange(blobWriter.BlobArenaId, blobWriter.StartOffset, blobWriter.Written - blobWriter.StartOffset)
+            : BlobRange.None;
+
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilderBuffers.Container innerBuffers = new(expectedKeyCount: 6);
-        using HsstBTreeBuilder<TWriter> inner = new(ref innerWriter, ref innerBuffers.Buffers, PersistedSnapshotTags.MetadataKeyLength, expectedKeyCount: 6);
+        using HsstBTreeBuilderBuffers.Container innerBuffers = new(expectedKeyCount: 7);
+        using HsstBTreeBuilder<TWriter> inner = new(ref innerWriter, ref innerBuffers.Buffers, PersistedSnapshotTags.MetadataKeyLength, expectedKeyCount: 7);
 
         Span<byte> blockNumBytes = stackalloc byte[8];
         Span<byte> refIdsBytes = stackalloc byte[2];
+        Span<byte> blobRangeBytes = stackalloc byte[BlobRange.SerializedSize];
+
+        blobRange.Write(blobRangeBytes);
+        inner.Add(PersistedSnapshotTags.MetadataBlobRangeKey, blobRangeBytes);
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.From.BlockNumber);
         inner.Add(PersistedSnapshotTags.MetadataFromBlockKey, blockNumBytes);
 
         inner.Add(PersistedSnapshotTags.MetadataFromHashKey, snapshot.From.StateRoot.Bytes);
 
-        BinaryPrimitives.WriteUInt16LittleEndian(refIdsBytes, blobArenaId);
+        BinaryPrimitives.WriteUInt16LittleEndian(refIdsBytes, blobWriter.BlobArenaId);
         inner.Add(PersistedSnapshotTags.MetadataRefIdsKey, refIdsBytes);
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.To.BlockNumber);

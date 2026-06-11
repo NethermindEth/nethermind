@@ -97,6 +97,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <see cref="BlobArenaWriter"/>); <see cref="BlobRange.None"/> for compacted /
     /// persistable snapshots, whose <c>NodeRef</c>s scatter across many blob arenas.
     /// </summary>
+    /// <remarks>
+    /// Read once at construction from this snapshot's own metadata HSST (the
+    /// <c>blob_range</c> key in column 0x00), the same way the leased <c>ref_ids</c> are
+    /// walked. A snapshot whose metadata carries no <c>blob_range</c> key resolves to
+    /// <see cref="BlobRange.None"/>.
+    /// </remarks>
     public BlobRange BlobRange { get; }
 
     public long Size => _reservation.Size;
@@ -130,11 +136,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// negatives) but unfiltered — for callers that populate the real bloom later via
     /// <see cref="SetBloom"/>.</param>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        BlobArenaManager blobManager, BlobRange blobRange = default, BloomFilter? bloom = null)
+        BlobArenaManager blobManager, BloomFilter? bloom = null)
     {
         From = from;
         To = to;
-        BlobRange = blobRange;
         _reservation = reservation;
         _blobManager = blobManager;
         _bloom = bloom ?? BloomFilter.AlwaysTrue();
@@ -149,6 +154,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         int acquired = 0;
         try
         {
+            // Read this snapshot's contiguous blob run from its own metadata HSST. Absent on
+            // compacted / persistable snapshots, which resolve to BlobRange.None.
+            BlobRange = ReadBlobRange();
+
             RefIdsEnumerator e = GetRefIdsEnumerator();
             while (e.MoveNext())
             {
@@ -229,6 +238,26 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// resources of its own; the surrounding snapshot's lease keeps the mmap alive.
     /// </remarks>
     private RefIdsEnumerator GetRefIdsEnumerator() => new(this);
+
+    /// <summary>
+    /// Read the <c>blob_range</c> metadata entry (column 0x00) — the contiguous trie-RLP run
+    /// recorded by base snapshots. Returns <see cref="BlobRange.None"/> when the key is absent
+    /// (compacted / persistable snapshots) or malformed.
+    /// </summary>
+    private BlobRange ReadBlobRange()
+    {
+        ArenaByteReader reader = _reservation.CreateReader();
+        HsstReader<ArenaByteReader, NoOpPin> root = new(in reader, new Bound(0, reader.Length));
+        if (root.TrySeek(PersistedSnapshotTags.MetadataTag, out _) &&
+            root.TrySeek(PersistedSnapshotTags.MetadataBlobRangeKey, out Bound b) &&
+            b.Length == BlobRange.SerializedSize)
+        {
+            Span<byte> buf = stackalloc byte[BlobRange.SerializedSize];
+            if (reader.TryRead(b.Offset, buf))
+                return BlobRange.Read(buf);
+        }
+        return BlobRange.None;
+    }
 
     /// <summary>
     /// Ref-struct enumerator backing <see cref="GetRefIdsEnumerator"/>. Yields each

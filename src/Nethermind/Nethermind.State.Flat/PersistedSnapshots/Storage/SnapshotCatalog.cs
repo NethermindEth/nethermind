@@ -21,20 +21,19 @@ public sealed class SnapshotCatalog(IDb db)
 {
     /// <summary>
     /// A single catalog entry describing a persisted snapshot's identity, metadata-arena
-    /// location, contiguous blob-RLP region (base snapshots only — <see cref="BlobRange.None"/>
-    /// otherwise) and bucket <see cref="SnapshotKind"/>.
+    /// location and bucket <see cref="SnapshotKind"/>. The contiguous blob-RLP region (base
+    /// snapshots only) lives in the snapshot's own metadata HSST under the <c>blob_range</c>
+    /// key, not here.
     /// </summary>
     public sealed record CatalogEntry(
         StateId From,
         StateId To,
         SnapshotLocation Location,
-        BlobRange BlobRange,
         SnapshotKind Kind);
 
     // Binary layout per entry: fromBlock(8) + fromRoot(32) + toBlock(8) + toRoot(32) +
-    // arenaId(4) + offset(8) + size(8) + blobArenaId(2) + blobOffset(8) + blobLength(8) +
-    // kind(1) = 119
-    internal const int EntrySize = 119;
+    // arenaId(4) + offset(8) + size(8) + kind(1) = 101
+    internal const int EntrySize = 101;
 
     // 8-byte block number + 32-byte state root + 8-byte depth, matching the runtime
     // tuple that disambiguates same-To entries across the three buckets.
@@ -56,7 +55,10 @@ public sealed class SnapshotCatalog(IDb db)
     // byte; wipe-and-resync.
     // v7: entry key is (To.BlockNumber, To.StateRoot, depth=To.BlockNumber-From.BlockNumber)
     // so base/compacted/persistable at the same To round-trip independently; wipe-and-resync.
-    internal const int CurrentVersion = 7;
+    // v8: the per-base blob-RLP BlobRange is no longer stored in the catalog — it moved into
+    // the snapshot's own metadata HSST under the blob_range key; entries shrink to 101 bytes;
+    // wipe-and-resync.
+    internal const int CurrentVersion = 8;
 
     // Length-4 sentinel key holding the version word. Entry keys are 48 bytes, so the
     // length disambiguation is unambiguous when iterating GetAll().
@@ -177,10 +179,7 @@ public sealed class SnapshotCatalog(IDb db)
         BinaryPrimitives.WriteInt32LittleEndian(span[80..], entry.Location.ArenaId);
         BinaryPrimitives.WriteInt64LittleEndian(span[84..], entry.Location.Offset);
         BinaryPrimitives.WriteInt64LittleEndian(span[92..], entry.Location.Size);
-        BinaryPrimitives.WriteUInt16LittleEndian(span[100..], entry.BlobRange.BlobArenaId);
-        BinaryPrimitives.WriteInt64LittleEndian(span[102..], entry.BlobRange.Offset);
-        BinaryPrimitives.WriteInt64LittleEndian(span[110..], entry.BlobRange.Length);
-        span[118] = (byte)entry.Kind;
+        span[100] = (byte)entry.Kind;
     }
 
     private static CatalogEntry ReadEntry(ReadOnlySpan<byte> span)
@@ -196,13 +195,8 @@ public sealed class SnapshotCatalog(IDb db)
         int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[80..]);
         long offset = BinaryPrimitives.ReadInt64LittleEndian(span[84..]);
         long size = BinaryPrimitives.ReadInt64LittleEndian(span[92..]);
+        SnapshotKind kind = (SnapshotKind)span[100];
 
-        ushort blobArenaId = BinaryPrimitives.ReadUInt16LittleEndian(span[100..]);
-        long blobOffset = BinaryPrimitives.ReadInt64LittleEndian(span[102..]);
-        long blobLength = BinaryPrimitives.ReadInt64LittleEndian(span[110..]);
-        SnapshotKind kind = (SnapshotKind)span[118];
-
-        return new CatalogEntry(from, to, new SnapshotLocation(arenaId, offset, size),
-            new BlobRange(blobArenaId, blobOffset, blobLength), kind);
+        return new CatalogEntry(from, to, new SnapshotLocation(arenaId, offset, size), kind);
     }
 }

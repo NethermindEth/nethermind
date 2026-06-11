@@ -194,9 +194,10 @@ public sealed class PersistedSnapshotRepository(
         ArenaReservation reservation = _arena.Open(entry.Location);
 
         // The PersistedSnapshot ctor walks its own ref_ids metadata and leases each blob
-        // arena file; on partial failure it releases what it took and disposes the
-        // reservation lease before rethrowing — no repository-side cleanup needed.
-        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs, entry.BlobRange);
+        // arena file (and reads its blob_range from the same metadata); on partial failure
+        // it releases what it took and disposes the reservation lease before rethrowing —
+        // no repository-side cleanup needed.
+        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs);
 
         // Bloom is intentionally NOT built here — each snapshot is constructed with the
         // AlwaysTrue placeholder (correct, but unfiltered). LoadFromCatalog's ReconstructBloom
@@ -222,8 +223,8 @@ public sealed class PersistedSnapshotRepository(
 
     /// <summary>
     /// Persist an in-memory snapshot as a base input: write its HSST metadata + a contiguous
-    /// trie-RLP region into the arena / blob pools, record the region as a
-    /// <see cref="BlobRange"/> in the catalog, and insert it into <see cref="_base"/>.
+    /// trie-RLP region into the arena / blob pools (the region is recorded in the metadata
+    /// HSST's <c>blob_range</c> key by the builder), and insert it into <see cref="_base"/>.
     /// </summary>
     public PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
     {
@@ -265,22 +266,16 @@ public sealed class PersistedSnapshotRepository(
         reservation.Fsync();
         blobWriter.Fsync();
 
-        // The base snapshot's trie RLPs occupy one contiguous run in the single blob arena
-        // this writer targeted — record it so persistence can prefetch it (a base that wrote
-        // no trie nodes has an empty run).
-        BlobRange blobRange = blobWriter.Written > blobWriter.StartOffset
-            ? new BlobRange(blobWriter.BlobArenaId, blobWriter.StartOffset, blobWriter.Written - blobWriter.StartOffset)
-            : BlobRange.None;
-
         // PersistedSnapshot's ctor reads its own ref_ids metadata and leases each blob
-        // arena file. The single id written above (blobWriter.BlobArenaId) is the only
+        // arena file, and reads its contiguous blob run from the blob_range metadata key the
+        // builder wrote. The single id written above (blobWriter.BlobArenaId) is the only
         // entry the new metadata carries, so the ctor's iterator yields exactly that id.
         PersistedSnapshot persisted;
         lock (_catalogLock)
         {
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, blobRange, SnapshotKind.Base));
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, SnapshotKind.Base));
 
-            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, blobRange, bloom);
+            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, bloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
             _base.Set(snapshot.To, persisted);
@@ -312,7 +307,7 @@ public sealed class PersistedSnapshotRepository(
         PersistedSnapshot snapshot;
         lock (_catalogLock)
         {
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, BlobRange.None,
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location,
                 isPersistable ? SnapshotKind.Persistable : SnapshotKind.Compacted));
 
             snapshot = new PersistedSnapshot(from, to, reservation, _blobs, bloom: bloom);

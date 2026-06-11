@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
@@ -20,4 +22,21 @@ public readonly record struct BlobRange(ushort BlobArenaId, long Offset, long Le
 
     /// <summary>True when there is no region to prefetch.</summary>
     public bool IsEmpty => Length == 0;
+
+    /// <summary>Fixed serialized width of a range: BlobArenaId(2) + Offset(8) + Length(8).</summary>
+    internal const int SerializedSize = sizeof(ushort) + sizeof(long) + sizeof(long);
+
+    /// <summary>Serialize this range little-endian into <paramref name="span"/> (≥ <see cref="SerializedSize"/> bytes).</summary>
+    internal void Write(Span<byte> span)
+    {
+        BinaryPrimitives.WriteUInt16LittleEndian(span, BlobArenaId);
+        BinaryPrimitives.WriteInt64LittleEndian(span[2..], Offset);
+        BinaryPrimitives.WriteInt64LittleEndian(span[10..], Length);
+    }
+
+    /// <summary>Deserialize a range from <paramref name="span"/> (≥ <see cref="SerializedSize"/> bytes).</summary>
+    internal static BlobRange Read(ReadOnlySpan<byte> span) =>
+        new(BinaryPrimitives.ReadUInt16LittleEndian(span),
+            BinaryPrimitives.ReadInt64LittleEndian(span[2..]),
+            BinaryPrimitives.ReadInt64LittleEndian(span[10..]));
 }

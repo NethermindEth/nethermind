@@ -490,6 +490,43 @@ public class PersistedSnapshotRepositoryTests
         }
     }
 
+    [TestCase(true, TestName = "BlobRange_SurvivesReloadViaMetadata(with trie nodes)")]
+    [TestCase(false, TestName = "BlobRange_SurvivesReloadViaMetadata(no trie nodes)")]
+    public void BlobRange_SurvivesReloadViaMetadata(bool withTrieNode)
+    {
+        // The blob range lives in the snapshot's own metadata HSST (blob_range key), not the
+        // catalog, so it must round-trip a restart: read back by the PersistedSnapshot ctor.
+        MemDb catalogDb = new();
+        string arenaDir = Path.Combine(_testDir, "arenas", "base");
+        string blobDir = Path.Combine(_testDir, "blobs", "base");
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
+        using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
+        using (PersistedSnapshotRepository repo1 = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
+        {
+            repo1.LoadFromCatalog();
+            SnapshotContent content = new();
+            content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
+            if (withTrieNode)
+                content.StateNodes[new TreePath(Keccak.Compute("p"), 4)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
+            repo1.ConvertSnapshotToPersistedSnapshot(
+                new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        }
+
+        using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
+        using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance);
+        repo2.LoadFromCatalog();
+
+        Assert.That(repo2.TryLeaseSnapshotTo(s1, out PersistedSnapshot? reloaded), Is.True);
+        using (reloaded)
+            Assert.That(reloaded!.BlobRange.IsEmpty, Is.EqualTo(!withTrieNode),
+                "the base's blob range must round-trip a restart via its metadata HSST");
+    }
+
     [Test]
     public void LeaseBaseSnapshotsInRange_ReturnsBasesTilingWindow()
     {

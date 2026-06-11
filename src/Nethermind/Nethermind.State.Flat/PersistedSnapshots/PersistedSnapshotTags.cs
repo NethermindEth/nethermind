@@ -18,7 +18,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Columnar layout — the outer HSST has 6 column entries, each containing an inner HSST.
 /// Inner HSST keys are the entity keys without the tag prefix. Outer tags 0x00..0x05 are
 /// contiguous so the outer DenseByteIndex's trailer is densely packed.
-///   Column 0x00: Metadata — String key → version, block range, ref_ids list, state root values
+///   Column 0x00: Metadata — String key → version, block range, ref_ids list, state root
+///                values, and (base snapshots only) the contiguous blob_range run
 ///   Column 0x01: Address (raw 20 bytes) → per-address HSST {
 ///       0x00 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
 ///       0x01 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
@@ -107,6 +108,10 @@ internal static class PersistedSnapshotTags
     // original key, "from_block"). NUL-padding preserves the original sort order
     // because no original key is a prefix of any other.
     internal const int MetadataKeyLength = 10;
+    // Base snapshots only: the contiguous trie-RLP run in the single blob arena they
+    // wrote into, serialized as a BlobRange. Sorts first ("blob_range" < "from_block");
+    // absent on compacted / persistable snapshots, which read back BlobRange.None.
+    internal static readonly byte[] MetadataBlobRangeKey = "blob_range"u8.ToArray();
     internal static readonly byte[] MetadataFromBlockKey = "from_block"u8.ToArray();
     internal static readonly byte[] MetadataFromHashKey = "from_hash\0"u8.ToArray();
     internal static readonly byte[] MetadataNodeRefsKey = "noderefs\0\0"u8.ToArray();
