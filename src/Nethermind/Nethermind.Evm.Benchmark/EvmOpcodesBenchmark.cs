@@ -201,6 +201,7 @@ public unsafe class EvmOpcodesBenchmark
         _vmState = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromLong(long.MaxValue),
             ExecutionType.TRANSACTION,
+            new EvmMemoryArena(),
             _env,
             new StackAccessTracker(),
             Snapshot.Empty);

@@ -324,6 +324,7 @@ public class EvmStackTests
         VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromLong(10_000),
             ExecutionType.CALL,
+            new EvmMemoryArena(),
             ExecutionEnvironment.Rent(null, null, null, null, 0, default, default),
             new StackAccessTracker(),
             Snapshot.Empty);
