@@ -120,7 +120,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     cfg,
                     ctx.Resolve<ICompactionSchedule>(),
                     ctx.Resolve<ILogManager>(),
-                    minCompactSize: cfg.MinCompactSize,
                     maxCompactSize: cfg.PersistedSnapshotMaxCompactSize);
             })
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
