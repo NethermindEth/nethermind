@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
+using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using NSubstitute;
 using NUnit.Framework;
@@ -22,16 +22,17 @@ public class LookupKNearestNeighbourTests
     private static readonly ValueHash256 N1 = new("0x4400000000000000000000000000000000000000000000000000000000000000");
     private static readonly ValueHash256 N2 = new("0x5500000000000000000000000000000000000000000000000000000000000000");
 
-    private static (LookupKNearestNeighbour<ValueHash256, ValueHash256> Lookup, IRoutingTable<ValueHash256> Routing, INodeHealthTracker<ValueHash256> Health) CreateLookup(int alpha, TimeSpan hardTimeout, ValueHash256[] seeds)
+    private static (LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> Lookup, IRoutingTable<ValueHash256, Hash256> Routing, INodeHealthTracker<ValueHash256> Health) CreateLookup(int alpha, TimeSpan hardTimeout, ValueHash256[] seeds)
     {
-        IRoutingTable<ValueHash256> routing = Substitute.For<IRoutingTable<ValueHash256>>();
-        routing.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>()).Returns(seeds);
+        IRoutingTable<ValueHash256, Hash256> routing = Substitute.For<IRoutingTable<ValueHash256, Hash256>>();
+        routing.GetKNearestNeighbour(Arg.Any<Hash256>(), Arg.Any<bool>()).Returns(seeds);
 
         INodeHealthTracker<ValueHash256> health = Substitute.For<INodeHealthTracker<ValueHash256>>();
 
-        LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup = new(
+        LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> lookup = new(
             routing,
             IdentityNodeHashProvider.Instance,
+            Hash256KademliaDistance.Instance,
             health,
             new KademliaConfig<ValueHash256>
             {
@@ -39,8 +40,7 @@ public class LookupKNearestNeighbourTests
                 Alpha = alpha,
                 KSize = 8,
                 LookupFindNeighbourHardTimeout = hardTimeout,
-            },
-            LimboLogs.Instance);
+            });
 
         return (lookup, routing, health);
     }
@@ -50,17 +50,15 @@ public class LookupKNearestNeighbourTests
     [CancelAfter(10000)]
     public async Task Lookup_should_unblock_on_mid_flight_cancellation(int alpha, CancellationToken token)
     {
-        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
             CreateLookup(alpha, TimeSpan.FromSeconds(30), [Seed1]);
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-        // Signalled once a findNeighbour request is actually dispatched, so cancellation deterministically
-        // interrupts an in-flight request (which records OnRequestFailed) instead of racing worker startup.
         TaskCompletionSource requestInFlight = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Task<ValueHash256[]> task = lookup.Lookup(
-            Seed1,
+            IdentityNodeHashProvider.ToHash(Seed1),
             8,
             async (_, t) =>
             {
@@ -82,11 +80,11 @@ public class LookupKNearestNeighbourTests
     [CancelAfter(10000)]
     public async Task Lookup_should_record_request_failure_on_hard_timeout(int alpha, CancellationToken token)
     {
-        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
             CreateLookup(alpha, TimeSpan.FromMilliseconds(100), [Seed1]);
 
         _ = await lookup.Lookup(
-            Seed1,
+            IdentityNodeHashProvider.ToHash(Seed1),
             8,
             async (_, t) =>
             {
@@ -102,11 +100,11 @@ public class LookupKNearestNeighbourTests
     [CancelAfter(10000)]
     public async Task Lookup_should_not_mark_node_healthy_when_find_neighbours_returns_null(CancellationToken token)
     {
-        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
             CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1]);
 
         _ = await lookup.Lookup(
-            Seed1,
+            IdentityNodeHashProvider.ToHash(Seed1),
             8,
             (_, _) => Task.FromResult<ValueHash256[]?>(null),
             token);
@@ -114,12 +112,32 @@ public class LookupKNearestNeighbourTests
         health.DidNotReceive().OnIncomingMessageFrom(Seed1);
     }
 
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_record_peer_failure_on_find_neighbour_timeout(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> lookup, _, INodeHealthTracker<ValueHash256> health) =
+            CreateLookup(1, TimeSpan.FromMilliseconds(50), [Seed1]);
+
+        _ = await lookup.Lookup(
+            IdentityNodeHashProvider.ToHash(Seed1),
+            8,
+            async (_, t) =>
+            {
+                await Task.Delay(Timeout.Infinite, t);
+                return null;
+            },
+            token);
+
+        health.Received().OnRequestFailed(Seed1);
+    }
+
     [TestCase(1)]
     [TestCase(3)]
     [CancelAfter(10000)]
     public async Task Lookup_should_return_results_with_different_alpha(int alpha, CancellationToken token)
     {
-        (LookupKNearestNeighbour<ValueHash256, ValueHash256> lookup, _, _) =
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> lookup, _, _) =
             CreateLookup(alpha, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3]);
 
         Dictionary<ValueHash256, ValueHash256[]> neighbours = new()
@@ -130,11 +148,46 @@ public class LookupKNearestNeighbourTests
         };
 
         ValueHash256[] result = await lookup.Lookup(
-            Self,
+            IdentityNodeHashProvider.ToHash(Self),
             8,
             (node, _) => Task.FromResult<ValueHash256[]?>(neighbours.GetValueOrDefault(node, [])),
             token);
 
         Assert.That(result, Is.Not.Empty);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_drain_cancelled_workers_before_returning(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<ValueHash256, ValueHash256, Hash256> lookup, _, _) =
+            CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1]);
+        TaskCompletionSource cancelledWorkerDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        _ = await lookup.Lookup(
+            IdentityNodeHashProvider.ToHash(Self),
+            1,
+            async (node, findToken) =>
+            {
+                if (node != Seed1)
+                {
+                    return [];
+                }
+
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, findToken);
+                    return [];
+                }
+                catch (OperationCanceledException)
+                {
+                    await Task.Delay(100, CancellationToken.None);
+                    cancelledWorkerDrained.SetResult();
+                    throw;
+                }
+            },
+            token);
+
+        Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
     }
 }

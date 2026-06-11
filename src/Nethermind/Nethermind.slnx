@@ -122,6 +122,7 @@
   <Project Path="Nethermind.JsonRpc.SourceGenerator.Build/Nethermind.JsonRpc.SourceGenerator.Build.csproj" />
   <Project Path="Nethermind.JsonRpc.SourceGenerator/Nethermind.JsonRpc.SourceGenerator.csproj" />
   <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+  <Project Path="Nethermind.Kademlia/Nethermind.Kademlia.csproj" />
   <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
   <Project Path="Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
   <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />

@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
@@ -24,11 +25,14 @@ public class MainProcessingContextTests
     [CancelAfter(10000)]
     public async Task Test_TransactionProcessed_EventIsFired(CancellationToken cancellationToken)
     {
+        using PrivateKey privateKeyA = new("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        using PrivateKey privateKeyB = new("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+
         await using IContainer ctx = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Cancun.Instance))
             .WithGenesisPostProcessor((_, state) =>
             {
-                state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether, Osaka.Instance);
+                state.AddToBalanceAndCreateIfNotExists(privateKeyA.Address, 10.Ether, Osaka.Instance);
             })
             .Build();
 
@@ -40,13 +44,13 @@ public class MainProcessingContextTests
         await ctx.Resolve<TestBlockchainUtil>().AddBlockAndWaitForHead(false, cancellationToken,
             Build.A.Transaction
                 .WithGasLimit(100_000)
-                .WithSenderAddress(TestItem.AddressA)
+                .WithSenderAddress(privateKeyA.Address)
                 .WithCode(Prepare.EvmCode
                     .ForInitOf(Prepare.EvmCode
-                        .PushData(TestItem.PrivateKeyB.Address)
+                        .PushData(privateKeyB.Address)
                         .Done)
                     .Done)
-                .Signed(TestItem.PrivateKeyA)
+                .Signed(privateKeyA)
                 .TestObject);
 
         Assert.That(totalTransactionProcessed, Is.EqualTo(1));

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -26,11 +25,10 @@ namespace Nethermind.Network.Discovery.Test;
 [TestFixture(DiscoveryVersion.V5)]
 public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 {
-    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan PeerDiscoveryTimeout = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan PeerDiscoveryPollInterval = TimeSpan.FromMilliseconds(100);
 
-    /// <summary>
-    /// Common code for all node
-    /// </summary>
     private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
     {
         ConfigProvider configProvider = new();
@@ -50,6 +48,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         networkConfig.P2PPort = port;
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
         discoveryConfig.DiscoveryVersion = discoveryVersion;
+        discoveryConfig.UseDefaultDiscv5Bootnodes = false;
 
         return new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
@@ -67,8 +66,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     [Parallelizable(ParallelScope.None)]
     public async Task TestDiscovery()
     {
-        if (discoveryVersion == DiscoveryVersion.V5) Assert.Ignore("DiscV5 does not seems to work.");
-        CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         await using IContainer boot = CreateNode(TestItem.PrivateKeys[0]);
         IEnode bootEnode = boot.Resolve<IEnode>();
@@ -79,21 +77,73 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         IContainer[] nodes = [boot, node1, node2, node3, node4];
 
-        HashSet<PublicKey> nodeKeys = nodes.Select(ctx => ctx.Resolve<IEnode>().PublicKey).ToHashSet();
+        HashSet<PublicKey> nodeKeys = GetNodeKeys(nodes);
 
         foreach (IContainer node in nodes)
         {
             await node.Resolve<PseudoNethermindRunner>().StartDiscovery(cancellationTokenSource.Token);
         }
 
-        foreach (IContainer node in nodes)
+        Task[] waitTasks = new Task[nodes.Length];
+        for (int i = 0; i < nodes.Length; i++)
         {
-            IPeerPool pool = node.Resolve<IPeerPool>();
-            HashSet<PublicKey> expectedKeys = [.. nodeKeys];
-            expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
-
-            Assert.That(() => pool.Peers.Select(static kvp => kvp.Value.Node.Id).ToHashSet(),
-                Is.EquivalentTo(expectedKeys).After(15000, 100));
+            waitTasks[i] = AssertPeerPoolContainsExpectedNodes(nodes[i], nodeKeys, cancellationTokenSource.Token);
         }
+
+        await Task.WhenAll(waitTasks);
+    }
+
+    private static HashSet<PublicKey> GetNodeKeys(IContainer[] nodes)
+    {
+        HashSet<PublicKey> nodeKeys = [];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            nodeKeys.Add(nodes[i].Resolve<IEnode>().PublicKey);
+        }
+
+        return nodeKeys;
+    }
+
+    private static async Task AssertPeerPoolContainsExpectedNodes(IContainer node, HashSet<PublicKey> nodeKeys, CancellationToken cancellationToken)
+    {
+        IPeerPool pool = node.Resolve<IPeerPool>();
+        PublicKey localKey = node.Resolve<IEnode>().PublicKey;
+        HashSet<PublicKey> expectedKeys = [.. nodeKeys];
+        expectedKeys.Remove(localKey);
+
+        using CancellationTokenSource timeoutCts = new(PeerDiscoveryTimeout);
+        using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+        CancellationToken linkedToken = linkedCts.Token;
+
+        while (!linkedToken.IsCancellationRequested)
+        {
+            HashSet<PublicKey> actualKeys = GetPeerKeys(pool);
+            if (actualKeys.SetEquals(expectedKeys))
+            {
+                return;
+            }
+
+            try
+            {
+                await Task.Delay(PeerDiscoveryPollInterval, linkedToken);
+            }
+            catch (OperationCanceledException) when (linkedToken.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+
+        Assert.That(GetPeerKeys(pool), Is.EquivalentTo(expectedKeys), $"Node {localKey} did not discover all peers before {PeerDiscoveryTimeout}.");
+    }
+
+    private static HashSet<PublicKey> GetPeerKeys(IPeerPool pool)
+    {
+        HashSet<PublicKey> peerKeys = [];
+        foreach (KeyValuePair<PublicKeyAsKey, Peer> peer in pool.Peers)
+        {
+            peerKeys.Add(peer.Value.Node.Id);
+        }
+
+        return peerKeys;
     }
 }

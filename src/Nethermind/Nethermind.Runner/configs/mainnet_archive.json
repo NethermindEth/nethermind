@@ -37,5 +37,8 @@
   },
   "Merge": {
     "FinalTotalDifficulty": "58750003716598352816469"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "All"
   }
 }

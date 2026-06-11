@@ -35,5 +35,8 @@
   },
   "Pruning": {
     "Mode": "None"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
   }
 }

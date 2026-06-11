@@ -7,11 +7,11 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="NonBlocking" />
-    <PackageReference Include="PierTwo.Lantern.Discv5.WireProtocol" PrivateAssets="all" />
     <PackageReference Include="System.Configuration.ConfigurationManager" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\Chains\**\*.*">

@@ -227,7 +227,36 @@ public class NodeFilterTests
     [TestCase("fe80::1", true, Description = "IPv6 link-local")]
     [TestCase("8.8.8.8", false, Description = "Public IPv4")]
     [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => Assert.That(NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse(address)), Is.EqualTo(expected));
+    public void IPAddressClassifier_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => Assert.That(IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse(address)), Is.EqualTo(expected));
+
+    [TestCase("0.1.2.3", true, Description = "IPv4 this-network")]
+    [TestCase("192.0.0.1", true, Description = "IPv4 IETF protocol assignments")]
+    [TestCase("192.0.2.1", true, Description = "IPv4 documentation TEST-NET-1")]
+    [TestCase("192.31.196.1", true, Description = "IPv4 AS112")]
+    [TestCase("192.52.193.1", true, Description = "IPv4 AMT")]
+    [TestCase("198.18.0.1", true, Description = "IPv4 benchmarking")]
+    [TestCase("192.175.48.1", true, Description = "IPv4 direct delegation AS112")]
+    [TestCase("198.51.100.1", true, Description = "IPv4 documentation TEST-NET-2")]
+    [TestCase("203.0.113.1", true, Description = "IPv4 documentation TEST-NET-3")]
+    [TestCase("224.0.0.1", true, Description = "IPv4 multicast")]
+    [TestCase("240.0.0.1", true, Description = "IPv4 reserved")]
+    [TestCase("::ffff:224.0.0.1", true, Description = "IPv4-mapped multicast")]
+    [TestCase("64:ff9b::1", true, Description = "IPv6 IPv4/IPv6 translation")]
+    [TestCase("64:ff9b:1::1", true, Description = "IPv6 local-use translation")]
+    [TestCase("100::1", true, Description = "IPv6 discard-only")]
+    [TestCase("2001::1", true, Description = "IPv6 IETF protocol assignments")]
+    [TestCase("2001:db8::1", true, Description = "IPv6 documentation")]
+    [TestCase("2002::1", true, Description = "IPv6 6to4")]
+    [TestCase("3fff::1", true, Description = "IPv6 documentation")]
+    [TestCase("8.8.8.8", false, Description = "Public IPv4")]
+    [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
+    public void IPAddressClassifier_IsSpecialUseAddress(string address, bool expected) => Assert.That(IPAddressClassifier.IsSpecialUseAddress(IPAddress.Parse(address)), Is.EqualTo(expected));
+
+    [TestCase("224.0.0.1", true, Description = "IPv4 multicast")]
+    [TestCase("ff02::1", true, Description = "IPv6 multicast")]
+    [TestCase("8.8.8.8", false, Description = "Public IPv4")]
+    [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
+    public void IPAddressClassifier_IsMulticast(string address, bool expected) => Assert.That(IPAddressClassifier.IsMulticast(IPAddress.Parse(address)), Is.EqualTo(expected));
 
     [TestCase("192.168.1.10", "192.168.1.20", "203.0.113.1", false, Description = "Private addresses use exact keying")]
     [TestCase("203.0.113.1", "203.0.113.50", "198.51.100.1", true, Description = "Public addresses in same /24 use subnet bucketing")]

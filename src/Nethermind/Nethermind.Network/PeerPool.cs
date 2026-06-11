@@ -190,6 +190,7 @@ namespace Nethermind.Network
                 }
                 catch (Exception ex)
                 {
+                    _peerStorage.StartBatch();
                     if (_logger.IsError) ErrorPeerStorageCommit(ex);
                 }
             }

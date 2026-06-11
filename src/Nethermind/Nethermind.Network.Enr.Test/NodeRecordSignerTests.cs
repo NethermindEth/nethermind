@@ -107,10 +107,62 @@ public class NodeRecordSignerTests
         rlpStream.StartSequence(500);
         rlpStream.Encode(bytes[..500]);
         rlpStream.Position = 0;
-        Assert.That(
-            () => signer.Deserialize(rlpStream),
-            Throws.TypeOf<NetworkingException>()
-                .With.Property(nameof(NetworkingException.NetworkExceptionType)).EqualTo(NetworkExceptionType.Discovery));
+        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Throws_when_encoded_record_is_bigger_than_300_bytes()
+    {
+        NodeRecordSigner signer = new(new Ecdsa());
+        byte[] filler = FindFillerForOversizedEncodedRecord();
+        RlpStream rlpStream = CreateRecord(
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
+            ("z", stream => stream.Encode(filler), Rlp.LengthOf(filler)));
+
+        Assert.That(rlpStream.Data.Length, Is.GreaterThan(300));
+        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Throws_when_keys_are_not_sorted()
+    {
+        NodeRecordSigner signer = new(new Ecdsa());
+        RlpStream rlpStream = CreateRecord(
+            (EnrContentKey.Udp, static stream => stream.Encode(30303), Rlp.LengthOf(30303)),
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")));
+
+        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Throws_when_keys_are_duplicated()
+    {
+        NodeRecordSigner signer = new(new Ecdsa());
+        RlpStream rlpStream = CreateRecord(
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")));
+
+        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Throws_when_id_is_missing()
+    {
+        NodeRecordSigner signer = new(new Ecdsa());
+        RlpStream rlpStream = CreateRecord(
+            ("z", static stream => stream.Encode(Array.Empty<byte>()), Rlp.LengthOf(Array.Empty<byte>())));
+
+        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Throws_when_id_is_not_v4()
+    {
+        NodeRecordSigner signer = new(new Ecdsa());
+        RlpStream rlpStream = CreateRecord(
+            (EnrContentKey.Id, static stream => stream.Encode("v5"), Rlp.LengthOf("v5")));
+
+        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
     }
 
     [TestCase("f897b840421561b4ed5de28a7100e0a5005ecc0ba6ba6cc18528061e811704c8794fec965cba63831051d134bdc801c0c90d31a30d241074095311ffe6628d5545478b770a83657468c7c68496516d06808269648276348269708436ed0a0a89736563703235366b31a103f5c110132b0374805d4453f55577cc9c58bb1a08f822b9b3722132e3095f69728374637082765f8375647082765f")]
@@ -127,8 +179,29 @@ public class NodeRecordSignerTests
         Console.WriteLine(testCase);
         Console.WriteLine(hex);
         Assert.That(signer.Verify(nodeRecord), Is.True);
+        Assert.That(nodeRecord.ToRlpBytes(), Is.EqualTo(Bytes.FromHexString(testCase)));
     }
 
+    [Test]
+    public void FromBytes_throws_when_record_has_trailing_bytes()
+    {
+        byte[] recordBytes = Bytes.FromHexString(
+            "f897b840421561b4ed5de28a7100e0a5005ecc0ba6ba6cc18528061e811704c8794fec965cba63831051d134bdc801c0c90d31a30d241074095311ffe6628d5545478b770a83657468c7c68496516d06808269648276348269708436ed0a0a89736563703235366b31a103f5c110132b0374805d4453f55577cc9c58bb1a08f822b9b3722132e3095f69728374637082765f8375647082765f");
+        byte[] recordWithTrailingBytes = [.. recordBytes, 0x80];
+
+        Assert.That(() => NodeRecord.FromBytes(recordWithTrailingBytes), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void FromBytes_throws_rlp_exception_when_signature_cannot_recover()
+    {
+        byte[] publicKey = new byte[CompressedPublicKey.LengthInBytes];
+        RlpStream rlpStream = CreateRecord(
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
+            (EnrContentKey.SecP256k1, stream => stream.Encode(publicKey), Rlp.LengthOf(publicKey)));
+
+        Assert.That(() => NodeRecord.FromBytes(rlpStream.Data), Throws.TypeOf<RlpException>());
+    }
 
     [Test]
     public void Cannot_verify_when_signature_missing()
@@ -137,5 +210,49 @@ public class NodeRecordSignerTests
         NodeRecordSigner signer = new(new Ecdsa(), privateKey);
         NodeRecord nodeRecord = new();
         Assert.Throws<Exception>(() => _ = signer.Verify(nodeRecord));
+    }
+
+    private static RlpStream CreateRecord(params (string Key, Action<RlpStream> EncodeValue, int ValueLength)[] entries)
+    {
+        byte[] signature = new byte[64];
+        int contentLength = Rlp.LengthOf(signature) + Rlp.LengthOf(1UL);
+        foreach ((string key, _, int valueLength) in entries)
+        {
+            contentLength += Rlp.LengthOf(key) + valueLength;
+        }
+
+        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
+        rlpStream.StartSequence(contentLength);
+        rlpStream.Encode(signature);
+        rlpStream.Encode(1UL);
+        foreach ((string key, Action<RlpStream> encodeValue, _) in entries)
+        {
+            rlpStream.Encode(key);
+            encodeValue(rlpStream);
+        }
+
+        rlpStream.Position = 0;
+        return rlpStream;
+    }
+
+    private static byte[] FindFillerForOversizedEncodedRecord()
+    {
+        for (int i = 0; i <= 300; i++)
+        {
+            byte[] filler = new byte[i];
+            int contentLength =
+                Rlp.LengthOf(new byte[64]) +
+                Rlp.LengthOf(1UL) +
+                Rlp.LengthOf(EnrContentKey.Id) +
+                Rlp.LengthOf("v4") +
+                Rlp.LengthOf("z") +
+                Rlp.LengthOf(filler);
+            if (contentLength <= 300 && Rlp.LengthOfSequence(contentLength) > 300)
+            {
+                return filler;
+            }
+        }
+
+        throw new InvalidOperationException("Could not create oversized ENR fixture.");
     }
 }

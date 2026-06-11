@@ -4,7 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
+using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using NUnit.Framework;
 
@@ -14,21 +14,23 @@ public class KBucketTreeTests
 {
     private static readonly ValueHash256 SelfHash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-    private static KBucketTree<ValueHash256> CreateTree(int k = 4, int beta = 0) => new(
+    private static KBucketTree<ValueHash256, Hash256> CreateTree(int k = 4, int beta = 0) => new(
         new KademliaConfig<ValueHash256> { CurrentNodeId = SelfHash, KSize = k, Beta = beta },
         IdentityNodeHashProvider.Instance,
-        LimboLogs.Instance);
+        Hash256KademliaDistance.Instance);
 
-    private static void Add(KBucketTree<ValueHash256> tree, ValueHash256 hash) =>
-        tree.TryAddOrRefresh(hash, hash, out _);
+    private static void Add(KBucketTree<ValueHash256, Hash256> tree, ValueHash256 hash) =>
+        tree.TryAddOrRefresh(IdentityNodeHashProvider.ToHash(hash), hash, out _);
 
     private static ValueHash256 HashAtDistance(int distance, byte tag) =>
-        Hash256XorUtils.GetRandomHashAtDistance(SelfHash, distance, new Random(tag));
+        ToValueHash(Hash256KademliaDistance.Instance.GetRandomHashAtDistance(IdentityNodeHashProvider.ToHash(SelfHash), distance, new Random(tag)));
+
+    private static ValueHash256 ToValueHash(Hash256 hash) => hash.ValueHash256;
 
     [Test]
     public void Split_should_preserve_lru_order_in_child_buckets()
     {
-        KBucketTree<ValueHash256> tree = CreateTree(k: 2, beta: 0);
+        KBucketTree<ValueHash256, Hash256> tree = CreateTree(k: 2, beta: 0);
 
         ValueHash256 left0 = HashAtDistance(255, 0x10);
         ValueHash256 left1 = HashAtDistance(255, 0x11);
@@ -47,7 +49,7 @@ public class KBucketTreeTests
     [Test]
     public void GetAllAtDistance_should_include_nodes_in_deeper_split_buckets()
     {
-        KBucketTree<ValueHash256> tree = CreateTree(k: 2, beta: 4);
+        KBucketTree<ValueHash256, Hash256> tree = CreateTree(k: 2, beta: 4);
 
         ValueHash256 deep1 = HashAtDistance(252, 0x40);
         ValueHash256 deep2 = HashAtDistance(252, 0x41);

@@ -24,6 +24,7 @@ namespace Nethermind.Network
         private long _updateCounter;
         private long _removeCounter;
         private NetworkNode[]? _nodes;
+        private bool _loadedFromDb;
 
         public int PersistedNodesCount => GetPersistedNodes().Length;
 
@@ -44,10 +45,7 @@ namespace Nethermind.Network
                     return nodes;
                 }
 
-                if (_nodesDict.Count == 0)
-                {
-                    LoadFromDb();
-                }
+                EnsureLoadedFromDbNoLock();
 
                 return _nodesDict.Count == 0 ? [] : CopyDictToArray();
             }
@@ -60,7 +58,16 @@ namespace Nethermind.Network
             return (_nodes = nodes);
         }
 
-        private void LoadFromDb()
+        private void EnsureLoadedFromDbNoLock()
+        {
+            if (!_loadedFromDb)
+            {
+                LoadFromDbNoLock();
+                _loadedFromDb = true;
+            }
+        }
+
+        private void LoadFromDbNoLock()
         {
             foreach (byte[]? nodeRlp in _fullDb.Values)
             {
@@ -72,7 +79,7 @@ namespace Nethermind.Network
                 try
                 {
                     NetworkNode node = GetNode(nodeRlp);
-                    _nodesDict[node.NodeId] = node;
+                    _nodesDict.TryAdd(node.NodeId, node);
                 }
                 catch (Exception e)
                 {
@@ -85,13 +92,16 @@ namespace Nethermind.Network
         {
             lock (_lock)
             {
-                UpdateNodeImpl(node);
+                byte[] rlp = Rlp.Encode(node).Bytes;
+                UpdateNodeImpl(node, rlp);
             }
         }
 
-        private void UpdateNodeImpl(NetworkNode node)
+        private void UpdateNodeImpl(NetworkNode node, byte[] rlp)
         {
-            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+            EnsureLoadedFromDbNoLock();
+
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = rlp;
             _updateCounter++;
 
             if (!_nodesDict.ContainsKey(node.NodeId))
@@ -108,27 +118,31 @@ namespace Nethermind.Network
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
         {
+            List<(NetworkNode Node, byte[] Rlp)> encodedNodes = [];
+            foreach (NetworkNode node in nodes)
+            {
+                encodedNodes.Add((node, Rlp.Encode(node).Bytes));
+            }
+
             lock (_lock)
             {
-                foreach (NetworkNode node in nodes)
+                for (int i = 0; i < encodedNodes.Count; i++)
                 {
-                    UpdateNodeImpl(node);
+                    (NetworkNode node, byte[] rlp) = encodedNodes[i];
+                    UpdateNodeImpl(node, rlp);
                 }
             }
         }
 
         public void RemoveNode(PublicKey nodeId)
         {
-            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[nodeId.Bytes] = null;
-            _removeCounter++;
-
-            RemoveLocal(nodeId);
-        }
-
-        private void RemoveLocal(PublicKey nodeId)
-        {
             lock (_lock)
             {
+                EnsureLoadedFromDbNoLock();
+
+                (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[nodeId.Bytes] = null;
+                _removeCounter++;
+
                 if (_nodesDict.Remove(nodeId))
                 {
                     // Clear the cache
@@ -141,19 +155,69 @@ namespace Nethermind.Network
 
         public void StartBatch()
         {
-            _currentBatch = _fullDb.StartWriteBatch();
-            _updateCounter = 0;
-            _removeCounter = 0;
+            lock (_lock)
+            {
+                DiscardBatchNoLock();
+                _currentBatch = _fullDb.StartWriteBatch();
+            }
         }
 
         public void Commit()
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_fullDb.Name}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
-            _currentBatch?.Dispose();
+            IWriteBatch? currentBatch;
+            lock (_lock)
+            {
+                if (_logger.IsTrace) _logger.Trace($"[{_fullDb.Name}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
+                currentBatch = _currentBatch;
+                _currentBatch = null;
+                _updateCounter = 0;
+                _removeCounter = 0;
+            }
+
+            try
+            {
+                currentBatch?.Dispose();
+            }
+            catch
+            {
+                ClearLocalCache();
+                throw;
+            }
+
             if (_logger.IsTrace)
             {
                 LogDbContent(_fullDb.Values);
             }
+        }
+
+        private void DiscardBatchNoLock()
+        {
+            IWriteBatch? currentBatch = _currentBatch;
+            _currentBatch = null;
+            _updateCounter = 0;
+            _removeCounter = 0;
+
+            if (currentBatch is not null)
+            {
+                currentBatch.Clear();
+                currentBatch.Dispose();
+                ClearLocalCacheNoLock();
+            }
+        }
+
+        private void ClearLocalCache()
+        {
+            lock (_lock)
+            {
+                ClearLocalCacheNoLock();
+            }
+        }
+
+        private void ClearLocalCacheNoLock()
+        {
+            _nodesDict.Clear();
+            _nodes = null;
+            _loadedFromDb = false;
         }
 
         public bool AnyPendingChange() => _updateCounter > 0 || _removeCounter > 0;

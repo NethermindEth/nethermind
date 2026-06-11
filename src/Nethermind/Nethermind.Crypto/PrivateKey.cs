@@ -52,6 +52,22 @@ namespace Nethermind.Crypto
 
         public Address Address => PublicKey.Address;
 
+        /// <summary>
+        /// Computes the compressed secp256k1 ECDH shared EC point for this private key and a remote public key.
+        /// </summary>
+        /// <param name="publicKey">The remote public key.</param>
+        /// <returns>The 33-byte compressed ECDH shared EC point.</returns>
+        public byte[] GetCompressedSharedPoint(PublicKey publicKey) =>
+            SecP256k1Ecdh.GetCompressedSharedPoint(publicKey.PrefixedBytes, KeyBytes);
+
+        /// <summary>
+        /// Computes the compressed secp256k1 ECDH shared EC point for this private key and a remote compressed public key.
+        /// </summary>
+        /// <param name="publicKey">The remote compressed public key.</param>
+        /// <returns>The 33-byte compressed ECDH shared EC point.</returns>
+        public byte[] GetCompressedSharedPoint(CompressedPublicKey publicKey) =>
+            SecP256k1Ecdh.GetCompressedSharedPoint(publicKey.Bytes, KeyBytes);
+
         private bool Equals(PrivateKey other) => Bytes.AreEqual(KeyBytes, other.KeyBytes);
 
         public override bool Equals(object obj)

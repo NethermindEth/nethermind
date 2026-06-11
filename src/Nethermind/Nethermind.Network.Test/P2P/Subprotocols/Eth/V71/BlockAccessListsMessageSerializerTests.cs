@@ -62,8 +62,12 @@ public class BlockAccessListsMessageSerializerTests
                 "c32bc180")
             .SetName("Roundtrip_single_absent_bal");
         yield return new TestCaseData(
-                new Func<BlockAccessListsMessage>(() => BuildMessage(44, [0xc1, 0x80], [0xc2, 0x01, 0x02], null)),
-                null)
+                new Func<BlockAccessListsMessage>(() => BuildMessage(44, [0xc0])),
+                "c32cc1c0")
+            .SetName("Roundtrip_single_empty_bal");
+        yield return new TestCaseData(
+                new Func<BlockAccessListsMessage>(() => BuildMessage(45, [0xc1, 0x80], [0xc2, 0x01, 0x02], null)),
+                "c82dc6c180c2010280")
             .SetName("Roundtrip_multiple_bals");
         yield return new TestCaseData(
                 new Func<BlockAccessListsMessage>(() => BuildMessage(-1)),
@@ -99,30 +103,23 @@ public class BlockAccessListsMessageSerializerTests
     }
 
     private static BlockAccessListsMessage BuildMessage(long requestId, params byte[]?[] blockAccessLists) =>
-        new(requestId, BuildBlockAccessLists(blockAccessLists));
-
-    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
-    {
-        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
-        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
-        {
-            for (int i = 0; i < blockAccessLists.Length; i++)
-            {
-                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
-            }
-        }
-
-        return new RlpByteArrayList(builder.ToRlpItemList());
-    }
+        new(requestId, new ArrayPoolList<byte[]?>(blockAccessLists));
 
     private static void AssertBlockAccessListsMessage(BlockAccessListsMessage actual, BlockAccessListsMessage expected)
     {
-        Assert.That(actual.RequestId, Is.EqualTo(expected.RequestId));
-        Assert.That(actual.BlockAccessLists.Count, Is.EqualTo(expected.BlockAccessLists.Count));
-
-        for (int i = 0; i < expected.BlockAccessLists.Count; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual.BlockAccessLists[i].SequenceEqual(expected.BlockAccessLists[i]), Is.True);
+            Assert.That(actual.RequestId, Is.EqualTo(expected.RequestId));
+            Assert.That(actual.BlockAccessLists.Count, Is.EqualTo(expected.BlockAccessLists.Count));
+            if (actual.BlockAccessLists.Count != expected.BlockAccessLists.Count)
+            {
+                return;
+            }
+
+            for (int i = 0; i < expected.BlockAccessLists.Count; i++)
+            {
+                Assert.That(actual.BlockAccessLists[i], Is.EqualTo(expected.BlockAccessLists[i]));
+            }
         }
     }
 }
