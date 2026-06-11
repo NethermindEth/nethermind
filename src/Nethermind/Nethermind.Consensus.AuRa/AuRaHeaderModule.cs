@@ -10,11 +10,9 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.AuRa;
 
 /// <summary>
-/// Registers AuRa header typing: replaces the <see cref="BlockHeader"/> RLP decoders globally so
-/// every decode path (network, stores, static <see cref="Rlp"/>) materialises
-/// <see cref="AuRaBlockHeader"/>, and decorates <see cref="IGenesisBuilder"/> so the genesis header
-/// is AuRa-typed. Part of <see cref="AuRaModule"/>; also used by AuRa-flavoured test blockchains
-/// that don't load the full plugin.
+/// Registers AuRa header typing: the <see cref="BlockHeader"/> RLP decoders (globally and in DI)
+/// and the <see cref="IGenesisBuilder"/> decorator. Part of <see cref="AuRaModule"/>; also used by
+/// AuRa-flavoured test blockchains that don't load the full plugin.
 /// </summary>
 public class AuRaHeaderModule : Module
 {
@@ -35,9 +33,8 @@ public class AuRaHeaderModule : Module
 }
 
 /// <summary>
-/// Ensures the genesis block carries an <see cref="AuRaBlockHeader"/>. No-op when the chainspec
-/// already stamped the seal (see <c>AuRaChainSpecLoader</c>); otherwise upgrades the header with
-/// the default step 0 + empty signature seal.
+/// Ensures the genesis block carries an <see cref="AuRaBlockHeader"/>; no-op when the chainspec
+/// already stamped the seal (see <c>AuRaChainSpecLoader</c>).
 /// </summary>
 public class AuRaGenesisBuilder(IGenesisBuilder inner) : IGenesisBuilder
 {

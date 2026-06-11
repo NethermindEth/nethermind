@@ -23,10 +23,7 @@ public class BlockForRpc
     private static IRlpDecoder<Block> _blockDecoder = new BlockDecoder();
     private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decodersSnapshot;
 
-    /// <summary>
-    /// Registry-backed decoder for the <c>size</c> field, cached against the registry snapshot so
-    /// a consensus plugin's decoder replacement (e.g. AuRa) is picked up without a per-call lookup.
-    /// </summary>
+    /// <summary>Cached against the registry snapshot so plugin decoder replacements are picked up.</summary>
     private static IRlpDecoder<Block> BlockDecoder
     {
         get

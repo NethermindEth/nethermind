@@ -13,11 +13,7 @@ namespace Nethermind.AuRa.Test;
 
 public class AuRaBlockHeaderTests
 {
-    /// <summary>
-    /// Guards the hand-maintained member roster in <see cref="AuRaBlockHeader.UpgradeFrom"/>:
-    /// a new <see cref="BlockHeader"/> member missed there would silently corrupt upgraded
-    /// genesis / produced headers.
-    /// </summary>
+    /// <summary>Guards the hand-maintained member roster in <see cref="AuRaBlockHeader.UpgradeFrom"/>.</summary>
     [Test]
     public void UpgradeFrom_copies_every_settable_BlockHeader_member()
     {
