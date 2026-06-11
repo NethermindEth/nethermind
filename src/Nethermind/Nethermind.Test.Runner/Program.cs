@@ -41,6 +41,9 @@ internal class Program
         public static Option<bool> TxTest { get; } =
             new("--txTest") { Description = "Run as transaction test (transaction_tests fixtures: raw tx decoding + validation)." };
 
+        public static Option<bool> ZkEvmTest { get; } =
+            new("--zkevmTest") { Description = "Run as zkEVM stateless-execution test (tests-zkevm fixtures: witness input through StatelessExecutor vs expected output)." };
+
         public static Option<bool> TraceAlways { get; } =
             new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests)." };
 
@@ -96,6 +99,7 @@ internal class Program
             Options.BlockTest,
             Options.EngineTest,
             Options.TxTest,
+            Options.ZkEvmTest,
             Options.TraceAlways,
             Options.TraceNever,
             Options.ExcludeMemory,
@@ -122,11 +126,12 @@ internal class Program
         bool isBlockTest = parseResult.GetValue(Options.BlockTest);
         bool isEngineTest = parseResult.GetValue(Options.EngineTest);
         bool isTxTest = parseResult.GetValue(Options.TxTest);
+        bool isZkEvmTest = parseResult.GetValue(Options.ZkEvmTest);
 
-        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isTxTest ? 1 : 0);
+        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isTxTest ? 1 : 0) + (isZkEvmTest ? 1 : 0);
         if (testTypeCount != 1)
         {
-            Console.WriteLine("Please specify one of: --stateTest, --blockTest, --engineTest, or --txTest");
+            Console.WriteLine("Please specify one of: --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
             return 1;
         }
 
@@ -194,6 +199,11 @@ internal class Program
             else if (isTxTest)
             {
                 List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, workers);
+                Console.Out.Write(_serializer.Serialize(results, true));
+            }
+            else if (isZkEvmTest)
+            {
+                List<EthereumTestResult> results = RunZkEvmTestFiles(files, filter, workers);
                 Console.Out.Write(_serializer.Serialize(results, true));
             }
 
@@ -434,6 +444,77 @@ internal class Program
         }
 
         return [.. results];
+    }
+
+    private static List<EthereumTestResult> RunZkEvmTestFiles(List<string> files, string? filter, int workers)
+    {
+        Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
+
+        int completedFiles = 0;
+        List<EthereumTestResult>[] resultsByFile = new List<EthereumTestResult>[files.Count];
+
+        // Witness fixtures are large, so each file is parsed, executed, and released before
+        // the next one instead of materializing the whole set up front.
+        void ProcessFile(int index)
+        {
+            List<EthereumTestResult> fileResults = [];
+            try
+            {
+                TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), files[index]);
+                foreach (BlockchainTest test in source.LoadTests<BlockchainTest>())
+                {
+                    if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
+                        continue;
+
+                    fileResults.AddRange(ZkEvmTestsRunner.RunTest(test));
+                }
+            }
+            catch (Exception ex)
+            {
+                string name = Path.GetFileNameWithoutExtension(files[index]);
+                Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {name} - {ex.Message}");
+                Console.Error.Flush();
+                fileResults.Add(new EthereumTestResult(name, ex.Message));
+            }
+
+            resultsByFile[index] = fileResults;
+
+            int done = Interlocked.Increment(ref completedFiles);
+            foreach (EthereumTestResult result in fileResults)
+            {
+                if (!result.Pass)
+                {
+                    Console.Error.WriteLine($"\x1b[31mFAIL\x1b[0m [{done}/{files.Count}] {result.Name} - {result.Error}");
+                    Console.Error.Flush();
+                }
+            }
+
+            if (done % 10 == 0 || done == files.Count)
+            {
+                Console.Error.WriteLine($"PROGRESS [{done}/{files.Count}]");
+                Console.Error.Flush();
+            }
+        }
+
+        if (workers <= 1)
+        {
+            for (int i = 0; i < files.Count; i++)
+            {
+                ProcessFile(i);
+            }
+        }
+        else
+        {
+            Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = workers }, ProcessFile);
+        }
+
+        List<EthereumTestResult> combinedResults = [];
+        foreach (List<EthereumTestResult> fileResults in resultsByFile)
+        {
+            combinedResults.AddRange(fileResults);
+        }
+
+        return combinedResults;
     }
 
     private static List<GeneralStateTest> ParseStateTestFile(string file, Regex? filterRegex)

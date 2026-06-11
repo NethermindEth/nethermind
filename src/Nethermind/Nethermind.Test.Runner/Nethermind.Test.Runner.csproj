@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+    <ProjectReference Include="..\Nethermind.Stateless.Executor\Nethermind.Stateless.Executor.csproj" />
   </ItemGroup>
 
   <ItemGroup>

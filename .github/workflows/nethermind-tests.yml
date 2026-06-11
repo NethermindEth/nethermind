@@ -250,26 +250,10 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
-        include:
-          # zkEVM stateless-execution preview tests stay on NUnit: they use a separate
-          # fixture archive (tests-zkevm) and assert StatelessExecutor output bytes,
-          # which the nethtest runner does not cover (the EEST fixture replay does).
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4, label: ZkEvm, filter: 'FullyQualifiedName~ZkEvm' } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4, label: ZkEvm, filter: 'FullyQualifiedName~ZkEvm' } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4, label: ZkEvm, filter: 'FullyQualifiedName~ZkEvm' } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4, label: ZkEvm, filter: 'FullyQualifiedName~ZkEvm' } }
     steps:
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
         run: git config --system core.longpaths true
-
-      - name: Free up disk space
-        if: runner.os == 'Linux' && startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -277,7 +261,7 @@ jobs:
       - name: Fetch submodules
         uses: ./.github/actions/fetch-submodules
         with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -287,14 +271,10 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
-          TEST_FILTER: ${{ matrix.test.filter || '' }}
         run: |
           dotnet build ${{ matrix.test.project }}.csproj -c release
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
-          if [ -n "$TEST_FILTER" ]; then
-            test_args+=(--filter "$TEST_FILTER")
-          fi
 
           set +e
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
@@ -309,15 +289,15 @@ jobs:
             dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           fi
 
-  # EEST fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run through the
-  # reusable nethtest workflow: same fixture release, sequential (merkle) configuration,
-  # all fixture formats. The flat layout and its Amsterdam variants run from
-  # nethermind-tests-flat.yml.
+  # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
+  # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
+  # configuration plus the Amsterdam variant toggles, all fixture formats. The flat
+  # layout runs from nethermind-tests-flat.yml.
   nethtest:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest
       setup_group: sequential
 
   tests-summary:

@@ -27,6 +27,11 @@ on:
         required: false
         default: latest-bal
         type: string
+      zkevm_version:
+        description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
+        required: false
+        default: latest-zkevm
+        type: string
       filter:
         description: Regex filter for test names
         required: false
@@ -63,6 +68,11 @@ on:
         required: false
         default: latest-bal
         type: string
+      zkevm_version:
+        description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
+        required: false
+        default: latest-zkevm
+        type: string
       filter:
         description: Regex filter for test names (optional)
         required: false
@@ -87,6 +97,9 @@ env:
   EEST_REPOSITORY: ethereum/execution-specs
   EEST_VERSION: ${{ inputs.eest_version || 'latest-bal' }}
   EEST_ARCHIVE: fixtures_bal.tar.gz
+  # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
+  # zkevmTest jobs resolve this instead of EEST_VERSION.
+  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'latest-zkevm' }}
   # ubuntu-latest runners have 16 GB of RAM. The runner ships with server GC
   # (throughput-oriented, collects lazily), which previously ballooned past the
   # runner limit on the full fixture set. Workstation GC keeps the heap tight.
@@ -191,6 +204,13 @@ jobs:
                   emit "$type" sequential full '' '' '' 4 1
                 fi
                 ;;
+              zkevmTest)
+                # Stateless witness execution builds its own in-memory state, so the
+                # layout and BAL toggles are irrelevant - sequential group only.
+                if run_sequential; then
+                  emit "$type" sequential full '' '' '' 4 4
+                fi
+                ;;
               *)
                 echo "::error::Unknown test type: '$type'"
                 exit 1
@@ -241,6 +261,12 @@ jobs:
       - name: Resolve EEST release
         id: eest_release
         run: |
+          if [ "$TEST_TYPE" = "zkevmTest" ]; then
+            # zkEVM preview fixtures live in their own release line and archive.
+            EEST_VERSION="$ZKEVM_VERSION"
+            EEST_ARCHIVE="fixtures_zkevm.tar.gz"
+          fi
+
           if [ "$EEST_VERSION" = "latest" ]; then
             RESOLVED_EEST_VERSION="$(curl -fsSL \
               --max-time 300 \
@@ -264,17 +290,20 @@ jobs:
           fi
 
           echo "version=$RESOLVED_EEST_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Resolved EEST release: $RESOLVED_EEST_VERSION"
+          echo "version_input=$EEST_VERSION" >> "$GITHUB_OUTPUT"
+          echo "archive=$EEST_ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "Resolved EEST release: $RESOLVED_EEST_VERSION ($EEST_ARCHIVE)"
 
       - name: Cache EEST fixtures
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/eest-fixtures
-          key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ env.EEST_ARCHIVE }}
+          key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}
 
       - name: Download EEST fixtures
         env:
           RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+          EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
         run: |
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
           if command -v cygpath >/dev/null 2>&1; then
@@ -308,6 +337,8 @@ jobs:
             # Sync fixtures use the engine-payload format; run them through the engine harness.
             syncTest)   FIXTURE_NAME=blockchain_tests_sync;   RUNNER_FLAG=--engineTest ;;
             txTest)     FIXTURE_NAME=transaction_tests;       RUNNER_FLAG=--txTest ;;
+            # The zkEVM archive ships blockchain-test-shaped fixtures with stateless bytes.
+            zkevmTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--zkevmTest ;;
             *) echo "::error::Unknown test type: '$TEST_TYPE'"; exit 1 ;;
           esac
 
@@ -339,6 +370,8 @@ jobs:
         timeout-minutes: 55
         env:
           RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+          EEST_VERSION: ${{ steps.eest_release.outputs.version_input }}
+          EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
           RUNNER_FLAG: ${{ steps.fixtures.outputs.runner_flag }}
         run: |
           FILTER_ARG=""
