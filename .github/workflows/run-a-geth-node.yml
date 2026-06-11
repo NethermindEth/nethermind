@@ -115,7 +115,7 @@ jobs:
           set -euo pipefail
           [ "$ALLOWED_IPS" == "null" ] && ALLOWED_IPS=""
           [ "$MACHINE_TYPE" == "null" ] && MACHINE_TYPE=""
-          [ -z "$MACHINE_TYPE" ] && MACHINE_TYPE="g6-standard-8"
+          [ -z "$MACHINE_TYPE" ] && MACHINE_TYPE="g6-standard-16"
 
           case "$NETWORK" in
             mainnet) CHECKPOINT_URL="https://mainnet-checkpoint-sync.attestant.io" ;;
