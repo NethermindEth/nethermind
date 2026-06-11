@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// actual tree walk happens lazily on each <see cref="MoveNext"/>, descending one leaf
 /// at a time and buffering that leaf's metaStart pointers in a reusable array.
 ///
-/// <c>Current.ValueBound</c> is an absolute reader offset; callers slice it out of their
+/// <c>CurrentValueBound</c> is an absolute reader offset+length <see cref="Bound"/>; callers slice it out of their
 /// own data span (or pin it via the reader). The current key is exposed only through
 /// <see cref="CopyCurrentLogicalKey"/> so the LE-stored PackedArray layout stays an
 /// internal concern of the enumerator. Bounds stay valid for the reader's lifetime —
@@ -58,7 +58,13 @@ public ref struct HsstRefEnumerator<TReader, TPin> : IDisposable
 
     public bool MoveNext() => _inner.MoveNext(in _reader);
 
-    public readonly KeyValueEntry Current => new(_inner.CurrentValue);
+    /// <summary>
+    /// The current entry's value as an absolute reader offset+length <see cref="Bound"/>. Callers
+    /// slice it out of their own data span (or pin it via the reader); it stays valid for the
+    /// reader's lifetime. The current key is exposed only via <see cref="CopyCurrentLogicalKey"/> so
+    /// the LE-stored PackedArray layout stays an internal concern of the enumerator.
+    /// </summary>
+    public readonly Bound CurrentValueBound => _inner.CurrentValue;
 
     /// <summary>
     /// Copy the current key in its logical (lex/BE) form into <paramref name="dst"/>.
@@ -68,18 +74,4 @@ public ref struct HsstRefEnumerator<TReader, TPin> : IDisposable
         => _inner.CopyCurrentLogicalKey(in _reader, dst);
 
     public void Dispose() => _inner.Dispose();
-}
-
-/// <summary>
-/// One key/value pair yielded by <see cref="HsstRefEnumerator{TReader,TPin}.Current"/>.
-/// <see cref="ValueBound"/> is an absolute reader offset+length tuple; callers slice it
-/// out of the underlying data span (or pin via the reader). The current key is exposed
-/// only via <see cref="HsstRefEnumerator{TReader,TPin}.CopyCurrentLogicalKey"/> so the
-/// LE-stored PackedArray layout stays an internal concern of the enumerator. The value
-/// bound stays valid for the reader's lifetime — no per-MoveNext invalidation, since
-/// it doesn't involve enumerator-owned storage.
-/// </summary>
-public readonly ref struct KeyValueEntry(Bound valueBound)
-{
-    public Bound ValueBound { get; } = valueBound;
 }

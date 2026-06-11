@@ -100,7 +100,7 @@ public class HsstCrossFormatTests
             while (e.MoveNext())
             {
                 ReadOnlySpan<byte> logicalKey = e.CopyCurrentLogicalKey(keyScratch);
-                Bound vb = e.Current.ValueBound;
+                Bound vb = e.CurrentValueBound;
                 enumerated.Add((
                     logicalKey.ToArray(),
                     data.AsSpan().Slice((int)vb.Offset, (int)vb.Length).ToArray()));

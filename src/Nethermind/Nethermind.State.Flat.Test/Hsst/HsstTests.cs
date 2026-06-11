@@ -38,7 +38,7 @@ public class HsstTests
         while (e.MoveNext())
         {
             byte[] k = e.CopyCurrentLogicalKey(keyBuf).ToArray();
-            Bound vb = e.Current.ValueBound;
+            Bound vb = e.CurrentValueBound;
             byte[] v = data.Slice((int)vb.Offset, (int)vb.Length).ToArray();
             entries.Add((k, v));
         }

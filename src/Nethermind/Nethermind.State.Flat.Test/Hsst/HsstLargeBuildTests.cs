@@ -268,7 +268,7 @@ public class HsstLargeBuildTests
             while (e.MoveNext())
             {
                 ReadOnlySpan<byte> kSpan = e.CopyCurrentLogicalKey(keyBuf);
-                Bound vb = e.Current.ValueBound;
+                Bound vb = e.CurrentValueBound;
                 using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
 
                 BinaryPrimitives.WriteInt64BigEndian(expectedKey, baseKey + i);
