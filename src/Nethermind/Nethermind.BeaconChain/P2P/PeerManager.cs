@@ -27,12 +27,17 @@ public class PeerManager(
     IBeaconChainStatusSource statusSource,
     ILogManager logManager) : IBeaconSyncPeerPool
 {
-    private const int MaxConsecutiveFailures = 3;
+    // Generous: a slow peer hammered by range-sync batches can rack up transient timeouts
+    // without being useless, and dialable mainnet peers are scarce.
+    private const int MaxConsecutiveFailures = 8;
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DialTimeout = TimeSpan.FromSeconds(10);
 
     private readonly ILogger _logger = logManager.GetClassLogger<PeerManager>();
     private readonly ConcurrentDictionary<string, ManagedPeer> _peers = new();
+
+    /// <summary>Raised with the dropped peer's id so dial dedup can allow a later re-dial.</summary>
+    public event Action<string>? PeerDropped;
 
     /// <summary>The number of connected, status-exchanged peers.</summary>
     public int PeerCount => _peers.Count;
@@ -174,6 +179,7 @@ public class PeerManager(
     {
         if (_logger.IsInfo) _logger.Info($"Dropping beacon chain peer {peer.Id}: {detail}");
         _peers.TryRemove(peer.Id, out _);
+        PeerDropped?.Invoke(peer.Id);
         await p2p.GoodbyeAsync(peer.Session, reason, token);
         try
         {
@@ -209,8 +215,12 @@ public class PeerManager(
 
         public void ReportFailure(string reason)
         {
-            // Pruning happens on the next maintenance round once the threshold is reached.
-            int failures = Interlocked.Increment(ref _consecutiveFailures);
+            // A closed channel means the session is dead — every further request would fail, so
+            // skip the failure budget and let the next maintenance round (or the dial-loop
+            // cooldown) reconnect instead of wedging on a zombie session.
+            int failures = reason.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || reason.Contains("session", StringComparison.OrdinalIgnoreCase)
+                ? Interlocked.Exchange(ref _consecutiveFailures, MaxConsecutiveFailures)
+                : Interlocked.Increment(ref _consecutiveFailures);
             if (manager._logger.IsDebug) manager._logger.Debug($"Beacon chain peer {Id} reported as failing ({failures}/{MaxConsecutiveFailures}): {reason}");
         }
     }

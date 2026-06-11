@@ -68,7 +68,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Head distance (~2 epochs) below which gossip is started while range sync finishes the residual gap.</summary>
     private const ulong GossipStartDistanceSlots = 64;
 
-    private const int ConcurrentDials = 8;
+    // Most mainnet dials fail (peers at capacity); high parallelism shortens time-to-first-peer.
+    private const int ConcurrentDials = 16;
 
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconSyncOrchestrator>();
     private readonly Channel<WorkItem> _work = Channel.CreateBounded<WorkItem>(
@@ -599,6 +600,14 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Dials discovered candidates (bounded concurrency) until the target peer count is reached, then idles.</summary>
     private async Task RunDiscoveryDialLoopAsync(CancellationToken token)
     {
+        // A dropped peer becomes re-dialable after a cooldown — dialable mainnet peers are
+        // scarce, so permanently blacklisting every drop starves the pool.
+        if (peerManager is PeerManager manager)
+        {
+            manager.PeerDropped += peerId => _ = Task.Delay(TimeSpan.FromMinutes(2), token)
+                .ContinueWith(_ => _dialedPeerIds.TryRemove(peerId, out byte _), token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+        }
+
         using SemaphoreSlim dialGate = new(ConcurrentDials);
         await foreach (BeaconPeerCandidate candidate in discovery!.DiscoverPeers(token))
         {
