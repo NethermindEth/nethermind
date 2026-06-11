@@ -38,6 +38,9 @@ internal class Program
         public static Option<bool> EngineTest { get; } =
             new("--engineTest", "-e") { Description = "Run as engine test (blockchain_test_engine fixtures)." };
 
+        public static Option<bool> TxTest { get; } =
+            new("--txTest") { Description = "Run as transaction test (transaction_tests fixtures: raw tx decoding + validation)." };
+
         public static Option<bool> TraceAlways { get; } =
             new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests)." };
 
@@ -92,6 +95,7 @@ internal class Program
             Options.StateTest,
             Options.BlockTest,
             Options.EngineTest,
+            Options.TxTest,
             Options.TraceAlways,
             Options.TraceNever,
             Options.ExcludeMemory,
@@ -117,11 +121,12 @@ internal class Program
         bool isStateTest = parseResult.GetValue(Options.StateTest);
         bool isBlockTest = parseResult.GetValue(Options.BlockTest);
         bool isEngineTest = parseResult.GetValue(Options.EngineTest);
+        bool isTxTest = parseResult.GetValue(Options.TxTest);
 
-        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0);
+        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isTxTest ? 1 : 0);
         if (testTypeCount != 1)
         {
-            Console.WriteLine("Please specify one of: --stateTest, --blockTest, or --engineTest");
+            Console.WriteLine("Please specify one of: --stateTest, --blockTest, --engineTest, or --txTest");
             return 1;
         }
 
@@ -182,6 +187,11 @@ internal class Program
             else if (isStateTest)
             {
                 List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
+                Console.Out.Write(_serializer.Serialize(results, true));
+            }
+            else if (isTxTest)
+            {
+                List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, workers);
                 Console.Out.Write(_serializer.Serialize(results, true));
             }
 
@@ -366,6 +376,60 @@ internal class Program
                 EthereumTestResult result = runner.RunSingleTest(item.test);
                 results[item.index] = result;
             });
+
+        return [.. results];
+    }
+
+    private static List<EthereumTestResult> RunTransactionTestFiles(List<string> files, string? filter, int workers)
+    {
+        Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
+
+        List<TransactionTest> tests = [];
+        foreach (string file in files)
+        {
+            TestsSourceLoader source = new(new LoadTransactionTestFileStrategy(), file);
+            foreach (TransactionTest test in source.LoadTests<TransactionTest>())
+            {
+                if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
+                    continue;
+                tests.Add(test);
+            }
+        }
+
+        int completedTests = 0;
+        void ReportResult(EthereumTestResult result)
+        {
+            int completed = Interlocked.Increment(ref completedTests);
+            if (!result.Pass)
+            {
+                Console.Error.WriteLine($"\x1b[31mFAIL\x1b[0m [{completed}/{tests.Count}] {result.Name} - {result.Error}");
+                Console.Error.Flush();
+            }
+            else if (completed % ProgressReportTestInterval == 0 || completed == tests.Count)
+            {
+                Console.Error.WriteLine($"PROGRESS [{completed}/{tests.Count}]");
+                Console.Error.Flush();
+            }
+        }
+
+        TransactionTestsRunner runner = new();
+        EthereumTestResult[] results = new EthereumTestResult[tests.Count];
+        if (workers <= 1)
+        {
+            for (int i = 0; i < tests.Count; i++)
+            {
+                results[i] = runner.RunSingleTest(tests[i]);
+                ReportResult(results[i]);
+            }
+        }
+        else
+        {
+            Parallel.For(0, tests.Count, new ParallelOptions { MaxDegreeOfParallelism = workers }, i =>
+            {
+                results[i] = runner.RunSingleTest(tests[i]);
+                ReportResult(results[i]);
+            });
+        }
 
         return [.. results];
     }

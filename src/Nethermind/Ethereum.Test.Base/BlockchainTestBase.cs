@@ -230,7 +230,9 @@ public abstract class BlockchainTestBase
                     if (args.ProcessingResult != ProcessingResult.Success)
                         asyncBlockError = args.Message ?? args.Exception?.Message;
                 };
-                (parentHeader, lastValidationError) = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
+                Result<BlockHeader> suggestResult = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
+                parentHeader = suggestResult.Data!;
+                lastValidationError = suggestResult.Error;
             }
             else if (test.EngineNewPayloads is not null)
             {
@@ -238,7 +240,9 @@ public abstract class BlockchainTestBase
                 IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
                 JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
                 JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
-                (lastPayloadStatus, lastValidationError) = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
+                Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
+                lastPayloadStatus = payloadResult.Data ?? "";
+                lastValidationError = payloadResult.Error;
             }
             else
             {
@@ -297,7 +301,15 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private static (BlockHeader header, string? lastBlockError) SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
+    /// <summary>
+    /// Feeds the test's RLP blocks through validation and the block tree.
+    /// </summary>
+    /// <returns>
+    /// The header to continue from in <see cref="Result{TData}.Data"/>; when an expected-invalid
+    /// block was rejected, the rejection message in <see cref="Result{TData}.Error"/> (the header
+    /// is still populated — rejection of an expected-invalid block does not fail the test).
+    /// </returns>
+    private static Result<BlockHeader> SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
     {
         string? lastBlockError = null;
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
@@ -347,7 +359,9 @@ public abstract class BlockchainTestBase
 
             parentHeader = correctRlp[i].Block.Header;
         }
-        return (parentHeader, lastBlockError);
+        return lastBlockError is null
+            ? Result<BlockHeader>.Success(parentHeader)
+            : Result<BlockHeader>.Fail(lastBlockError, parentHeader);
     }
 
     private static readonly Dictionary<int, int> NewPayloadParamCounts = BuildNewPayloadParamCounts();
@@ -365,9 +379,17 @@ public abstract class BlockchainTestBase
         return result;
     }
 
-    private static async Task<(string status, string? validationError)> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
+    /// <summary>
+    /// Replays the test's engine payloads through the JSON-RPC service.
+    /// </summary>
+    /// <returns>
+    /// The last payload status in <see cref="Result{TData}.Data"/>; when the last INVALID payload
+    /// carried a validation error, that error in <see cref="Result{TData}.Error"/> (an expected
+    /// rejection does not fail the test, so the status is still populated).
+    /// </returns>
+    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
-        if (newPayloads is null || newPayloads.Length == 0) return ("", null);
+        if (newPayloads is null || newPayloads.Length == 0) return Result<string>.Success("");
 
         if (!int.TryParse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString(), out int initialFcuVersion))
             throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{newPayloads[0].ForkChoiceUpdatedVersion}'");
@@ -408,7 +430,9 @@ public abstract class BlockchainTestBase
                 }
             }
         }
-        return (lastStatus, lastValidationError);
+        return lastValidationError is null
+            ? Result<string>.Success(lastStatus)
+            : Result<string>.Fail(lastValidationError, lastStatus);
     }
 
     private static void AssertExpectedRpcError(JsonRpcErrorResponse errorResponse, string? validationError, int payloadVersion) =>
