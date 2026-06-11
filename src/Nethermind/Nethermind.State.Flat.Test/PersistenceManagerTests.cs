@@ -182,6 +182,32 @@ public class PersistenceManagerTests
         result.Dispose();
     }
 
+    [Test]
+    public void DetermineSnapshotToPersist_UnfinalizedForkAtBoundary_PersistsHeadReachableFork()
+    {
+        // Two unfinalized forks at the boundary block 16, both starting from Block0. The head's chain runs
+        // through target2 (the higher root, not the arbitrary "first"). The forced persist must follow the
+        // head's chain (target2), otherwise persisting target1 would orphan the head.
+        StateId persisted = Block0;
+        StateId target1 = CreateStateId(16, rootByte: 1); // arbitrary "first" (lowest root)
+        StateId target2 = CreateStateId(16, rootByte: 2); // on the head's chain
+        StateId head = CreateStateId(300);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(10); // unfinalized at the boundary
+
+        using Snapshot fork1 = CreateSnapshot(persisted, target1, compacted: true);
+        using Snapshot fork2 = CreateSnapshot(persisted, target2, compacted: true);
+        using Snapshot toHead = CreateSnapshot(target2, head, compacted: true); // head reachable only via target2
+
+        Snapshot? result = _persistenceManager.DetermineSnapshotToPersist(head);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.From, Is.EqualTo(persisted));
+        Assert.That(result.To, Is.EqualTo(target2));
+
+        result.Dispose();
+    }
+
     #endregion
 
     #region Edge Cases

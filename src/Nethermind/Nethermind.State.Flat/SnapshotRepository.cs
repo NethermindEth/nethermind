@@ -208,6 +208,32 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
     }
 
+    public bool TryFindAncestorStateAtBlock(in StateId head, long blockNumber, out StateId ancestor)
+    {
+        if (head.BlockNumber < blockNumber)
+        {
+            ancestor = default;
+            return false;
+        }
+
+        if (head.BlockNumber == blockNumber)
+        {
+            ancestor = head;
+            return true;
+        }
+
+        using SnapshotPooledList path = AssembleSnapshotsUntil(head, blockNumber, estimatedSize: 16);
+        if (path.Count == 0)
+        {
+            ancestor = default;
+            return false;
+        }
+
+        // result[0].From is the terminus: the state at blockNumber on the head's chain.
+        ancestor = path[0].From;
+        return true;
+    }
+
     public bool RemoveAndReleaseCompactedKnownState(in StateId stateId)
     {
         if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
