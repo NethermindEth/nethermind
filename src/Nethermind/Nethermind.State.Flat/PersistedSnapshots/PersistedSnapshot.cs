@@ -158,7 +158,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             // compacted / persistable snapshots, which resolve to BlobRange.None.
             BlobRange = ReadBlobRange();
 
-            RefIdsEnumerator e = GetRefIdsEnumerator();
+            RefIdsEnumerator<ArenaByteReader, NoOpPin> e = GetRefIdsEnumerator();
             while (e.MoveNext())
             {
                 if (!_blobManager.TryLeaseFile(e.Current, out _))
@@ -206,7 +206,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         catch
         {
             int released = 0;
-            RefIdsEnumerator e = GetRefIdsEnumerator();
+            RefIdsEnumerator<ArenaByteReader, NoOpPin> e = GetRefIdsEnumerator();
             while (released < acquired && e.MoveNext())
             {
                 _blobManager.GetFile(e.Current).Dispose();
@@ -237,7 +237,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// per-session mmap view + lease bookkeeping for a 2-byte read. The reader holds no
     /// resources of its own; the surrounding snapshot's lease keeps the mmap alive.
     /// </remarks>
-    private RefIdsEnumerator GetRefIdsEnumerator() => new(this);
+    private RefIdsEnumerator<ArenaByteReader, NoOpPin> GetRefIdsEnumerator() => new(_reservation.CreateReader());
 
     /// <summary>
     /// Read the <c>blob_range</c> metadata entry (column 0x00) — the contiguous trie-RLP run
@@ -262,19 +262,22 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <summary>
     /// Ref-struct enumerator backing <see cref="GetRefIdsEnumerator"/>. Yields each
     /// <see cref="NodeRef.BlobArenaId"/> stored in the snapshot's <c>ref_ids</c>
-    /// metadata entry in ascending order without allocating a <c>ushort[]</c>.
+    /// metadata entry in ascending order without allocating a <c>ushort[]</c>. Generic over
+    /// the byte source — production drives it with the reservation's <see cref="ArenaByteReader"/>.
     /// </summary>
-    private ref struct RefIdsEnumerator
+    private ref struct RefIdsEnumerator<TReader, TPin>
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TPin : struct, IBufferPin, allows ref struct
     {
-        private ArenaByteReader _reader;
+        private TReader _reader;
         private long _cursor;
         private long _end;
         private ushort _current;
 
-        internal RefIdsEnumerator(PersistedSnapshot snapshot)
+        internal RefIdsEnumerator(TReader reader)
         {
-            _reader = snapshot._reservation.CreateReader();
-            HsstReader<ArenaByteReader, NoOpPin> root = new(in _reader, new Bound(0, _reader.Length));
+            _reader = reader;
+            HsstReader<TReader, TPin> root = new(in _reader, new Bound(0, _reader.Length));
             if (root.TrySeek(PersistedSnapshotTags.MetadataTag, out _) &&
                 root.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out Bound rb) &&
                 rb.Length > 0 && rb.Length % 2 == 0)
@@ -296,7 +299,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             return true;
         }
 
-        public RefIdsEnumerator GetEnumerator() => this;
+        public RefIdsEnumerator<TReader, TPin> GetEnumerator() => this;
     }
 
     /// <summary>
