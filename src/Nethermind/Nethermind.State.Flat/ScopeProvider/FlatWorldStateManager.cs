@@ -26,8 +26,6 @@ public class FlatWorldStateManager(
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
-    // Created here rather than via DI so the manager owns its lifecycle; Dispose must
-    // tear it down so the FlatScopeProvider's WarmReadPool threads join on shutdown.
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
         flatDbManager,
