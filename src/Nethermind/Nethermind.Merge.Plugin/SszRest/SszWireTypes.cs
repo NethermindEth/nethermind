@@ -30,11 +30,17 @@ public partial struct SszWithdrawal
 }
 
 [SszContainer]
+public partial struct SszValidationError
+{
+    [SszList(1024)] public byte[]? Bytes { get; set; }
+}
+
+[SszContainer]
 public partial struct PayloadStatusWire
 {
     public byte Status { get; set; }
     [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
-    [SszList(1024)] public byte[]? ValidationError { get; set; }
+    [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
 }
 
 [SszContainer]

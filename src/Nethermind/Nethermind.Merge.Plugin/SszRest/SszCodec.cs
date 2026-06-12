@@ -315,17 +315,23 @@ public static class SszCodec
     private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps)
     {
         const int MaxErrorBytes = 1024;
-        byte[] errorBytes = ps.ValidationError is not null
-            ? Encoding.UTF8.GetBytes(ps.ValidationError)
-            : [];
-        if (errorBytes.Length > MaxErrorBytes)
-            errorBytes = errorBytes[..MaxErrorBytes];
+        SszValidationError[] error;
+        if (ps.ValidationError is null)
+        {
+            error = [];
+        }
+        else
+        {
+            byte[] errorBytes = Encoding.UTF8.GetBytes(ps.ValidationError);
+            if (errorBytes.Length > MaxErrorBytes) errorBytes = errorBytes[..MaxErrorBytes];
+            error = [new SszValidationError { Bytes = errorBytes }];
+        }
 
         return new()
         {
             Status = EngineStatusToSsz(ps.Status),
             LatestValidHash = ps.LatestValidHash is not null ? [ps.LatestValidHash] : [],
-            ValidationError = errorBytes
+            ValidationError = error
         };
     }
 

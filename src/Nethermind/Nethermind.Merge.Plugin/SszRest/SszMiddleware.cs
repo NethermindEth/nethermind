@@ -36,11 +36,11 @@ public sealed class SszMiddleware
     private const string EnginePrefix = "/engine/v2/";
 
     /// <summary>
-    /// Maximum allowed request body size in bytes (128 MiB).
-    /// Matches <c>MAX_REQUEST_BODY_SIZE</c> in the Engine API SSZ-REST spec
-    /// (see https://github.com/ethereum/execution-apis/pull/793).
+    /// Maximum allowed request body size in bytes (64 MiB).
+    /// Mirrors the <c>payload.max_bytes</c> example value advertised in the Engine API
+    /// SSZ-REST spec capabilities response (see https://github.com/ethereum/execution-apis/pull/793).
     /// </summary>
-    public const int MaxBodySize = 0x8000000;
+    public const int MaxBodySize = 0x4000000;
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;

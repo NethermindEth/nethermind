@@ -35,6 +35,7 @@ public class SszMiddlewareTests
 {
     private IEngineRpcModule _engineModule = null!;
     private ISpecProvider _specProvider = null!;
+    private Nethermind.Blockchain.Find.IBlockFinder _blockFinder = null!;
 
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
@@ -59,6 +60,7 @@ public class SszMiddlewareTests
     {
         _engineModule = Substitute.For<IEngineRpcModule>();
         _specProvider = Substitute.For<ISpecProvider>();
+        _blockFinder = Substitute.For<Nethermind.Blockchain.Find.IBlockFinder>();
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
@@ -102,11 +104,11 @@ public class SszMiddlewareTests
             new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_engineModule),
             new GetBlobsV4SszHandler(_engineModule),
 
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
+            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule, _blockFinder, _specProvider),
+            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
 
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
+            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule, _blockFinder, _specProvider),
+            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
 
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
             new CapabilitiesSszHandler(_specProvider),
@@ -337,6 +339,36 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByHashV2(Arg.Any<IReadOnlyList<Hash256>>());
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByHash_marks_out_of_fork_blocks_unavailable()
+    {
+        Hash256 inFork = TestItem.KeccakA;
+        Hash256 outOfFork = TestItem.KeccakB;
+        _engineModule.engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>())
+            .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(
+                [new ExecutionPayloadBodyV1Result([], null), new ExecutionPayloadBodyV1Result([], null)]));
+
+        BlockHeader shanghaiHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(1_000UL).TestObject;
+        BlockHeader cancunHeader = Build.A.BlockHeader.WithNumber(20).WithTimestamp(2_000UL).TestObject;
+        _blockFinder.FindHeader(inFork).Returns(shanghaiHeader);
+        _blockFinder.FindHeader(outOfFork).Returns(cancunHeader);
+        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 1_000UL)).Returns(Shanghai.Instance);
+        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 2_000UL)).Returns(Cancun.Instance);
+
+        byte[] body = BuildPayloadBodiesByHashRequest([inFork, outOfFork]);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{ShanghaiUrl}/bodies/hash", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        byte[] resp = ResponseBytes(ctx);
+        PayloadBodiesV1ResponseWire.Decode(new ReadOnlySequence<byte>(resp), out PayloadBodiesV1ResponseWire decoded);
+        Assert.That(decoded.Entries, Is.Not.Null);
+        Assert.That(decoded.Entries!.Length, Is.EqualTo(2));
+        Assert.That(decoded.Entries[0].Available, Is.True, "Shanghai block at /shanghai/bodies must stay available");
+        Assert.That(decoded.Entries[1].Available, Is.False, "Cancun block at /shanghai/bodies must surface as unavailable");
     }
 
     private static readonly object[] BodiesByRangeRoutingCases =

@@ -6,7 +6,10 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -16,7 +19,10 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// of <c>engine_getPayloadBodiesByHashV{N}</c>. Generic over a per-version descriptor
 /// so adding a Vn+1 endpoint is one new descriptor + one DI line.
 /// </summary>
-public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineRpcModule engineModule)
+public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
+    IEngineRpcModule engineModule,
+    IBlockFinder blockFinder,
+    ISpecProvider specProvider)
     : SszEndpointHandlerBase
     where TVersion : struct, IPayloadBodiesByHashVersion<TResult>
     where TResult : class
@@ -36,6 +42,12 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineR
             return;
         }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
+        string? urlFork = ctx.Items.TryGetValue("SszRouteFork", out object? f) ? f as string : null;
+        if (result.Result.ResultType == ResultType.Success && result.Data is not null)
+        {
+            result = ResultWrapper<IReadOnlyList<TResult?>>.Success(
+                BodiesForkFilter.FilterByHash(result.Data, hashes, urlFork, blockFinder, specProvider));
+        }
         await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }
 }

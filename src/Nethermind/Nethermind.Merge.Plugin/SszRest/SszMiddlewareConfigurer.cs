@@ -43,6 +43,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IEngineRpcModule>(ctx);
         services.Bridge<ISpecProvider>(ctx);
         services.Bridge<IProcessExitSource>(ctx);
+        services.Bridge<Nethermind.Blockchain.Find.IBlockFinder>(ctx);
 
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>>();
