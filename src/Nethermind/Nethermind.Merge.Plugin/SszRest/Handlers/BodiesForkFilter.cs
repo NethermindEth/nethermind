@@ -18,42 +18,42 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// </summary>
 internal static class BodiesForkFilter
 {
-    public static IReadOnlyList<TResult?> FilterByHash<TResult>(
+    public static TResult?[] FilterByHash<TResult>(
         IReadOnlyList<TResult?> bodies,
         IReadOnlyList<Hash256> hashes,
-        string? urlFork,
+        string urlFork,
         IBlockFinder blockFinder,
         ISpecProvider specProvider)
         where TResult : class
     {
-        if (urlFork is null || bodies.Count == 0) return bodies;
         TResult?[] result = new TResult?[bodies.Count];
         for (int i = 0; i < bodies.Count; i++)
         {
-            if (bodies[i] is null) continue;
+            TResult? body = bodies[i];
+            if (body is null) continue;
             BlockHeader? header = blockFinder.FindHeader(hashes[i]);
             if (header is not null && Matches(header, urlFork, specProvider))
-                result[i] = bodies[i];
+                result[i] = body;
         }
         return result;
     }
 
-    public static IReadOnlyList<TResult?> FilterByRange<TResult>(
+    public static TResult?[] FilterByRange<TResult>(
         IReadOnlyList<TResult?> bodies,
         long start,
-        string? urlFork,
+        string urlFork,
         IBlockFinder blockFinder,
         ISpecProvider specProvider)
         where TResult : class
     {
-        if (urlFork is null || bodies.Count == 0) return bodies;
         TResult?[] result = new TResult?[bodies.Count];
         for (int i = 0; i < bodies.Count; i++)
         {
-            if (bodies[i] is null) continue;
+            TResult? body = bodies[i];
+            if (body is null) continue;
             BlockHeader? header = blockFinder.FindHeader(start + i);
             if (header is not null && Matches(header, urlFork, specProvider))
-                result[i] = bodies[i];
+                result[i] = body;
         }
         return result;
     }

@@ -59,6 +59,45 @@ public class SszCodecTests
     }
 
     [Test]
+    public void EncodePayloadStatus_validation_error_wraps_in_optional_list_per_spec()
+    {
+        // Per execution-apis #793: Optional[String] = List[List[byte, 1024], 1].
+        // Spec wire layout for { Status=INVALID, LatestValidHash=[], ValidationError="bad" }:
+        //   1 byte  status (= 1)
+        //   4 bytes offset(LatestValidHash) (= 9)
+        //   4 bytes offset(ValidationError) (= 9, since LatestValidHash is empty)
+        //   0 bytes LatestValidHash content
+        //   4 bytes inner-list offset within ValidationError (= 4)
+        //   3 bytes "bad"
+        // Total = 16 bytes.
+        byte[] encoded = Encode(
+            new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = "bad" },
+            SszCodec.EncodePayloadStatus);
+        PayloadStatusWire.Decode(Seq(encoded), out PayloadStatusWire decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Has.Length.EqualTo(16));
+            Assert.That(decoded.Status, Is.EqualTo((byte)1));
+            Assert.That(decoded.ValidationError, Has.Length.EqualTo(1));
+            Assert.That(decoded.ValidationError![0].Bytes, Is.EqualTo("bad"u8.ToArray()));
+        }
+    }
+
+    [Test]
+    public void EncodePayloadStatus_no_validation_error_is_empty_outer_list()
+    {
+        byte[] encoded = Encode(new PayloadStatusV1 { Status = PayloadStatus.Valid }, SszCodec.EncodePayloadStatus);
+        PayloadStatusWire.Decode(Seq(encoded), out PayloadStatusWire decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Status, Is.EqualTo((byte)0));
+            Assert.That(decoded.ValidationError, Is.Empty);
+        }
+    }
+
+    [Test]
     public void EncodeForkchoiceUpdatedResponse_payload_id_prefix_is_irrelevant()
     {
         static ForkchoiceUpdatedV1Result WithId(string id) => new()
@@ -171,8 +210,17 @@ public class SszCodecTests
         {
             BlobCellsAndProofs entry = new() { Available = true, BlobCells = cells, Proofs = proofs };
             byte[] encoded = Encode<IReadOnlyList<BlobCellsAndProofs?>>([entry], SszCodec.EncodeGetBlobsV4Response);
+            GetBlobsV4ResponseWire.Decode(Seq(encoded), out GetBlobsV4ResponseWire decoded);
 
-            Assert.That(encoded.Length, Is.GreaterThan(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded, Is.Not.Empty);
+                Assert.That(decoded.Entries, Has.Length.EqualTo(1));
+                Assert.That(decoded.Entries![0].Available, Is.True);
+                Assert.That(decoded.Entries[0].Contents.BlobCells, Has.Length.EqualTo(cellsPerExtBlob));
+                Assert.That(decoded.Entries[0].Contents.BlobCells![0].Cell, Has.Length.EqualTo(1));
+                Assert.That(decoded.Entries[0].Contents.BlobCells![1].Cell, Is.Empty);
+            }
         }
         finally
         {

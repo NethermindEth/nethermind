@@ -362,13 +362,16 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         byte[] resp = ResponseBytes(ctx);
         PayloadBodiesV1ResponseWire.Decode(new ReadOnlySequence<byte>(resp), out PayloadBodiesV1ResponseWire decoded);
-        Assert.That(decoded.Entries, Is.Not.Null);
-        Assert.That(decoded.Entries!.Length, Is.EqualTo(2));
-        Assert.That(decoded.Entries[0].Available, Is.True, "Shanghai block at /shanghai/bodies must stay available");
-        Assert.That(decoded.Entries[1].Available, Is.False, "Cancun block at /shanghai/bodies must surface as unavailable");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(decoded.Entries, Has.Length.EqualTo(2));
+            Assert.That(decoded.Entries![0].Available, Is.True, "Shanghai block at /shanghai/bodies must stay available");
+            Assert.That(decoded.Entries[1].Available, Is.False, "Cancun block at /shanghai/bodies must surface as unavailable");
+        }
     }
 
     private static readonly object[] BodiesByRangeRoutingCases =

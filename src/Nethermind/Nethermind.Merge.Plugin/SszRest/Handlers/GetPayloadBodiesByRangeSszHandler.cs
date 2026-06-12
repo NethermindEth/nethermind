@@ -54,10 +54,12 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(
         }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, start, count);
         string? urlFork = ctx.Items.TryGetValue("SszRouteFork", out object? f) ? f as string : null;
-        if (result.Result.ResultType == ResultType.Success && result.Data is not null)
+        if (urlFork is not null && result.Result.ResultType == ResultType.Success && result.Data is { Count: > 0 } data)
         {
-            result = ResultWrapper<IReadOnlyList<TResult?>>.Success(
-                BodiesForkFilter.FilterByRange(result.Data, start, urlFork, blockFinder, specProvider));
+            TResult?[] filtered = BodiesForkFilter.FilterByRange(data, start, urlFork, blockFinder, specProvider);
+            ResultWrapper<IReadOnlyList<TResult?>> wrapped = ResultWrapper<IReadOnlyList<TResult?>>.Success(filtered);
+            wrapped.AddDisposable(result.Dispose);
+            result = wrapped;
         }
         await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }

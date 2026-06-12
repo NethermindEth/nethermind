@@ -29,7 +29,7 @@ public partial struct SszWithdrawal
     public ulong Amount { get; set; }
 }
 
-[SszContainer]
+[SszContainer(isCollectionItself: true)]
 public partial struct SszValidationError
 {
     [SszList(1024)] public byte[]? Bytes { get; set; }
@@ -421,13 +421,13 @@ public partial struct GetBlobsV4RequestWire
     [SszVector(128)] public BitArray? IndicesBitarray { get; set; }
 }
 
-[SszContainer]
+[SszContainer(isCollectionItself: true)]
 public partial struct NullableBlobCellWire
 {
     [SszList(1)] public SszBlobCell[]? Cell { get; set; }
 }
 
-[SszContainer]
+[SszContainer(isCollectionItself: true)]
 public partial struct NullableKzgProofWire
 {
     [SszList(1)] public SszKzgCommitment[]? Proof { get; set; }

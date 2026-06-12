@@ -42,11 +42,16 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
             return;
         }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
-        if (result.Result.ResultType == ResultType.Success && result.Data is not null)
+        if (result.Result.ResultType == ResultType.Success && result.Data is { Count: > 0 } data)
         {
             string? urlFork = ctx.Items.TryGetValue("SszRouteFork", out object? f) ? f as string : null;
-            result = ResultWrapper<IReadOnlyList<TResult?>>.Success(
-                BodiesForkFilter.FilterByHash(result.Data, hashes, urlFork, blockFinder, specProvider));
+            if (urlFork is not null)
+            {
+                TResult?[] filtered = BodiesForkFilter.FilterByHash(data, hashes, urlFork, blockFinder, specProvider);
+                ResultWrapper<IReadOnlyList<TResult?>> wrapped = ResultWrapper<IReadOnlyList<TResult?>>.Success(filtered);
+                wrapped.AddDisposable(result.Dispose);
+                result = wrapped;
+            }
         }
         await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }
