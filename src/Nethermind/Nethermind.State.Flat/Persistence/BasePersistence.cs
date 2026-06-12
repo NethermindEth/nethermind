@@ -127,7 +127,7 @@ public static class BasePersistence
     }
 
     [SkipLocalsInit]
-    private static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
+    internal static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
     {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = version;
@@ -139,20 +139,25 @@ public static class BasePersistence
     /// version of an existing DB always wins so its on-disk format is read back correctly.
     /// </summary>
     /// <remarks>
-    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a DB synced before this
-    /// feature existed both lack it. They are distinguished via the <see cref="LayoutKey"/>, which any
-    /// previously-synced DB will already have recorded — its presence means raw legacy data, so wrapping is
-    /// disabled (with a deprecation warning) to avoid misreading raw values as RLP.
+    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a DB synced before this feature
+    /// existed both lack it. They are distinguished by <paramref name="slotStore"/>: wrapping is only safe when no
+    /// pre-existing slot values are present, since any already-stored slot is in the raw encoding and would be
+    /// misread as RLP. A non-empty slot column therefore pins the DB to raw (with a deprecation warning).
+    /// The <see cref="LayoutKey"/> is not a reliable discriminator here: it postdates flat sync, so a DB synced
+    /// before the Layout marker existed (or one provisioned by tooling that bypasses the metadata column) holds
+    /// raw slots without a Layout key and must not be treated as brand-new.
     /// </remarks>
-    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ILogger logger)
+    /// <param name="slotStore">The column that holds storage slot values for this layout.</param>
+    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ISortedKeyValueStore slotStore, ILogger logger)
     {
         IReadOnlyKeyValueStore meta = db.GetColumnDb(FlatDbColumns.Metadata);
         bool rlpWrap = ReadSlotEncoding(meta) switch
         {
             SlotEncodingRlp => true,
             SlotEncodingRaw => false,
-            // No recorded version: a brand-new DB wraps; a previously-synced DB (Layout present) is legacy raw.
-            null => ReadLayout(meta) is null,
+            // No recorded version: only a DB with no existing slots is brand-new and safe to wrap; a DB that
+            // already holds slots predates this feature and is on the raw encoding.
+            null => slotStore.FirstKey is null,
             byte version => throw new InvalidConfigurationException(
                 $"Flat DB metadata contains an unrecognized slot encoding version '{version}'. The DB may be corrupt or was written by a newer version.",
                 -1),
