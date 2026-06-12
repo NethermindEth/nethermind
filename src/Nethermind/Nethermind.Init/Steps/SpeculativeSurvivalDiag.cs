@@ -89,8 +89,12 @@ public sealed class SpeculativeSurvivalDiag(ILifetimeScope context, ITxPool txPo
         // block.Header is the live object shared with the block tree and real processing —
         // shadow passes MUST run on private clones or they corrupt consensus (base fee of
         // the next block is computed from parent GasUsed).
+        // The suggested header carries the block's FINAL GasUsed; execution starts from zero
+        // or every transaction trips the block gas limit check.
         BlockHeader speculationHeader = block.Header.Clone();
+        speculationHeader.GasUsed = 0;
         BlockHeader replayHeader = block.Header.Clone();
+        replayHeader.GasUsed = 0;
 
         int specFailed = 0;
         Dictionary<int, ReadSet> readSets = new(pooledCount);
