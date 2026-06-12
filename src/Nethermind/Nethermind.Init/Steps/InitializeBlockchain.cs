@@ -44,10 +44,13 @@ namespace Nethermind.Init.Steps
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
-            StreamInterpreter.Enabled |= getApi.Config<IEvmConfig>().StreamInterpreter;
+            IEvmConfig evmConfig = getApi.Config<IEvmConfig>();
+            StreamInterpreter.Enabled |= evmConfig.StreamInterpreter;
             Nethermind.Logging.ILogger evmLogger = getApi.LogManager.GetClassLogger<InitializeBlockchain>();
             if (StreamInterpreter.Enabled && evmLogger.IsInfo)
                 evmLogger.Info("EVM stream interpreter enabled");
+            if (evmConfig.StaticSlotDiag)
+                StaticSlotDiag.Enable(evmLogger);
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
