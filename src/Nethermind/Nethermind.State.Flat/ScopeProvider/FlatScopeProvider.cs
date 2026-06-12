@@ -43,7 +43,7 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             logManager,
-            warmReadPool: _warmReadPool?.Value,
+            warmReadPool: _warmReadPool,
             isReadOnly: isReadOnly);
     }
 

@@ -24,7 +24,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
-    private readonly WarmReadPool? _warmReadPool;
+    private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
 
@@ -54,7 +54,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
-        WarmReadPool? warmReadPool = null,
+        Lazy<WarmReadPool>? warmReadPool = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
@@ -288,9 +288,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
-        int workers = Math.Min(_warmReadPool.MaxConcurrency, Math.Max(1, idx / 64));
+        // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
+        // that never see a BAL never allocate the dedicated reader threads.
+        WarmReadPool pool = _warmReadPool.Value;
+        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
 
-        _warmReadPool.Run(idx, workers, j =>
+        pool.Run(idx, workers, j =>
         {
             if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
