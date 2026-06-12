@@ -26,11 +26,11 @@ public readonly unsafe ref struct WholeReadSessionReader(byte* basePtr, long len
         return true;
     }
 
-    public NoOpPin PinBuffer(long offset, long size)
+    public NoOpPin PinBuffer(Bound bound)
     {
-        if ((ulong)offset + (ulong)size > (ulong)length)
-            throw new ArgumentOutOfRangeException(nameof(offset));
-        return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + offset, checked((int)size)));
+        if ((ulong)bound.Offset + (ulong)bound.Length > (ulong)length)
+            throw new ArgumentOutOfRangeException(nameof(bound));
+        return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + bound.Offset, checked((int)bound.Length)));
     }
 
     /// <summary>

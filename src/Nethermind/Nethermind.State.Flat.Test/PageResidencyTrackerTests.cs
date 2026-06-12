@@ -390,7 +390,7 @@ public class PageResidencyTrackerTests
                 manager, arenaId: 1, offset: 0, size: data.Length);
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
-            using NoOpPin pin = reader.PinBuffer(0, pageSize * 2 + 1);
+            using NoOpPin pin = reader.PinBuffer(new Bound(0, pageSize * 2 + 1));
             Assert.That(pin.Buffer.Length, Is.EqualTo(pageSize * 2 + 1));
             Assert.That(tracker.ContainsPage(1, 0), Is.True);
             Assert.That(tracker.ContainsPage(1, 1), Is.True);
@@ -480,7 +480,7 @@ public class PageResidencyTrackerTests
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
             Span<byte> sink = stackalloc byte[8];
             Assert.That(reader.TryRead(4, sink), Is.True);
-            using NoOpPin pin = reader.PinBuffer(0, 16);
+            using NoOpPin pin = reader.PinBuffer(new Bound(0, 16));
             Assert.That(pin.Buffer.Length, Is.EqualTo(16));
         }
     }

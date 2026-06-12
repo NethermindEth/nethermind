@@ -259,7 +259,7 @@ internal static class HsstBTreeReader
 
         int winLen = (int)Math.Min(SpeculativePinSize, available);
 
-        TPin speculativePin = reader.PinBuffer(absStart, winLen);
+        TPin speculativePin = reader.PinBuffer(new Bound(absStart, winLen));
         bool keepSpeculative = false;
         int totalNodeSize;
         try
@@ -296,7 +296,7 @@ internal static class HsstBTreeReader
         }
 
         // Cold path: node larger than the speculative window. Pin precisely.
-        pin = reader.PinBuffer(absStart, totalNodeSize);
+        pin = reader.PinBuffer(new Bound(absStart, totalNodeSize));
         node = BTreeNodeReader.ReadFromStart(pin.Buffer, 0, parentSeparator);
         return true;
     }

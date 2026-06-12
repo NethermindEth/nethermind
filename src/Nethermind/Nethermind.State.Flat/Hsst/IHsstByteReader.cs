@@ -91,11 +91,11 @@ public interface IHsstByteReader<TPin> where TPin : struct, IBufferPin, allows r
     bool TryRead(long offset, scoped Span<byte> output);
 
     /// <summary>
-    /// Pin a window of <paramref name="size"/> bytes starting at <paramref name="offset"/>.
+    /// Pin the window described by <paramref name="bound"/> (absolute offset + length).
     /// The pinned bytes are accessed via <see cref="IBufferPin.Buffer"/> and remain valid until
     /// the returned pin is disposed.
     /// </summary>
-    TPin PinBuffer(long offset, long size);
+    TPin PinBuffer(Bound bound);
 
     /// <summary>
     /// Software-prefetch hint for the cache line(s) at <paramref name="offset"/>. No-op for readers
@@ -124,11 +124,11 @@ public readonly ref struct SpanByteReader : IHsstByteReader<NoOpPin>
         return true;
     }
 
-    public NoOpPin PinBuffer(long offset, long size)
+    public NoOpPin PinBuffer(Bound bound)
     {
-        if ((ulong)offset + (ulong)size > (ulong)_data.Length)
-            throw new ArgumentOutOfRangeException(nameof(offset));
-        return new NoOpPin(_data.Slice((int)offset, (int)size));
+        if ((ulong)bound.Offset + (ulong)bound.Length > (ulong)_data.Length)
+            throw new ArgumentOutOfRangeException(nameof(bound));
+        return new NoOpPin(_data.Slice((int)bound.Offset, (int)bound.Length));
     }
 
     public readonly void Prefetch(long offset) { }

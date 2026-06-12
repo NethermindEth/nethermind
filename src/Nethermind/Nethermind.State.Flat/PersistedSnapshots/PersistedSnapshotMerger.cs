@@ -220,7 +220,7 @@ public static class PersistedSnapshotMerger
                 Bound sdb = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + sdTag];
                 if (sdb.Length != 1) continue;
                 TReader r = sources[matchingSources[j]].CreateReader();
-                using TPin sdPin = r.PinBuffer(sdb.Offset, 1);
+                using TPin sdPin = r.PinBuffer(new Bound(sdb.Offset, 1));
                 if (sdPin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
                     destructBarrier = j;
             }
@@ -300,7 +300,7 @@ public static class PersistedSnapshotMerger
                 else
                 {
                     TReader r = sources[matchingSources[j]].CreateReader();
-                    using TPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
+                    using TPin firstBytePin = r.PinBuffer(new Bound(sdb.Offset, 1));
                     if (firstBytePin.Buffer[0] == PersistedSnapshotTags.SelfDestructDestructedMarkerByte)
                     {
                         sdSrcJ = j;
@@ -313,7 +313,7 @@ public static class PersistedSnapshotMerger
             if (sdSrcJ >= 0)
             {
                 TReader r = sources[matchingSources[sdSrcJ]].CreateReader();
-                using TPin sdPin = r.PinBuffer(sdValOff, sdValLen);
+                using TPin sdPin = r.PinBuffer(new Bound(sdValOff, sdValLen));
                 perAddrBuilder.Add(PersistedSnapshotTags.SelfDestructSubTag, sdPin.Buffer);
             }
         }
@@ -333,7 +333,7 @@ public static class PersistedSnapshotMerger
                 Bound ab = subTagBounds[j * PersistedSnapshotTags.PerAddrSubTagCount + acctTag];
                 if (ab.Length == 0) continue;
                 TReader r = sources[matchingSources[j]].CreateReader();
-                using TPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
+                using TPin acctPin = r.PinBuffer(ab);
                 perAddrBuilder.Add(PersistedSnapshotTags.AccountSubTag, acctPin.Buffer);
                 break;
             }
@@ -778,11 +778,11 @@ public static class PersistedSnapshotMerger
         Bound th = SeekField(in newestReader, newestMetaScope, PersistedSnapshotTags.MetadataToHashKey);
         Bound vb = SeekField(in newestReader, newestMetaScope, PersistedSnapshotTags.MetadataVersionKey);
 
-        using TPin fbPin = oldestReader.PinBuffer(fb.Offset, fb.Length);
-        using TPin fhPin = oldestReader.PinBuffer(fh.Offset, fh.Length);
-        using TPin tbPin = newestReader.PinBuffer(tb.Offset, tb.Length);
-        using TPin thPin = newestReader.PinBuffer(th.Offset, th.Length);
-        using TPin vPin = newestReader.PinBuffer(vb.Offset, vb.Length);
+        using TPin fbPin = oldestReader.PinBuffer(fb);
+        using TPin fhPin = oldestReader.PinBuffer(fh);
+        using TPin tbPin = newestReader.PinBuffer(tb);
+        using TPin thPin = newestReader.PinBuffer(th);
+        using TPin vPin = newestReader.PinBuffer(vb);
 
         static Bound SeekField(scoped in TReader r, Bound scope, scoped ReadOnlySpan<byte> key)
         {

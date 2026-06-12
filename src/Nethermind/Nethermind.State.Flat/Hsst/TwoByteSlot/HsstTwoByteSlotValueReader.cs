@@ -92,7 +92,7 @@ internal static class HsstTwoByteSlotValueReader
         if (!TryReadLayout<TReader, TPin>(in reader, bound, offsetSize, out Layout L)) return false;
 
         long keysBytes = (long)L.Count * KeyLength;
-        using TPin keysPin = reader.PinBuffer(L.KeysStart, keysBytes);
+        using TPin keysPin = reader.PinBuffer(new Bound(L.KeysStart, keysBytes));
         ReadOnlySpan<byte> keys = keysPin.Buffer;
 
         int idx = UniformKeySearch.LowerBound2LE(keys, L.Count, key);

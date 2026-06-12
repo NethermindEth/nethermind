@@ -287,8 +287,10 @@ public class HsstDenseByteIndexTests
             return true;
         }
 
-        public NoOpPin PinBuffer(long offset, long size)
+        public NoOpPin PinBuffer(Bound bound)
         {
+            long offset = bound.Offset;
+            long size = bound.Length;
             if (offset < _trailerStart || offset + size > _length)
                 throw new InvalidOperationException(
                     $"TrailerOnlyLongReader: read outside trailer [{_trailerStart}, {_length}) at offset {offset} size {size}");
@@ -500,8 +502,10 @@ public class HsstDenseByteIndexTests
             return true;
         }
 
-        public NoOpPin PinBuffer(long offset, long size)
+        public NoOpPin PinBuffer(Bound bound)
         {
+            long offset = bound.Offset;
+            long size = bound.Length;
             if (offset + size > _length)
                 throw new InvalidOperationException($"out of bounds at {offset} size {size}");
             if (offset >= _trailerStart)

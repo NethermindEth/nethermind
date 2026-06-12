@@ -84,7 +84,7 @@ internal static class HsstDenseByteIndexReader
 
         long endsTotal = (long)L.Count * L.OffsetSize;
         if (endsTotal > int.MaxValue) return false;
-        using TPin endsPin = reader.PinBuffer(L.EndsStart, endsTotal);
+        using TPin endsPin = reader.PinBuffer(new Bound(L.EndsStart, endsTotal));
         ReadOnlySpan<byte> ends = endsPin.Buffer;
 
         if (exactMatch)
@@ -127,7 +127,7 @@ internal static class HsstDenseByteIndexReader
         if (L.Count > dst.Length) return 0;
         long endsTotal = (long)L.Count * L.OffsetSize;
         if (endsTotal > int.MaxValue) return 0;
-        using TPin endsPin = reader.PinBuffer(L.EndsStart, endsTotal);
+        using TPin endsPin = reader.PinBuffer(new Bound(L.EndsStart, endsTotal));
         ReadOnlySpan<byte> ends = endsPin.Buffer;
         for (int i = 0; i < L.Count; i++)
             TryResolveLocal(L, ends, i, out dst[i]);
@@ -202,7 +202,7 @@ internal static class HsstDenseByteIndexReader
 
         int winLen = (int)Math.Min(SpecTailWindow, bound.Length);
         long winStart = bound.Offset + bound.Length - winLen;
-        using TPin winPin = reader.PinBuffer(winStart, winLen);
+        using TPin winPin = reader.PinBuffer(new Bound(winStart, winLen));
         ReadOnlySpan<byte> win = winPin.Buffer;
 
         // Trailer layout (low → high address): [Ends[count]] [Count u8] [OffsetSize u8] [IndexType u8].
@@ -226,7 +226,7 @@ internal static class HsstDenseByteIndexReader
         // Cold path: trailer exceeds the speculative window (count > ~13 with offsetSize 2, or
         // any combination beyond SpecTailWindow). Re-pin Ends[] precisely.
         if (endsBytes > int.MaxValue) return false;
-        using TPin endsPin = reader.PinBuffer(bound.Offset + bound.Length - trailerSize, endsBytes);
+        using TPin endsPin = reader.PinBuffer(new Bound(bound.Offset + bound.Length - trailerSize, endsBytes));
         return ResolveTag(endsPin.Buffer, count, offsetSize, tag, bound.Offset, out entryBound);
     }
 

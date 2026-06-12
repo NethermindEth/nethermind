@@ -69,7 +69,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
         // Last byte of the HSST is the IndexType byte.
         IndexType tag;
-        using (TPin tagPin = reader.PinBuffer(scope.Offset + scope.Length - 1, 1))
+        using (TPin tagPin = reader.PinBuffer(new Bound(scope.Offset + scope.Length - 1, 1)))
         {
             tag = (IndexType)tagPin.Buffer[0];
         }
@@ -138,7 +138,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         if (scope.Length < 5) return default;
 
         IndexType tag;
-        using (TPin tagPin = reader.PinBuffer(scope.Offset, 1))
+        using (TPin tagPin = reader.PinBuffer(new Bound(scope.Offset, 1)))
         {
             tag = (IndexType)tagPin.Buffer[0];
         }
@@ -194,7 +194,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         Bound b = CurrentKey;
         int len = (int)b.Length;
         Span<byte> outSpan = dst[..len];
-        using TPin pin = reader.PinBuffer(b.Offset, b.Length);
+        using TPin pin = reader.PinBuffer(b);
         ReadOnlySpan<byte> stored = pin.Buffer;
         // LE-stored variants byte-reverse on the way out so callers see the original
         // BE/lex input bytes. PackedArray opts in via IsLittleEndian; the two
@@ -216,7 +216,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     public TPin GetCurrentValue(scoped in TReader reader)
     {
         Bound b = CurrentValue;
-        return reader.PinBuffer(b.Offset, b.Length);
+        return reader.PinBuffer(b);
     }
 
     public Bound CurrentValue => _kind switch
