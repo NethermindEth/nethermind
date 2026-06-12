@@ -96,4 +96,10 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "1000000000",
         HiddenFromDocs = true)]
     long MaxGasLimit { get; set; }
+
+    [ConfigItem(
+        Description = "Diagnostic: log, per suggested block, how many of its transactions were already present in the local transaction pool — the coverage ceiling for speculative pre-execution.",
+        DefaultValue = "false",
+        HiddenFromDocs = true)]
+    bool SpeculativeCoverageDiag { get; set; }
 }

@@ -51,6 +51,32 @@ namespace Nethermind.Init.Steps
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
+            if (blocksConfig.SpeculativeCoverageDiag)
+            {
+                // Measures the ceiling for speculative pre-execution: of each suggested
+                // block's transactions, how many were already in the local pool (and could
+                // therefore have been executed before the block arrived). Subscribed before
+                // processing so inclusion has not yet evicted them.
+                Logging.ILogger coverageLogger = getApi.LogManager.GetClassLogger<InitializeBlockchain>();
+                long coverageTotalTxs = 0;
+                long coveragePooledTxs = 0;
+                getApi.BlockTree!.NewBestSuggestedBlock += (_, blockEventArgs) =>
+                {
+                    Block suggested = blockEventArgs.Block;
+                    Transaction[] transactions = suggested.Transactions;
+                    if (transactions.Length == 0) return;
+                    int inPool = 0;
+                    foreach (Transaction transaction in transactions)
+                    {
+                        if (transaction.Hash is not null && txPool.ContainsTx(transaction.Hash, transaction.Type)) inPool++;
+                    }
+                    long total = Interlocked.Add(ref coverageTotalTxs, transactions.Length);
+                    long pooled = Interlocked.Add(ref coveragePooledTxs, inPool);
+                    if (coverageLogger.IsInfo)
+                        coverageLogger.Info($"SpecExecDiag: block {suggested.Number} txs {transactions.Length}, inPool {inPool} ({100.0 * inPool / transactions.Length:F1}%); cumulative {100.0 * pooled / total:F1}%");
+                };
+            }
+
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
