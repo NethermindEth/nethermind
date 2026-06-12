@@ -25,12 +25,14 @@ public class PersistenceManager(
     IFinalizedStateProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
+    IResourcePool resourcePool,
     ILogManager logManager) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
+    private readonly bool _earlyPersist = configuration.EarlyPersist;
     private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
@@ -116,9 +118,10 @@ public class PersistenceManager(
         StateId currentPersistedState = GetCurrentPersistedStateId();
         long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         long inMemoryStateDepth = lastSnapshotNumber - currentPersistedState.BlockNumber;
-        if (inMemoryStateDepth - _compactSize < _minReorgDepth)
+        if (!_earlyPersist && inMemoryStateDepth - _compactSize < _minReorgDepth)
         {
-            // Keep some state in memory
+            // Keep some state in memory. With early persist the finalization gate below is the sole
+            // gate; historical state for snap serving is kept as reverse diffs instead.
             return null;
         }
 
@@ -243,95 +246,174 @@ public class PersistenceManager(
         // Usually at the start of the application
         if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
 
-        long sw = Stopwatch.GetTimestamp();
-        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
+        Snapshot? reverseDiff = null;
+        IPersistence.IPersistenceReader? oldStateReader = null;
+        if (_earlyPersist)
         {
-            foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            if (HasIrreversibleSelfDestruct(snapshot))
             {
-                if (toSelfDestructStorage.Value)
+                // Reversing a self-destruct of an account with persisted storage would need all its old
+                // slots and storage trie nodes, which is unbounded. Collapse the serving window instead;
+                // it restarts at the new persisted state. Post EIP-6780 this effectively never happens.
+                snapshotRepository.ClearHistory();
+                Metrics.HistoricalWindowTruncations++;
+                if (_logger.IsDebug) _logger.Debug($"Snapshot {snapshot.To} self-destructs an account with persisted storage; truncating the historical serving window.");
+            }
+            else
+            {
+                // The reader sees the pre-batch state for the whole batch, so old values can be captured
+                // next to each overwriting write.
+                oldStateReader = persistence.CreateReader();
+                reverseDiff = resourcePool.CreateSnapshot(from: snapshot.To, to: snapshot.From, ResourcePool.Usage.ReverseDiff);
+            }
+        }
+
+        long sw = Stopwatch.GetTimestamp();
+        try
+        {
+            using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
+            {
+                foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
                 {
-                    continue;
-                }
-
-                batch.SelfDestruct(toSelfDestructStorage.Key.Key);
-            }
-
-            foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
-            {
-                batch.SetAccount(kv.Key.Key, kv.Value);
-            }
-
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
-            {
-                (Address addr, UInt256 slot) = kv.Key.Key;
-
-                batch.SetStorage(addr, slot, kv.Value);
-            }
-
-            _trieNodesSortBuffer.Clear();
-            foreach (TreePath path in snapshot.StateNodeKeys)
-            {
-                _trieNodesSortBuffer.Add((Hash256.Zero, path)); // Hash256.Zero is a placeholder; state node keys don't have an address component
-            }
-            _trieNodesSortBuffer.Sort();
-
-            long stateNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
-            {
-                (_, TreePath path) = k;
-
-                snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
-
-                if (node!.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
+                    if (toSelfDestructStorage.Value)
                     {
                         continue;
                     }
+
+                    batch.SelfDestruct(toSelfDestructStorage.Key.Key);
                 }
 
-                stateNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
-
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
-            }
-
-            _trieNodesSortBuffer.Clear();
-            _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
-            _trieNodesSortBuffer.Sort();
-
-            long storageNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
-            {
-                (Hash256 address, TreePath path) = k;
-
-                snapshot.TryGetStorageNode(new HashedKey<(Hash256, TreePath)>((address, path)), out TrieNode? node);
-
-                if (node!.FullRlp.Length == 0)
+                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
                 {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
+                    if (reverseDiff is not null) reverseDiff.Content.Accounts[kv.Key] = oldStateReader!.GetAccount(kv.Key.Key);
+
+                    batch.SetAccount(kv.Key.Key, kv.Value);
                 }
 
-                storageNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
-            }
+                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+                {
+                    (Address addr, UInt256 slot) = kv.Key.Key;
 
-            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
-            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
+                    if (reverseDiff is not null)
+                    {
+                        SlotValue oldValue = new();
+                        reverseDiff.Content.Storages[kv.Key] = oldStateReader!.TryGetSlot(addr, slot, ref oldValue) ? oldValue : null;
+                    }
+
+                    batch.SetStorage(addr, slot, kv.Value);
+                }
+
+                _trieNodesSortBuffer.Clear();
+                foreach (TreePath path in snapshot.StateNodeKeys)
+                {
+                    _trieNodesSortBuffer.Add((Hash256.Zero, path)); // Hash256.Zero is a placeholder; state node keys don't have an address component
+                }
+                _trieNodesSortBuffer.Sort();
+
+                long stateNodesSize = 0;
+                // foreach (var tn in snapshot.TrieNodes)
+                foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+                {
+                    (_, TreePath path) = k;
+
+                    snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
+
+                    if (node!.FullRlp.Length == 0)
+                    {
+                        // TODO: Need to double check this case. Does it need a rewrite or not?
+                        if (node.NodeType == NodeType.Unknown)
+                        {
+                            continue;
+                        }
+                    }
+
+                    if (reverseDiff is not null)
+                    {
+                        // A node absent at the old state is never reached when traversing from an old
+                        // root, so absent keys need no marker.
+                        byte[]? oldRlp = oldStateReader!.TryLoadStateRlp(path, ReadFlags.None);
+                        if (oldRlp is not null) reverseDiff.Content.StateNodes[new HashedKey<TreePath>(path)] = CreateOldStateNode(oldRlp);
+                    }
+
+                    stateNodesSize += node.FullRlp.Length;
+                    // Note: Even if the node already marked as persisted, we still re-persist it
+                    batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+
+                    node.IsPersisted = true;
+                    node.PrunePersistedRecursively(1);
+                }
+
+                _trieNodesSortBuffer.Clear();
+                _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
+                _trieNodesSortBuffer.Sort();
+
+                long storageNodesSize = 0;
+                // foreach (var tn in snapshot.TrieNodes)
+                foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+                {
+                    (Hash256 address, TreePath path) = k;
+
+                    snapshot.TryGetStorageNode(new HashedKey<(Hash256, TreePath)>((address, path)), out TrieNode? node);
+
+                    if (node!.FullRlp.Length == 0)
+                    {
+                        // TODO: Need to double check this case. Does it need a rewrite or not?
+                        if (node.NodeType == NodeType.Unknown)
+                        {
+                            continue;
+                        }
+                    }
+
+                    if (reverseDiff is not null)
+                    {
+                        byte[]? oldRlp = oldStateReader!.TryLoadStorageRlp(address, path, ReadFlags.None);
+                        if (oldRlp is not null) reverseDiff.Content.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = CreateOldStateNode(oldRlp);
+                    }
+
+                    storageNodesSize += node.FullRlp.Length;
+                    // Note: Even if the node already marked as persisted, we still re-persist it
+                    batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
+                    node.IsPersisted = true;
+                    node.PrunePersistedRecursively(1);
+                }
+
+                Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
+                Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
+            }
+        }
+        catch
+        {
+            reverseDiff?.Dispose();
+            throw;
+        }
+        finally
+        {
+            oldStateReader?.Dispose();
+        }
+
+        // Registered only after the batch commits so a reader can never see the diff alongside the old
+        // persisted state. The opposite window (new state, diff not yet registered) is covered by the
+        // bundle gather retry.
+        if (reverseDiff is not null && !snapshotRepository.TryAddReverseDiff(reverseDiff))
+        {
+            reverseDiff.Dispose();
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
+
+    private static bool HasIrreversibleSelfDestruct(Snapshot snapshot)
+    {
+        foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+        {
+            // false marks an account whose storage already reached persistence; true is a same-tx
+            // created account with nothing on disk (nothing to reverse).
+            if (!toSelfDestructStorage.Value) return true;
+        }
+
+        return false;
+    }
+
+    private static TrieNode CreateOldStateNode(byte[] rlp) =>
+        new(NodeType.Unknown, Keccak.Compute(rlp), rlp) { IsPersisted = true };
 }

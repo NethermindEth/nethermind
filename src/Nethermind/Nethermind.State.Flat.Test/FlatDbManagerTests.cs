@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -59,6 +60,7 @@ public class FlatDbManagerTests
         _persistenceManager,
         _config,
         _blocksConfig,
+        new SyncConfig(),
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
@@ -174,6 +176,72 @@ public class FlatDbManagerTests
         _persistenceManager.ClearReceivedCalls();
         using (ReadOnlySnapshotBundle bundle3 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
         _persistenceManager.Received(1).LeaseReader();
+    }
+
+    [Test]
+    public async Task FlushCache_EarlyPersistFlag_ArchivesInsteadOfRemoves([Values] bool earlyPersist)
+    {
+        _config.EarlyPersist = earlyPersist;
+        StateId persisted = CreateStateId(10);
+        _persistenceManager.FlushToPersistence().Returns(persisted);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.FlushCache(CancellationToken.None);
+
+        if (earlyPersist)
+        {
+            _snapshotRepository.Received(1).ArchiveStatesUntil(persisted);
+            _snapshotRepository.DidNotReceive().RemoveStatesUntil(Arg.Any<StateId>());
+        }
+        else
+        {
+            _snapshotRepository.Received(1).RemoveStatesUntil(persisted);
+            _snapshotRepository.DidNotReceive().ArchiveStatesUntil(Arg.Any<StateId>());
+        }
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_BelowPersistedState_UsesHistoricalAssembly()
+    {
+        StateId persisted = CreateStateId(20);
+        StateId historical = CreateStateId(10);
+        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
+        mockReader.CurrentState.Returns(persisted);
+        _persistenceManager.LeaseReader().Returns(mockReader);
+
+        ResourcePool realResourcePool = new(_config);
+        Snapshot reverseDiff = realResourcePool.CreateSnapshot(persisted, historical, ResourcePool.Usage.ReverseDiff);
+        _snapshotRepository.AssembleHistoricalSnapshots(historical, persisted, Arg.Any<int>())
+            .Returns(FlatTestHelpers.SnapshotList(reverseDiff));
+
+        await using FlatDbManager manager = CreateManager();
+        bool gathered = manager.TryGatherReadOnlySnapshotBundle(historical, out ReadOnlySnapshotBundle? bundle);
+
+        Assert.That(gathered, Is.True);
+        using (bundle)
+        {
+            Assert.That(bundle!.SnapshotCount, Is.EqualTo(1));
+        }
+        _snapshotRepository.DidNotReceive().AssembleSnapshots(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<int>());
+    }
+
+    [Test]
+    public async Task TryGatherReadOnlySnapshotBundle_HistoricalStatePruned_ReturnsFalseAndGatherThrows()
+    {
+        StateId persisted = CreateStateId(20);
+        StateId pruned = CreateStateId(5);
+        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
+        mockReader.CurrentState.Returns(persisted);
+        _persistenceManager.LeaseReader().Returns(mockReader);
+        _snapshotRepository.AssembleHistoricalSnapshots(pruned, persisted, Arg.Any<int>())
+            .Returns(_ => SnapshotPooledList.Empty());
+        _snapshotRepository.HasHistoricalState(pruned).Returns(false);
+
+        await using FlatDbManager manager = CreateManager();
+
+        Assert.That(manager.TryGatherReadOnlySnapshotBundle(pruned, out ReadOnlySnapshotBundle? bundle), Is.False);
+        Assert.That(bundle, Is.Null);
+        Assert.Throws<InvalidOperationException>(() => manager.GatherReadOnlySnapshotBundle(pruned));
     }
 
     [Test]

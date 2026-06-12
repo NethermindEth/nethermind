@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -442,5 +443,143 @@ public class SnapshotRepositoryTests
 
         Assert.That(_repository.HasState(CreateStateId(7)), Is.True);
         Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.True);
+    }
+
+    private Snapshot AddReverseDiff(long fromBlock, long toBlock)
+    {
+        Snapshot reverseDiff = CreateSnapshot(CreateStateId(fromBlock), CreateStateId(toBlock));
+        Assert.That(_repository.TryAddReverseDiff(reverseDiff), Is.True, $"Failed to add reverse diff {fromBlock}->{toBlock}");
+        return reverseDiff;
+    }
+
+    /// <summary>
+    /// Per-block chain 0..12 archived in chunks of 4 with reverse diffs (4→0), (8→4), (12→8).
+    /// Historical forwards left: 1-3, 5-7, 9-11 (each chunk's upper boundary snapshot is released on archive).
+    /// </summary>
+    private void BuildArchivedChunks()
+    {
+        BuildSnapshotChain(0, 12);
+        for (long boundary = 4; boundary <= 12; boundary += 4)
+        {
+            _repository.ArchiveStatesUntil(CreateStateId(boundary));
+            AddReverseDiff(boundary, boundary - 4);
+        }
+    }
+
+    private static void AssertContiguousChain(SnapshotPooledList assembled, StateId persisted, StateId baseState)
+    {
+        Assert.That(assembled[0].From, Is.EqualTo(persisted), "topmost reverse diff starts at the persisted state");
+        Assert.That(assembled[^1].To, Is.EqualTo(baseState), "list ends at the requested state");
+        for (int i = 1; i < assembled.Count; i++)
+        {
+            Assert.That(assembled[i].From, Is.EqualTo(assembled[i - 1].To), $"chain broken at index {i}");
+        }
+    }
+
+    [Test]
+    public void ArchiveStatesUntil_MovesCanonicalChainAndReleasesRest()
+    {
+        BuildSnapshotChain(0, 6);
+        AddSnapshotToRepository(0, 4, compacted: true);
+        AddSnapshotToRepository(CreateStateId(3), CreateStateId(4, rootByte: 1));
+
+        _repository.ArchiveStatesUntil(CreateStateId(4));
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (long block = 1; block <= 4; block++)
+            {
+                Assert.That(_repository.HasState(CreateStateId(block)), Is.False, $"state {block} should leave the live set");
+            }
+            for (long block = 1; block <= 3; block++)
+            {
+                Assert.That(_repository.HasHistoricalState(CreateStateId(block)), Is.True, $"state {block} should be historical");
+            }
+            Assert.That(_repository.HasHistoricalState(CreateStateId(4)), Is.False, "persisted state's snapshot is released, not archived");
+            Assert.That(_repository.TryLeaseCompactedState(CreateStateId(4), out _), Is.False, "compacted snapshot should be released");
+            Assert.That(_repository.HasState(CreateStateId(4, rootByte: 1)), Is.False, "non-canonical leftover should be released");
+            Assert.That(_repository.HasState(CreateStateId(5)), Is.True, "states above the persisted block stay live");
+            Assert.That(_repository.HasState(CreateStateId(6)), Is.True, "states above the persisted block stay live");
+        }
+    }
+
+    [TestCase(10, 3, Description = "mid-chunk: one reverse diff then forwards")]
+    [TestCase(8, 1, Description = "exactly at a chunk boundary: reverse diff only")]
+    [TestCase(11, 4)]
+    [TestCase(2, 5, Description = "oldest chunk: all reverse diffs then forwards")]
+    public void AssembleHistoricalSnapshots_ReturnsContiguousChainFromPersistedToBase(long baseBlock, int expectedCount)
+    {
+        BuildArchivedChunks();
+        StateId persisted = CreateStateId(12);
+        StateId baseState = CreateStateId(baseBlock);
+
+        using SnapshotPooledList assembled = _repository.AssembleHistoricalSnapshots(baseState, persisted, 4);
+
+        Assert.That(assembled.Count, Is.EqualTo(expectedCount));
+        AssertContiguousChain(assembled, persisted, baseState);
+    }
+
+    [Test]
+    public void AssembleHistoricalSnapshots_UnknownOrPrunedState_ReturnsEmpty()
+    {
+        BuildArchivedChunks();
+        _repository.PruneHistory(9, CreateStateId(12));
+
+        using SnapshotPooledList unknownState = _repository.AssembleHistoricalSnapshots(CreateStateId(10, rootByte: 1), CreateStateId(12), 4);
+        using SnapshotPooledList prunedState = _repository.AssembleHistoricalSnapshots(CreateStateId(6), CreateStateId(12), 4);
+
+        Assert.That(unknownState.Count, Is.EqualTo(0));
+        Assert.That(prunedState.Count, Is.EqualTo(0));
+    }
+
+    [TestCase(9, 8, new long[] { 9, 10, 11 }, Description = "inside newest chunk: keep one reverse diff")]
+    [TestCase(8, 8, new long[] { 9, 10, 11 }, Description = "at boundary: same keep set")]
+    [TestCase(5, 4, new long[] { 5, 6, 7, 9, 10, 11 })]
+    [TestCase(-1, 0, new long[] { 1, 2, 3, 5, 6, 7, 9, 10, 11 }, Description = "window beyond oldest: keep everything")]
+    public void PruneHistory_KeepsChainDownToChunkBoundaryBelowOldestServed(long oldestServed, long expectedBoundary, long[] keptHistorical)
+    {
+        BuildArchivedChunks();
+        StateId persisted = CreateStateId(12);
+
+        _repository.PruneHistory(oldestServed, persisted);
+
+        using SnapshotPooledList boundaryChain = _repository.AssembleHistoricalSnapshots(CreateStateId(expectedBoundary), persisted, 4);
+        using (Assert.EnterMultipleScope())
+        {
+            for (long block = 1; block < 12; block++)
+            {
+                bool expected = Array.IndexOf(keptHistorical, block) >= 0;
+                Assert.That(_repository.HasHistoricalState(CreateStateId(block)), Is.EqualTo(expected), $"historical {block}");
+            }
+            Assert.That(boundaryChain.Count, Is.GreaterThan(0), "keep-boundary should stay reachable");
+        }
+
+        if (expectedBoundary > 0)
+        {
+            using SnapshotPooledList belowBoundary = _repository.AssembleHistoricalSnapshots(CreateStateId(expectedBoundary - 4), persisted, 4);
+            Assert.That(belowBoundary.Count, Is.EqualTo(0), "chunk below the keep-boundary should be released");
+        }
+    }
+
+    [Test]
+    public void ClearHistory_ReleasesEverything_AndDuplicateReverseDiffIsRejected()
+    {
+        BuildArchivedChunks();
+        Snapshot duplicate = CreateSnapshot(CreateStateId(12), CreateStateId(8));
+        bool addedDuplicate = _repository.TryAddReverseDiff(duplicate);
+        if (!addedDuplicate) duplicate.Dispose();
+
+        _repository.ClearHistory();
+
+        using SnapshotPooledList assembled = _repository.AssembleHistoricalSnapshots(CreateStateId(8), CreateStateId(12), 4);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(addedDuplicate, Is.False);
+            Assert.That(assembled.Count, Is.EqualTo(0));
+            for (long block = 1; block < 12; block++)
+            {
+                Assert.That(_repository.HasHistoricalState(CreateStateId(block)), Is.False, $"historical {block}");
+            }
+        }
     }
 }

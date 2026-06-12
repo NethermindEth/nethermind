@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
@@ -19,6 +20,9 @@ internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbMa
     public SnapshotBundle GatherSnapshotBundle(in StateId stateId, ResourcePool.Usage usage) => flatDbManager.GatherSnapshotBundle(NormalizeState(stateId), usage);
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId stateId) => flatDbManager.GatherReadOnlySnapshotBundle(NormalizeState(stateId));
+
+    public bool TryGatherReadOnlySnapshotBundle(in StateId stateId, [NotNullWhen(true)] out ReadOnlySnapshotBundle? bundle) =>
+        flatDbManager.TryGatherReadOnlySnapshotBundle(NormalizeState(stateId), out bundle);
 
     public bool HasStateForBlock(in StateId stateId)
     {
