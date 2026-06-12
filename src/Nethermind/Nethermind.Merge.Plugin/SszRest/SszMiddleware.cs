@@ -317,7 +317,7 @@ public sealed class SszMiddleware
 
         ReadOnlySpan<char> forkSpan = span[..nextSlash];
         // SszRestPaths.SupportedForks uses OrdinalIgnoreCase, so no lowercasing needed.
-        if (!SszRestPaths.SupportedForks.GetAlternateLookup<ReadOnlySpan<char>>().Contains(forkSpan))
+        if (!SszRestPaths.SupportedForksSpanLookup.Contains(forkSpan))
         {
             // Reject `/engine/v2/v<N>/...` (looks like a version-only path with no fork) before
             // emitting an unsupported-fork error — let the caller produce a 404 instead.
