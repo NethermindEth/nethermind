@@ -438,6 +438,91 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Recent_storage_cache_survives_pre_block_cache_clear()
+    {
+        PreBlockCaches preBlockCaches = new();
+        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell storageCell = new(ctx.Address1, 1);
+        BlockHeader baseBlock;
+
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 0);
+            provider.Set(storageCell, _values[1]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(1);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).WithNumber(1).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.Get(storageCell).ToArray(), Is.EqualTo(_values[1]));
+            Assert.That(preBlockCaches.RecentStorageCache.TryGetValue(in storageCell, out _), Is.True);
+        }
+
+        preBlockCaches.ClearCaches();
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in storageCell, out _), Is.False);
+        Assert.That(preBlockCaches.RecentStorageCache.TryGetValue(in storageCell, out byte[] cached), Is.True);
+        Assert.That(cached, Is.EqualTo(_values[1]));
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.Get(storageCell).ToArray(), Is.EqualTo(_values[1]));
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(in storageCell, out _), Is.True);
+        }
+    }
+
+    [Test]
+    public void Recent_storage_cache_tracks_committed_writes()
+    {
+        PreBlockCaches preBlockCaches = new();
+        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell storageCell = new(ctx.Address1, 1);
+        BlockHeader baseBlock;
+
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 0);
+            provider.Set(storageCell, _values[1]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(1);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).WithNumber(1).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Set(storageCell, _values[2]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(2);
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).WithNumber(2).TestObject;
+        }
+
+        Assert.That(preBlockCaches.RecentStorageCache.TryGetValue(in storageCell, out byte[] cached), Is.True);
+        Assert.That(cached, Is.EqualTo(_values[2]));
+
+        preBlockCaches.ClearCaches();
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.Get(storageCell).ToArray(), Is.EqualTo(_values[2]));
+        }
+    }
+
+    [Test]
+    public void Recent_storage_cache_clears_on_state_root_discontinuity()
+    {
+        PreBlockCaches preBlockCaches = new();
+        StorageCell storageCell = new(TestItem.AddressA, 1);
+
+        preBlockCaches.RecentStorageCache.Set(in storageCell, _values[1]);
+        preBlockCaches.MarkRecentStorageCacheStateRoot(Keccak.Compute("root A"));
+        preBlockCaches.ValidateRecentStorageCache(Build.A.BlockHeader.WithStateRoot(Keccak.Compute("root B")).TestObject);
+
+        Assert.That(preBlockCaches.RecentStorageCache.TryGetValue(in storageCell, out _), Is.False);
+    }
+
+    [Test]
     public void Selfdestruct_works_across_blocks()
     {
         using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);
