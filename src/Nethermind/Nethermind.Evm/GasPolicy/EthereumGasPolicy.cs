@@ -101,6 +101,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long GetStateGasSpillRefunded(in EthereumGasPolicy gas) => gas.StateGasSpillRefunded;
 
 
+    // EIP-8037: gas reserved for a child frame that never runs (CREATE static-violation halt).
+    // Recorded as spill so it's excluded from block regular gas and propagated to the parent on halt.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ExcludeReservedGasFromBlockRegular(ref EthereumGasPolicy gas, long amount)
+        => gas.StateGasSpill += amount;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref EthereumGasPolicy gas, long cost) => gas.Value -= cost;
 

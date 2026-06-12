@@ -28,9 +28,16 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
         }
 
-        IEnumerable<string> directories = !string.IsNullOrEmpty(testsDir)
-            ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
-            : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
+        string rootDir = !string.IsNullOrEmpty(testsDir)
+            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
+            : testsDirectoryName;
+
+        // The tests-bal archive ships only a subset of forks (e.g. v7.3.0 is Amsterdam-only), so a
+        // fork fixture class whose directory is absent contributes no tests rather than throwing.
+        if (!Directory.Exists(rootDir))
+            return [];
+
+        IEnumerable<string> directories = Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true });
         List<string> testDirs = [];
         foreach (string testDir in directories)
         {

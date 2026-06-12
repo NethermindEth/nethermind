@@ -551,9 +551,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }
 
-    [TestCase(false, TestName = "Eip8037_static_create_followed_by_parent_sstore_must_not_leak_create_state_gas_CREATE")]
-    [TestCase(true, TestName = "Eip8037_static_create_followed_by_parent_sstore_must_not_leak_create_state_gas_CREATE2")]
-    public void Eip8037_static_create_followed_by_parent_sstore_must_not_leak_create_state_gas(bool create2)
+    [TestCase(false, TestName = "Eip8037_static_create_returns_state_gas_to_parent_reservoir_CREATE")]
+    [TestCase(true, TestName = "Eip8037_static_create_returns_state_gas_to_parent_reservoir_CREATE2")]
+    public void Eip8037_static_create_returns_state_gas_to_parent_reservoir(bool create2)
     {
         Address createdAddress = SetupStaticCreateAttempt(create2);
         TestState.Set(new StorageCell(Recipient, 0), [0xDE, 0xAD]);
@@ -571,9 +571,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput tracer = Execute(Activation, 500_000, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
+        // The static-context CREATE's state gas returns to the parent reservoir on the halt and funds
+        // the subsequent SSTORE (per execution-specs); CREATE2 costs a little more (init-code hashing).
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(320_050));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(226_930));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(136_450));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(create2 ? 36_077 : 36_068));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }));
         Assert.That(TestState.Get(new StorageCell(Recipient, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
