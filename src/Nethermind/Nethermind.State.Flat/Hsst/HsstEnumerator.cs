@@ -228,15 +228,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         _ => default,
     };
 
-    public long CurrentMetadataStart => _kind switch
-    {
-        VariantKind.PackedArray => _packed!.CurrentMetadataStart,
-        VariantKind.BTree => _btree!.CurrentMetadataStart,
-        VariantKind.BTreeKeyFirst => _btree!.CurrentMetadataStart,
-        VariantKind.TwoByteSlot => _tbsv!.CurrentMetadataStart,
-        _ => 0,
-    };
-
     // No variant holds releasable resources today (HsstBTreeEnumerator's leaf buffer is
     // managed memory). Kept on IDisposable so callers can stay on `using`; if a variant
     // later acquires resources, plumb the release through here.

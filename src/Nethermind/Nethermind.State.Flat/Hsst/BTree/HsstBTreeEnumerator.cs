@@ -39,14 +39,13 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
 
     // Walk state. _depth: -1 = not started, -2 = exhausted, ≥0 = the current entry's depth
-    // in the tree. _entryPos is the absolute position of the current entry's flag byte.
+    // in the tree. The entry's flag-byte position is threaded from the descent straight into
+    // LoadCurrentEntry rather than stored.
     private int _depth = -1;
-    private long _entryPos;
 
     // Current entry — populated by LoadCurrentEntry after positioning at a leaf.
     private Bound _currentKey;
     private Bound _currentValue;
-    private long _currentMetaStart;
 
     // Root prefix bytes parsed from the HSST trailer at construction. Seeded as
     // parentSeparator when DescendToLeaf loads the root; non-root descents pass
@@ -101,6 +100,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     public bool MoveNext(scoped in TReader reader)
     {
         if (_depth == -2) return false;
+        long entryPos;
         if (_depth == -1)
         {
             if (_rootAbsStart < 0)
@@ -109,33 +109,35 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 return false;
             }
             // First call: descend leftmost from root.
-            if (!DescendToLeaf(in reader, _rootAbsStart, depthHint: 0))
+            if (!DescendToLeaf(in reader, _rootAbsStart, depthHint: 0, out entryPos))
             {
                 _depth = -2;
                 return false;
             }
-            return LoadCurrentEntry(in reader);
         }
-
-        // Current entry consumed — ascend until we find the next sibling subtree.
-        return AscendAndDescend(in reader);
+        // Subsequent calls: ascend until we find the next sibling subtree.
+        else if (!AscendAndDescend(in reader, out entryPos))
+        {
+            return false;
+        }
+        return LoadCurrentEntry(in reader, entryPos);
     }
 
     public Bound CurrentKey => _currentKey;
     public Bound CurrentValue => _currentValue;
-    public long CurrentMetadataStart => _currentMetaStart;
 
     /// <summary>
     /// Descend leftmost from the node starting at <paramref name="absStart"/> down to the
     /// leftmost entry, pushing (AbsStart, LastIdx=0) ancestor frames as we cross levels. On
-    /// success _depth and <see cref="_entryPos"/> point at that entry; returns false if a node
+    /// success _depth and <paramref name="entryPos"/> point at that entry; returns false if a node
     /// fails to load or the tree exceeds MaxDepth. The root node gets its prefix bytes from
     /// <see cref="_rootPrefix"/>; deeper nodes are loaded with an empty parentSeparator since
     /// the enumerator only consumes value slots (the reader tolerates an absent prefix for
     /// value-only callers).
     /// </summary>
-    private bool DescendToLeaf(scoped in TReader reader, long absStart, int depthHint)
+    private bool DescendToLeaf(scoped in TReader reader, long absStart, int depthHint, out long entryPos)
     {
+        entryPos = 0;
         long currentStart = absStart;
         int depth = depthHint;
         Span<byte> flagBuf = stackalloc byte[1];
@@ -149,7 +151,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             if ((BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Entry)
             {
                 _depth = depth;
-                _entryPos = currentStart;
+                entryPos = currentStart;
                 return true;
             }
 
@@ -164,7 +166,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 if (node.EntryCount == 0)
                 {
                     _depth = depth;
-                    return AscendAndDescend(in reader);
+                    return AscendAndDescend(in reader, out entryPos);
                 }
 
                 // Push a frame for this level and follow the leftmost child; the next
@@ -186,8 +188,9 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// descend leftmost from that child and load the first entry. Sets _depth=-2 when
     /// the whole tree is exhausted.
     /// </summary>
-    private bool AscendAndDescend(scoped in TReader reader)
+    private bool AscendAndDescend(scoped in TReader reader, out long entryPos)
     {
+        entryPos = 0;
         while (_depth > 0)
         {
             _depth--;
@@ -211,21 +214,21 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 long childRelStart = (long)parent.GetUInt64Value(anc.LastIdx);
                 childAbsStart = _scopeStart + childRelStart;
             }
-            if (!DescendToLeaf(in reader, childAbsStart, depthHint: _depth + 1))
+            if (!DescendToLeaf(in reader, childAbsStart, depthHint: _depth + 1, out entryPos))
             {
                 _depth = -2;
                 return false;
             }
-            return LoadCurrentEntry(in reader);
+            return true;
         }
         _depth = -2;
         return false;
     }
 
     /// <summary>
-    /// Decode the current entry at <see cref="_entryPos"/>: pin a small window to read the
-    /// value length, then set <see cref="_currentKey"/> / <see cref="_currentValue"/> to
-    /// absolute reader-space bounds.
+    /// Decode the entry at <paramref name="entryPos"/>: pin a small window to read the value
+    /// length, then set <see cref="_currentKey"/> / <see cref="_currentValue"/> to absolute
+    /// reader-space bounds.
     ///
     /// In both layouts the pointer aims at the entry's leading flag byte; the
     /// LEB128 (key-after-value) or FullKey (key-first) starts at <c>entryPos + 1</c>.
@@ -234,10 +237,8 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// Key-first mode (<c>_keyFirst = true</c>): EntryStart = FlagByte, key at +1,
     /// LEB128 follows the key, value follows the LEB128.
     /// </summary>
-    private bool LoadCurrentEntry(scoped in TReader reader)
+    private bool LoadCurrentEntry(scoped in TReader reader, long entryPos)
     {
-        long entryPos = _entryPos;
-
         // Long LEB128 occupies up to 10 bytes; the key length comes from the trailer.
         const int ValueLenMaxBytes = 10;
 
@@ -255,7 +256,6 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 valueLength = Leb128.Read(leb, ref pos);
             }
 
-            _currentMetaStart = entryPos;
             _currentKey = new Bound(keyStart, _keyLength);
             _currentValue = new Bound(lebStart + pos, valueLength);
             return true;
@@ -273,7 +273,6 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 valueLength = Leb128.Read(leb, ref pos);
             }
 
-            _currentMetaStart = entryPos;
             _currentKey = new Bound(lebStart + pos, _keyLength);
             _currentValue = new Bound(entryPos - valueLength, valueLength);
             return true;

@@ -54,5 +54,4 @@ internal sealed class HsstPackedArrayEnumerator<TReader, TPin>
 
     public Bound CurrentKey => new(_currentEntryStart, _keySize);
     public Bound CurrentValue => new(_currentEntryStart + _keySize, _valueSize);
-    public long CurrentMetadataStart => _currentEntryStart + _keySize;
 }

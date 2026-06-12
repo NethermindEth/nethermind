@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.DenseByteIndex;
+using Nethermind.State.Flat.Hsst.PackedArray;
 
 namespace Nethermind.State.Flat.Test.Hsst;
 

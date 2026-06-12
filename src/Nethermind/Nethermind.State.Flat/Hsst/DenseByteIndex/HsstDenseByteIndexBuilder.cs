@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Hsst;
+using Nethermind.State.Flat.Hsst.PackedArray;
 
 namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
 

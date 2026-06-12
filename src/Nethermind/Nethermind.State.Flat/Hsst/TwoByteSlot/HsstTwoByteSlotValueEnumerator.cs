@@ -51,5 +51,4 @@ internal sealed class HsstTwoByteSlotValueEnumerator<TReader, TPin>
 
     public Bound CurrentKey => new(_layout.KeysStart + (long)_index * HsstTwoByteSlotValueReader.KeyLength, HsstTwoByteSlotValueReader.KeyLength);
     public Bound CurrentValue => new(_currentValueStart, _currentValueEnd - _currentValueStart);
-    public long CurrentMetadataStart => _currentValueEnd;
 }
