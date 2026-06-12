@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 #if DEBUG
 using System.Diagnostics;
 #endif
@@ -17,11 +16,7 @@ namespace Nethermind.Evm
     /// </summary>
     public sealed class ExecutionEnvironment : IDisposable
     {
-#if ZK_EVM
-        private static readonly ZkPool<ExecutionEnvironment> _pool = new();
-#else
-        private static readonly ConcurrentQueue<ExecutionEnvironment> _pool = new();
-#endif
+        private static readonly EvmObjectPool<ExecutionEnvironment> _pool = new();
         private UInt256 _value;
 
         /// <summary>

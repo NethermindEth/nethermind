@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -88,11 +87,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     private sealed class TrackingState
     {
-#if ZK_EVM
-        private static readonly ZkPool<TrackingState> _trackerPool = new();
-#else
-        private static readonly ConcurrentQueue<TrackingState> _trackerPool = new();
-#endif
+        private static readonly EvmObjectPool<TrackingState> _trackerPool = new();
         public static TrackingState RentState() => _trackerPool.TryDequeue(out TrackingState tracker) ? tracker : new TrackingState();
 
         public static void ResetAndReturn(TrackingState state)

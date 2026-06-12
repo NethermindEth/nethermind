@@ -164,7 +164,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: true, spec.GasCostsFast.ExtCodeCost, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
+        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: true, spec.GasCosts.ExtCodeCost, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
@@ -235,7 +235,7 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
-        TGasPolicy.Consume(ref gas, spec.GasCostsFast.ExtCodeCost);
+        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeCost);
 
         // Pop the account address from the stack.
         Address address = stack.PopAddress();

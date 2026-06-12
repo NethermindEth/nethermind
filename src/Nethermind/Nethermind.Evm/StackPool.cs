@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Runtime.Intrinsics;
 using System.Threading;
 
@@ -19,11 +18,7 @@ internal sealed class StackPool
         public readonly byte[] DataStack = dataStack;
     }
 
-#if ZK_EVM
-    private readonly ZkPool<StackItem> _stackPool = new();
-#else
-    private readonly ConcurrentQueue<StackItem> _stackPool = new();
-#endif
+    private readonly EvmObjectPool<StackItem> _stackPool = new();
 
     public void ReturnStacks(byte[] dataStack)
     {

@@ -27,7 +27,6 @@ namespace Nethermind.Db
         public static bool DetailedMetricsEnabled { get; set; }
 
 #if ZK_EVM
-        // Single-threaded guest: skip the AsyncLocal lookup on every metric bump.
         private static bool IsBlockProcessingThread => true;
 #else
         private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -21,11 +20,7 @@ namespace Nethermind.Evm;
 public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-#if ZK_EVM
-    private static readonly ZkPool<VmState<TGasPolicy>> _statePool = new();
-#else
-    private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
-#endif
+    private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new();
     private static readonly StackPool _stackPool = new();
 
     public byte[]? DataStack;
