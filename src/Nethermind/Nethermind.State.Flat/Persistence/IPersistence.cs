@@ -54,11 +54,17 @@ public interface IPersistence
         void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
-        // Hash-keyed Set entrypoints — used by snap-sync / Importer paths that already
-        // hold pre-hashed keys (the snap protocol streams Keccak(address) / Keccak(slot)
-        // directly). Account/slot deletion is handled via the Address-keyed entrypoints
-        // (SetAccount(addr, null) / SelfDestruct(addr)).
-        void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
+        /// <summary>
+        /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced
+        /// during sync. When slot values are RLP-wrapped the bytes are stored verbatim; in raw mode the value is
+        /// unwrapped to its stripped bytes.
+        /// </summary>
+        /// <remarks>
+        /// Hash-keyed entrypoint — used by snap-sync / Importer paths that already hold pre-hashed keys (the snap
+        /// protocol streams Keccak(address) / Keccak(slot) directly). Account/slot deletion is handled via the
+        /// Address-keyed entrypoints (SetAccount(addr, null) / SelfDestruct(addr)).
+        /// </remarks>
+        void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
         void SetAccountRaw(in ValueHash256 addrHash, Account account);
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
