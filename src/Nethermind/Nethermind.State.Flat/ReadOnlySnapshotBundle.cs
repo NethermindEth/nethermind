@@ -22,7 +22,8 @@ namespace Nethermind.State.Flat;
 public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
-    bool recordDetailedMetrics)
+    bool recordDetailedMetrics,
+    CarryForwardReadCache? carryForward = null)
     : RefCountingDisposable
 {
     public int SnapshotCount => snapshots.Count;
@@ -74,7 +75,15 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        if (_accountPersistenceMemo.TryGetValue(key, out Account? memoizedAccount))
+        if (carryForward is not null)
+        {
+            if (carryForward.TryGetAccount(key, out Account? carriedAccount))
+            {
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountMemoLabel);
+                return carriedAccount;
+            }
+        }
+        else if (_accountPersistenceMemo.TryGetValue(key, out Account? memoizedAccount))
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountMemoLabel);
             return memoizedAccount;
@@ -90,8 +99,14 @@ public sealed class ReadOnlySnapshotBundle(
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceLabel);
         }
 
-        if (Volatile.Read(ref _accountMemoCount) < PersistenceMemoMaxEntries && _accountPersistenceMemo.TryAdd(key, account))
+        if (carryForward is not null)
+        {
+            carryForward.AddAccount(key, account);
+        }
+        else if (Volatile.Read(ref _accountMemoCount) < PersistenceMemoMaxEntries && _accountPersistenceMemo.TryAdd(key, account))
+        {
             Interlocked.Increment(ref _accountMemoCount);
+        }
 
         return account;
     }
@@ -134,7 +149,15 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        if (_slotPersistenceMemo.TryGetValue(key, out byte[]? memoizedValue))
+        if (carryForward is not null)
+        {
+            if (carryForward.TryGetSlot(key, out byte[]? carriedValue))
+            {
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageMemoLabel);
+                return carriedValue;
+            }
+        }
+        else if (_slotPersistenceMemo.TryGetValue(key, out byte[]? memoizedValue))
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageMemoLabel);
             return memoizedValue;
@@ -158,8 +181,14 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        if (Volatile.Read(ref _slotMemoCount) < PersistenceMemoMaxEntries && _slotPersistenceMemo.TryAdd(key, value))
+        if (carryForward is not null)
+        {
+            carryForward.AddSlot(key, value);
+        }
+        else if (Volatile.Read(ref _slotMemoCount) < PersistenceMemoMaxEntries && _slotPersistenceMemo.TryAdd(key, value))
+        {
             Interlocked.Increment(ref _slotMemoCount);
+        }
 
         return value;
     }

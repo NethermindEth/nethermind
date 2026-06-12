@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -151,6 +152,8 @@ public class PersistenceManager(
         return snapshotToPersist;
     }
 
+    public event Action<Snapshot>? SnapshotPersisted;
+
     public void AddToPersistence(StateId latestSnapshot)
     {
         using Lock.Scope scope = _persistenceLock.EnterScope();
@@ -167,6 +170,7 @@ public class PersistenceManager(
             // Add the canon snapshot
             PersistSnapshot(snapshotToSave);
             _currentPersistedStateId = snapshotToSave.To;
+            SnapshotPersisted?.Invoke(snapshotToSave);
         }
     }
 
@@ -225,6 +229,7 @@ public class PersistenceManager(
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;
+            SnapshotPersisted?.Invoke(snapshotToPersist);
         }
 
         return currentPersistedState;

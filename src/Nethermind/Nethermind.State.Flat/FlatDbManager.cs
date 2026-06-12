@@ -29,6 +29,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
+    private readonly CarryForwardReadCache? _carryForwardReadCache;
 
     // First it go to here
     private readonly Task _compactorTask;
@@ -70,6 +71,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         bool enableDetailedMetrics)
     {
         ReadOnlySnapshotBundle.PersistenceMemoMaxEntries = config.PersistenceMemoMaxEntries;
+        if (config.CarryForwardReadCache)
+        {
+            _carryForwardReadCache = new CarryForwardReadCache(config.PersistenceMemoMaxEntries, persistenceManager.GetCurrentPersistedStateId());
+            persistenceManager.SnapshotPersisted += _carryForwardReadCache.OnSnapshotPersisted;
+        }
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;
@@ -306,7 +312,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {snapshots.Count} known states, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics);
+            // The shared cross-head cache attaches only when this bundle's reader sees exactly
+            // the basis the cache reflects; older-head bundles keep the private per-bundle memo.
+            CarryForwardReadCache? carryForward =
+                _carryForwardReadCache is { } cache && cache.BasisMatches(persistenceReader.CurrentState) ? cache : null;
+            ReadOnlySnapshotBundle res = new(snapshots, persistenceReader, _enableDetailedMetrics, carryForward);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))

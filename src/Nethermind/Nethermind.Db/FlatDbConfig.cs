@@ -8,6 +8,7 @@ namespace Nethermind.Db;
 public class FlatDbConfig : IFlatDbConfig
 {
     public int PersistenceMemoMaxEntries { get; set; } = 131072;
+    public bool CarryForwardReadCache { get; set; }
     public bool Enabled { get; set; } = false;
     public bool EnablePreimageRecording { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;

@@ -12,6 +12,11 @@ public interface IFlatDbConfig : IConfig
         DefaultValue = "131072")]
     int PersistenceMemoMaxEntries { get; set; }
 
+    [ConfigItem(
+        Description = "Whether the persistence-read memo is carried across heads (invalidated per persisted block's write-set) instead of starting empty on every new head. Removes the per-head database refault paid by the first RPC calls after each block.",
+        DefaultValue = "false")]
+    bool CarryForwardReadCache { get; set; }
+
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     long BlockCacheSizeBudget { get; set; }
 
