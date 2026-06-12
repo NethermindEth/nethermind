@@ -7,6 +7,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CkzgLib;
+using Nethermind.Core.Collections;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -17,7 +18,9 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>
 {
     private const int MaxRequest = 128;
-    private const int CellsBufferSize = Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell;
+
+    private static readonly Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> NotFound =
+        Task.FromResult(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(null));
 
     public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> HandleAsync(GetBlobsHandlerV4Request request)
     {
@@ -30,19 +33,16 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
 
         int n = request.BlobVersionedHashes.Length;
-        byte[]?[] blobs = new byte[n][];
-        ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[n];
-        int count = txPool.TryGetBlobsAndProofsV1(request.BlobVersionedHashes, blobs, proofs);
-
-        Metrics.GetBlobsRequestsInBlobpoolTotal += count;
-
-        BlobCellsAndProofs?[] response = new BlobCellsAndProofs?[n];
-
-        // Reuse one large scratch buffer for ComputeCells across all blobs in this request.
-        byte[] cellsBuffer = ArrayPool<byte>.Shared.Rent(CellsBufferSize);
+        ArrayPoolList<byte[]?> blobs = new(n, n);
+        ArrayPoolList<ReadOnlyMemory<byte[]>> proofs = new(n, n);
+        BlobCellsAndProofs?[]? response = null;
         try
         {
-            Span<byte> cellsSpan = cellsBuffer.AsSpan(0, CellsBufferSize);
+            int count = txPool.TryGetBlobsAndProofsV1(request.BlobVersionedHashes, blobs.AsSpan(), proofs.AsSpan());
+
+            Metrics.GetBlobsRequestsInBlobpoolTotal += count;
+
+            response = ArrayPool<BlobCellsAndProofs?>.Shared.Rent(n);
 
             for (int i = 0; i < n; i++)
             {
@@ -53,40 +53,87 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
                     continue;
                 }
 
-                KzgPolynomialCommitments.ComputeCells(blob, cellsSpan);
+                using ArrayPoolSpan<byte> cellsBuffer = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
+                KzgPolynomialCommitments.ComputeCells(blob, cellsBuffer);
 
-                byte[]?[] blobCells = new byte[Ckzg.CellsPerExtBlob][];
-                byte[]?[] cellProofs = new byte[Ckzg.CellsPerExtBlob][];
+                byte[]?[] blobCells = ArrayPool<byte[]?>.Shared.Rent(Ckzg.CellsPerExtBlob);
+                byte[]?[] cellProofs = ArrayPool<byte[]?>.Shared.Rent(Ckzg.CellsPerExtBlob);
+
                 ReadOnlySpan<byte[]> blobProofs = proofs[i].Span;
 
-                for (int cellIdx = 0; cellIdx < Ckzg.CellsPerExtBlob; cellIdx++)
+                try
                 {
-                    if (!request.IndicesBitarray.Get(cellIdx)) continue;
+                    for (int cellIdx = 0; cellIdx < Ckzg.CellsPerExtBlob; cellIdx++)
+                    {
+                        if (request.IndicesBitarray.Get(cellIdx))
+                        {
+                            byte[] cell = ArrayPool<byte>.Shared.Rent(Ckzg.BytesPerCell);
+                            cellsBuffer.Slice(cellIdx * Ckzg.BytesPerCell, Ckzg.BytesPerCell).CopyTo(cell);
+                            blobCells[cellIdx] = cell;
 
-                    byte[] cell = new byte[Ckzg.BytesPerCell];
-                    cellsSpan.Slice(cellIdx * Ckzg.BytesPerCell, Ckzg.BytesPerCell).CopyTo(cell);
-                    blobCells[cellIdx] = cell;
+                            byte[] cellProof = ArrayPool<byte>.Shared.Rent(Ckzg.BytesPerProof);
+                            blobProofs[cellIdx].AsSpan(0, Ckzg.BytesPerProof).CopyTo(cellProof);
+                            cellProofs[cellIdx] = cellProof;
+                        }
+                    }
 
-                    byte[] cellProof = new byte[Ckzg.BytesPerProof];
-                    blobProofs[cellIdx].AsSpan(0, Ckzg.BytesPerProof).CopyTo(cellProof);
-                    cellProofs[cellIdx] = cellProof;
+                    response[i] = new BlobCellsAndProofs
+                    {
+                        Available = true,
+                        BlobCells = blobCells,
+                        Proofs = cellProofs
+                    };
                 }
-
-                response[i] = new BlobCellsAndProofs
+                catch
                 {
-                    Available = true,
-                    BlobCells = blobCells,
-                    Proofs = cellProofs
-                };
+                    for (int cellIdx = 0; cellIdx < Ckzg.CellsPerExtBlob; cellIdx++)
+                    {
+                        if (blobCells[cellIdx] is { } cell) ArrayPool<byte>.Shared.Return(cell);
+                        if (cellProofs[cellIdx] is { } cellProof) ArrayPool<byte>.Shared.Return(cellProof);
+                    }
+                    ArrayPool<byte[]?>.Shared.Return(blobCells, clearArray: true);
+                    ArrayPool<byte[]?>.Shared.Return(cellProofs, clearArray: true);
+                    throw;
+                }
             }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(cellsBuffer);
-        }
 
-        Metrics.GetBlobsRequestsSuccessTotal++;
-        return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(response);
+            Metrics.GetBlobsRequestsSuccessTotal++;
+            return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(
+                new BlobsV4DirectResponse(blobs, proofs, response, n));
+        }
+        catch
+        {
+            blobs.Dispose();
+            proofs.Dispose();
+            if (response is not null)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    BlobCellsAndProofs? item = response[i];
+                    if (item is not null && item.Available)
+                    {
+                        if (item.BlobCells is not null)
+                        {
+                            for (int cellIdx = 0; cellIdx < Ckzg.CellsPerExtBlob; cellIdx++)
+                            {
+                                if (item.BlobCells[cellIdx] is { } cell) ArrayPool<byte>.Shared.Return(cell);
+                            }
+                            ArrayPool<byte[]?>.Shared.Return(item.BlobCells, clearArray: true);
+                        }
+                        if (item.Proofs is not null)
+                        {
+                            for (int cellIdx = 0; cellIdx < Ckzg.CellsPerExtBlob; cellIdx++)
+                            {
+                                if (item.Proofs[cellIdx] is { } cellProof) ArrayPool<byte>.Shared.Return(cellProof);
+                            }
+                            ArrayPool<byte[]?>.Shared.Return(item.Proofs, clearArray: true);
+                        }
+                    }
+                }
+                ArrayPool<BlobCellsAndProofs?>.Shared.Return(response, clearArray: true);
+            }
+            throw;
+        }
     }
 }
 
