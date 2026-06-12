@@ -188,10 +188,12 @@ public static class SszCodec
 
             NullableBlobCellWire[] cells = new NullableBlobCellWire[CellsPerExtBlob];
             NullableKzgProofWire[] proofs = new NullableKzgProofWire[CellsPerExtBlob];
+            byte[]?[]? srcCells = b.BlobCells;
+            byte[]?[]? srcProofs = b.Proofs;
             for (int j = 0; j < CellsPerExtBlob; j++)
             {
-                byte[]? cell = b.BlobCells?[j];
-                byte[]? proof = b.Proofs?[j];
+                byte[]? cell = j < (srcCells?.Length ?? 0) ? srcCells![j] : null;
+                byte[]? proof = j < (srcProofs?.Length ?? 0) ? srcProofs![j] : null;
                 cells[j] = cell is null
                     ? new() { Cell = [] }
                     : new() { Cell = [SszBlobCell.FromSpan(cell.AsSpan(0, SszBlobCell.BlobCellLength))] };

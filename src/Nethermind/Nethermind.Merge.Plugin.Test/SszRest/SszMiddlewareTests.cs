@@ -51,6 +51,7 @@ public class SszMiddlewareTests
     private static readonly string ParisUrl = Paris.Instance.EngineApiUrlSegment!;
     private static readonly string ShanghaiUrl = Shanghai.Instance.EngineApiUrlSegment!;
     private static readonly string CancunUrl = Cancun.Instance.EngineApiUrlSegment!;
+    private static readonly string OsakaUrl = Osaka.Instance.EngineApiUrlSegment!;
     private static readonly string AmsterdamUrl = Amsterdam.Instance.EngineApiUrlSegment!;
 
     [SetUp]
@@ -815,6 +816,47 @@ public class SszMiddlewareTests
         await _engineModule.Received(1).engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
         // ISpecProvider must NOT have been consulted — no timestamp to validate.
         _specProvider.DidNotReceive().GetSpec(Arg.Any<ForkActivation>());
+    }
+
+    [Test]
+    public async Task Forkchoice_payload_in_BPO_fork_routes_to_parent_url()
+    {
+        ForkchoiceUpdatedV1Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+        };
+        _engineModule.engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+
+        const ulong payloadTs = 1_000UL;
+        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs))
+            .Returns(BPO1.Instance);
+
+        ForkchoiceUpdatedV3RequestWire request = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = Keccak.Zero
+            },
+            PayloadAttributes = [new PayloadAttributesV3Wire
+            {
+                Timestamp = payloadTs,
+                SuggestedFeeRecipient = TestItem.AddressA,
+                PrevRandao = Keccak.Zero,
+                Withdrawals = [],
+                ParentBeaconBlockRoot = Keccak.Zero
+            }]
+        };
+        byte[] body = ForkchoiceUpdatedV3RequestWire.Encode(request);
+
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{OsakaUrl}/forkchoice", body);
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
     }
 
     [TestCase("application/json")]

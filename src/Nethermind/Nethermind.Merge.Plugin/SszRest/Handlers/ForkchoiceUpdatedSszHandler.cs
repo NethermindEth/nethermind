@@ -51,7 +51,8 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
             return null;
 
         IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));
-        return string.Equals(payloadSpec.Name, urlFork, StringComparison.OrdinalIgnoreCase)
+        string? payloadForkSegment = SszRestPaths.GetEngineApiUrlSegment(payloadSpec);
+        return string.Equals(payloadForkSegment, urlFork, StringComparison.OrdinalIgnoreCase)
             ? null
             : $"URL fork '{urlFork}' does not match the fork for timestamp {timestamp.Value}";
     }

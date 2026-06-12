@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Forks = Nethermind.Specs.Forks;
 
@@ -114,7 +115,7 @@ public static class SszRestPaths
     /// Each fork only declares the versions it changes vs. its parent; values flow forward through
     /// the spec inheritance chain.
     /// </summary>
-    public static int? MapForkToVersion(string fork, string resource, string httpMethod)
+    public static int? MapForkToVersion(string fork, ReadOnlySpan<char> resource, string httpMethod)
     {
         if (!_forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec)) return null;
 
@@ -134,6 +135,20 @@ public static class SszRestPaths
 
         return null;
 
-        static bool Eq(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        static bool Eq(ReadOnlySpan<char> a, string b) => a.Equals(b.AsSpan(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns the URL fork segment that owns <paramref name="spec"/>'s engine API surface,
+    /// walking up the parent chain so BPO forks resolve to their parent (e.g. <c>bpo1 → osaka</c>).
+    /// </summary>
+    public static string? GetEngineApiUrlSegment(IReleaseSpec spec)
+    {
+        for (Forks.NamedReleaseSpec? n = spec as Forks.NamedReleaseSpec; n is not null; n = n.Parent)
+        {
+            if (n.EngineApiUrlSegment is { } seg && _forkSpecByUrl.ContainsKey(seg))
+                return seg;
+        }
+        return null;
     }
 }

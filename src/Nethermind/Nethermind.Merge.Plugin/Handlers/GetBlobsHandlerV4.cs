@@ -105,7 +105,8 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
                 }
             }
 
-            Metrics.GetBlobsRequestsSuccessTotal++;
+            if (count == n) Metrics.GetBlobsRequestsSuccessTotal++;
+            else Metrics.GetBlobsRequestsFailureTotal++;
             return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(
                 new BlobsV4DirectResponse(blobs, proofs, response, n));
         }

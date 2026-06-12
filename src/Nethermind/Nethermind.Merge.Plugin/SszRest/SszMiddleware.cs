@@ -339,25 +339,26 @@ public sealed class SszMiddleware
         bool isPost = HttpMethods.IsPost(method);
         bool isGet = !isPost && HttpMethods.IsGet(method);
 
-        string resourceStr = pathSegment.ToString();
-        string extraStr = string.Empty;
+        ReadOnlyMemory<char> resource = pathSegment;
+        ReadOnlyMemory<char> extraMem = default;
 
-        int firstSlash = resourceStr.IndexOf('/');
+        int firstSlash = pathSegment.Span.IndexOf('/');
         if (firstSlash > 0)
         {
-            extraStr = resourceStr[(firstSlash + 1)..];
-            resourceStr = resourceStr[..firstSlash];
+            extraMem = pathSegment[(firstSlash + 1)..];
+            resource = pathSegment[..firstSlash];
         }
 
-        if (resourceStr.Equals("bodies", StringComparison.OrdinalIgnoreCase) && extraStr.Equals("hash", StringComparison.OrdinalIgnoreCase))
+        if (resource.Span.Equals("bodies".AsSpan(), StringComparison.OrdinalIgnoreCase)
+            && extraMem.Span.Equals("hash".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
-            resourceStr = "bodies/hash";
-            extraStr = string.Empty;
+            resource = SszRestPaths.PayloadBodiesByHash.AsMemory();
+            extraMem = default;
         }
 
         if (fork is not null)
         {
-            int? mappedVersion = MapForkToVersion(fork, resourceStr, method);
+            int? mappedVersion = SszRestPaths.MapForkToVersion(fork, resource.Span, method);
             if (mappedVersion is null) return false;
             version = mappedVersion.Value;
         }
@@ -369,29 +370,29 @@ public sealed class SszMiddleware
             FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
                 lookup = isPost ? _postLookup : _getLookup;
 
-            if (lookup.TryGetValue(resourceStr.AsSpan(), out List<ISszEndpointHandler>? exactList))
+            if (lookup.TryGetValue(resource.Span, out List<ISszEndpointHandler>? exactList))
             {
                 ISszEndpointHandler? fallback = null;
                 foreach (ISszEndpointHandler candidate in exactList)
                 {
                     if (candidate.Version == version)
                     {
-                        if (!string.IsNullOrEmpty(extraStr) && !candidate.AcceptsPathExtra)
+                        if (!extraMem.IsEmpty && !candidate.AcceptsPathExtra)
                             return false;
 
                         handler = candidate;
-                        extra = extraStr.AsMemory();
+                        extra = extraMem;
                         return true;
                     }
                     if (candidate.Version is null) fallback = candidate;
                 }
                 if (fallback is not null)
                 {
-                    if (!string.IsNullOrEmpty(extraStr) && !fallback.AcceptsPathExtra)
+                    if (!extraMem.IsEmpty && !fallback.AcceptsPathExtra)
                         return false;
 
                     handler = fallback;
-                    extra = extraStr.AsMemory();
+                    extra = extraMem;
                     return true;
                 }
             }
@@ -399,9 +400,6 @@ public sealed class SszMiddleware
 
         return false;
     }
-
-    public static int? MapForkToVersion(string fork, string resource, string httpMethod) =>
-        SszRestPaths.MapForkToVersion(fork, resource, httpMethod);
 
 
     private static SszRequestKind ClassifySszRequest(HttpContext ctx)
