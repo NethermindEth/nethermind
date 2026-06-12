@@ -24,6 +24,8 @@ public sealed class PacketCodec(
 {
     public const int NonceSize = 12;
 
+    internal const int MaxPacketSize = 1280;
+
     private const int MaskingIvSize = 16;
     private const int StaticHeaderSize = 23;
     private const int NodeIdSize = 32;
@@ -149,7 +151,7 @@ public sealed class PacketCodec(
     {
         decoded = default;
         ReadOnlySpan<byte> packet = packetMemory.Span;
-        if (packet.Length < MaskingIvSize + StaticHeaderSize)
+        if (packet.Length is < MaskingIvSize + StaticHeaderSize or > MaxPacketSize)
         {
             return false;
         }

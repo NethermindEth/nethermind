@@ -12,6 +12,8 @@ namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
 internal sealed class NodesMsgSerializer : MsgSerializerBase<NodesMsg>
 {
+    private const int MaxNodeRecordsPerMessage = 16;
+
     private readonly IEcdsa _ecdsa = new Ecdsa();
 
     protected override int GetContentLengthCore(NodesMsg msg)
@@ -59,6 +61,11 @@ internal sealed class NodesMsgSerializer : MsgSerializerBase<NodesMsg>
     {
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
+        if (count > MaxNodeRecordsPerMessage)
+        {
+            throw new RlpException($"discv5 NODES record count {count} exceeds {MaxNodeRecordsPerMessage}.");
+        }
+
         NodeRecord[] records = new NodeRecord[count];
         int recordCount = 0;
         for (int i = 0; i < count; i++)

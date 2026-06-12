@@ -8,6 +8,7 @@ namespace Nethermind.Network.Discovery.Discv5.Messages;
 
 internal sealed class Distances : IReadOnlyList<int>, IDisposable
 {
+    internal const int MaxCount = 257;
     private const int InlineCapacity = 3;
 
     private int[]? _rented;
@@ -26,6 +27,11 @@ internal sealed class Distances : IReadOnlyList<int>, IDisposable
 
     internal Distances(int count)
     {
+        if ((uint)count > MaxCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), count, $"Distance count must be between 0 and {MaxCount}.");
+        }
+
         Count = count;
         if (count > InlineCapacity)
         {

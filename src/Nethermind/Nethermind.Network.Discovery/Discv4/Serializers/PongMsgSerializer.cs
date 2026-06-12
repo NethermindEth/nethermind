@@ -43,11 +43,10 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         ctx.ReadSequenceLength();
         ctx.ReadSequenceLength();
 
-        // GetAddress(ctx.DecodeByteArray(), ctx.DecodeInt());
         ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
         ctx.DecodeInt(); // TCP port
-        byte[] token = ctx.DecodeByteArray();
+        byte[] token = ctx.DecodeByteArraySpan(RlpLimit.L32).ToArray();
         long expirationTime = ctx.DecodeLong();
 
         data.SetReaderIndex(data.ReaderIndex + ctx.Position);

@@ -22,6 +22,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Enr;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
@@ -230,6 +231,31 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public async Task EnrResponseWithoutExpirationIsAccepted()
+        {
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
+
+            EnrResponseMsg msg = BuildEnrResponse(_privateKey2);
+            IByteBuffer serialized = service.ZeroSerialize(msg);
+            byte[] data;
+            try
+            {
+                data = serialized.ReadAllBytesAsArray();
+            }
+            finally
+            {
+                serialized.SafeRelease();
+            }
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), _address2, _address));
+
+            await SleepWhileWaiting();
+
+            await adapter.Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static m => m.MsgType == MsgType.EnrResponse));
+            ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
+        }
+
+        [Test]
         public async Task RateLimitedMessagesAreIgnored()
         {
             (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1)));
@@ -245,6 +271,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await Task.Delay(50);
 
             await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+            ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
         }
 
         [Test]
@@ -260,6 +287,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await SleepWhileWaiting();
 
             await adapter.Received(2).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+            ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
         }
 
         [Test]
@@ -343,6 +371,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             byte[] data = serialized.ReadAllBytesAsArray();
             serialized.SafeRelease();
             return data;
+        }
+
+        private EnrResponseMsg BuildEnrResponse(PrivateKey signingKey)
+        {
+            NodeRecord nodeRecord = new();
+            nodeRecord.SetEntry(new SecP256k1Entry(signingKey.CompressedPublicKey));
+            nodeRecord.EnrSequence = 5;
+            NodeRecordSigner signer = new(new Ecdsa(), signingKey);
+            signer.Sign(nodeRecord);
+            return new EnrResponseMsg(_address, nodeRecord, TestItem.KeccakA);
         }
 
         private async Task StartUdpChannel(string address, int port, IKademliaAdapter kademliaAdapter, IMessageSerializationService service)

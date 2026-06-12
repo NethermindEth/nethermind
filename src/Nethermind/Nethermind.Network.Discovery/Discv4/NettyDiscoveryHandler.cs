@@ -145,6 +145,7 @@ public class NettyDiscoveryHandler(
         }
 
         type = resolvedType;
+        shouldForward = false;
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
         if (!_globalInboundMessageLimiter.TryAcquire())
@@ -213,19 +214,22 @@ public class NettyDiscoveryHandler(
 
     private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, DatagramPacket packet, int size)
     {
-        long timeToExpire = msg.ExpirationTime - _timestamper.UnixTime.SecondsLong;
-        if (timeToExpire < 0)
+        if (msg is not EnrResponseMsg)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} expired", size);
-            if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {msg}");
-            return false;
-        }
+            long timeToExpire = msg.ExpirationTime - _timestamper.UnixTime.SecondsLong;
+            if (timeToExpire < 0)
+            {
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} expired", size);
+                if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {msg}");
+                return false;
+            }
 
-        if (timeToExpire > MaxFutureExpirationOffset.TotalSeconds)
-        {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} far future", size);
-            if (_logger.IsDebug) _logger.Debug($"Received a discovery message that expires too far in the future ({timeToExpire} seconds), type: {type}, sender: {address}, message: {msg}");
-            return false;
+            if (timeToExpire > MaxFutureExpirationOffset.TotalSeconds)
+            {
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} far future", size);
+                if (_logger.IsDebug) _logger.Debug($"Received a discovery message that expires too far in the future ({timeToExpire} seconds), type: {type}, sender: {address}, message: {msg}");
+                return false;
+            }
         }
 
         if (msg.FarAddress is null)

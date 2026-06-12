@@ -158,6 +158,22 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
+    public void Enr_request_hash_does_not_alias_input_buffer()
+    {
+        EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
+        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
+        byte[] packet = serialized.ReadAllBytesAsArray();
+        Hash256 expectedHash = new(packet.AsSpan(0, 32));
+
+        using DisposableByteBuffer input = Unpooled.WrappedBuffer(packet).AsDisposable();
+        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(input);
+        Array.Clear(packet);
+
+        Assert.That(deserialized.Hash, Is.Not.Null);
+        Assert.That(new Hash256(deserialized.Hash!.Value.Span), Is.EqualTo(expectedHash));
+    }
+
+    [Test]
     public void Enr_response_there_and_back()
     {
         using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
@@ -363,5 +379,24 @@ public class DiscoveryMessageSerializerTests
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
         Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(data));
+    }
+
+    [Test]
+    public void PongMessage_Rejects_Oversized_Ping_Mdc()
+    {
+        RlpStream stream = new(128);
+        long expirationTime = 60 + _timestamper.UnixTime.MillisecondsLong;
+        int addressContentLength = Rlp.LengthOf(new byte[] { 127, 0, 0, 1 }) + Rlp.LengthOf(30303) + Rlp.LengthOf(30303);
+        int contentLength = Rlp.LengthOfSequence(addressContentLength) + Rlp.LengthOf(new byte[33]) + Rlp.LengthOf(expirationTime);
+        stream.StartSequence(contentLength);
+        stream.StartSequence(addressContentLength);
+        stream.Encode(new byte[] { 127, 0, 0, 1 });
+        stream.Encode(30303);
+        stream.Encode(30303);
+        stream.Encode(new byte[33]);
+        stream.Encode(expirationTime);
+
+        Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<PongMsg>(
+            SignAndWrapDiscoveryPacket((byte)MsgType.Pong, stream.Data.ToArray()!)));
     }
 }

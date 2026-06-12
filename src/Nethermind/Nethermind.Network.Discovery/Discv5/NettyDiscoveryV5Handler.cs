@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -90,14 +92,19 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
 
     private static PooledUdpReceiveResult CreateReceiveResult(DatagramPacket packet)
     {
-        ArrayPoolSpan<byte> buffer = new(packet.Content.ReadableBytes);
+        IByteBuffer content = packet.Content;
+        int readerIndex = content.ReaderIndex;
+        int readableBytes = content.ReadableBytes;
+        ArrayPoolSpan<byte> buffer = new(readableBytes);
         try
         {
-            Span<byte> bytes = buffer;
-            for (int i = 0; i < bytes.Length; i++)
+            if (!MemoryMarshal.TryGetArray(buffer.AsMemory(), out ArraySegment<byte> segment))
             {
-                bytes[i] = packet.Content.ReadByte();
+                ThrowMissingArraySegment();
             }
+
+            content.GetBytes(readerIndex, segment.Array!, segment.Offset, readableBytes);
+            content.SetReaderIndex(readerIndex + readableBytes);
 
             return new PooledUdpReceiveResult(NormalizeEndpoint((IPEndPoint)packet.Sender), buffer);
         }
@@ -106,6 +113,10 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
             buffer.Dispose();
             throw;
         }
+
+        [DoesNotReturn]
+        static void ThrowMissingArraySegment()
+            => throw new InvalidOperationException("Pooled UDP receive buffer must be array-backed.");
     }
 
     private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)

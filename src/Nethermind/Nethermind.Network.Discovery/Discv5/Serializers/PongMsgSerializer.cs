@@ -11,6 +11,8 @@ namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
 internal sealed class PongMsgSerializer : MsgSerializerBase<PongMsg>
 {
+    private static readonly RlpLimit IpAddressRlpLimit = RlpLimit.For<IPAddress>(16, nameof(PongMsg.RecipientIp));
+
     protected override int GetContentLengthCore(PongMsg msg)
         => Rlp.LengthOf(msg.EnrSequence) +
             IPAddressRlp.GetLength(msg.RecipientIp) +
@@ -26,9 +28,8 @@ internal sealed class PongMsgSerializer : MsgSerializerBase<PongMsg>
     protected override PongMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         ulong enrSequence = ctx.DecodeULong();
-        IPAddress recipientIp = new(ctx.DecodeByteArraySpan());
+        IPAddress recipientIp = new(ctx.DecodeByteArraySpan(IpAddressRlpLimit));
         int recipientPort = ctx.DecodePositiveInt();
         return new PongMsg(requestId, enrSequence, recipientIp, recipientPort, owner);
     }
-
 }

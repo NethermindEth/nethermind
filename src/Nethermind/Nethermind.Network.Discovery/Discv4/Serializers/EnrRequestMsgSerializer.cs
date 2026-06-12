@@ -40,7 +40,7 @@ public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedP
         long expirationTime = ctx.DecodeLong();
 
         data.SetReaderIndex(data.ReaderIndex + ctx.Position);
-        EnrRequestMsg msg = new(farPublicKey, mdc, expirationTime);
+        EnrRequestMsg msg = new(farPublicKey, mdc.ToArray(), expirationTime);
         return msg;
     }
 
