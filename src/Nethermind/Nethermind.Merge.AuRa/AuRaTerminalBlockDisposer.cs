@@ -34,6 +34,7 @@ public sealed class AuRaTerminalBlockDisposer : IDisposable
 
         if (poSSwitcher.IsHeadPostMerge(blockTree))
         {
+            _disposed = true;
             _auRaBlockFinalizationManager.Dispose();
         }
         else

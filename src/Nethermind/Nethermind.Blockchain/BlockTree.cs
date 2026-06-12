@@ -1742,9 +1742,6 @@ namespace Nethermind.Blockchain
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
-            // Resolve the finalized header (if locally available and meaningful) before mutating, so BlocksFinalized
-            // carries a usable header. Skipped for zero/null hashes and unchanged hashes — but the hash itself is
-            // still persisted to preserve the existing "blind storage" contract.
             bool finalizedAdvanced = finalizedBlockHash is not null
                 && finalizedBlockHash != Keccak.Zero
                 && finalizedBlockHash != FinalizedHash;
@@ -1752,11 +1749,6 @@ namespace Nethermind.Blockchain
                 ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                 : null;
 
-            // FinalizedHash is set unconditionally to preserve the blind-storage contract used by
-            // beacon sync (CL can hand us a finalized hash before the corresponding block body is
-            // downloaded). LastFinalizedBlockLevel only advances when the header is locally known,
-            // so the two fields can describe different blocks during a sync window — readers that
-            // require both to be in sync should gate on header availability themselves.
             FinalizedHash = finalizedBlockHash;
             SafeHash = safeBlockHash;
             if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;

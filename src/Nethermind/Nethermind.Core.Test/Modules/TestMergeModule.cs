@@ -49,9 +49,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig) : Module
 
         if (txPoolConfig.BlobsSupport.SupportsReorgs())
         {
-            // Registered for resolution by tests that need it; no `ResolveOnServiceActivation` trigger
-            // since the prior `IBlockFinalizationManager`-keyed trigger never actually fired in
-            // any test fixture (the type wasn't a dependency in test DI chains).
             builder.AddSingleton<ProcessedTransactionsDbCleaner, IBlockTree, IDbProvider, ILogManager>(
                 static (blockTree, dbProvider, logManager) => new ProcessedTransactionsDbCleaner(
                     blockTree,
