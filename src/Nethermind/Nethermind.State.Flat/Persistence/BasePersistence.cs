@@ -71,11 +71,16 @@ public static class BasePersistence
         return (FlatLayout)bytes[0];
     }
 
+    /// <summary>
+    /// Records the flat DB's on-disk format markers: the <see cref="FlatLayout"/> and the RLP slot encoding.
+    /// Only for DBs on the current (RLP-wrapped) format; legacy raw DBs are never re-stamped.
+    /// </summary>
     internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
     {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = (byte)layout;
         kv.PutSpan(LayoutKey, bytes);
+        SetSlotEncoding(kv, SlotEncodingRlp);
     }
 
     /// <summary>
@@ -108,9 +113,9 @@ public static class BasePersistence
     }
 
     /// <summary>
-    /// On the first call, records the persistence's <see cref="FlatLayout"/> in the supplied batch's
-    /// metadata column. Subsequent calls are no-ops. The write goes through the batch, so it is
-    /// committed atomically with the rest of the batch's contents.
+    /// On the first call, records the persistence's <see cref="FlatLayout"/> and slot encoding in the supplied
+    /// batch's metadata column via <see cref="SetLayout"/>. Subsequent calls are no-ops. The write goes through
+    /// the batch, so it is committed atomically with the rest of the batch's contents.
     /// </summary>
     internal static void RecordLayoutOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, FlatLayout layout)
     {
@@ -127,7 +132,7 @@ public static class BasePersistence
     }
 
     [SkipLocalsInit]
-    private static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
+    internal static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
     {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = version;
@@ -139,20 +144,21 @@ public static class BasePersistence
     /// version of an existing DB always wins so its on-disk format is read back correctly.
     /// </summary>
     /// <remarks>
-    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a DB synced before this
-    /// feature existed both lack it. They are distinguished via the <see cref="LayoutKey"/>, which any
-    /// previously-synced DB will already have recorded — its presence means raw legacy data, so wrapping is
-    /// disabled (with a deprecation warning) to avoid misreading raw values as RLP.
+    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a pre-feature DB both lack it.
+    /// A non-empty <paramref name="slotStore"/> pins the DB to raw (with a deprecation warning), as its slots
+    /// are raw-encoded and would be misread as RLP. The <see cref="LayoutKey"/> is no discriminator: it
+    /// postdates flat sync and tooling can bypass the metadata column, so legacy raw DBs may lack it too.
     /// </remarks>
-    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ILogger logger)
+    /// <param name="slotStore">The column that holds storage slot values for this layout.</param>
+    internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ISortedKeyValueStore slotStore, ILogger logger)
     {
         IReadOnlyKeyValueStore meta = db.GetColumnDb(FlatDbColumns.Metadata);
         bool rlpWrap = ReadSlotEncoding(meta) switch
         {
             SlotEncodingRlp => true,
             SlotEncodingRaw => false,
-            // No recorded version: a brand-new DB wraps; a previously-synced DB (Layout present) is legacy raw.
-            null => ReadLayout(meta) is null,
+            // No recorded version: brand-new (no slots) wraps; existing slots are legacy raw.
+            null => slotStore.FirstKey is null,
             byte version => throw new InvalidConfigurationException(
                 $"Flat DB metadata contains an unrecognized slot encoding version '{version}'. The DB may be corrupt or was written by a newer version.",
                 -1),
@@ -166,14 +172,6 @@ public static class BasePersistence
     private static void WarnRawDeprecated(ILogger logger)
     {
         if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
-    }
-
-    internal static void RecordSlotEncodingOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, bool rlpWrap)
-    {
-        if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
-        {
-            SetSlotEncoding(metadataBatch, rlpWrap ? SlotEncodingRlp : SlotEncodingRaw);
-        }
     }
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
