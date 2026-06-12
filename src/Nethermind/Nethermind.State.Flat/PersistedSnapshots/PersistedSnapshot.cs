@@ -190,7 +190,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 if (probeReader.TryRead(addrColBound.Offset + addrColBound.Length - 5, tailBuf))
                 {
                     int rootPrefixLen = tailBuf[0];
-                    int rootSize = tailBuf[1] | (tailBuf[2] << 8);
+                    int rootSize = BinaryPrimitives.ReadUInt16LittleEndian(tailBuf.Slice(1, 2));
                     // tailBuf[3] is the trailer key length — fixed at AddressKeyLength (= 20)
                     // for column 0x01; the miss path passes the constant rather than caching it.
                     byte[] rootPrefix = [];

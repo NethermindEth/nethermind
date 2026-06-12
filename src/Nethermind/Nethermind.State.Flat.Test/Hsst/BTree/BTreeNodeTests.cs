@@ -28,7 +28,7 @@ public class BTreeNodeTests
     private static BTreeNodeReader ReadHsstRoot(byte[] data)
     {
         int rootPrefixLen = data[data.Length - 5];
-        int rootSize = data[data.Length - 4] | (data[data.Length - 3] << 8);
+        int rootSize = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(data.Length - 4, 2));
         int rootStart = data.Length - 5 - rootPrefixLen - rootSize;
         ReadOnlySpan<byte> rootPrefix = rootPrefixLen > 0
             ? data.AsSpan(data.Length - 5 - rootPrefixLen, rootPrefixLen)

@@ -164,7 +164,7 @@ public static class UniformKeySearch
     {
         if (count == 0) return 0;
 
-        ushort search = (ushort)((targetBe[0] << 8) | targetBe[1]);
+        ushort search = BinaryPrimitives.ReadUInt16BigEndian(targetBe);
         ref byte src = ref MemoryMarshal.GetReference(keys);
         int i = 0;
 

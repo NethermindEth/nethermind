@@ -102,7 +102,7 @@ internal static class HsstTwoByteSlotValueReader
             // Keys are LE-stored: native u16 load recovers the BE numeric value.
             // Compare against the target's BE numeric value derived the same way.
             ushort storedBeValue = UniformKeySearch.ReadKey2LE(keys, idx);
-            ushort targetBeValue = (ushort)((key[0] << 8) | key[1]);
+            ushort targetBeValue = BinaryPrimitives.ReadUInt16BigEndian(key);
             exact = storedBeValue == targetBeValue;
         }
         else

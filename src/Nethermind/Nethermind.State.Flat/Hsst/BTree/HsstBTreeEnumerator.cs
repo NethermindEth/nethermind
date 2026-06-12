@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Hsst;
 
@@ -47,10 +48,8 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     private int _leafIdx;
 
     // Current entry — populated by LoadCurrentEntry after positioning at a leaf.
-    private long _currentKeyOffset;
-    private long _currentKeyLength;
-    private long _currentValueOffset;
-    private long _currentValueLength;
+    private Bound _currentKey;
+    private Bound _currentValue;
     private long _currentMetaStart;
 
     // Root prefix bytes parsed from the HSST trailer at construction. Seeded as
@@ -75,7 +74,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             if (reader.TryRead(_scopeEnd - 5, tailBuf))
             {
                 int rootPrefixLen = tailBuf[0];
-                int rootSize = tailBuf[1] | (tailBuf[2] << 8);
+                int rootSize = BinaryPrimitives.ReadUInt16LittleEndian(tailBuf.Slice(1, 2));
                 _keyLength = tailBuf[3];
                 _trailerLen = 5L + rootPrefixLen;
                 _rootAbsStart = _scopeEnd - _trailerLen - rootSize;
@@ -131,8 +130,8 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
         return AscendAndDescend(in reader);
     }
 
-    public Bound CurrentKey => new(_currentKeyOffset, _currentKeyLength);
-    public Bound CurrentValue => new(_currentValueOffset, _currentValueLength);
+    public Bound CurrentKey => _currentKey;
+    public Bound CurrentValue => _currentValue;
     public long CurrentMetadataStart => _currentMetaStart;
 
     /// <summary>
@@ -329,10 +328,8 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             }
 
             _currentMetaStart = entryPos;
-            _currentKeyOffset = keyStart;
-            _currentKeyLength = _keyLength;
-            _currentValueOffset = lebStart + pos;
-            _currentValueLength = valueLength;
+            _currentKey = new Bound(keyStart, _keyLength);
+            _currentValue = new Bound(lebStart + pos, valueLength);
             return true;
         }
         else
@@ -349,10 +346,8 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             }
 
             _currentMetaStart = entryPos;
-            _currentKeyOffset = lebStart + pos;
-            _currentKeyLength = _keyLength;
-            _currentValueOffset = entryPos - valueLength;
-            _currentValueLength = valueLength;
+            _currentKey = new Bound(lebStart + pos, _keyLength);
+            _currentValue = new Bound(entryPos - valueLength, valueLength);
             return true;
         }
     }

@@ -49,7 +49,7 @@ internal static class HsstBTreeReader
         Span<byte> tailBuf = stackalloc byte[5];
         if (!reader.TryRead(bound.Offset + bound.Length - 5, tailBuf)) return false;
         int rootPrefixLen = tailBuf[0];
-        int rootSize = tailBuf[1] | (tailBuf[2] << 8);
+        int rootSize = BinaryPrimitives.ReadUInt16LittleEndian(tailBuf.Slice(1, 2));
         int trailerKeyLength = tailBuf[3];
         // tailBuf[4] is IndexType — already consumed by the HsstReader dispatcher.
 
