@@ -11,12 +11,12 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 public static class SszRestPaths
 {
-    public const string Paris = "paris";
-    public const string Shanghai = "shanghai";
-    public const string Cancun = "cancun";
-    public const string Prague = "prague";
-    public const string Osaka = "osaka";
-    public const string Amsterdam = "amsterdam";
+    private static readonly string _paris = Forks.Paris.Instance.EngineApiUrlSegment!;
+    private static readonly string _shanghai = Forks.Shanghai.Instance.EngineApiUrlSegment!;
+    private static readonly string _cancun = Forks.Cancun.Instance.EngineApiUrlSegment!;
+    private static readonly string _prague = Forks.Prague.Instance.EngineApiUrlSegment!;
+    private static readonly string _osaka = Forks.Osaka.Instance.EngineApiUrlSegment!;
+    private static readonly string _amsterdam = Forks.Amsterdam.Instance.EngineApiUrlSegment!;
 
     /// <summary>
     /// Single source of truth: URL fork segment → <see cref="Forks.NamedReleaseSpec"/>. Built by
@@ -74,41 +74,38 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
-    // Paris
-    public const string PostV1Payloads = "POST /engine/v2/" + Paris + "/payloads";
-    public const string GetV1Payloads = "GET /engine/v2/" + Paris + "/payloads/{payload_id}";
-    public const string PostV1Forkchoice = "POST /engine/v2/" + Paris + "/forkchoice";
+    // Documentation strings for the SSZ-REST routes — used by EngineRpcCapabilitiesProvider
+    // (registration) and EngineModuleTests (coverage assertions). Built at static-init time from
+    // each fork's EngineApiUrlSegment so the route docs stay in sync with the routing layer.
+    public static readonly string PostV1Payloads = $"POST /engine/v2/{_paris}/payloads";
+    public static readonly string GetV1Payloads = $"GET /engine/v2/{_paris}/payloads/{{payload_id}}";
+    public static readonly string PostV1Forkchoice = $"POST /engine/v2/{_paris}/forkchoice";
     public const string PostV1Capabilities = "GET /engine/v2/capabilities";
     public const string PostV1ClientVersion = "GET /engine/v2/identity";
 
-    // Shanghai
-    public const string PostV2Payloads = "POST /engine/v2/" + Shanghai + "/payloads";
-    public const string PostV2Forkchoice = "POST /engine/v2/" + Shanghai + "/forkchoice";
-    public const string GetV2Payloads = "GET /engine/v2/" + Shanghai + "/payloads/{payload_id}";
-    public const string PostV1PayloadBodiesByHash = "POST /engine/v2/" + Shanghai + "/bodies/hash";
-    public const string GetV1PayloadBodiesByRange = "GET /engine/v2/" + Shanghai + "/bodies";
+    public static readonly string PostV2Payloads = $"POST /engine/v2/{_shanghai}/payloads";
+    public static readonly string PostV2Forkchoice = $"POST /engine/v2/{_shanghai}/forkchoice";
+    public static readonly string GetV2Payloads = $"GET /engine/v2/{_shanghai}/payloads/{{payload_id}}";
+    public static readonly string PostV1PayloadBodiesByHash = $"POST /engine/v2/{_shanghai}/bodies/hash";
+    public static readonly string GetV1PayloadBodiesByRange = $"GET /engine/v2/{_shanghai}/bodies";
 
-    // Cancun
-    public const string PostV3Payloads = "POST /engine/v2/" + Cancun + "/payloads";
-    public const string PostV3Forkchoice = "POST /engine/v2/" + Cancun + "/forkchoice";
-    public const string GetV3Payloads = "GET /engine/v2/" + Cancun + "/payloads/{payload_id}";
+    public static readonly string PostV3Payloads = $"POST /engine/v2/{_cancun}/payloads";
+    public static readonly string PostV3Forkchoice = $"POST /engine/v2/{_cancun}/forkchoice";
+    public static readonly string GetV3Payloads = $"GET /engine/v2/{_cancun}/payloads/{{payload_id}}";
     public const string PostV1Blobs = "POST /engine/v2/blobs/v1";
 
-    // Prague
-    public const string PostV4Payloads = "POST /engine/v2/" + Prague + "/payloads";
-    public const string GetV4Payloads = "GET /engine/v2/" + Prague + "/payloads/{payload_id}";
+    public static readonly string PostV4Payloads = $"POST /engine/v2/{_prague}/payloads";
+    public static readonly string GetV4Payloads = $"GET /engine/v2/{_prague}/payloads/{{payload_id}}";
 
-    // Osaka
-    public const string GetV5Payloads = "GET /engine/v2/" + Osaka + "/payloads/{payload_id}";
+    public static readonly string GetV5Payloads = $"GET /engine/v2/{_osaka}/payloads/{{payload_id}}";
     public const string PostV2Blobs = "POST /engine/v2/blobs/v2";
     public const string PostV3Blobs = "POST /engine/v2/blobs/v3";
 
-    // Amsterdam
-    public const string PostV5Payloads = "POST /engine/v2/" + Amsterdam + "/payloads";
-    public const string GetV6Payloads = "GET /engine/v2/" + Amsterdam + "/payloads/{payload_id}";
-    public const string PostV4Forkchoice = "POST /engine/v2/" + Amsterdam + "/forkchoice";
-    public const string PostV2PayloadBodiesByHash = "POST /engine/v2/" + Amsterdam + "/bodies/hash";
-    public const string GetV2PayloadBodiesByRange = "GET /engine/v2/" + Amsterdam + "/bodies";
+    public static readonly string PostV5Payloads = $"POST /engine/v2/{_amsterdam}/payloads";
+    public static readonly string GetV6Payloads = $"GET /engine/v2/{_amsterdam}/payloads/{{payload_id}}";
+    public static readonly string PostV4Forkchoice = $"POST /engine/v2/{_amsterdam}/forkchoice";
+    public static readonly string PostV2PayloadBodiesByHash = $"POST /engine/v2/{_amsterdam}/bodies/hash";
+    public static readonly string GetV2PayloadBodiesByRange = $"GET /engine/v2/{_amsterdam}/bodies";
     public const string PostV4Blobs = "POST /engine/v2/blobs/v4";
 
     /// <summary>

@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;

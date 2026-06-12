@@ -4,7 +4,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;

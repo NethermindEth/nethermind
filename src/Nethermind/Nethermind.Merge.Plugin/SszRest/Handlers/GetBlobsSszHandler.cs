@@ -6,7 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 

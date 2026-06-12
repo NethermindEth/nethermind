@@ -132,11 +132,6 @@ dotnet_diagnostic.IDE0130.severity = none
 [src/Nethermind/Nethermind.Abi/Abi{DefinitionConverter,ParameterConverter,Type}.cs]
 dotnet_diagnostic.IDE0130.severity = none
 
-# IDE0130: EngineApiVersions lives in Nethermind.Core for dependency-direction reasons
-# (Specs cannot reference Consensus) but the type stays in the Nethermind.Consensus namespace.
-[src/Nethermind/Nethermind.Core/EngineApiVersions.cs]
-dotnet_diagnostic.IDE0130.severity = none
-
 # IDE0130: Rlp-side helpers intentionally exposed under Nethermind.Core* namespaces;
 # Eip7702 subfolder follows the project's flat-namespace convention.
 [src/Nethermind/Nethermind.Serialization.Rlp/{NettyBufferMemoryOwner,OwnedBlockBodies,Eip7702/AuthorizationTupleDecoder}.cs]
