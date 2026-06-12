@@ -9,13 +9,11 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
 /// BTree cursor for <see cref="HsstEnumerator{TReader,TPin}"/>: indirect entries
-/// reachable only by recursing the index tree. Streams the walk — keeps an ancestor
-/// stack of (AbsStart, LastIdx) frames and the current leaf's metaStart values
-/// buffered in a reusable array. Pinning a node isn't free for non-mmap readers,
-/// so each leaf is loaded exactly once — every entry's metaStart is copied into
-/// <c>_leafMetaStarts</c> up front, then MoveNext only pins the small LEB+key-length
-/// window per entry. Memory is O(tree depth) for the ancestor stack plus one leaf's
-/// worth of long offsets (typically a few hundred at most).
+/// reachable only by recursing the index tree. Streams the walk depth-first — keeps an
+/// ancestor stack of (AbsStart, LastIdx) frames, descends to the leftmost entry, then on
+/// each MoveNext ascends to the next sibling subtree and descends again. Each entry is
+/// visited once; the parent node is reloaded once per sibling step. Memory is O(tree depth)
+/// for the ancestor stack.
 ///
 /// Heap-allocated so the dispatcher struct can be value-copied without losing iteration
 /// state. Handles both <see cref="IndexType.BTree"/> (keyFirst=false) and
@@ -40,12 +38,10 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     private readonly bool _keyFirst;
     private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
 
-    // Current leaf state. _depth: -1 = not started, -2 = exhausted, ≥0 = leaf depth in tree.
-    // _leafMetaStarts is sized to fit the current leaf and reused across leaves.
+    // Walk state. _depth: -1 = not started, -2 = exhausted, ≥0 = the current entry's depth
+    // in the tree. _entryPos is the absolute position of the current entry's flag byte.
     private int _depth = -1;
-    private long[] _leafMetaStarts = [];
-    private int _leafCount;
-    private int _leafIdx;
+    private long _entryPos;
 
     // Current entry — populated by LoadCurrentEntry after positioning at a leaf.
     private Bound _currentKey;
@@ -121,12 +117,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             return LoadCurrentEntry(in reader);
         }
 
-        _leafIdx++;
-        if (_leafIdx < _leafCount)
-        {
-            return LoadCurrentEntry(in reader);
-        }
-        // Leaf exhausted — ascend until we find a sibling subtree.
+        // Current entry consumed — ascend until we find the next sibling subtree.
         return AscendAndDescend(in reader);
     }
 
@@ -135,13 +126,13 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     public long CurrentMetadataStart => _currentMetaStart;
 
     /// <summary>
-    /// Descend leftmost from the node starting at <paramref name="absStart"/> down to a leaf,
-    /// pushing (AbsStart, LastIdx=0) ancestor frames as we cross intermediate levels. On
-    /// success, _depth and the leaf metaStart buffer are populated with _leafIdx=0;
-    /// returns false if a node fails to load or the tree exceeds MaxDepth. The root
-    /// node gets its prefix bytes from <see cref="_rootPrefix"/>; deeper nodes are
-    /// loaded with an empty parentSeparator since the enumerator only consumes value
-    /// slots (the reader tolerates an absent prefix for value-only callers).
+    /// Descend leftmost from the node starting at <paramref name="absStart"/> down to the
+    /// leftmost entry, pushing (AbsStart, LastIdx=0) ancestor frames as we cross levels. On
+    /// success _depth and <see cref="_entryPos"/> point at that entry; returns false if a node
+    /// fails to load or the tree exceeds MaxDepth. The root node gets its prefix bytes from
+    /// <see cref="_rootPrefix"/>; deeper nodes are loaded with an empty parentSeparator since
+    /// the enumerator only consumes value slots (the reader tolerates an absent prefix for
+    /// value-only callers).
     /// </summary>
     private bool DescendToLeaf(scoped in TReader reader, long absStart, int depthHint)
     {
@@ -159,11 +150,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             if ((BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Entry)
             {
                 _depth = depth;
-                if (_leafMetaStarts.Length < 1)
-                    _leafMetaStarts = new long[16];
-                _leafMetaStarts[0] = currentStart;
-                _leafCount = 1;
-                _leafIdx = 0;
+                _entryPos = currentStart;
                 return true;
             }
 
@@ -178,78 +165,21 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 if (node.EntryCount == 0)
                 {
                     _depth = depth;
-                    _leafCount = 0;
-                    _leafIdx = 0;
                     return AscendAndDescend(in reader);
                 }
 
-                // Peek the leftmost child's flag byte. The on-disk format no longer
-                // distinguishes leaf from intermediate kinds; the descent decides
-                // "buffer entries vs descend further" by inspecting children's kinds.
-                long firstChildAbs = _scopeStart + (long)node.GetUInt64Value(0);
-                if (!reader.TryRead(firstChildAbs, flagBuf)) return false;
-                bool firstIsEntry = (BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Entry;
-                if (firstIsEntry)
-                {
-                    // Verify ALL children are Entry-kind before treating the node as
-                    // leaf-like. ChooseIntermediateChildCount packs descriptors
-                    // consecutively without kind awareness, so a node may have mixed
-                    // children (Entry from direct-flush + Intermediate from an inline
-                    // page-local node). BufferLeaf relies on every value slot pointing
-                    // at an entry record, so it must only fire when that holds.
-                    bool allEntry = true;
-                    int n = node.EntryCount;
-                    for (int i = 1; i < n; i++)
-                    {
-                        long childAbs = _scopeStart + (long)node.GetUInt64Value(i);
-                        if (!reader.TryRead(childAbs, flagBuf)) return false;
-                        if ((BTreeNodeKind)(flagBuf[0] & 0x03) != BTreeNodeKind.Entry)
-                        {
-                            allEntry = false;
-                            break;
-                        }
-                    }
-                    if (allEntry)
-                    {
-                        _depth = depth;
-                        BufferLeaf(node);
-                        _leafIdx = 0;
-                        return true;
-                    }
-                }
-
-                // Mixed or inner node: push frame for this level, follow leftmost
-                // child (which the next iteration will recognize as Entry or recurse
-                // into as an Intermediate).
+                // Push a frame for this level and follow the leftmost child; the next
+                // iteration recognizes it as an Entry (a single entry) or recurses into it
+                // as an Intermediate. The on-disk format no longer distinguishes leaf from
+                // intermediate kinds, so the descent decides purely by each child's flag.
                 ref Ancestor frame = ref _ancestors[depth];
                 frame.AbsStart = currentStart;
                 frame.LastIdx = 0;
-                currentStart = firstChildAbs;
+                currentStart = _scopeStart + (long)node.GetUInt64Value(0);
             }
             depth++;
         }
         return false;
-    }
-
-    /// <summary>
-    /// Copy each entry's metaStart into the reusable buffer. Called once per leaf
-    /// transition while the leaf pin is still live; subsequent in-leaf MoveNext
-    /// calls index the array directly with no further node pinning.
-    /// </summary>
-    private void BufferLeaf(BTreeNodeReader leaf)
-    {
-        int n = leaf.EntryCount;
-        if (_leafMetaStarts.Length < n)
-        {
-            int cap = Math.Max(16, _leafMetaStarts.Length);
-            while (cap < n) cap *= 2;
-            _leafMetaStarts = new long[cap];
-        }
-        for (int i = 0; i < n; i++)
-        {
-            _leafMetaStarts[i] = _scopeStart + (long)leaf.GetUInt64Value(i);
-        }
-        _leafCount = n;
     }
 
     /// <summary>
@@ -295,9 +225,9 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     }
 
     /// <summary>
-    /// Read entry _leafIdx's index pointer from the buffered leaf table, then pin a
-    /// small window to decode the value length. Sets _currentKeyOffset/Length and
-    /// _currentValueOffset/Length to absolute reader-space bounds.
+    /// Decode the current entry at <see cref="_entryPos"/>: pin a small window to read the
+    /// value length, then set <see cref="_currentKey"/> / <see cref="_currentValue"/> to
+    /// absolute reader-space bounds.
     ///
     /// In both layouts the pointer aims at the entry's leading flag byte; the
     /// LEB128 (key-after-value) or FullKey (key-first) starts at <c>entryPos + 1</c>.
@@ -308,7 +238,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     /// </summary>
     private bool LoadCurrentEntry(scoped in TReader reader)
     {
-        long entryPos = _leafMetaStarts[_leafIdx];
+        long entryPos = _entryPos;
 
         // Long LEB128 occupies up to 10 bytes; the key length comes from the trailer.
         const int ValueLenMaxBytes = 10;
