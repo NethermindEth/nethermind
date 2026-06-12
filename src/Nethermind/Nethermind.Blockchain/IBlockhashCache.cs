@@ -12,4 +12,7 @@ public interface IBlockhashCache
 {
     Hash256? GetHash(BlockHeader headBlock, int depth);
     Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken);
+
+    /// <summary>Drops all cached block-hash chains.</summary>
+    void Clear();
 }

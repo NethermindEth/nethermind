@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -31,7 +30,7 @@ public class BadBlockStoreTests
             badBlockStore.Insert(block);
         }
 
-        AssertBlocksEquivalent(badBlockStore.GetAll(), toAdd);
+        Assert.That(badBlockStore.GetAll(), Is.EquivalentTo(toAdd).UsingBlockComparer());
     }
 
     [Test]
@@ -51,19 +50,13 @@ public class BadBlockStoreTests
             badBlockStore.Insert(block);
         }
 
-        Assert.That(badBlockStore.GetAll().Count(), Is.EqualTo(2));
-    }
-
-    private static void AssertBlocksEquivalent(IEnumerable<Block> actualBlocks, IEnumerable<Block> expectedBlocks)
-    {
-        Block[] actual = actualBlocks.ToArray();
-        Block[] expected = expectedBlocks.ToArray();
-        Assert.That(actual.Select(static block => block.Hash), Is.EquivalentTo(expected.Select(static block => block.Hash)));
-
-        foreach (Block expectedBlock in expected)
+        int count = 0;
+        foreach (Block _ in badBlockStore.GetAll())
         {
-            Block? actualBlock = actual.SingleOrDefault(block => block.Hash == expectedBlock.Hash);
-            BlockTestAssertions.AssertBlockEquivalent(actualBlock, expectedBlock);
+            count++;
         }
+
+        Assert.That(count, Is.EqualTo(2));
     }
+
 }

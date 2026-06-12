@@ -706,6 +706,23 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
+        // debug_traceCallMany defaults missing gas to gasCap (not block gas limit). The simulate engine
+        // decides "explicit vs default" from the request's Gas field, so we set it here to opt out of the
+        // engine's BlockGasLeft fallback. eth_simulateV1 deliberately does not do this.
+        // Explicit gas: 0x0 is treated as omitted. When gasCap is unset/0 ("no cap"), gas stays null so
+        // the engine's normal fallback applies.
+        long? defaultGas = jsonRpcConfig.GasCap.IsGasCapped() ? jsonRpcConfig.GasCap : null;
+        foreach (TransactionBundle bundle in bundles)
+        {
+            foreach (TransactionForRpc call in bundle.Transactions)
+            {
+                if (call.Gas is null or 0)
+                {
+                    call.Gas = defaultGas;
+                }
+            }
+        }
+
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
@@ -733,7 +750,7 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
-            new TraceCallManySimulateTxExecutor(
+            new SimulateTxExecutor<GethLikeTxTrace>(
                 blockchainBridge,
                 blockFinder,
                 jsonRpcConfig,
@@ -754,34 +771,6 @@ public class DebugRpcModule(
             .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
-    }
-
-    private sealed class TraceCallManySimulateTxExecutor(
-        IBlockchainBridge blockchainBridge,
-        IBlockFinder blockFinder,
-        IJsonRpcConfig rpcConfig,
-        ISpecProvider specProvider,
-        ISimulateBlockTracerFactory<GethLikeTxTrace> simulateBlockTracerFactory,
-        ulong secondsPerSlot)
-        : SimulateTxExecutor<GethLikeTxTrace>(
-            blockchainBridge,
-            blockFinder,
-            rpcConfig,
-            specProvider,
-            simulateBlockTracerFactory,
-            secondsPerSlot)
-    {
-        protected override void NormalizeTransactionForSimulation(TransactionForRpc transactionForRpc)
-        {
-            // debug_traceCallMany defaults missing gas to gasCap, not block gas limit.
-            // Normalize the request shape before the shared simulate prepare flow captures
-            // whether gas was explicit. With GasCap unset/0, both omitted gas and gas: 0x0
-            // stay omitted so the uncapped simulate path still applies.
-            if (transactionForRpc.Gas is null or 0)
-            {
-                transactionForRpc.Gas = _rpcConfig.GasCap is null or 0 ? null : _rpcConfig.GasCap;
-            }
-        }
     }
 
     private ResultWrapper<byte[]> GetBlockRlpOrFail(BlockParameter blockParameter)
@@ -898,40 +887,5 @@ public class DebugRpcModule(
             return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
         return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(parent, block));
-    }
-
-    public ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null)
-    {
-        blockParameter ??= BlockParameter.Latest;
-
-        BlockHeader? header = blockFinder.FindHeader(blockParameter);
-        if (header is null)
-        {
-            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
-        }
-
-        if (header.Number == 0)
-        {
-            return ResultWrapper<Witness>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
-        }
-
-        callRequest.Gas ??= header.GasLimit;
-
-        Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: false);
-        if (!txResult.Success(out Transaction? tx, out string? error))
-        {
-            return ResultWrapper<Witness>.Fail(error, ErrorCodes.InvalidInput);
-        }
-
-        tx.SenderAddress ??= Address.Zero;
-
-        // Clone header (avoid mutating caller's) and zero GasUsed so the budget check
-        // (block.GasUsed + tx.GasLimit <= block.GasLimit) doesn't reject default-gas calls.
-        BlockHeader callHeader = header.Clone();
-        callHeader.GasUsed = 0;
-
-        if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data.Length}");
-
-        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(callHeader, tx));
     }
 }

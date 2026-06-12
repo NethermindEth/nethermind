@@ -183,6 +183,8 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         PurgeDatabaseDirectory(initConfig.BaseDbPath, preserveNetwork: true);
     }
 
+    DatabasePurger.DeleteOrphan(initConfig.BaseDbPath, "bloom", logger);
+
     logger.Info("Configuration complete");
 
     EthereumJsonSerializer serializer = new();

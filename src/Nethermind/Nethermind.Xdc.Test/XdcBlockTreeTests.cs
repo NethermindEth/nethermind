@@ -152,7 +152,6 @@ internal class XdcBlockTreeTests
             builder.BlockAccessListStore,
             builder.ChainLevelInfoRepository,
             MainnetSpecProvider.Instance,
-            builder.BloomStorage,
             builder.SyncConfig,
             LimboLogs.Instance);
 

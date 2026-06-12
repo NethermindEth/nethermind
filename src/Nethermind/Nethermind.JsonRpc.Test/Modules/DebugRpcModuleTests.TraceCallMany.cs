@@ -14,6 +14,7 @@ using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Test.Modules.Eth;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -24,6 +25,26 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     private static TransactionBundle CreateBundle(params TransactionForRpc[] transactions) => new() { Transactions = transactions };
+
+    private static TransactionBundle CreateGasProbeBundle(long? gas = null) => new()
+    {
+        Transactions = [new LegacyTransactionForRpc { To = EthRpcSimulateTestsBase.GasProbeContractAddress, Gas = gas }],
+        StateOverrides = new Dictionary<Address, AccountOverride>
+        {
+            [EthRpcSimulateTestsBase.GasProbeContractAddress] = new()
+            {
+                Code = Bytes.FromHexString("0x5a60005260206000f3")
+            }
+        }
+    };
+
+    private static IEnumerable<TestCaseData> DebugTraceCallManyMissingGasCases()
+    {
+        yield return new TestCaseData((long?)null, (long?)null, false).SetName("omitted_gas_defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData((long?)0L, (long?)null, false).SetName("zero_gas_defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData((long?)null, (long?)0L, true).SetName("omitted_gas_with_zero_gas_cap_uncapped");
+        yield return new TestCaseData((long?)0L, (long?)0L, true).SetName("zero_gas_with_zero_gas_cap_uncapped");
+    }
 
     private static LegacyTransactionForRpc CreateTransaction(
         Address? from = null,
@@ -246,72 +267,29 @@ public partial class DebugRpcModuleTests
         Assert.That(gasAvailable, Is.GreaterThan(0));
     }
 
-    [TestCase(null, TestName = "Debug_traceCallMany_without_gas_defaults_to_gas_cap_not_block_gas_limit")]
-    [TestCase(0L, TestName = "Debug_traceCallMany_with_explicit_zero_gas_treats_it_as_omitted")]
-    public async Task Debug_traceCallMany_missing_or_zero_gas_defaults_to_gas_cap(long? gas)
+    [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]
+    public async Task Debug_traceCallMany_missing_or_zero_gas_respects_gas_cap(long? requestGas, long? configuredGasCap, bool uncapped)
     {
         using Context ctx = await CreateContext();
 
         long blockGasLimit = ctx.Blockchain.BlockTree.Head!.Header.GasLimit;
-        long gasCap = blockGasLimit * 10;
-        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
-        config.GasCap = gasCap;
+        long gasCap = configuredGasCap ?? blockGasLimit * 10;
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
-        // Returns gas available at start of execution as a uint256
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-
-        // debug_traceCallMany defaults both omitted gas and explicit zero gas to gasCap, not blockGasLimit
-        LegacyTransactionForRpc tx = new() { To = contractAddress, Gas = gas };
-
-        TransactionBundle bundle = new()
-        {
-            Transactions = [tx],
-            StateOverrides = new Dictionary<Address, AccountOverride>
-            {
-                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
-            }
-        };
-
-        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(
+            [CreateGasProbeBundle(requestGas)],
+            BlockParameter.Latest);
 
         GethLikeTxTrace trace = result.Data.First().First();
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
-        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
-    }
-
-    [Test]
-    public async Task Debug_traceCallMany_with_explicit_zero_gas_and_uncapped_config_treats_it_as_omitted()
-    {
-        using Context ctx = await CreateContext();
-        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
-        config.GasCap = 0;
-
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-
-        TransactionBundle omittedGasBundle = new()
+        if (uncapped)
         {
-            Transactions = [new LegacyTransactionForRpc { To = contractAddress }],
-            StateOverrides = new Dictionary<Address, AccountOverride>
-            {
-                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
-            }
-        };
-
-        TransactionBundle zeroGasBundle = new()
+            Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
+            Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+        }
+        else
         {
-            Transactions = [new LegacyTransactionForRpc { To = contractAddress, Gas = 0 }],
-            StateOverrides = new Dictionary<Address, AccountOverride>
-            {
-                [contractAddress] = new() { Code = Bytes.FromHexString("5a60005260206000f3") }
-            }
-        };
-
-        string omittedGasResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { omittedGasBundle }, "latest");
-        string zeroGasResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { zeroGasBundle }, "latest");
-
-        Assert.That(zeroGasResponse, Is.EqualTo(omittedGasResponse));
-        JObject parsed = JObject.Parse(zeroGasResponse);
-        Assert.That((int)parsed["error"]!["code"]!, Is.EqualTo(-38013));
+            Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+        }
     }
 }

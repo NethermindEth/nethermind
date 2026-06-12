@@ -176,15 +176,29 @@ public class IteratorNodeLookup<TKey, TNode>(
     {
         try
         {
-            return _unreachableNodes.TryGet(keyOperator.GetNodeHash(node), out DateTimeOffset lastAttempt) &&
-                   lastAttempt + TimeSpan.FromMinutes(5) > timestamper.UtcNowOffset
-                ? []
-                : await msgSender.FindNeighbours(node, target, token);
+            ValueHash256 nodeHash = keyOperator.GetNodeHash(node);
+            if (_unreachableNodes.TryGet(nodeHash, out DateTimeOffset lastAttempt) &&
+                lastAttempt + TimeSpan.FromMinutes(5) > timestamper.UtcNowOffset)
+            {
+                return [];
+            }
+
+            TNode[]? result = await msgSender.FindNeighbours(node, target, token);
+            if (result is null)
+            {
+                _unreachableNodes.Set(nodeHash, timestamper.UtcNowOffset);
+            }
+
+            return result;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
             _unreachableNodes.Set(keyOperator.GetNodeHash(node), timestamper.UtcNowOffset);
             return null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception e)
         {
