@@ -169,6 +169,27 @@ public class SlotRlpEncodingTests
     }
 
     [Test]
+    public void Metadata_less_non_empty_db_falls_back_to_raw_and_records_version()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        WriteRawSlotToDb(db, Bytes.FromHexString("0102"));
+
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: true);
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        {
+            SlotValue read = default;
+            Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
+            Assert.That(read.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("0102")));
+        }
+
+        WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("abcd")));
+
+        Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),
+            Is.EqualTo(new[] { BasePersistence.SlotEncodingRaw }));
+        Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd")));
+    }
+
+    [Test]
     public void Unknown_slot_encoding_version_throws()
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();

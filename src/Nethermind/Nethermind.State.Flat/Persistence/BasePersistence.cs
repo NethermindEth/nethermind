@@ -151,8 +151,8 @@ public static class BasePersistence
         {
             SlotEncodingRlp => true,
             SlotEncodingRaw => false,
-            // No recorded version: a brand-new DB wraps; a previously-synced DB (Layout present) is legacy raw.
-            null => ReadLayout(meta) is null,
+            // No recorded version: a brand-new DB wraps; any non-empty existing DB is legacy raw.
+            null => ReadLayout(meta) is null && !HasAnyStorageSlots(db),
             byte version => throw new InvalidConfigurationException(
                 $"Flat DB metadata contains an unrecognized slot encoding version '{version}'. The DB may be corrupt or was written by a newer version.",
                 -1),
@@ -160,6 +160,16 @@ public static class BasePersistence
 
         if (!rlpWrap) WarnRawDeprecated(logger);
         return rlpWrap;
+    }
+
+    private static bool HasAnyStorageSlots(IColumnsDb<FlatDbColumns> db)
+    {
+        foreach (byte[] _ in db.GetColumnDb(FlatDbColumns.Storage).GetAllKeys())
+        {
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>Warns that the DB is on the deprecated raw slot encoding and should be resynced.</summary>
