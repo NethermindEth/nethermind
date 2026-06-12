@@ -48,7 +48,7 @@ public static class SafeArrayPool<T>
         public override void Return(T[] array, bool clearArray = false)
         {
             ArgumentNullException.ThrowIfNull(array);
-            if (array.Length < 1 << MinBucketLog || !BitOperations.IsPow2(array.Length)) return;
+            if (!BitOperations.IsPow2(array.Length)) return;
 
             int bucketIndex = BitOperations.Log2((uint)array.Length) - MinBucketLog;
             if (bucketIndex >= BucketCount) return;
