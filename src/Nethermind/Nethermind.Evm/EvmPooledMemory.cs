@@ -153,20 +153,11 @@ public partial struct EvmPooledMemory
     }
 
     /// <summary>
-    /// Writes <paramref name="value"/> (with zero padding) into memory at <paramref name="location"/>,
-    /// assuming the caller has already charged memory-expansion gas for this exact destination and
-    /// length (so memory is grown, rented, and the bounds are valid).
+    /// Variant of <see cref="TrySave"/> requiring the caller to have already invoked
+    /// <see cref="IGasPolicy{TSelf}.UpdateMemoryCost"/> for (<paramref name="location"/>,
+    /// <paramref name="value"/>.Length) — which both bounds-checks and grows/rents the buffer —
+    /// so this skips re-validation. Mirrors <see cref="CopyAfterGas"/>.
     /// </summary>
-    /// <remarks>
-    /// The copy-to-memory opcodes (CODECOPY/CALLDATACOPY/RETURNDATACOPY) call
-    /// <see cref="IGasPolicy{TSelf}.UpdateMemoryCost"/> immediately before this, which runs
-    /// <see cref="CheckMemoryAccessViolation(in UInt256, ulong, out ulong, out bool)"/> and
-    /// <see cref="UpdateSize"/> for the same (location, length). Re-validating in <see cref="TrySave"/>
-    /// repeats that bounds check and the array-length check behind <c>AsSpan</c>. This variant mirrors
-    /// the already-costed contract of <see cref="CopyAfterGas"/>: it skips the re-validation and writes
-    /// through <see cref="MemoryMarshal.GetArrayDataReference"/>, eliding the redundant bounds checks.
-    /// The <c>location.IsUint64</c> / in-bounds invariant is asserted in debug builds.
-    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void SaveAfterGas(in UInt256 location, in ZeroPaddedSpan value)
     {
