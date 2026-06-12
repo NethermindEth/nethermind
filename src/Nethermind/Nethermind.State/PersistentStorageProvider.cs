@@ -52,6 +52,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
+            _lastStorageAddress = null;
+            _lastStorage = null;
             _toUpdateRoots.Clear();
         }
     }
@@ -261,12 +263,30 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    public void ClearStorageMap() => _storages.Clear();
+    public void ClearStorageMap()
+    {
+        _storages.Clear();
+        _lastStorageAddress = null;
+        _lastStorage = null;
+    }
+
+    // Consecutive SLOADs overwhelmingly hit the same contract; the one-entry memo removes a
+    // dictionary lookup from the per-SLOAD hot path. Cleared wherever _storages is cleared
+    // (the pooled PerContractState is returned there and must not be reachable).
+    private Address? _lastStorageAddress;
+    private PerContractState? _lastStorage;
 
     private PerContractState GetOrCreateStorage(Address address)
     {
+        if (_lastStorageAddress == address)
+        {
+            return _lastStorage!;
+        }
+
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
+        _lastStorageAddress = address;
+        _lastStorage = value;
         return value;
     }
 
