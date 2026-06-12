@@ -29,8 +29,11 @@ namespace Nethermind.BeaconChain.Sync;
 /// </remarks>
 public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
 {
-    /// <summary>Two epochs per request; well under the spec cap of 128 blocks.</summary>
-    public const ulong DefaultBatchSize = 64;
+    /// <summary>
+    /// Half an epoch per request. Larger batches trip peers' response rate limits, time out, and
+    /// burn the peer-failure budget — with few connected mainnet peers that spirals into starvation.
+    /// </summary>
+    public const ulong DefaultBatchSize = 16;
 
     private const int FailuresBeforeBatchShrink = 3;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);

@@ -57,6 +57,8 @@ public sealed class BeaconDiscovery : IAsyncDisposable
     /// <summary>Same metadata key as the libp2p host so both stacks share one secp256k1 identity.</summary>
     private const string IdentityMetadataKey = "p2pIdentityKey";
 
+    private static readonly TimeSpan TableSweepInterval = TimeSpan.FromMinutes(2);
+
     private readonly IBeaconChainConfig _config;
     private readonly BeaconChainSpec _spec;
     private readonly ITimestamper _timestamper;
@@ -153,12 +155,44 @@ public sealed class BeaconDiscovery : IAsyncDisposable
     }
 
     /// <summary>
-    /// Streams dialable peer candidates as the routing table discovers ENRs with a matching fork digest
-    /// (the current digest, or the upcoming one near a digest rotation).
+    /// Streams dialable peer candidates with a matching fork digest (the current digest, or the
+    /// upcoming one near a digest rotation).
     /// </summary>
+    /// <remarks>
+    /// Merges two sources: routing-table inserts (fresh discoveries) and a periodic sweep over the
+    /// whole routing table. The sweep matters: once the table stabilizes, inserts stop, and with the
+    /// low dial-success rate against mainnet peers the consumer would otherwise starve — known
+    /// candidates must be re-offered so dropped or previously-failed peers get re-dialed.
+    /// </remarks>
     public async IAsyncEnumerable<BeaconPeerCandidate> DiscoverPeers([EnumeratorCancellation] CancellationToken token)
     {
-        await foreach (Node node in _nodeSource.DiscoverNodes(token))
+        System.Threading.Channels.Channel<Node> nodes = System.Threading.Channels.Channel.CreateBounded<Node>(
+            new System.Threading.Channels.BoundedChannelOptions(256) { FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest });
+
+        async Task PumpInsertsAsync()
+        {
+            await foreach (Node node in _nodeSource.DiscoverNodes(token))
+            {
+                await nodes.Writer.WriteAsync(node, token);
+            }
+        }
+
+        async Task PumpTableSweepsAsync()
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(TableSweepInterval, token);
+                foreach (Node node in _kademlia.IterateNodes())
+                {
+                    nodes.Writer.TryWrite(node);
+                }
+            }
+        }
+
+        Task pumps = Task.WhenAll(PumpInsertsAsync(), PumpTableSweepsAsync())
+            .ContinueWith(t => nodes.Writer.TryComplete(t.Exception?.GetBaseException()), CancellationToken.None);
+
+        await foreach (Node node in nodes.Reader.ReadAllAsync(token))
         {
             BeaconPeerCandidate? candidate = CreateCandidate(node);
             if (candidate is not null)
@@ -166,6 +200,8 @@ public sealed class BeaconDiscovery : IAsyncDisposable
                 yield return candidate;
             }
         }
+
+        await pumps;
     }
 
     /// <summary>
