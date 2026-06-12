@@ -188,8 +188,11 @@ public partial class ShardBlobTxDecoderTests
         Transaction? decoded = _txDecoder.Decode(ref ctx, rlpBehaviors);
         Transaction? decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
 
-        Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
-        Assert.That(decodedByValueDecoderContext!.Hash, Is.EqualTo(signedHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
+            Assert.That(decodedByValueDecoderContext!.Hash, Is.EqualTo(signedHash));
+        }
 
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
         {
@@ -207,8 +210,11 @@ public partial class ShardBlobTxDecoderTests
         Rlp encoded = _txDecoder.Encode(decoded!, rlpBehaviors);
         Rlp encodedWithDecodedByValueDecoderContext =
             _txDecoder.Encode(decodedByValueDecoderContext!, rlpBehaviors);
-        Assert.That(encoded.Bytes, Is.EqualTo(spanIncomingTxRlp));
-        Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(spanIncomingTxRlp));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Bytes, Is.EqualTo(spanIncomingTxRlp));
+            Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(spanIncomingTxRlp));
+        }
     }
 
     private static IEnumerable<TestCaseData> OverLimitCollectionDecodeCases()

@@ -42,9 +42,13 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _logManager = LimboLogs.Instance;
 
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        // These tests seed the Storage column with raw (un-wrapped) bytes via WriteStorageDirectToDb, so the
+        // persistence must read in raw mode. Raw mode is only reached for a pre-feature DB, detected via a
+        // recorded Layout with no SlotEncoding key — seed that marker for the fixture's layout.
+        BasePersistence.SetLayout(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), layout);
         _persistence = layout == FlatLayout.PreimageFlat
-            ? new PreimageRocksdbPersistence(_columnsDb)
-            : new RocksDbPersistence(_columnsDb);
+            ? new PreimageRocksdbPersistence(_columnsDb, _logManager)
+            : new RocksDbPersistence(_columnsDb, _logManager);
     }
 
     [TearDown]
@@ -124,6 +128,17 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         return fakeHash;
     }
 
+    private static void AssertAccountStats(FlatTrieVerifier verifier, long accountCount, long mismatched, long missingInFlat, long missingInTrie)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(accountCount));
+            Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(mismatched));
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(missingInFlat));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(missingInTrie));
+        }
+    }
+
     private StorageTree CreateStorageTree(Address address, (UInt256 slot, byte[] value)[] slots)
     {
         Hash256 addressHash = Keccak.Compute(address.Bytes);
@@ -147,10 +162,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
+        AssertAccountStats(verifier, accountCount: 0, mismatched: 0, missingInFlat: 0, missingInTrie: 0);
     }
 
     [Test]
@@ -170,10 +182,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
+        AssertAccountStats(verifier, accountCount: 1, mismatched: 0, missingInFlat: 0, missingInTrie: 0);
     }
 
     [Test]
@@ -200,10 +209,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         FlatTrieVerifier verifier = new(_logManager);
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
-        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(3));
-        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
-        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
+        AssertAccountStats(verifier, accountCount: 3, mismatched: 0, missingInFlat: 0, missingInTrie: 0);
     }
 
     [TestCase(1UL, 100UL, 1UL, 200UL, Description = "Mismatched balance")]
