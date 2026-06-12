@@ -3,9 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
@@ -22,11 +20,9 @@ public class PreBlockCaches
     private readonly Func<CacheType>[] _clearCaches;
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
-    private readonly SeqlockCache<StorageCell, byte[]> _recentStorageCache = new();
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
     private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
-    private Hash256? _recentStorageCacheStateRoot;
 
     public PreBlockCaches() => _clearCaches =
         [
@@ -36,34 +32,9 @@ public class PreBlockCaches
         ];
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
-    public SeqlockCache<StorageCell, byte[]> RecentStorageCache => _recentStorageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
     public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
-
-    public void ValidateRecentStorageCache(BlockHeader? baseBlock)
-    {
-        Hash256? stateRoot = Volatile.Read(ref _recentStorageCacheStateRoot);
-        if (stateRoot is null)
-        {
-            return;
-        }
-
-        Hash256? baseStateRoot = baseBlock?.StateRoot;
-        if (baseStateRoot is null || !stateRoot.Equals(baseStateRoot))
-        {
-            ClearRecentStorageCache();
-        }
-    }
-
-    public void MarkRecentStorageCacheStateRoot(Hash256 stateRoot) =>
-        Volatile.Write(ref _recentStorageCacheStateRoot, stateRoot);
-
-    public void ClearRecentStorageCache()
-    {
-        _recentStorageCache.Clear();
-        Volatile.Write(ref _recentStorageCacheStateRoot, null);
-    }
 
     public CacheType ClearCaches()
     {

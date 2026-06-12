@@ -42,12 +42,12 @@ public class CachedReaderPersistenceTests
         Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref second), Is.True);
 
         Assert.That(innerReader.StorageReads, Is.EqualTo(1));
-        Assert.That(first.ToEvmBytes(), Is.EqualTo(new byte[] { 0x01 }));
-        Assert.That(second.ToEvmBytes(), Is.EqualTo(new byte[] { 0x01 }));
+        AssertSlotValue(first, 0x01);
+        AssertSlotValue(second, 0x01);
     }
 
     [Test]
-    public async Task Write_batch_dispose_invalidates_cached_reader_snapshot()
+    public async Task Write_batch_dispose_recreates_reader_snapshot_for_uncached_slots()
     {
         CountingReader firstReader = new(SlotValue.FromSpanWithoutLeadingZero([0x01]));
         FakePersistence persistence = new(firstReader);
@@ -57,7 +57,7 @@ public class CachedReaderPersistenceTests
         {
             SlotValue value = default;
             Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
-            Assert.That(value.ToEvmBytes(), Is.EqualTo(new byte[] { 0x01 }));
+            AssertSlotValue(value, 0x01);
         }
 
         CountingReader secondReader = new(SlotValue.FromSpanWithoutLeadingZero([0x02]));
@@ -69,16 +69,185 @@ public class CachedReaderPersistenceTests
         using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
         {
             SlotValue value = default;
-            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
-            Assert.That(value.ToEvmBytes(), Is.EqualTo(new byte[] { 0x02 }));
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 2, ref value), Is.True);
+            AssertSlotValue(value, 0x02);
         }
 
         Assert.That(firstReader.StorageReads, Is.EqualTo(1));
         Assert.That(secondReader.StorageReads, Is.EqualTo(1));
     }
 
+    [Test]
+    public async Task Committed_storage_write_updates_shared_slot_cache()
+    {
+        CountingReader firstReader = new(SlotValue.FromSpanWithoutLeadingZero([0x01]));
+        FakePersistence persistence = new(firstReader);
+        await using CachedReaderPersistence cachedPersistence = CreateCachedPersistence(persistence);
+
+        using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
+        {
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
+            AssertSlotValue(value, 0x01);
+        }
+
+        CountingReader secondReader = new(SlotValue.FromSpanWithoutLeadingZero([0x03]));
+        persistence.Reader = secondReader;
+        using (IPersistence.IWriteBatch writeBatch = cachedPersistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256)))
+        {
+            SlotValue? updatedValue = SlotValue.FromSpanWithoutLeadingZero([0x02]);
+            writeBatch.SetStorage(TestItem.AddressA, 1, updatedValue);
+        }
+
+        using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
+        {
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
+            AssertSlotValue(value, 0x02);
+        }
+
+        Assert.That(firstReader.StorageReads, Is.EqualTo(1));
+        Assert.That(secondReader.StorageReads, Is.Zero);
+    }
+
+    [Test]
+    public async Task Committed_storage_delete_updates_shared_slot_cache()
+    {
+        CountingReader firstReader = new(SlotValue.FromSpanWithoutLeadingZero([0x01]));
+        FakePersistence persistence = new(firstReader);
+        await using CachedReaderPersistence cachedPersistence = CreateCachedPersistence(persistence);
+
+        using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
+        {
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
+            AssertSlotValue(value, 0x01);
+        }
+
+        CountingReader secondReader = new(SlotValue.FromSpanWithoutLeadingZero([0x02]));
+        persistence.Reader = secondReader;
+        using (IPersistence.IWriteBatch writeBatch = cachedPersistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256)))
+        {
+            SlotValue? deletedValue = null;
+            writeBatch.SetStorage(TestItem.AddressA, 1, deletedValue);
+        }
+
+        using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
+        {
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.False);
+        }
+
+        Assert.That(firstReader.StorageReads, Is.EqualTo(1));
+        Assert.That(secondReader.StorageReads, Is.Zero);
+    }
+
+    [Test]
+    public async Task Raw_storage_write_clears_shared_slot_cache()
+    {
+        CountingReader firstReader = new(SlotValue.FromSpanWithoutLeadingZero([0x01]));
+        FakePersistence persistence = new(firstReader);
+        await using CachedReaderPersistence cachedPersistence = CreateCachedPersistence(persistence);
+
+        using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
+        {
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
+            AssertSlotValue(value, 0x01);
+        }
+
+        CountingReader secondReader = new(SlotValue.FromSpanWithoutLeadingZero([0x02]));
+        persistence.Reader = secondReader;
+        using (IPersistence.IWriteBatch writeBatch = cachedPersistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256)))
+        {
+            writeBatch.SetStorageRawEncoded(TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, [0x80]);
+        }
+
+        using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
+        {
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
+            AssertSlotValue(value, 0x02);
+        }
+
+        Assert.That(firstReader.StorageReads, Is.EqualTo(1));
+        Assert.That(secondReader.StorageReads, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Broad_storage_mutation_drops_earlier_tracked_storage_updates()
+    {
+        CountingReader firstReader = new(SlotValue.FromSpanWithoutLeadingZero([0x01]));
+        FakePersistence persistence = new(firstReader);
+        await using CachedReaderPersistence cachedPersistence = CreateCachedPersistence(persistence);
+
+        using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
+        {
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
+            AssertSlotValue(value, 0x01);
+        }
+
+        CountingReader secondReader = new(SlotValue.FromSpanWithoutLeadingZero([0x03]));
+        persistence.Reader = secondReader;
+        using (IPersistence.IWriteBatch writeBatch = cachedPersistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256)))
+        {
+            SlotValue? updatedValue = SlotValue.FromSpanWithoutLeadingZero([0x02]);
+            writeBatch.SetStorage(TestItem.AddressA, 1, updatedValue);
+            writeBatch.SelfDestruct(TestItem.AddressA);
+        }
+
+        using (IPersistence.IPersistenceReader reader = cachedPersistence.CreateReader())
+        {
+            SlotValue value = default;
+            Assert.That(reader.TryGetSlot(TestItem.AddressA, 1, ref value), Is.True);
+            AssertSlotValue(value, 0x03);
+        }
+
+        Assert.That(firstReader.StorageReads, Is.EqualTo(1));
+        Assert.That(secondReader.StorageReads, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Stale_reader_does_not_overwrite_shared_slot_cache_after_write()
+    {
+        CountingReader firstReader = new(SlotValue.FromSpanWithoutLeadingZero([0x01]));
+        FakePersistence persistence = new(firstReader);
+        await using CachedReaderPersistence cachedPersistence = CreateCachedPersistence(persistence);
+
+        using IPersistence.IPersistenceReader staleReader = cachedPersistence.CreateReader();
+        SlotValue staleValue = default;
+        Assert.That(staleReader.TryGetSlot(TestItem.AddressA, 1, ref staleValue), Is.True);
+        AssertSlotValue(staleValue, 0x01);
+
+        CountingReader secondReader = new(SlotValue.FromSpanWithoutLeadingZero([0x03]));
+        persistence.Reader = secondReader;
+        using (IPersistence.IWriteBatch writeBatch = cachedPersistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256)))
+        {
+            SlotValue? updatedValue = SlotValue.FromSpanWithoutLeadingZero([0x02]);
+            writeBatch.SetStorage(TestItem.AddressA, 1, updatedValue);
+        }
+
+        staleValue = default;
+        Assert.That(staleReader.TryGetSlot(TestItem.AddressA, 1, ref staleValue), Is.True);
+        AssertSlotValue(staleValue, 0x01);
+
+        using (IPersistence.IPersistenceReader currentReader = cachedPersistence.CreateReader())
+        {
+            SlotValue currentValue = default;
+            Assert.That(currentReader.TryGetSlot(TestItem.AddressA, 1, ref currentValue), Is.True);
+            AssertSlotValue(currentValue, 0x02);
+        }
+
+        Assert.That(firstReader.StorageReads, Is.EqualTo(2));
+        Assert.That(secondReader.StorageReads, Is.Zero);
+    }
+
     private CachedReaderPersistence CreateCachedPersistence(IPersistence persistence) =>
         new(persistence, new ProcessExitSource(_processExit.Token), LimboLogs.Instance);
+
+    private static void AssertSlotValue(SlotValue value, byte expected) =>
+        Assert.That(value.ToEvmBytes(), Is.EqualTo(new byte[] { expected }));
 
     private sealed class ProcessExitSource(CancellationToken token) : IProcessExitSource
     {

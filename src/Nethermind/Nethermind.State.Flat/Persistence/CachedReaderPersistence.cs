@@ -22,10 +22,13 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     private readonly IPersistence _inner; // Externally owned
     private readonly ILogger _logger;
     private readonly Lock _readerCacheLock = new();
+    private readonly Lock _storageSlotCacheUpdateLock = new();
+    private readonly AssociativeCache<StorageCell, SlotCacheEntry> _storageSlotCache = new(StorageSlotCacheCapacity);
     private readonly CancellationTokenSource _cancelTokenSource;
     private readonly Task _clearTimerTask;
 
     private RefCountingPersistenceReader? _cachedReader;
+    private int _storageSlotCacheGeneration;
     private int _isDisposed;
 
     public CachedReaderPersistence(IPersistence inner,
@@ -81,7 +84,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             if (cachedReader is null)
             {
                 _cachedReader = cachedReader = new RefCountingPersistenceReader(
-                    new CachedPersistenceReader(_inner.CreateReader()),
+                    new CachedPersistenceReader(_inner.CreateReader(), this, Volatile.Read(ref _storageSlotCacheGeneration)),
                     _logger
                 );
             }
@@ -96,22 +99,69 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         }
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new ClearCacheOnWriteBatchComplete(_inner.CreateWriteBatch(from, to, flags), this);
+    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new UpdateCacheOnWriteBatchComplete(_inner.CreateWriteBatch(from, to, flags), this);
 
     public void Flush() => _inner.Flush();
 
     public void Clear()
     {
-        ClearReaderCache();
+        using Lock.Scope readerCacheScope = _readerCacheLock.EnterScope();
+        using Lock.Scope storageSlotCacheUpdateScope = _storageSlotCacheUpdateLock.EnterScope();
+
+        ClearReaderCacheNoLock();
+        _storageSlotCache.Clear();
+        Interlocked.Increment(ref _storageSlotCacheGeneration);
         _inner.Clear();
     }
 
     private void ClearReaderCache()
     {
         using Lock.Scope _ = _readerCacheLock.EnterScope();
+        ClearReaderCacheNoLock();
+    }
+
+    private void ClearReaderCacheNoLock()
+    {
         RefCountingPersistenceReader? cachedReader = _cachedReader;
         _cachedReader = null;
         cachedReader?.Dispose();
+    }
+
+    private void CompleteWriteBatch(
+        IPersistence.IWriteBatch inner,
+        List<StorageSlotUpdate>? storageSlotUpdates,
+        bool clearStorageSlotCache)
+    {
+        using Lock.Scope readerCacheScope = _readerCacheLock.EnterScope();
+        using Lock.Scope storageSlotCacheUpdateScope = _storageSlotCacheUpdateLock.EnterScope();
+
+        ClearReaderCacheNoLock();
+        Interlocked.Increment(ref _storageSlotCacheGeneration);
+
+        try
+        {
+            inner.Dispose();
+        }
+        catch
+        {
+            _storageSlotCache.Clear();
+            Interlocked.Increment(ref _storageSlotCacheGeneration);
+            throw;
+        }
+
+        if (clearStorageSlotCache)
+        {
+            _storageSlotCache.Clear();
+        }
+
+        if (storageSlotUpdates is not null)
+        {
+            foreach (StorageSlotUpdate update in storageSlotUpdates)
+            {
+                StorageCell storageCell = update.StorageCell;
+                _storageSlotCache.Set(in storageCell, update.Entry);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -124,35 +174,79 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         _cancelTokenSource.Dispose();
     }
 
-    private class ClearCacheOnWriteBatchComplete(IPersistence.IWriteBatch inner, CachedReaderPersistence parent)
+    private sealed class UpdateCacheOnWriteBatchComplete(IPersistence.IWriteBatch inner, CachedReaderPersistence parent)
         : IPersistence.IWriteBatch
     {
-        public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
-        public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => inner.SetStorage(addr, slot, value);
+        private List<StorageSlotUpdate>? _storageSlotUpdates;
+        private bool _clearStorageSlotCache;
+
+        public void SelfDestruct(Address addr)
+        {
+            inner.SelfDestruct(addr);
+            ClearStorageSlotCacheOnDispose();
+        }
+
+        public void SetAccount(Address addr, Account? account)
+        {
+            inner.SetAccount(addr, account);
+            if (account is null)
+            {
+                ClearStorageSlotCacheOnDispose();
+            }
+        }
+
+        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        {
+            inner.SetStorage(addr, slot, value);
+
+            StorageCell storageCell = new(addr, in slot);
+            _storageSlotUpdates ??= [];
+            _storageSlotUpdates.Add(new StorageSlotUpdate(
+                storageCell,
+                new SlotCacheEntry(value.HasValue, value.GetValueOrDefault())));
+        }
+
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
-        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
+        {
+            inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+            ClearStorageSlotCacheOnDispose();
+        }
+
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) => inner.SetAccountRaw(addrHash, account);
-        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
-        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteStorageRange(addressHash, fromPath, toPath);
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            inner.DeleteAccountRange(fromPath, toPath);
+            ClearStorageSlotCacheOnDispose();
+        }
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            inner.DeleteStorageRange(addressHash, fromPath, toPath);
+            ClearStorageSlotCacheOnDispose();
+        }
+
         public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) => inner.DeleteStateTrieNodeRange(fromPath, toPath);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) => inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
 
-        public void Dispose()
-        {
-            inner.Dispose();
+        public void Dispose() => parent.CompleteWriteBatch(inner, _storageSlotUpdates, _clearStorageSlotCache);
 
-            // not in lock as it has its own lock
-            parent.ClearReaderCache();
+        private void ClearStorageSlotCacheOnDispose()
+        {
+            _clearStorageSlotCache = true;
+            _storageSlotUpdates?.Clear();
         }
     }
 
-    private sealed class CachedPersistenceReader(IPersistence.IPersistenceReader inner)
+    private sealed class CachedPersistenceReader(
+        IPersistence.IPersistenceReader inner,
+        CachedReaderPersistence parent,
+        int storageSlotCacheGeneration)
         : IPersistence.IPersistenceReader
     {
-        private readonly AssociativeCache<StorageCell, SlotCacheEntry> _storageSlotCache = new(StorageSlotCacheCapacity);
-
         public StateId CurrentState => inner.CurrentState;
 
         public void Dispose() => inner.Dispose();
@@ -162,7 +256,8 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             StorageCell storageCell = new(address, in slot);
-            if (_storageSlotCache.TryGet(in storageCell, out SlotCacheEntry? entry))
+            if (IsCurrentStorageSlotCacheGeneration() &&
+                parent._storageSlotCache.TryGet(in storageCell, out SlotCacheEntry? entry))
             {
                 SlotCacheEntry cached = entry!;
                 outValue = cached.Value;
@@ -172,7 +267,16 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             SlotValue value = default;
             bool exists = inner.TryGetSlot(address, in slot, ref value);
             outValue = value;
-            _storageSlotCache.Set(in storageCell, new SlotCacheEntry(exists, value));
+
+            if (IsCurrentStorageSlotCacheGeneration())
+            {
+                using Lock.Scope _ = parent._storageSlotCacheUpdateLock.EnterScope();
+                if (IsCurrentStorageSlotCacheGeneration())
+                {
+                    parent._storageSlotCache.Set(in storageCell, new SlotCacheEntry(exists, value));
+                }
+            }
+
             return exists;
         }
 
@@ -195,6 +299,15 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
             inner.CreateStorageIterator(in accountKey, in startSlotKey, in endSlotKey);
 
         public bool IsPreimageMode => inner.IsPreimageMode;
+
+        private bool IsCurrentStorageSlotCacheGeneration() =>
+            storageSlotCacheGeneration == Volatile.Read(ref parent._storageSlotCacheGeneration);
+    }
+
+    private readonly struct StorageSlotUpdate(StorageCell storageCell, SlotCacheEntry entry)
+    {
+        public StorageCell StorageCell { get; } = storageCell;
+        public SlotCacheEntry Entry { get; } = entry;
     }
 
     private sealed class SlotCacheEntry(bool exists, SlotValue value)
