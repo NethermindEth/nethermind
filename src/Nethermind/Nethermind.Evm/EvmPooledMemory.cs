@@ -176,9 +176,6 @@ public partial struct EvmPooledMemory
         }
 
         Debug.Assert(location.IsUint64);
-        // UpdateMemoryCost already advanced Size for (location, length) but defers the actual rent
-        // (it calls UpdateSize with rentIfNeeded:false), so we still materialize the buffer here —
-        // PrepareAccessAfterGas only rents, it does NOT re-run the bounds check that TrySave repeats.
         Debug.Assert(location.u0 + (ulong)value.Length <= Size);
         PrepareAccessAfterGas(location.u0 + (ulong)value.Length);
 

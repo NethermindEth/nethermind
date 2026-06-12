@@ -42,8 +42,6 @@ public static partial class EvmInstructions
                 goto OutOfGas;
 
             ZeroPaddedSpan slice = source.SliceWithZeroPadding(in b, (int)result);
-            // UpdateMemoryCost above already validated the destination bounds and grew memory for
-            // (a, result), so the write cannot violate or fail — skip TrySave's redundant re-check.
             vm.VmState.Memory.SaveAfterGas(in a, in slice);
 
             if (TTracingInst.IsActive)
@@ -116,8 +114,6 @@ public static partial class EvmInstructions
                 goto OutOfGas;
 
             ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
-            // UpdateMemoryCost above already validated the destination bounds and grew memory for
-            // (destOffset, size), so the write cannot violate or fail — skip the redundant re-check.
             vm.VmState.Memory.SaveAfterGas(in destOffset, in slice);
 
             if (TTracingInst.IsActive)

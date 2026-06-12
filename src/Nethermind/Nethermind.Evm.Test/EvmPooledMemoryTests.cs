@@ -288,14 +288,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(4096)]
     public void IncrementalGrowth_preserves_written_data_and_zeroes_new_regions(int step)
     {
-        // Regression test for geometric capacity growth in RentSlow: growing memory in many
-        // small steps must (a) keep every byte previously written, and (b) read back as zero
-        // everywhere nothing was written. Decoupling buffer capacity from logical Size must not
-        // expose un-zeroed pool bytes.
         EvmPooledMemory memory = new();
         byte[] word = TestItem.KeccakA.BytesToArray();
 
-        // Write a known word at the start so we can verify it survives every re-rent.
         Assert.That(memory.TrySaveWord(0, word), Is.True);
 
         for (int offset = step; offset <= 64 * 1024; offset += step)
@@ -305,7 +300,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 $"memory at offset {offset} must read as zero after growth to {memory.Size}");
         }
 
-        // The original word must still be intact after all the growth-driven re-rents.
         Assert.That(memory.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> first), Is.True);
         Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive geometric re-rent");
     }
