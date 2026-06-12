@@ -97,3 +97,18 @@ public abstract class NamedReleaseSpec<TSelf>(NamedReleaseSpec? parent) : NamedR
 {
     public static NamedReleaseSpec Instance { get; } = new TSelf();
 }
+
+public static class NamedReleaseSpecExtensions
+{
+    /// <summary>
+    /// True iff this fork changes at least one engine-API method version vs. its
+    /// <see cref="NamedReleaseSpec.Parent"/>. Used to filter forks that only tweak per-fork
+    /// constants (blob-parameter overrides etc.) and reuse the parent's engine-API surface.
+    /// </summary>
+    public static bool IntroducesEngineApiChange(this NamedReleaseSpec spec) =>
+        spec.EngineApiNewPayloadVersion != spec.Parent?.EngineApiNewPayloadVersion
+        || spec.EngineApiGetPayloadVersion != spec.Parent?.EngineApiGetPayloadVersion
+        || spec.EngineApiForkchoiceVersion != spec.Parent?.EngineApiForkchoiceVersion
+        || spec.EngineApiPayloadBodiesByHashVersion != spec.Parent?.EngineApiPayloadBodiesByHashVersion
+        || spec.EngineApiPayloadBodiesByRangeVersion != spec.Parent?.EngineApiPayloadBodiesByRangeVersion;
+}

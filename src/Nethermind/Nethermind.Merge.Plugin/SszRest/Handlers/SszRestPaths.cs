@@ -4,8 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-// Namespace alias: SszRestPaths exports const strings named Paris/Shanghai/... that would otherwise
-// shadow the matching Nethermind.Specs.Forks classes when accessed by their unqualified names.
+using Nethermind.Specs.Forks;
 using Forks = Nethermind.Specs.Forks;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -20,24 +19,34 @@ public static class SszRestPaths
     public const string Amsterdam = "amsterdam";
 
     /// <summary>
-    /// Single source of truth: URL fork segment → <see cref="Forks.NamedReleaseSpec"/>. Insertion order
-    /// (which <see cref="Dictionary{TKey, TValue}"/> preserves in modern .NET) gives chronological
-    /// fork order; all other fork-list views derive from this.
+    /// Single source of truth: URL fork segment → <see cref="Forks.NamedReleaseSpec"/>. Built by
+    /// walking back from the latest fork via <see cref="Forks.NamedReleaseSpec.Parent"/> and
+    /// keeping every fork that introduces an engine-API method-version change vs. its parent.
+    /// BPO blob-parameter override forks inherit all engine-API versions and so are filtered out.
     /// </summary>
     /// <remarks>
-    /// Each fork's per-method engine API versions are declared on its own <see cref="Forks.NamedReleaseSpec"/>
-    /// subclass and flow forward through the <see cref="Forks.NamedReleaseSpec.Parent"/> chain — only the
-    /// versions that *change* are declared per fork.
+    /// To add support for a new fork, add it as a <see cref="Forks.NamedReleaseSpec"/> with its
+    /// engine-API version overrides and update the <c>latest</c> argument here.
     /// </remarks>
-    private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl =
+        BuildForkSpecsByUrl(Forks.Amsterdam.Instance);
+
+    private static Dictionary<string, Forks.NamedReleaseSpec> BuildForkSpecsByUrl(Forks.NamedReleaseSpec latest)
     {
-        [Forks.Paris.Instance.EngineApiUrlSegment!] = Forks.Paris.Instance,
-        [Forks.Shanghai.Instance.EngineApiUrlSegment!] = Forks.Shanghai.Instance,
-        [Forks.Cancun.Instance.EngineApiUrlSegment!] = Forks.Cancun.Instance,
-        [Forks.Prague.Instance.EngineApiUrlSegment!] = Forks.Prague.Instance,
-        [Forks.Osaka.Instance.EngineApiUrlSegment!] = Forks.Osaka.Instance,
-        [Forks.Amsterdam.Instance.EngineApiUrlSegment!] = Forks.Amsterdam.Instance,
-    };
+        // Stack reverses parent-chain order (Amsterdam → … → Paris becomes Paris → … → Amsterdam),
+        // so the resulting dictionary preserves chronological insertion order.
+        Stack<Forks.NamedReleaseSpec> ordered = new();
+        for (Forks.NamedReleaseSpec? spec = latest; spec?.EngineApiNewPayloadVersion is not null; spec = spec.Parent)
+        {
+            if (spec.IntroducesEngineApiChange())
+                ordered.Push(spec);
+        }
+
+        Dictionary<string, Forks.NamedReleaseSpec> result = new(StringComparer.OrdinalIgnoreCase);
+        foreach (Forks.NamedReleaseSpec spec in ordered)
+            result[spec.EngineApiUrlSegment!] = spec;
+        return result;
+    }
 
     public static readonly IReadOnlyList<string> SupportedForksOrdered = [.. _forkSpecByUrl.Keys];
 
