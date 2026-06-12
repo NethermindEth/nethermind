@@ -174,6 +174,7 @@ public static class SszCodec
 
     public static int EncodeGetBlobsV4Response(IReadOnlyList<BlobCellsAndProofs?> blobs, IBufferWriter<byte> writer)
     {
+        const int CellsPerExtBlob = 128;
         int count = blobs.Count;
         BlobV4EntryWire[] arr = new BlobV4EntryWire[count];
         for (int i = 0; i < count; i++)
@@ -182,29 +183,28 @@ public static class SszCodec
             if (b is null || !b.Available)
             {
                 arr[i] = new BlobV4EntryWire { Available = false, Contents = default };
+                continue;
             }
-            else
-            {
-                NullableBlobCellWire[] cells = new NullableBlobCellWire[128];
-                NullableKzgProofWire[] proofs = new NullableKzgProofWire[128];
-                for (int j = 0; j < 128; j++)
-                {
-                    byte[]? cell = b.BlobCells?[j];
-                    byte[]? proof = b.Proofs?[j];
-                    cells[j] = cell is null
-                        ? new() { Cell = [] }
-                        : new() { Cell = [SszBlobCell.FromSpan(cell)] };
-                    proofs[j] = proof is null
-                        ? new() { Proof = [] }
-                        : new() { Proof = [SszKzgCommitment.FromSpan(proof)] };
-                }
 
-                arr[i] = new BlobV4EntryWire
-                {
-                    Available = true,
-                    Contents = new BlobCellsAndProofsWire { BlobCells = cells, Proofs = proofs }
-                };
+            NullableBlobCellWire[] cells = new NullableBlobCellWire[CellsPerExtBlob];
+            NullableKzgProofWire[] proofs = new NullableKzgProofWire[CellsPerExtBlob];
+            for (int j = 0; j < CellsPerExtBlob; j++)
+            {
+                byte[]? cell = b.BlobCells?[j];
+                byte[]? proof = b.Proofs?[j];
+                cells[j] = cell is null
+                    ? new() { Cell = [] }
+                    : new() { Cell = [SszBlobCell.FromSpan(cell.AsSpan(0, SszBlobCell.BlobCellLength))] };
+                proofs[j] = proof is null
+                    ? new() { Proof = [] }
+                    : new() { Proof = [SszKzgCommitment.FromSpan(proof.AsSpan(0, SszKzgCommitment.KzgCommitmentLength))] };
             }
+
+            arr[i] = new BlobV4EntryWire
+            {
+                Available = true,
+                Contents = new BlobCellsAndProofsWire { BlobCells = cells, Proofs = proofs }
+            };
         }
         return EncodeToWriter(new GetBlobsV4ResponseWire { Entries = arr }, writer);
     }

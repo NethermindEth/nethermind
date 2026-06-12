@@ -9,12 +9,13 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Merge.Plugin.SszRest;
 
 /// <summary>
-/// Inline 1024-byte Blob Cell representation used by Engine API SSZ wire types.
+/// Inline 2048-byte Blob Cell representation used by Engine API SSZ wire types.
+/// Matches EIP-7594 <c>BYTES_PER_CELL = FIELD_ELEMENTS_PER_CELL(64) * BYTES_PER_FIELD_ELEMENT(32)</c>.
 /// </summary>
 [InlineArray(BlobCellLength)]
 public struct SszBlobCell
 {
-    public const int BlobCellLength = 1024;
+    public const int BlobCellLength = 2048;
 
     private byte _element0;
 
