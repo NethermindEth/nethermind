@@ -43,6 +43,10 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
             Metrics.GetBlobsRequestsInBlobpoolTotal += count;
 
             response = ArrayPool<BlobCellsAndProofs?>.Shared.Rent(n);
+            // ArrayPool.Rent returns arrays with stale references. The outer catch and
+            // BlobsV4DirectResponse.Dispose iterate response[0..n-1] and would otherwise
+            // return arrays from a prior caller to our pool, corrupting it.
+            Array.Clear(response, 0, n);
 
             for (int i = 0; i < n; i++)
             {
@@ -58,6 +62,10 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
 
                 byte[]?[] blobCells = ArrayPool<byte[]?>.Shared.Rent(Ckzg.CellsPerExtBlob);
                 byte[]?[] cellProofs = ArrayPool<byte[]?>.Shared.Rent(Ckzg.CellsPerExtBlob);
+                // Same rationale as for `response`: unfilled indices (where the bitarray bit is 0)
+                // would otherwise expose stale byte[] references to the cleanup paths.
+                Array.Clear(blobCells, 0, Ckzg.CellsPerExtBlob);
+                Array.Clear(cellProofs, 0, Ckzg.CellsPerExtBlob);
 
                 ReadOnlySpan<byte[]> blobProofs = proofs[i].Span;
 
