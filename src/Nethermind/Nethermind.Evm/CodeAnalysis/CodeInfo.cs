@@ -53,27 +53,19 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     private readonly JumpDestinationAnalyzer? _analyzer;
     private InstructionStream? _stream;
-    private int _streamExecutions;
+    private int _streamBuildQueued;
     private volatile bool _streamUnavailable;
 
     /// <summary>
-    /// Executions of this code before its stream is built. Block import touches thousands of
-    /// contracts once or twice — they never reach the threshold and never pay a build; hot
-    /// contracts (eth_call serving) cross it within milliseconds.
-    /// </summary>
-    private const int StreamBuildThreshold = 4;
-
-    /// <summary>
-    /// Returns the preprocessed instruction stream for this code once it is hot enough to
-    /// have one. Returns <c>null</c> while the code is cold, while the background build is in
-    /// flight, and permanently when the code cannot be streamed (empty, precompile, oversized)
-    /// — callers fall back to the bytecode loop.
+    /// Returns the preprocessed instruction stream for this code. The first execution queues
+    /// the build on the thread pool — it runs in the gaps the IO-bound frames leave on the
+    /// cores, never on the executing frame. Returns <c>null</c> while the build is in flight
+    /// and permanently when the code cannot be streamed (empty, precompile, oversized) —
+    /// callers fall back to the bytecode loop.
     /// </summary>
     /// <remarks>
-    /// The execution counter saturates at the threshold: the thread that lands exactly on it
-    /// owns the (single) build, which runs on the thread pool so the frame that triggered it
-    /// never pays for it. With <see cref="StreamInterpreter.SynchronousBuild"/> (tests and
-    /// consensus gates) the build is eager and inline so single executions engage the stream.
+    /// With <see cref="StreamInterpreter.SynchronousBuild"/> (tests and consensus gates) the
+    /// build is eager and inline so single executions engage the stream deterministically.
     /// </remarks>
     public InstructionStream? GetOrBuildStream()
     {
@@ -89,7 +81,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
             return Volatile.Read(ref _stream);
         }
 
-        if (Interlocked.Increment(ref _streamExecutions) == StreamBuildThreshold)
+        if (Interlocked.Exchange(ref _streamBuildQueued, 1) == 0)
         {
             ThreadPool.UnsafeQueueUserWorkItem(static codeInfo => codeInfo.BuildAndPublishStream(), this, preferLocal: false);
         }
