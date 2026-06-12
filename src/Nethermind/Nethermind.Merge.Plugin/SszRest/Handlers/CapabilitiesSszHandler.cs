@@ -66,21 +66,15 @@ public sealed class CapabilitiesSszHandler(ISpecProvider specProvider) : SszEndp
             supportedForksJson = JsonSerializer.Serialize(forkSlice);
         }
 
-        return Encoding.UTF8.GetBytes($$"""
-            {
-              "supported_forks": {{supportedForksJson}},
-              "fork_scoped_endpoints": ["payloads", "forkchoice", "bodies"],
-              "independently_versioned": {
-                "blobs": ["v1", "v2", "v3", "v4"]
-              },
-              "unscoped_endpoints": ["capabilities", "identity"],
-              "limits": {
-                "bodies.max_count": {{SszRestLimits.MaxBodiesRequest}},
-                "blobs.max_versioned_hashes": {{SszRestLimits.MaxBlobsRequest}},
-                "payload.max_bytes": {{SszMiddleware.MaxBodySize}}
-              }
-            }
-            """);
+        return Encoding.UTF8.GetBytes(
+            $"{{\"supported_forks\":{supportedForksJson}," +
+            $"\"fork_scoped_endpoints\":[\"payloads\",\"forkchoice\",\"bodies\"]," +
+            $"\"independently_versioned\":{{\"blobs\":[\"v1\",\"v2\",\"v3\",\"v4\"]}}," +
+            $"\"unscoped_endpoints\":[\"capabilities\",\"identity\"]," +
+            $"\"limits\":{{" +
+            $"\"bodies.max_count\":{SszRestLimits.MaxBodiesRequest}," +
+            $"\"blobs.max_versioned_hashes\":{SszRestLimits.MaxBlobsRequest}," +
+            $"\"payload.max_bytes\":{SszMiddleware.MaxBodySize}}}}}");
     }
 
     private static int ComputeTimestampForkCount(ISpecProvider specProvider)

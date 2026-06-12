@@ -113,6 +113,11 @@ public class Startup : IStartup
                     // Engine API JSON-RPC still relies on HTTP/1.1 and shares the same listener.
                     listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
                 }
+                else
+                {
+                    listenOptions.Protocols = HttpProtocols.Http1;
+                    listenOptions.DisableAltSvcHeader = true;
+                }
             });
         });
         Bootstrap.Instance.RegisterJsonRpcServices(services);

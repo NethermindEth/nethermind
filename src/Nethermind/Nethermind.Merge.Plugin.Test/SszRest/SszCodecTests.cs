@@ -155,6 +155,32 @@ public class SszCodecTests
         Assert.That(withPresent.Length, Is.GreaterThan(withNull.Length));
     }
 
+    [Test]
+    public void EncodeGetBlobsV4Response_with_pool_rented_cells_and_proofs_round_trips()
+    {
+        // Reproduces what GetBlobsHandlerV4 builds: pool-rented byte[] arrays sized
+        // by Ckzg.BytesPerCell (2048) and Ckzg.BytesPerProof (48). ArrayPool.Rent(48)
+        // hands back a 64-byte array — the encoder must slice to spec-exact length
+        // or SszKzgCommitment.FromSpan throws. Likewise for SszBlobCell.
+        const int cellsPerExtBlob = 128;
+        byte[]?[] cells = new byte[]?[cellsPerExtBlob];
+        byte[]?[] proofs = new byte[]?[cellsPerExtBlob];
+        cells[0] = ArrayPool<byte>.Shared.Rent(SszBlobCell.BlobCellLength);
+        proofs[0] = ArrayPool<byte>.Shared.Rent(SszKzgCommitment.KzgCommitmentLength);
+        try
+        {
+            BlobCellsAndProofs entry = new() { Available = true, BlobCells = cells, Proofs = proofs };
+            byte[] encoded = Encode<IReadOnlyList<BlobCellsAndProofs?>>([entry], SszCodec.EncodeGetBlobsV4Response);
+
+            Assert.That(encoded.Length, Is.GreaterThan(0));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(cells[0]!);
+            ArrayPool<byte>.Shared.Return(proofs[0]!);
+        }
+    }
+
     private static IEnumerable<TestCaseData> NonEmptyEncodings()
     {
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>

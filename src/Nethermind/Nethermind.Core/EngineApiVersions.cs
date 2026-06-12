@@ -50,7 +50,7 @@ public static class EngineApiVersions
         public const int V1 = 1; // Cancun
         public const int V2 = 2; // Osaka
         public const int V3 = 3; // Osaka (allowPartialReturn = true)
-        public const int V4 = 4; // Amsterdam (cell retrieval)
+        public const int V4 = 4; // Osaka (cell retrieval, EIP-7594/PeerDAS)
         public const int Latest = V4;
     }
 

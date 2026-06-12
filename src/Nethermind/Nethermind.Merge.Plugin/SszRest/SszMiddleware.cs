@@ -17,7 +17,6 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
-using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
@@ -47,9 +46,6 @@ public sealed class SszMiddleware
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _postLookup;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _getLookup;
-
-    private static readonly System.Text.Json.JsonSerializerOptions _headerJsonOptions =
-        new() { PropertyNameCaseInsensitive = true };
 
     private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
@@ -133,23 +129,6 @@ public sealed class SszMiddleware
 
     private async Task ProcessSszRequestAsync(HttpContext ctx)
     {
-        if (ctx.Request.Headers.TryGetValue("X-Engine-Client-Version", out Microsoft.Extensions.Primitives.StringValues headerValues) && headerValues.Count > 0)
-        {
-            string? headerVal = headerValues[0];
-            if (!string.IsNullOrWhiteSpace(headerVal))
-            {
-                try
-                {
-                    ClientVersionV1 clVer = System.Text.Json.JsonSerializer.Deserialize<ClientVersionV1>(headerVal, _headerJsonOptions);
-                    ctx.Items["X-Engine-Client-Version"] = clVer;
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"SSZ-REST: ignoring malformed X-Engine-Client-Version header: {ex.Message}");
-                }
-            }
-        }
-
         string? authHeader = ctx.Request.Headers.Authorization;
         if (authHeader is null || !await _auth.Authenticate(authHeader))
         {
@@ -281,15 +260,18 @@ public sealed class SszMiddleware
         span = span[offset..];
         if (span.IsEmpty) return false;
 
-        if (span.Equals("identity".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        if (span.Equals("identity".AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || span.Equals("capabilities".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
             pathSegment = path.AsMemory(offset);
             return true;
         }
-        if (span.Equals("capabilities".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo"
+        // as 404 method-not-found rather than letting them fall through to fork parsing.
+        if (span.StartsWith("identity/".AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || span.StartsWith("capabilities/".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
-            pathSegment = path.AsMemory(offset);
-            return true;
+            return false;
         }
 
         if (span.StartsWith("blobs/".AsSpan(), StringComparison.OrdinalIgnoreCase))

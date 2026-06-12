@@ -5,9 +5,6 @@ namespace Nethermind.Merge.Plugin.Data;
 
 public class BlobCellsAndProofs
 {
-    public const int CellsPerExtBlob = 128;
-    public const int BytesPerCell = 1024;
-    public const int BytesPerProof = 48;
     public bool Available { get; init; }
     public byte[]?[]? BlobCells { get; init; }
     public byte[]?[]? Proofs { get; init; }

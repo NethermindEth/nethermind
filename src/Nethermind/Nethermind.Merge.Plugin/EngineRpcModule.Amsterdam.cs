@@ -28,7 +28,13 @@ public partial class EngineRpcModule : IEngineRpcModule
         => NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.NewPayload.V5);
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
-        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
+    {
+        // Per execution-apis #793: custody-column updates are best-effort, errors swallowed.
+        // No EL-side custody consumer wired yet — log at trace level so the CL request is auditable.
+        if (custodyColumns is not null && _logger.IsTrace)
+            _logger.Trace($"engine_forkchoiceUpdatedV4 received custody columns ({custodyColumns.Count} bits) — not yet applied");
+        return ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
+    }
 
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes)
         => _executionGetPayloadBodiesByHashV2Handler.Handle(blockHashes);
