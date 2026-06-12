@@ -302,7 +302,11 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
         "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
         "block_based_table_factory.whole_key_filtering=true;" + // should be default. Just in case.
-        "level_compaction_dynamic_level_bytes=false;" +
+
+        // Dynamic level sizing derives level targets from the actual last-level size and ignores
+        // max_bytes_for_level_base, so runtime memtable resizing (which also rewrites that base)
+        // cannot reshape the LSM. Matches the trie columns and the modern RocksDB default.
+        "level_compaction_dynamic_level_bytes=true;" +
 
         // We bsearch instead of partitioned tree. This take up memory for improved latency.
         "block_based_table_factory.partition_filters=false;" +
