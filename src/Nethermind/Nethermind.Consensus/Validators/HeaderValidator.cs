@@ -434,10 +434,8 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                // EIP-7843: the slot number is computed by the consensus layer and passed to the
-                // execution layer; the EL only checks for presence and does not impose any ordering
-                // (e.g. monotonicity) relative to the parent. See the eip7843_slotnum fixtures, which
-                // accept non-increasing slot numbers across consecutive blocks.
+                // EIP-7843: the slot number is set by the consensus layer; the EL only checks for
+                // presence and imposes no ordering relative to the parent (slots may be non-increasing).
             }
             else
             {

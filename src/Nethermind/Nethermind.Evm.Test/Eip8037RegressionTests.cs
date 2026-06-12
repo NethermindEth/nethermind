@@ -544,11 +544,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput tracer = Execute(Activation, 500_000, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
-        // The static-context CREATE charges its state gas (NEW_ACCOUNT) before raising the
-        // violation; on the halt that state gas is returned to the parent's reservoir, where it
-        // funds the subsequent state-creating SSTORE (verified against execution-specs
-        // `incorporate_child_on_error` / ethereum-spec-evm). CREATE2 costs a few gas more than
-        // CREATE because its init-code hashing is charged before the violation.
+        // The static-context CREATE's state gas returns to the parent reservoir on the halt and funds
+        // the subsequent SSTORE (per execution-specs); CREATE2 costs a little more (init-code hashing).
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(136_450));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(create2 ? 36_077 : 36_068));

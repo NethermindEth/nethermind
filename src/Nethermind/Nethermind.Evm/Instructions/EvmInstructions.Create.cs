@@ -82,10 +82,8 @@ public static partial class EvmInstructions
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
-        // Pre-EIP-8037 the static-context violation halts before any gas is charged. Under EIP-8037
-        // the reference (execution-specs `generic_create`) charges the regular and state CREATE gas
-        // first and only then raises the violation, so the consumed state gas is refunded to the
-        // parent's reservoir on the halt (see RestoreChildStateGasOnHalt). Defer the check for 8037.
+        // Pre-EIP-8037: static-context CREATE halts before charging. EIP-8037 defers the violation
+        // until after gas is charged (see the EIP-8037 block below), so check only the legacy case here.
         if (!TEip8037.IsActive && vm.VmState.IsStatic)
         {
             goto StaticCallViolation;
@@ -149,14 +147,8 @@ public static partial class EvmInstructions
         if (TEip8037.IsActive && !TGasPolicy.ConsumeStateGas(ref gas, TGasPolicy.GetCreateStateCost(in gas)))
             goto OutOfGas;
 
-        // EIP-8037: the static-context violation is raised only after the regular and state CREATE
-        // gas has been charged AND the 63/64 child-frame gas has been reserved, matching the
-        // reference `generic_create` (charge regular -> charge state -> reserve create-message gas
-        // -> raise WriteInStaticContext). The reserved gas leaves gas_left so the sender pays it,
-        // but it is excluded from the block regular-gas dimension because the init-code frame never
-        // runs; the charged state gas is likewise returned to the parent reservoir on the halt
-        // (RestoreChildStateGasOnHalt). Without this, the whole forwarded frame is mis-counted as
-        // block regular gas.
+        // EIP-8037 (matches reference `generic_create`): charge regular+state gas, reserve the 63/64
+        // child-frame gas (sender pays it but it's excluded from block regular gas), then raise.
         if (TEip8037.IsActive && vm.VmState.IsStatic)
         {
             long staticGasAvailable = TGasPolicy.GetRemainingGas(in gas);

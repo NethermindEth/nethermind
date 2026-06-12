@@ -101,11 +101,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long GetStateGasSpillRefunded(in EthereumGasPolicy gas) => gas.StateGasSpillRefunded;
 
 
-    // EIP-8037: a CREATE/CREATE2 that raises a static-context violation has already reserved the
-    // 63/64 child-frame gas (deducted from gas_left, so the sender pays it) but the init-code frame
-    // never runs. Record it as spill so Calculate8037BlockRegularGas excludes it from the block
-    // regular-gas dimension and RestoreChildStateGasOnHalt propagates it to the parent frame —
-    // matching execution-specs, where this gas never enters `regular_gas_used`.
+    // EIP-8037: gas reserved for a child frame that never runs (CREATE static-violation halt).
+    // Recorded as spill so it's excluded from block regular gas and propagated to the parent on halt.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ExcludeReservedGasFromBlockRegular(ref EthereumGasPolicy gas, long amount)
         => gas.StateGasSpill += amount;
