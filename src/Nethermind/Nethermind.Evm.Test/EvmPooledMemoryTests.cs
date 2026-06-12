@@ -301,7 +301,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
 
         Assert.That(memory.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> first), Is.True);
-        Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive geometric re-rent");
+        Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
     }
 
     [Test]
