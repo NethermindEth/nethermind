@@ -97,9 +97,6 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public void SetStorageReadJournaling(bool enabled)
-        => _persistentStorageProvider.JournalReads = enabled;
-
         public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();

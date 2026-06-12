@@ -79,35 +79,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    /// <summary>
-    /// Whether reads register journal entries (JustCache) and originals eagerly. Storage
-    /// tracers need the per-round read journal for ReportStorageRead, so transaction
-    /// processing turns this off only when the tracer does not trace storage; originals for
-    /// written cells are then registered lazily from <see cref="PerContractState"/> block
-    /// state on the first <see cref="GetOriginal"/>.
-    /// </summary>
-    internal bool JournalReads = true;
-
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
-            if (JournalReads)
-            {
-                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
-            }
-
-            // Reads skipped the journal: the round-start value is the block state's current
-            // value (BlockChange.After only moves at commit), loaded on demand when the
-            // slot's only prior touch was a journaled write.
-            PerContractState storage = GetOrCreateStorage(storageCell.Address);
-            if (!storage.TryGetRoundStartValue(in storageCell, out value))
-            {
-                storage.LoadFromTree(in storageCell);
-                storage.TryGetRoundStartValue(in storageCell, out value);
-            }
-
-            PushToRegistryOnly(storageCell, value);
+            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
 
         if (_transactionChangesSnapshots.TryPeek(out int snapshot))
@@ -318,19 +294,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         if (!isEmpty)
         {
-            // Cache priming only: warm-up runs outside any transaction scope and never needs
-            // originals or journal entries, so reads here skip the registry regardless of the
-            // per-transaction journaling mode.
-            bool journalReads = JournalReads;
-            JournalReads = false;
-            try
-            {
-                LoadFromTree(in storageCell);
-            }
-            finally
-            {
-                JournalReads = journalReads;
-            }
+            LoadFromTree(in storageCell);
         }
     }
 
@@ -542,27 +506,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash && _provider.JournalReads) _provider.PushToRegistryOnly(storageCell, valueChange.After);
+            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
             return valueChange.After;
-        }
-
-        /// <summary>
-        /// The value a slot had when the current caching round started: block state moves
-        /// only at commit, so its current value IS the round-start value mid-round. Feeds
-        /// the lazy original registration when reads skip the journal — the exact value the
-        /// eager path used to register on first read.
-        /// </summary>
-        public bool TryGetRoundStartValue(in StorageCell storageCell, out byte[] value)
-        {
-            ref StorageChangeTrace trace = ref BlockChange.GetValueRefOrNullRef(storageCell.Index);
-            if (Unsafe.IsNullRef(ref trace))
-            {
-                value = null!;
-                return false;
-            }
-
-            value = trace.After;
-            return true;
         }
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
