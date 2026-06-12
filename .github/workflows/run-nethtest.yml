@@ -115,6 +115,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.generate.outputs.matrix }}
+      eest_version: ${{ steps.resolve.outputs.eest_version }}
+      zkevm_version: ${{ steps.resolve.outputs.zkevm_version }}
     steps:
       - name: Generate matrix
         id: generate
@@ -228,6 +230,44 @@ jobs:
           jq -s '.' "$ENTRIES_FILE"
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve fixture releases
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEST_TYPES: ${{ inputs.test_types || 'engineTest' }}
+        run: |
+          # Resolved once per run, authenticated. Per-job unauthenticated API calls hit
+          # the per-IP rate limit on large matrices (curl exit 22 on shared runner IPs).
+          resolve() {
+            local version=$1
+            local resolved
+            if [ "$version" = "latest" ]; then
+              resolved="$(gh api "repos/$EEST_REPOSITORY/releases/latest" | jq -r '.tag_name')"
+            elif [[ "$version" == latest-* ]]; then
+              local keyword="${version#latest-}"
+              resolved="$(gh api "repos/$EEST_REPOSITORY/releases?per_page=20" \
+                | jq -r --arg keyword "$keyword" '[.[] | select(.tag_name | contains($keyword))] | first | .tag_name')"
+            else
+              resolved="$version"
+            fi
+
+            if [ -z "$resolved" ] || [ "$resolved" = "null" ]; then
+              echo "::error::Could not resolve release for $EEST_REPOSITORY ($version)" >&2
+              return 1
+            fi
+            echo "$resolved"
+          }
+
+          RESOLVED_EEST="$(resolve "$EEST_VERSION")"
+          echo "eest_version=$RESOLVED_EEST" >> "$GITHUB_OUTPUT"
+          echo "Resolved EEST release: $RESOLVED_EEST"
+
+          if [[ "$TEST_TYPES" == *zkevmTest* ]]; then
+            RESOLVED_ZKEVM="$(resolve "$ZKEVM_VERSION")"
+            echo "zkevm_version=$RESOLVED_ZKEVM" >> "$GITHUB_OUTPUT"
+            echo "Resolved zkEVM release: $RESOLVED_ZKEVM"
+          fi
+
   nethtest:
     name: nethtest ${{ matrix.test_type }} ${{ matrix.test_setup }} ${{ matrix.chunk }}
     needs: prepare-matrix
@@ -258,41 +298,32 @@ jobs:
         working-directory: src/Nethermind
         run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false
 
-      - name: Resolve EEST release
+      - name: Select fixture release
         id: eest_release
+        env:
+          RESOLVED_EEST: ${{ needs.prepare-matrix.outputs.eest_version }}
+          RESOLVED_ZKEVM: ${{ needs.prepare-matrix.outputs.zkevm_version }}
         run: |
+          # Releases are resolved once in prepare-matrix; this step only picks the
+          # release line and archive for this job's test type.
           if [ "$TEST_TYPE" = "zkevmTest" ]; then
-            # zkEVM preview fixtures live in their own release line and archive.
-            EEST_VERSION="$ZKEVM_VERSION"
+            RESOLVED_EEST_VERSION="$RESOLVED_ZKEVM"
+            VERSION_INPUT="$ZKEVM_VERSION"
             EEST_ARCHIVE="fixtures_zkevm.tar.gz"
-          fi
-
-          if [ "$EEST_VERSION" = "latest" ]; then
-            RESOLVED_EEST_VERSION="$(curl -fsSL \
-              --max-time 300 \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$EEST_REPOSITORY/releases/latest" \
-              | jq -r '.tag_name')"
-          elif [[ "$EEST_VERSION" == latest-* ]]; then
-            KEYWORD="${EEST_VERSION#latest-}"
-            RESOLVED_EEST_VERSION="$(curl -fsSL \
-              --max-time 300 \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$EEST_REPOSITORY/releases?per_page=20" \
-              | jq -r --arg keyword "$KEYWORD" '[.[] | select(.tag_name | contains($keyword))] | first | .tag_name')"
           else
-            RESOLVED_EEST_VERSION="$EEST_VERSION"
+            RESOLVED_EEST_VERSION="$RESOLVED_EEST"
+            VERSION_INPUT="$EEST_VERSION"
           fi
 
-          if [ -z "$RESOLVED_EEST_VERSION" ] || [ "$RESOLVED_EEST_VERSION" = "null" ]; then
-            echo "::error::Could not resolve EEST release for $EEST_REPOSITORY ($EEST_VERSION)"
+          if [ -z "$RESOLVED_EEST_VERSION" ]; then
+            echo "::error::No resolved release available for $TEST_TYPE"
             exit 1
           fi
 
           echo "version=$RESOLVED_EEST_VERSION" >> "$GITHUB_OUTPUT"
-          echo "version_input=$EEST_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_input=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
           echo "archive=$EEST_ARCHIVE" >> "$GITHUB_OUTPUT"
-          echo "Resolved EEST release: $RESOLVED_EEST_VERSION ($EEST_ARCHIVE)"
+          echo "Using $EEST_ARCHIVE @ $RESOLVED_EEST_VERSION"
 
       - name: Cache EEST fixtures
         uses: actions/cache@v4
@@ -644,8 +675,14 @@ jobs:
           echo "Stderr lines: $(wc -l < "$STDERR_FILE")"
 
           if [ -f "$LOW_MEMORY_FILE" ]; then
-            echo "::error::nethtest was terminated because runner memory was nearly exhausted"
-            rc=137
+            if [ $rc -eq 0 ] && [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
+              # The watchdog can fire while the process is already exiting; with a clean
+              # exit code and complete results this is not a failure.
+              echo "::warning::Memory watchdog fired during shutdown, but nethtest completed with valid results"
+            else
+              echo "::error::nethtest was terminated because runner memory was nearly exhausted"
+              rc=137
+            fi
           elif [ -f "$WATCHDOG_TIMEOUT_FILE" ]; then
             echo "::error::nethtest was terminated by the idle watchdog"
             rc=124
