@@ -40,13 +40,6 @@
   "Metrics": {
     "NodeName": "Nethermind Chiado Archive"
   },
-  "Bloom": {
-    "IndexLevelBucketSizes": [
-      16,
-      16,
-      16
-    ]
-  },
   "Pruning": {
     "Mode": "None"
   },

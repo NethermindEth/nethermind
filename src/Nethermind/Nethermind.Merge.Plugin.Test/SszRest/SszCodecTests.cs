@@ -130,8 +130,11 @@ public class SszCodecTests
 
         (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Seq(request));
 
-        Assert.That(start, Is.EqualTo(10));
-        Assert.That(count, Is.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(start, Is.EqualTo(10));
+            Assert.That(count, Is.EqualTo(5));
+        }
     }
 
     [Test]
@@ -180,13 +183,16 @@ public class SszCodecTests
         Hash256? parentBeaconBlockRoot, Hash256 expectedParentRoot,
         byte[][]? requests, byte[] expectedRequest)
     {
-        Assert.That(hashes, Is.EqualTo(expectedHashes.Select(static hash => hash.Bytes.ToArray()).ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashes, Is.EqualTo(expectedHashes.Select(static hash => hash.Bytes.ToArray()).ToArray()));
 
-        Assert.That(parentBeaconBlockRoot, Is.Not.Null);
-        Assert.That(parentBeaconBlockRoot, Is.EqualTo(expectedParentRoot));
+            Assert.That(parentBeaconBlockRoot, Is.Not.Null);
+            Assert.That(parentBeaconBlockRoot, Is.EqualTo(expectedParentRoot));
 
-        Assert.That(requests, Is.Not.Null);
-        Assert.That(requests, Is.EqualTo(new[] { expectedRequest }));
+            Assert.That(requests, Is.Not.Null);
+            Assert.That(requests, Is.EqualTo(new[] { expectedRequest }));
+        }
     }
 
     [Test]
@@ -209,12 +215,15 @@ public class SszCodecTests
         byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
-        Assert.That(payload.BlockNumber, Is.EqualTo(100));
-        Assert.That(payload.GasLimit, Is.EqualTo(2_000_000));
-        Assert.That(payload.Timestamp, Is.EqualTo(1_700_000_100));
-        Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
-        Assert.That(payload.BlobGasUsed, Is.EqualTo(0x20000UL));
-        Assert.That(payload.ExcessBlobGas, Is.EqualTo(0x40000UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.BlockNumber, Is.EqualTo(100));
+            Assert.That(payload.GasLimit, Is.EqualTo(2_000_000));
+            Assert.That(payload.Timestamp, Is.EqualTo(1_700_000_100));
+            Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
+            Assert.That(payload.BlobGasUsed, Is.EqualTo(0x20000UL));
+            Assert.That(payload.ExcessBlobGas, Is.EqualTo(0x40000UL));
+        }
 
         AssertCommonNewPayloadFields(
             hashes, [TestItem.KeccakA, TestItem.KeccakB],
@@ -244,15 +253,18 @@ public class SszCodecTests
         byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
-        Assert.That(payload.BlockNumber, Is.EqualTo(100));
-        Assert.That(payload.Timestamp, Is.EqualTo(1_700_000_100));
-        Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
-
         Span<byte> blockAccessListSpan = payload.BlockAccessList;
-        Assert.That(blockAccessListSpan.ToArray(), Is.EqualTo(blockAccessList));
-        Assert.That(payload.SlotNumber, Is.EqualTo(slotNumber));
-        Assert.That(payload.BlobGasUsed, Is.EqualTo(0x20000UL));
-        Assert.That(payload.ExcessBlobGas, Is.EqualTo(0x40000UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.BlockNumber, Is.EqualTo(100));
+            Assert.That(payload.Timestamp, Is.EqualTo(1_700_000_100));
+            Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
+
+            Assert.That(blockAccessListSpan.ToArray(), Is.EqualTo(blockAccessList));
+            Assert.That(payload.SlotNumber, Is.EqualTo(slotNumber));
+            Assert.That(payload.BlobGasUsed, Is.EqualTo(0x20000UL));
+            Assert.That(payload.ExcessBlobGas, Is.EqualTo(0x40000UL));
+        }
 
         AssertCommonNewPayloadFields(
             hashes, [TestItem.KeccakA],
@@ -324,35 +336,38 @@ public class SszCodecTests
         SszCodec.EncodeGetPayloadV1Response(ep, w);
         ReadOnlySpan<byte> buf = w.WrittenSpan;
 
-        Assert.That(buf.Slice(0, 32).ToArray(), Is.EqualTo(ep.ParentHash!.Bytes.ToArray()), "parent_hash @ offset 0");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buf.Slice(0, 32).ToArray(), Is.EqualTo(ep.ParentHash!.Bytes.ToArray()), "parent_hash @ offset 0");
 
-        Assert.That(buf.Slice(32, 20).ToArray(), Is.EqualTo(ep.FeeRecipient!.Bytes.ToArray()), "fee_recipient @ offset 32");
+            Assert.That(buf.Slice(32, 20).ToArray(), Is.EqualTo(ep.FeeRecipient!.Bytes.ToArray()), "fee_recipient @ offset 32");
 
-        Assert.That(buf.Slice(52, 32).ToArray(), Is.EqualTo(ep.StateRoot!.Bytes.ToArray()), "state_root @ offset 52");
+            Assert.That(buf.Slice(52, 32).ToArray(), Is.EqualTo(ep.StateRoot!.Bytes.ToArray()), "state_root @ offset 52");
 
-        Assert.That(buf.Slice(84, 32).ToArray(), Is.EqualTo(ep.ReceiptsRoot!.Bytes.ToArray()), "receipts_root @ offset 84");
+            Assert.That(buf.Slice(84, 32).ToArray(), Is.EqualTo(ep.ReceiptsRoot!.Bytes.ToArray()), "receipts_root @ offset 84");
 
-        Assert.That(buf.Slice(116, 256).ToArray(), Is.EqualTo(Bloom.Empty.Bytes.ToArray()), "logs_bloom @ offset 116");
+            Assert.That(buf.Slice(116, 256).ToArray(), Is.EqualTo(Bloom.Empty.Bytes.ToArray()), "logs_bloom @ offset 116");
 
-        Assert.That(buf.Slice(372, 32).ToArray(), Is.EqualTo(ep.PrevRandao!.Bytes.ToArray()), "prev_randao @ offset 372");
+            Assert.That(buf.Slice(372, 32).ToArray(), Is.EqualTo(ep.PrevRandao!.Bytes.ToArray()), "prev_randao @ offset 372");
 
-        Assert.That(BitConverter.ToUInt64(buf.Slice(404, 8)), Is.EqualTo((ulong)ep.BlockNumber), "block_number @ offset 404");
+            Assert.That(BitConverter.ToUInt64(buf.Slice(404, 8)), Is.EqualTo((ulong)ep.BlockNumber), "block_number @ offset 404");
 
-        Assert.That(BitConverter.ToUInt64(buf.Slice(412, 8)), Is.EqualTo((ulong)ep.GasLimit), "gas_limit @ offset 412");
+            Assert.That(BitConverter.ToUInt64(buf.Slice(412, 8)), Is.EqualTo((ulong)ep.GasLimit), "gas_limit @ offset 412");
 
-        Assert.That(BitConverter.ToUInt64(buf.Slice(420, 8)), Is.EqualTo((ulong)ep.GasUsed), "gas_used @ offset 420");
+            Assert.That(BitConverter.ToUInt64(buf.Slice(420, 8)), Is.EqualTo((ulong)ep.GasUsed), "gas_used @ offset 420");
 
-        Assert.That(BitConverter.ToUInt64(buf.Slice(428, 8)), Is.EqualTo(ep.Timestamp), "timestamp @ offset 428");
+            Assert.That(BitConverter.ToUInt64(buf.Slice(428, 8)), Is.EqualTo(ep.Timestamp), "timestamp @ offset 428");
 
-        uint extraDataOffset = BitConverter.ToUInt32(buf.Slice(436, 4));
-        Assert.That(extraDataOffset, Is.GreaterThanOrEqualTo(508u), "extra_data variable-length offset @ offset 436 must point past the fixed section");
+            uint extraDataOffset = BitConverter.ToUInt32(buf.Slice(436, 4));
+            Assert.That(extraDataOffset, Is.GreaterThanOrEqualTo(508u), "extra_data variable-length offset @ offset 436 must point past the fixed section");
 
-        Assert.That(new UInt256(buf.Slice(440, 32), isBigEndian: false), Is.EqualTo(ep.BaseFeePerGas), "base_fee_per_gas @ offset 440");
+            Assert.That(new UInt256(buf.Slice(440, 32), isBigEndian: false), Is.EqualTo(ep.BaseFeePerGas), "base_fee_per_gas @ offset 440");
 
-        Assert.That(buf.Slice(472, 32).ToArray(), Is.EqualTo(ep.BlockHash!.Bytes.ToArray()), "block_hash @ offset 472");
+            Assert.That(buf.Slice(472, 32).ToArray(), Is.EqualTo(ep.BlockHash!.Bytes.ToArray()), "block_hash @ offset 472");
 
-        uint txOffset = BitConverter.ToUInt32(buf.Slice(504, 4));
-        Assert.That(txOffset, Is.GreaterThanOrEqualTo(508u), "transactions variable-length offset @ offset 504 must point past the fixed section");
+            uint txOffset = BitConverter.ToUInt32(buf.Slice(504, 4));
+            Assert.That(txOffset, Is.GreaterThanOrEqualTo(508u), "transactions variable-length offset @ offset 504 must point past the fixed section");
+        }
     }
 
     [Test]

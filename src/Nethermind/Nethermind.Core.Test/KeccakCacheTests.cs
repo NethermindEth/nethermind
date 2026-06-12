@@ -91,8 +91,11 @@ namespace Nethermind.Core.Test
             for (int i = 1; i < collisions; i++)
             {
                 byte[] input = array[i];
-                Assert.That(bucket, Is.EqualTo(KeccakCache.GetBucket(input)));
-                Assert.That(KeccakCache.Compute(input), Is.EqualTo(values[i]));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(bucket, Is.EqualTo(KeccakCache.GetBucket(input)));
+                    Assert.That(KeccakCache.Compute(input), Is.EqualTo(values[i]));
+                }
             }
 
             Parallel.ForEach(array, (a, state, index) =>
@@ -129,10 +132,13 @@ namespace Nethermind.Core.Test
 
                 ValueHash256 expected = ValueKeccak.Compute(bytes);
                 ValueHash256 actual = KeccakCache.Compute(bytes);
-                Assert.That(actual, Is.EqualTo(expected));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual, Is.EqualTo(expected));
 
-                // Second call should hit cache
-                Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                    // Second call should hit cache
+                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                }
             }
         }
 
@@ -148,10 +154,13 @@ namespace Nethermind.Core.Test
 
                 ValueHash256 expected = ValueKeccak.Compute(bytes);
                 ValueHash256 actual = KeccakCache.Compute(bytes);
-                Assert.That(actual, Is.EqualTo(expected));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual, Is.EqualTo(expected));
 
-                // Second call should hit cache
-                Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                    // Second call should hit cache
+                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                }
             }
         }
 
