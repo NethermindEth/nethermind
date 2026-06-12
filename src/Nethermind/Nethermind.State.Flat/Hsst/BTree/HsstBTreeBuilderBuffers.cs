@@ -46,12 +46,9 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
     // Per-node scratch for child-offset value bytes, written by HsstBTreeBuilder.WriteIndexNode.
     internal NativeMemoryList<byte> ValueScratch = new(64);
 
-    // Per-Build scratch for HsstBTreeBuilder.ChooseIntermediateChildCount and
-    // HsstBTreeBuilder.WriteIndexNode. Refilled (Clear + Add/AddRange) per call so a hot
-    // caller (e.g. PersistedSnapshotBuilder, firing many small Builds back-to-back) reuses
-    // the buffers across calls.
-    internal NativeMemoryList<byte> IndexFirstSepScratch = new(64);
-    internal NativeMemoryList<byte> IndexSepBufScratch = new(64);
+    // Per-Build scratch for HsstBTreeBuilder.WriteIndexNode's per-child separator lengths.
+    // Refilled (Clear + Add) per call so a hot caller (e.g. PersistedSnapshotBuilder, firing many
+    // small Builds back-to-back) reuses the buffer across calls.
     internal NativeMemoryList<int> IndexSepLengthsScratch = new(64);
 
     // Root node's first-entry full key, populated by HsstBTreeBuilder.BuildIndex at its final
@@ -98,8 +95,6 @@ public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
         NextLevelFirstKeys.Dispose();
         CommonPrefixArr.Dispose();
         ValueScratch.Dispose();
-        IndexFirstSepScratch.Dispose();
-        IndexSepBufScratch.Dispose();
         IndexSepLengthsScratch.Dispose();
         RootFirstKey.Dispose();
         PrevKeyBuf.Dispose();

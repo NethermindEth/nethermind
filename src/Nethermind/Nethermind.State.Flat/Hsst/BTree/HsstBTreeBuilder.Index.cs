@@ -485,23 +485,16 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         long baseChildOffset = firstChild.ChildOffset;
         long maxOff = baseChildOffset;
         int committedValueSlot = HsstValueSlot.MinBytesFor(0);
-        // Common-prefix length across separators observed so far. With phantom slot 0
-        // restored the first separator (firstChild) seeds commonLen and firstSep so the
-        // running LCP is meaningful from childCount == 1 onward. firstSep / sepBuf live
-        // on the pooled buffers struct so back-to-back Builds reuse the rent instead of
-        // re-stackallocating 510 bytes per ChooseIntermediateChildCount call.
+        // Common-prefix length across separators observed so far. With phantom slot 0 restored
+        // the first separator (firstChild) seeds commonLen so the running LCP is meaningful from
+        // childCount == 1 onward.
         int commonLen = firstSepLen;
-        ref HsstBTreeBuilderBuffers bufs = ref _buffers;
-        // firstSep is filled once and read across the loop; sepBuf is refilled per candidate.
-        NativeMemoryList<byte> firstSepList = bufs.IndexFirstSepScratch;
-        NativeMemoryList<byte> sepBufList = bufs.IndexSepBufScratch;
-        firstSepList.Clear();
-        if (firstSepLen > 0)
-        {
-            // First child's first-key sits at slot startIdx of levelFirstKeys.
-            firstSepList.AddRange(levelFirstKeys.Slice(startIdx * _keyLength, firstSepLen));
-        }
-        ReadOnlySpan<byte> firstSep = firstSepList.AsSpan();
+        // firstSep = the first child's first-key prefix, sliced straight from levelFirstKeys
+        // (slot startIdx) once; the running group LCP is compared against it. Per-candidate
+        // separators are likewise sliced from levelFirstKeys below — no scratch copy needed.
+        ReadOnlySpan<byte> firstSep = firstSepLen > 0
+            ? levelFirstKeys.Slice(startIdx * _keyLength, firstSepLen)
+            : default;
 
         while (childCount < hardMax)
         {
@@ -516,13 +509,9 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             int naturalSep = Math.Min(commonPrefixArr[curr.FirstEntry] + 1, _keyLength);
             int sepLen = Math.Max(naturalSep, curr.PrefixLen);
             // curr's first-key sits at slot currentIdx of levelFirstKeys.
-            sepBufList.Clear();
-            if (sepLen > 0)
-            {
-                int rightSlot = currentIdx * _keyLength;
-                sepBufList.AddRange(levelFirstKeys.Slice(rightSlot, sepLen));
-            }
-            ReadOnlySpan<byte> sepBuf = sepBufList.AsSpan();
+            ReadOnlySpan<byte> sepBuf = sepLen > 0
+                ? levelFirstKeys.Slice(currentIdx * _keyLength, sepLen)
+                : default;
 
             long newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
             int valueSlotSize = HsstValueSlot.MinBytesFor(newMaxOff - baseChildOffset);
@@ -568,18 +557,15 @@ public ref partial struct HsstBTreeBuilder<TWriter>
                 int next2SepLen = Math.Max(next2NaturalSep, next2.PrefixLen);
                 if (next2SepLen > effMaxSepLen) effMaxSepLen = next2SepLen;
 
-                // Chain the running group prefix against next2's separator bytes,
-                // capped at min(newCommonLen, next2SepLen). sepBuf currently holds
-                // curr's bytes — already consumed by the newCommonLen computation
-                // above — so overwriting it with next2's bytes here is safe.
+                // Chain the running group prefix against next2's separator bytes, capped at
+                // min(newCommonLen, next2SepLen).
                 int next2Boundary = Math.Min(effCommonLen, next2SepLen);
-                sepBufList.Clear();
-                if (next2Boundary > 0)
-                    sepBufList.AddRange(levelFirstKeys.Slice(next2Idx * _keyLength, next2Boundary));
-                sepBuf = sepBufList.AsSpan();
+                sepBuf = next2Boundary > 0
+                    ? levelFirstKeys.Slice(next2Idx * _keyLength, next2Boundary)
+                    : default;
                 effCommonLen = effCommonLen == 0
                     ? 0
-                    : firstSep[..next2Boundary].CommonPrefixLength(sepBuf[..next2Boundary]);
+                    : firstSep[..next2Boundary].CommonPrefixLength(sepBuf);
             }
             int newEffSepLen = effMaxSepLen - effCommonLen;
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newKeysBytes, valueSlotSize);
