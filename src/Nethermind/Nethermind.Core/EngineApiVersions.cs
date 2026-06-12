@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+// The type lives under Nethermind.Consensus by intent — engine API versions are a consensus-layer
+// concept — but the file ships in Nethermind.Core so the lower Nethermind.Specs layer can reference
+// it (Consensus → Blockchain → Specs makes the reverse direction circular). IDE0130 is suppressed
+// for this file in .editorconfig.
 namespace Nethermind.Consensus;
 
 /// <summary>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -21,6 +22,11 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
         spec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
         spec.IsEip8024Enabled = true;
         spec.IsEip8037Enabled = true;
+        spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V5;
+        spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V6;
+        spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V4;
+        spec.EngineApiPayloadBodiesByHashVersion = EngineApiVersions.PayloadBodiesByHash.V2;
+        spec.EngineApiPayloadBodiesByRangeVersion = EngineApiVersions.PayloadBodiesByRange.V2;
     }
 
     public static IReleaseSpec NoEip8037Instance { get; } = new Amsterdam { IsEip8037Enabled = false };

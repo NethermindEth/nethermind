@@ -29,24 +29,30 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     {
         TWire.Decode(body, out TWire wire);
 
-        ulong? timestamp = TVersion.GetTimestamp(wire);
-        if (timestamp.HasValue
-            && ctx.Items.TryGetValue("SszRouteFork", out object? forkObj)
-            && forkObj is string urlFork)
+        if (GetUrlForkMismatchMessage(ctx, TVersion.GetTimestamp(wire)) is { } mismatch)
         {
-            // The fork the payload would activate (from its timestamp) must match the URL's
-            // {fork} segment — otherwise the CL is asking the wrong endpoint for this payload.
-            IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));
-            if (!string.Equals(payloadSpec.Name, urlFork, StringComparison.OrdinalIgnoreCase))
-            {
-                await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                    $"URL fork '{urlFork}' does not match the fork for timestamp {timestamp.Value}",
-                    MergeErrorCodes.UnsupportedFork);
-                return;
-            }
+            await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, mismatch, MergeErrorCodes.UnsupportedFork);
+            return;
         }
 
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await TVersion.Call(engineModule, wire);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeForkchoiceUpdatedResponse);
+    }
+
+    /// <summary>
+    /// Returns an error message if the payload's timestamp fork doesn't match the URL <c>{fork}</c>
+    /// segment, or <c>null</c> when the check doesn't apply (no payload attributes / no route fork).
+    /// </summary>
+    private string? GetUrlForkMismatchMessage(HttpContext ctx, ulong? timestamp)
+    {
+        if (!timestamp.HasValue
+            || !ctx.Items.TryGetValue("SszRouteFork", out object? forkObj)
+            || forkObj is not string urlFork)
+            return null;
+
+        IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));
+        return string.Equals(payloadSpec.Name, urlFork, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"URL fork '{urlFork}' does not match the fork for timestamp {timestamp.Value}";
     }
 }

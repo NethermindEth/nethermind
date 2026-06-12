@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using Nethermind.Consensus;
+// Namespace alias: SszRestPaths exports const strings named Paris/Shanghai/... that would otherwise
+// shadow the matching Nethermind.Specs.Forks classes when accessed by their unqualified names.
+using Forks = Nethermind.Specs.Forks;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -17,11 +19,30 @@ public static class SszRestPaths
     public const string Osaka = "osaka";
     public const string Amsterdam = "amsterdam";
 
+    /// <summary>
+    /// Single source of truth: URL fork segment → <see cref="Forks.NamedReleaseSpec"/>. Insertion order
+    /// (which <see cref="Dictionary{TKey, TValue}"/> preserves in modern .NET) gives chronological
+    /// fork order; all other fork-list views derive from this.
+    /// </summary>
+    /// <remarks>
+    /// Each fork's per-method engine API versions are declared on its own <see cref="Forks.NamedReleaseSpec"/>
+    /// subclass and flow forward through the <see cref="Forks.NamedReleaseSpec.Parent"/> chain — only the
+    /// versions that *change* are declared per fork.
+    /// </remarks>
+    private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [Forks.Paris.Instance.EngineApiUrlSegment!] = Forks.Paris.Instance,
+        [Forks.Shanghai.Instance.EngineApiUrlSegment!] = Forks.Shanghai.Instance,
+        [Forks.Cancun.Instance.EngineApiUrlSegment!] = Forks.Cancun.Instance,
+        [Forks.Prague.Instance.EngineApiUrlSegment!] = Forks.Prague.Instance,
+        [Forks.Osaka.Instance.EngineApiUrlSegment!] = Forks.Osaka.Instance,
+        [Forks.Amsterdam.Instance.EngineApiUrlSegment!] = Forks.Amsterdam.Instance,
+    };
+
+    public static readonly IReadOnlyList<string> SupportedForksOrdered = [.. _forkSpecByUrl.Keys];
+
     public static readonly FrozenSet<string> SupportedForks =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            Paris, Shanghai, Cancun, Prague, Osaka, Amsterdam
-        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        SupportedForksOrdered.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Cached <see cref="ReadOnlySpan{Char}"/> alternate lookup for <see cref="SupportedForks"/>,
@@ -29,9 +50,6 @@ public static class SszRestPaths
     /// </summary>
     public static readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> SupportedForksSpanLookup =
         SupportedForks.GetAlternateLookup<ReadOnlySpan<char>>();
-
-    public static readonly IReadOnlyList<string> SupportedForksOrdered =
-        [Paris, Shanghai, Cancun, Prague, Osaka, Amsterdam];
 
     public const string Payloads = "payloads";
 
@@ -85,68 +103,27 @@ public static class SszRestPaths
     public const string PostV4Blobs = "POST /engine/v2/blobs/v4";
 
     /// <summary>
-    /// Per-fork engine method versions. Adding a new fork is one row.
+    /// Resolves the per-fork engine API method version for the given <paramref name="resource"/>
+    /// + <paramref name="httpMethod"/> by looking it up on the fork's <see cref="Forks.NamedReleaseSpec"/>.
+    /// Each fork only declares the versions it changes vs. its parent; values flow forward through
+    /// the spec inheritance chain.
     /// </summary>
-    private readonly record struct ForkVersions(
-        int NewPayload, int GetPayload, int Forkchoice, int BodiesByHash, int BodiesByRange);
-
-    private static readonly FrozenDictionary<string, ForkVersions> _forkVersions =
-        new Dictionary<string, ForkVersions>(StringComparer.OrdinalIgnoreCase)
-        {
-            [Paris] = new(
-                NewPayload: EngineApiVersions.NewPayload.V1,
-                GetPayload: EngineApiVersions.GetPayload.V1,
-                Forkchoice: EngineApiVersions.Fcu.V1,
-                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
-                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
-            [Shanghai] = new(
-                NewPayload: EngineApiVersions.NewPayload.V2,
-                GetPayload: EngineApiVersions.GetPayload.V2,
-                Forkchoice: EngineApiVersions.Fcu.V2,
-                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
-                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
-            [Cancun] = new(
-                NewPayload: EngineApiVersions.NewPayload.V3,
-                GetPayload: EngineApiVersions.GetPayload.V3,
-                Forkchoice: EngineApiVersions.Fcu.V3,
-                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
-                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
-            [Prague] = new(
-                NewPayload: EngineApiVersions.NewPayload.V4,
-                GetPayload: EngineApiVersions.GetPayload.V4,
-                Forkchoice: EngineApiVersions.Fcu.V3,
-                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
-                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
-            [Osaka] = new(
-                NewPayload: EngineApiVersions.NewPayload.V4,
-                GetPayload: EngineApiVersions.GetPayload.V5,
-                Forkchoice: EngineApiVersions.Fcu.V3,
-                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
-                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
-            [Amsterdam] = new(
-                NewPayload: EngineApiVersions.NewPayload.V5,
-                GetPayload: EngineApiVersions.GetPayload.V6,
-                Forkchoice: EngineApiVersions.Fcu.V4,
-                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V2,
-                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V2),
-        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
-
     public static int? MapForkToVersion(string fork, string resource, string httpMethod)
     {
-        if (!_forkVersions.TryGetValue(fork, out ForkVersions v)) return null;
+        if (!_forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec)) return null;
 
-        // Resource comparisons are case-insensitive to match the previous behaviour
-        // (URL segments are lowercase per spec, but routing accepts any case).
+        // Resource comparisons are case-insensitive (URL segments are lowercase per spec,
+        // but routing accepts any case).
         if (string.Equals(httpMethod, "POST", StringComparison.Ordinal))
         {
-            if (Eq(resource, Payloads)) return v.NewPayload;
-            if (Eq(resource, Forkchoice)) return v.Forkchoice;
-            if (Eq(resource, PayloadBodiesByHash)) return v.BodiesByHash;
+            if (Eq(resource, Payloads)) return spec.EngineApiNewPayloadVersion;
+            if (Eq(resource, Forkchoice)) return spec.EngineApiForkchoiceVersion;
+            if (Eq(resource, PayloadBodiesByHash)) return spec.EngineApiPayloadBodiesByHashVersion;
         }
         else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
         {
-            if (Eq(resource, Payloads)) return v.GetPayload;
-            if (Eq(resource, PayloadBodiesByRange)) return v.BodiesByRange;
+            if (Eq(resource, Payloads)) return spec.EngineApiGetPayloadVersion;
+            if (Eq(resource, PayloadBodiesByRange)) return spec.EngineApiPayloadBodiesByRangeVersion;
         }
 
         return null;

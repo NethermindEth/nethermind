@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus;
 using Nethermind.Core;
 
 namespace Nethermind.Specs.Forks;
@@ -22,5 +23,9 @@ public class Prague() : NamedReleaseSpec<Prague>(Cancun.Instance)
         spec.TargetBlobCount = 6;
         spec.BlobBaseFeeUpdateFraction = 5007716;
         spec.DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
+        spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V4;
+        spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V4;
+        // forkchoice version inherits V3 from Cancun
+        // bodies versions inherit V1 from Shanghai
     }
 }
