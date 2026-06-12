@@ -376,17 +376,12 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         int count = children.Length;
         ref HsstBTreeBuilderBuffers bufs = ref _buffers;
 
-        // Per-child separator length: natural LCP-derived length widened to at least
-        // the child's own planner-picked prefix so the parent slot can hand the child
-        // every byte of its CommonKeyPrefix at descent time. Backed by a reused list
-        // so back-to-back Builds reuse the buffer.
+        // Per-child separator length (see SeparatorLength). Backed by a reused list so
+        // back-to-back Builds reuse the buffer.
         NativeMemoryList<int> sepLengthsList = bufs.IndexSepLengthsScratch;
         sepLengthsList.Clear();
         for (int i = 0; i < count; i++)
-        {
-            int natural = Math.Min(commonPrefixArr[children[i].FirstEntry] + 1, _keyLength);
-            sepLengthsList.Add(Math.Max(natural, children[i].PrefixLen));
-        }
+            sepLengthsList.Add(SeparatorLength(children[i], commonPrefixArr));
         Span<int> sepLengths = sepLengthsList.AsSpan();
 
         // ComputeLayout derives the cross-entry LCP from the shared per-entry LCP array
@@ -453,6 +448,19 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         nodePrefixLen = prefixLen;
     }
 
+    /// <summary>
+    /// Stored separator length for <paramref name="child"/>: the larger of the routing length and
+    /// the child's own picked prefix. Routing length = <c>min(LCP + 1, keyLength)</c>, where the LCP
+    /// (<paramref name="commonPrefixArr"/> at the child's first entry; by the adjacency invariant
+    /// that's the prefix shared with the previous subtree's last key) plus one distinguishing byte
+    /// is enough to route to the child. The separator is then widened to at least
+    /// <see cref="HsstIndexNodeInfo.PrefixLen"/> so the parent slot carries every byte of the child's
+    /// own CommonKeyPrefix down to it at descent time.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int SeparatorLength(HsstIndexNodeInfo child, scoped ReadOnlySpan<byte> commonPrefixArr)
+        => Math.Max(Math.Min(commonPrefixArr[child.FirstEntry] + 1, _keyLength), child.PrefixLen);
+
     /// <summary>Pick the next intermediate node's child count: accumulate values + keys bytes until the next child would exceed <see cref="MaxIntermediateBytes"/>, capped at <see cref="MaxIntermediateEntries"/>, always at least one child.</summary>
     private int ChooseIntermediateChildCount(
         scoped ReadOnlySpan<HsstIndexNodeInfo> level,
@@ -465,15 +473,11 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         int hardMax = Math.Min(MaxIntermediateEntries, remaining);
         if (hardMax <= 1) return hardMax;
 
-        // Slot 0 carries a separator just like every other slot: the natural
-        // LCP-derived length widened to at least the child's own planner-picked
-        // prefix (WriteIndexNode applies max(natural, PrefixLen) to every slot,
-        // index 0 included). Seed maxSepLen / commonLen / firstSep from that same
-        // length so the heuristic models what the writer emits — for a non-first
-        // group the boundary LCP can exceed firstChild.PrefixLen.
+        // Slot 0 carries a separator just like every other slot (see SeparatorLength), so seed
+        // maxSepLen / commonLen / firstSep from it — the heuristic then models what the writer
+        // emits. For a non-first group the boundary LCP can exceed firstChild.PrefixLen.
         HsstIndexNodeInfo firstChild = level[startIdx];
-        int firstNaturalSep = Math.Min(commonPrefixArr[firstChild.FirstEntry] + 1, _keyLength);
-        int firstSepLen = Math.Max(firstNaturalSep, firstChild.PrefixLen);
+        int firstSepLen = SeparatorLength(firstChild, commonPrefixArr);
         int childCount = 1;
         // Max separator length seen so far. Drives both the split heuristic (forcing a
         // split when the next child would widen the planner's Uniform key slot) and the
@@ -501,13 +505,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             // Index in `level` of the candidate child being considered for this group.
             int currentIdx = startIdx + childCount;
             HsstIndexNodeInfo curr = level[currentIdx];
-            // Adjacency invariant: prev.LastEntry == curr.FirstEntry - 1, so
-            // commonPrefixArr[curr.FirstEntry] is exactly LCP(leftKey, rightKey).
-            // Natural separator length is min(LCP + 1, _keyLength); the actual stored
-            // length is widened to at least curr.PrefixLen so the parent's separator
-            // carries every byte of the child's prefix at descent time.
-            int naturalSep = Math.Min(commonPrefixArr[curr.FirstEntry] + 1, _keyLength);
-            int sepLen = Math.Max(naturalSep, curr.PrefixLen);
+            int sepLen = SeparatorLength(curr, commonPrefixArr);
             // curr's first-key sits at slot currentIdx of levelFirstKeys.
             ReadOnlySpan<byte> sepBuf = sepLen > 0
                 ? levelFirstKeys.Slice(currentIdx * _keyLength, sepLen)
@@ -553,8 +551,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             if (next2Idx < level.Length)
             {
                 HsstIndexNodeInfo next2 = level[next2Idx];
-                int next2NaturalSep = Math.Min(commonPrefixArr[next2.FirstEntry] + 1, _keyLength);
-                int next2SepLen = Math.Max(next2NaturalSep, next2.PrefixLen);
+                int next2SepLen = SeparatorLength(next2, commonPrefixArr);
                 if (next2SepLen > effMaxSepLen) effMaxSepLen = next2SepLen;
 
                 // Chain the running group prefix against next2's separator bytes, capped at
@@ -618,16 +615,12 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     }
 
     /// <summary>
-    /// If the writer is within <see cref="PageLayout.PadThreshold"/> bytes of the
-    /// next 4 KiB boundary, pad up to that boundary so the next node starts on a
-    /// fresh page. Companion to <see cref="WouldCrossNewPage"/>: the page-crossing
-    /// heuristic stops a node growing into the next page, but the next node would
-    /// then start at the seam and be guaranteed to cross. Padding bytes are inert:
-    /// parent nodes record exact child offsets, so readers never look at the
-    /// padding region. Caller must avoid invoking this after the very last node
-    /// (root) — the trailer formula <c>root_start = HSST_end - 4 - rootSize</c>
-    /// assumes the trailer abuts the root, and any padding between them would
-    /// offset the computed root start.
+    /// Companion to <see cref="WouldCrossNewPage"/>: when the writer sits within
+    /// <see cref="PageLayout.PadThreshold"/> of the next 4 KiB boundary, pad to it so the following
+    /// node doesn't start at the seam and immediately cross. Pad bytes are inert (parent nodes
+    /// record exact child offsets, so readers never look at them). Must not run after the final
+    /// (root) node — the trailer formula <c>root_start = HSST_end - 4 - rootSize</c> assumes the
+    /// trailer abuts the root, so padding between them would offset the computed root start.
     /// </summary>
     private void MaybePadToNextPage()
     {
