@@ -52,8 +52,8 @@ public sealed class CapabilitiesSszHandler(ISpecProvider specProvider) : SszEndp
               },
               "unscoped_endpoints": ["capabilities", "identity"],
               "limits": {
-                "bodies.max_count": 32,
-                "blobs.max_versioned_hashes": 128,
+                "bodies.max_count": {{SszRestLimits.MaxBodiesRequest}},
+                "blobs.max_versioned_hashes": {{SszRestLimits.MaxBlobsRequest}},
                 "payload.max_bytes": {{SszMiddleware.MaxBodySize}}
               }
             }

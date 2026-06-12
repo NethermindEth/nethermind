@@ -41,11 +41,11 @@ public static class SszCodec
             if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
             if (hex.Length != 16)
                 throw new InvalidOperationException($"Invalid payload id '{resp.PayloadId}': expected 16 hex chars, got {hex.Length}");
-            Span<byte> idSpan = stackalloc byte[8];
-            Bytes.FromHexString(hex, idSpan);
             // ByteVector[8]: transmitted as-is (no LE flip — the bytes are already the
             // opaque token; the spec says treat payload_id as opaque bytes, not a uint64).
-            pidList = [new SszPayloadId { Bytes = idSpan.ToArray() }];
+            byte[] idBytes = new byte[8];
+            Bytes.FromHexString(hex, idBytes);
+            pidList = [new SszPayloadId { Bytes = idBytes }];
         }
 
         return EncodeToWriter(new ForkchoiceUpdatedResponseWire

@@ -434,7 +434,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Unknown_engine_path_returns_404()
+    public async Task Unknown_engine_path_returns_404_without_delegating_to_next()
     {
         bool nextInvoked = false;
         SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
@@ -446,24 +446,13 @@ public class SszMiddlewareTests
         Assert.That(nextInvoked, Is.False, "SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
     }
 
-    [Test]
-    public async Task Post_payloads_with_unknown_extra_returns_404_not_500()
+    // Each case is a different routing rejection that must NOT reach the engine module: unknown resource,
+    // extra segments on a non-AcceptsPathExtra handler, runs of '/' inside the path.
+    [TestCase("/payloads/foo/bar", TestName = "Extra_segments_on_non_path_handler_404")]
+    [TestCase("/payloads//abc", TestName = "Consecutive_slashes_404")]
+    public async Task POST_with_malformed_fork_path_returns_404(string suffix)
     {
-        // Extra segments on a non-AcceptsPathExtra resource must be 404, not silently dispatched.
-        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads/foo/bar", []);
-
-        await _middleware.InvokeAsync(ctx);
-
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
-        await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
-    }
-
-    [Test]
-    public async Task Path_with_consecutive_slashes_returns_404()
-    {
-        // TryRoute must reject runs of '/' so that //abc does not reach
-        // the payload-id parser and produce a confusing parse error.
-        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}/payloads//abc", []);
+        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Paris}{suffix}", []);
 
         await _middleware.InvokeAsync(ctx);
 
@@ -832,35 +821,30 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
     }
 
-    [Test]
-    public async Task Trailing_slash_on_fork_scoped_path_returns_404()
+    // Trailing slashes and unknown extra path segments must both 404 — spec forbids trailing slashes
+    // and handlers without AcceptsPathExtra must reject stray segments.
+    [TestCase("POST", "/engine/v2/" + SszRestPaths.Cancun + "/forkchoice/", true, TestName = "POST_trailing_slash_fork_scoped_404")]
+    [TestCase("GET", "/engine/v2/capabilities/", false, TestName = "GET_trailing_slash_diagnostic_404")]
+    [TestCase("POST", "/engine/v2/" + SszRestPaths.Cancun + "/forkchoice/whatever", false, TestName = "POST_unknown_extra_on_forkchoice_404")]
+    public async Task Malformed_or_trailing_path_returns_404(string method, string path, bool assertMethodNotFoundBody)
     {
-        DefaultHttpContext ctx = MakePostContext($"/engine/v2/{SszRestPaths.Cancun}/forkchoice/", []);
-        await _middleware.InvokeAsync(ctx);
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
-        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-        Assert.That(body, Does.Contain("method-not-found"));
-    }
-
-    [Test]
-    public async Task Trailing_slash_on_get_path_returns_404()
-    {
-        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v2/capabilities/", AuthenticatedPort);
-        ctx.Request.Headers.Accept = "application/json";
-        ctx.Request.Body = Stream.Null;
-        await _middleware.InvokeAsync(ctx);
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
-    }
-
-    [TestCase("/engine/v2/" + SszRestPaths.Cancun + "/forkchoice/whatever")]
-    [TestCase("/engine/v2/" + SszRestPaths.Paris + "/payloads/foo/bar")]
-    public async Task Extra_path_segment_on_non_accepting_handler_returns_404(string path)
-    {
-        DefaultHttpContext ctx = MakePostContext(path, []);
+        DefaultHttpContext ctx = method == "POST"
+            ? MakePostContext(path, [])
+            : MakeBaseContext("GET", path, AuthenticatedPort);
+        if (method == "GET")
+        {
+            ctx.Request.Headers.Accept = "application/json";
+            ctx.Request.Body = Stream.Null;
+        }
 
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+        if (assertMethodNotFoundBody)
+        {
+            string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+            Assert.That(body, Does.Contain("method-not-found"));
+        }
     }
 
     [Test]

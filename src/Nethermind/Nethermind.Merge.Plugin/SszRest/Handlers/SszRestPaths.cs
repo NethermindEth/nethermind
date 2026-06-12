@@ -87,7 +87,7 @@ public static class SszRestPaths
     public const string PostV4Blobs = "POST /engine/v2/blobs/v4";
 
     private static readonly FrozenDictionary<(string Fork, string Resource, string Method), int> s_forkVersionMap =
-        new Dictionary<(string, string, string), int>
+        new Dictionary<(string Fork, string Resource, string Method), int>(ForkVersionKeyComparer.Instance)
         {
             // newPayload (POST payloads)
             [(Paris, Payloads, "POST")] = 1,
@@ -128,10 +128,26 @@ public static class SszRestPaths
             [(Prague, PayloadBodiesByRange, "GET")] = 1,
             [(Osaka, PayloadBodiesByRange, "GET")] = 1,
             [(Amsterdam, PayloadBodiesByRange, "GET")] = 2,
-        }.ToFrozenDictionary();
+        }.ToFrozenDictionary(ForkVersionKeyComparer.Instance);
 
     public static int? MapForkToVersion(string fork, string resource, string httpMethod) =>
-        s_forkVersionMap.TryGetValue((fork.ToLowerInvariant(), resource.ToLowerInvariant(), httpMethod), out int version)
+        s_forkVersionMap.TryGetValue((fork, resource, httpMethod), out int version)
             ? version
             : null;
+
+    private sealed class ForkVersionKeyComparer : IEqualityComparer<(string Fork, string Resource, string Method)>
+    {
+        public static readonly ForkVersionKeyComparer Instance = new();
+
+        public bool Equals((string Fork, string Resource, string Method) x, (string Fork, string Resource, string Method) y) =>
+            string.Equals(x.Fork, y.Fork, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(x.Resource, y.Resource, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(x.Method, y.Method, StringComparison.Ordinal);
+
+        public int GetHashCode((string Fork, string Resource, string Method) obj) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Fork),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Resource),
+                obj.Method);
+    }
 }

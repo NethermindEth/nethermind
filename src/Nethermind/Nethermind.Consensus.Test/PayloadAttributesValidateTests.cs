@@ -12,69 +12,60 @@ namespace Nethermind.Consensus.Test;
 
 public class PayloadAttributesValidateTests
 {
-    private static PayloadAttributes ValidV3Attributes(ulong timestamp = 1_000UL) => new()
+    private static PayloadAttributes BuildAttrs(bool withSlotNumber, ulong timestamp = 1_000UL) => new()
     {
         Timestamp = timestamp,
         PrevRandao = Keccak.Zero,
         SuggestedFeeRecipient = Address.Zero,
         Withdrawals = [],
         ParentBeaconBlockRoot = Keccak.Zero,
-        SlotNumber = null,
+        SlotNumber = withSlotNumber ? 42UL : null,
     };
 
     private static ISpecProvider MakeSpecProvider(bool isAmsterdam)
     {
         ISpecProvider sp = Substitute.For<ISpecProvider>();
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-
         spec.IsEip7843Enabled.Returns(isAmsterdam);
         spec.IsEip4844Enabled.Returns(true);
         spec.WithdrawalsEnabled.Returns(true);
-
         sp.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
         return sp;
     }
 
-    [Test]
-    public void Validate_returns_specific_field_error_when_V4_fields_absent_on_Amsterdam_timestamp()
+    // Each case asserts a distinct branch of PayloadAttributes.Validate against the spec.
+    // mustContain/mustNotContain are checked when non-null.
+    private static readonly object[] s_validateCases =
+    [
+        new object[] { /* isAmsterdam */ true,  /* withSlot */ false, /* fcu */ PayloadAttributesVersions.V4,
+            PayloadAttributesValidationResult.InvalidPayloadAttributes, "must be provided", "expected" },
+        new object[] { /* isAmsterdam */ true,  /* withSlot */ true,  /* fcu */ PayloadAttributesVersions.V4,
+            PayloadAttributesValidationResult.Success, null!, null! },
+        new object[] { /* isAmsterdam */ false, /* withSlot */ true,  /* fcu */ PayloadAttributesVersions.V3,
+            PayloadAttributesValidationResult.UnsupportedFork, null!, null! },
+    ];
+
+    [TestCaseSource(nameof(s_validateCases))]
+    public void Validate_returns_expected_result(
+        bool isAmsterdam, bool withSlotNumber, int fcuVersion,
+        PayloadAttributesValidationResult expected, string errorMustContain, string errorMustNotContain)
     {
-        ISpecProvider sp = MakeSpecProvider(isAmsterdam: true);
-        PayloadAttributes attrs = ValidV3Attributes();
+        ISpecProvider sp = MakeSpecProvider(isAmsterdam);
+        PayloadAttributes attrs = BuildAttrs(withSlotNumber);
 
-        PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion: PayloadAttributesVersions.V4, out string error);
+        PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion, out string error);
 
-        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
-        Assert.That(error, Is.Not.Null);
-        Assert.That(error, Does.Contain("must be provided"),
-            "Error should identify which V4 field is missing, not emit a generic version-mismatch message.");
-        Assert.That(error, Does.Not.Contain("expected"),
-            "A 'V4 expected' version-mismatch error would obscure the real problem (missing field).");
-    }
-
-    [Test]
-    public void Validate_succeeds_for_complete_V4_attributes_on_Amsterdam_timestamp()
-    {
-        ISpecProvider sp = MakeSpecProvider(isAmsterdam: true);
-        PayloadAttributes attrs = ValidV3Attributes();
-        attrs.SlotNumber = 42UL;
-
-        PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion: PayloadAttributesVersions.V4, out string error);
-
-        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.Success));
-        Assert.That(error, Is.Null);
-    }
-
-    [Test]
-    public void Validate_returns_UnsupportedFork_when_V4_attrs_sent_to_V3_spec()
-    {
-        ISpecProvider sp = MakeSpecProvider(isAmsterdam: false);
-        PayloadAttributes attrs = ValidV3Attributes();
-        attrs.SlotNumber = 42UL;
-
-        PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion: PayloadAttributesVersions.V3, out string error);
-
-        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.UnsupportedFork));
-        Assert.That(error, Is.Not.Null);
+        Assert.That(result, Is.EqualTo(expected));
+        if (expected == PayloadAttributesValidationResult.Success)
+        {
+            Assert.That(error, Is.Null);
+        }
+        else
+        {
+            Assert.That(error, Is.Not.Null);
+            if (errorMustContain is not null) Assert.That(error, Does.Contain(errorMustContain));
+            if (errorMustNotContain is not null) Assert.That(error, Does.Not.Contain(errorMustNotContain));
+        }
     }
 
     [TestCase(false, PayloadAttributesVersions.V1)]

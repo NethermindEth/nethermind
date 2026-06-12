@@ -28,6 +28,13 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineR
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body);
+        if (hashes.Length > SszRestLimits.MaxBodiesRequest)
+        {
+            await WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge,
+                $"hash count {hashes.Length} exceeds the limit of {SszRestLimits.MaxBodiesRequest}",
+                MergeErrorCodes.TooLargeRequest);
+            return;
+        }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
         await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }

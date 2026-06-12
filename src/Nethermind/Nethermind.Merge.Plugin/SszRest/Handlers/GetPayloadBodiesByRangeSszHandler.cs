@@ -20,9 +20,6 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     where TVersion : struct, IPayloadBodiesByRangeVersion<TResult>
     where TResult : class
 {
-    // per spec: MAX_BODIES_REQUEST = 2**5 = 32. The previous value of 128 matched MAX_BLOBS_REQUEST but contradicted the bodies spec.
-    private const int MaxPayloadBodiesRequest = 32;
-
     public override string HttpMethod => "GET";
     public override string Resource => SszRestPaths.PayloadBodiesByRange;
     public override int? Version => TVersion.VersionNumber;
@@ -44,10 +41,10 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
                 SszRestErrorCodes.InvalidRequest);
             return;
         }
-        if (count > MaxPayloadBodiesRequest)
+        if (count > SszRestLimits.MaxBodiesRequest)
         {
             await WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge,
-                $"count {count} exceeds the limit of {MaxPayloadBodiesRequest}",
+                $"count {count} exceeds the limit of {SszRestLimits.MaxBodiesRequest}",
                 MergeErrorCodes.TooLargeRequest);
             return;
         }

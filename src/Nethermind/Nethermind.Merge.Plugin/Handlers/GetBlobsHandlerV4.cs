@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -16,9 +17,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>
 {
     private const int MaxRequest = 128;
-
-    private static readonly Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> NotFound =
-        Task.FromResult(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(null));
+    private const int CellsBufferSize = Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell;
 
     public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> HandleAsync(GetBlobsHandlerV4Request request)
     {
@@ -39,45 +38,51 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
 
         BlobCellsAndProofs?[] response = new BlobCellsAndProofs?[n];
 
-        for (int i = 0; i < n; i++)
+        // Reuse one large scratch buffer for ComputeCells across all blobs in this request.
+        byte[] cellsBuffer = ArrayPool<byte>.Shared.Rent(CellsBufferSize);
+        try
         {
-            byte[]? blob = blobs[i];
-            if (blob is null)
+            Span<byte> cellsSpan = cellsBuffer.AsSpan(0, CellsBufferSize);
+
+            for (int i = 0; i < n; i++)
             {
-                response[i] = null;
-                continue;
-            }
-
-            // We have the blob and proofs for this blob.
-            // Let's compute all 128 cells.
-            byte[] cellsBuffer = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell];
-            KzgPolynomialCommitments.ComputeCells(blob, cellsBuffer);
-
-            byte[]?[] blobCells = new byte[Ckzg.CellsPerExtBlob][];
-            byte[]?[] cellProofs = new byte[Ckzg.CellsPerExtBlob][];
-
-            ReadOnlySpan<byte[]> blobProofs = proofs[i].Span;
-
-            for (int cellIdx = 0; cellIdx < Ckzg.CellsPerExtBlob; cellIdx++)
-            {
-                if (request.IndicesBitarray.Get(cellIdx))
+                byte[]? blob = blobs[i];
+                if (blob is null)
                 {
+                    response[i] = null;
+                    continue;
+                }
+
+                KzgPolynomialCommitments.ComputeCells(blob, cellsSpan);
+
+                byte[]?[] blobCells = new byte[Ckzg.CellsPerExtBlob][];
+                byte[]?[] cellProofs = new byte[Ckzg.CellsPerExtBlob][];
+                ReadOnlySpan<byte[]> blobProofs = proofs[i].Span;
+
+                for (int cellIdx = 0; cellIdx < Ckzg.CellsPerExtBlob; cellIdx++)
+                {
+                    if (!request.IndicesBitarray.Get(cellIdx)) continue;
+
                     byte[] cell = new byte[Ckzg.BytesPerCell];
-                    Buffer.BlockCopy(cellsBuffer, cellIdx * Ckzg.BytesPerCell, cell, 0, Ckzg.BytesPerCell);
+                    cellsSpan.Slice(cellIdx * Ckzg.BytesPerCell, Ckzg.BytesPerCell).CopyTo(cell);
                     blobCells[cellIdx] = cell;
 
                     byte[] cellProof = new byte[Ckzg.BytesPerProof];
-                    Buffer.BlockCopy(blobProofs[cellIdx], 0, cellProof, 0, Ckzg.BytesPerProof);
+                    blobProofs[cellIdx].AsSpan(0, Ckzg.BytesPerProof).CopyTo(cellProof);
                     cellProofs[cellIdx] = cellProof;
                 }
-            }
 
-            response[i] = new BlobCellsAndProofs
-            {
-                Available = true,
-                BlobCells = blobCells,
-                Proofs = cellProofs
-            };
+                response[i] = new BlobCellsAndProofs
+                {
+                    Available = true,
+                    BlobCells = blobCells,
+                    Proofs = cellProofs
+                };
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(cellsBuffer);
         }
 
         Metrics.GetBlobsRequestsSuccessTotal++;

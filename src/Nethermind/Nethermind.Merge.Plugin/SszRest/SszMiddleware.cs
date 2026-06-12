@@ -80,14 +80,14 @@ public sealed class SszMiddleware
 
         foreach (ISszEndpointHandler h in handlers)
         {
-            string resource = h.Resource.ToLowerInvariant();
+            // Dictionaries are keyed case-insensitively below — keep resource as-is, no lowercasing.
             Dictionary<string, List<ISszEndpointHandler>> dict =
                 h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
                     ? getDict
                     : postDict;
 
-            if (!dict.TryGetValue(resource, out List<ISszEndpointHandler>? list))
-                dict[resource] = list = [];
+            if (!dict.TryGetValue(h.Resource, out List<ISszEndpointHandler>? list))
+                dict[h.Resource] = list = [];
 
             list.Add(h);
         }
@@ -316,21 +316,24 @@ public sealed class SszMiddleware
         }
 
         ReadOnlySpan<char> forkSpan = span[..nextSlash];
-        string forkStr = forkSpan.ToString().ToLowerInvariant();
-        // SszRestPaths.SupportedForks is the single source of truth for recognised fork names.
-        if (!SszRestPaths.SupportedForks.Contains(forkStr))
+        // SszRestPaths.SupportedForks uses OrdinalIgnoreCase, so no lowercasing needed.
+        if (!SszRestPaths.SupportedForks.GetAlternateLookup<ReadOnlySpan<char>>().Contains(forkSpan))
         {
-            if (forkStr.StartsWith("v") && forkStr.Length > 1 && int.TryParse(forkStr.AsSpan(1), out _))
+            // Reject `/engine/v2/v<N>/...` (looks like a version-only path with no fork) before
+            // emitting an unsupported-fork error — let the caller produce a 404 instead.
+            if (forkSpan.Length > 1
+                && (forkSpan[0] == 'v' || forkSpan[0] == 'V')
+                && int.TryParse(forkSpan[1..], out _))
             {
                 return false;
             }
 
-            fork = forkStr;
+            fork = forkSpan.ToString();
             unsupportedFork = true;
             return false;
         }
 
-        fork = forkStr;
+        fork = forkSpan.ToString();
         if (nextSlash < span.Length)
         {
             offset += nextSlash + 1;

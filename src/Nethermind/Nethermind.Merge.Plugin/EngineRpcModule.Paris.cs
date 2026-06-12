@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,12 +41,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
         => NewPayload(executionPayload, EngineApiVersions.NewPayload.V1);
 
-    protected Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(
-        ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
-        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, version, custodyColumns: null);
-
     protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(
-        ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version, BitArray? custodyColumns)
+        ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         _engineRequestsTracker.OnForkchoiceUpdatedCalled();
         if (await _locker.WaitAsync(_timeout))
