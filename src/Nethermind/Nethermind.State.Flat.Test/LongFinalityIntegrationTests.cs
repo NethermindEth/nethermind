@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Core;
@@ -317,6 +318,7 @@ public class LongFinalityIntegrationTests
             Substitute.For<IPersistedSnapshotLoader>(),
             _config,
             new BlocksConfig(),
+            new SyncConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false);
 
@@ -411,6 +413,7 @@ public class LongFinalityIntegrationTests
             tier.Resolve<IStateHeaderProvider>(),
             persistence,
             tier.Repository,
+            tier.ResourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             Substitute.For<IPersistedSnapshotCompactor>(),

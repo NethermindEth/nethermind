@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -48,6 +49,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _clearBundleCacheTask;
 
     private readonly int _compactSize;
+    private readonly bool _earlyPersist;
+    private readonly long _historicalWindow;
     private readonly TimeSpan _compactorStallTimeout;
 
     // For debugging. Do the compaction synchronously
@@ -68,6 +71,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IPersistedSnapshotLoader persistedSnapshotLoader,
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
+        ISyncConfig syncConfig,
         ILogManager logManager,
         bool enableDetailedMetrics)
     {
@@ -85,6 +89,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         config.ValidateCompactSize();
         _compactSize = (int)config.CompactSize;
+        _earlyPersist = config.EarlyPersist;
+        _historicalWindow = (long)syncConfig.SnapServingMaxDepth;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
         // least. If block processing is stalled for longer than this, persistence is simply too slow
@@ -185,6 +191,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
+
+        // In early-persist mode the canonical chain at or below the persisted state is archived (kept for
+        // snap serving as reverse diffs) instead of removed; the reverse-serving window is then pruned to
+        // head - SnapServingMaxDepth. The non-early path already dropped those states inside AddToPersistence.
+        if (_earlyPersist)
+        {
+            _snapshotRepository.ArchiveStatesUntil(currentPersistedStateId);
+            _snapshotRepository.PruneHistory((long)latestSnapshot.BlockNumber - _historicalWindow, currentPersistedStateId);
+        }
 
         long removedBaseSnapshotCount = _snapshotRepository.RemovedBaseSnapshotCount;
         if (currentPersistedStateId != _lastClearedPersistedStateId
@@ -333,10 +348,20 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             AssembledSnapshotResult assembled;
             try
             {
-                assembled = _snapshotRepository.AssembleSnapshots(
-                    baseBlock,
-                    persistenceReader.CurrentState,
-                    estimatedSize: Math.Max(1, _snapshotRepository.SnapshotCount / _compactSize));
+                StateId persistedState = persistenceReader.CurrentState;
+                // Below the persisted state there is no live snapshot chain; early-persist keeps that window
+                // as reverse diffs, assembled into an in-memory-only stack (no persisted-tier entries).
+                // Signed compare: a PreGenesis persisted state (ulong.MaxValue) must read as "nothing
+                // persisted" so no block is mistaken for historical.
+                bool isHistorical = _earlyPersist && (long)baseBlock.BlockNumber < (long)persistedState.BlockNumber;
+                assembled = isHistorical
+                    ? new AssembledSnapshotResult(
+                        _snapshotRepository.AssembleHistoricalSnapshots(baseBlock, persistedState, estimatedSize: _compactSize),
+                        PersistedSnapshotList.Empty())
+                    : _snapshotRepository.AssembleSnapshots(
+                        baseBlock,
+                        persistedState,
+                        estimatedSize: Math.Max(1, _snapshotRepository.SnapshotCount / _compactSize));
             }
             catch (Exception)
             {
@@ -345,7 +370,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             }
 
             // Empty result + reader not at baseBlock means the path was removed concurrently;
-            // retry unless baseBlock itself was pruned (orphaned), which no retry can recover.
+            // retry unless baseBlock itself was pruned (orphaned) or fell out of the historical serving
+            // window, which no retry can recover.
             if (assembled.SnapshotCount == 0 && persistenceReader.CurrentState != baseBlock)
             {
                 assembled.Dispose();
@@ -522,6 +548,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState == StateId.PreGenesis) return;
 
+        // Non-early: FlushToPersistence already removed the superseded states. Early-persist keeps the
+        // canonical chain below the persisted state as reverse diffs instead, then prunes the window.
+        if (_earlyPersist)
+        {
+            _snapshotRepository.ArchiveStatesUntil(persistedState);
+            _snapshotRepository.PruneHistory((long)persistedState.BlockNumber - _historicalWindow, persistedState);
+        }
+
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();
 
@@ -532,6 +566,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     {
         if (_snapshotRepository.HasState(stateId)) return true;
         if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
+        if (_earlyPersist && _snapshotRepository.HasHistoricalState(stateId)) return true;
         return false;
     }
 

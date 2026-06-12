@@ -16,6 +16,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     ulong CompactSize { get; set; }
 
+    [ConfigItem(Description = "Persist state at the finalized compaction boundary instead of keeping MinReorgDepth blocks in memory. Historical state for snap serving is kept as in-memory reverse diffs.", DefaultValue = "false")]
+    bool EarlyPersist { get; set; }
+
     [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
     bool Enabled { get; set; }
 

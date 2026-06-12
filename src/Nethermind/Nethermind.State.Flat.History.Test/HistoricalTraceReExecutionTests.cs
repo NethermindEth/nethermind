@@ -5,6 +5,7 @@ using Nethermind.Core.Extensions;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -183,6 +184,7 @@ public class HistoricalTraceReExecutionTests
         Substitute.For<IPersistedSnapshotLoader>(),
         new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, HistoryEnabled = true },
         _blocksConfig,
+        new SyncConfig(),
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 

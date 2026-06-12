@@ -31,6 +31,7 @@ public class PersistenceManager(
     IStateHeaderProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
+    IResourcePool resourcePool,
     IStatePersistenceBarrier persistenceBarrier,
     ILogManager logManager,
     IPersistedSnapshotCompactor compactor,
@@ -56,6 +57,7 @@ public class PersistenceManager(
     private readonly ulong _compactSize = configuration.CompactSize;
     private readonly long _maxInMemorySnapshotBytes = (long)configuration.MaxInMemorySnapshotBytes;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
+    private readonly bool _earlyPersist = configuration.EarlyPersist;
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
@@ -139,8 +141,11 @@ public class PersistenceManager(
         // MinReorgDepth is a floor on what stays reachable, so the gate is on the depth left *above*
         // the new base rather than the depth before the fold: folding is allowed only while the state
         // above nextBoundary still covers MinReorgDepth.
+        // Early-persist makes the finalized boundary the sole gate: the MinReorgDepth requirement
+        // is bypassed so the persisted state tracks finalized, and the snap-serving window below it is kept
+        // as reverse diffs instead of in-memory snapshots.
         if (finalizedBlockNumber >= nextBoundary
-            && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) >= _minReorgDepth)
+            && (_earlyPersist || latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) >= _minReorgDepth))
         {
             Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedHeader(nextBoundary)?.StateRoot;
             if (canonicalRoot is not null)
@@ -304,7 +309,9 @@ public class PersistenceManager(
                     CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
                     CurrentPersistedStateId = toPersist.To;
-                    snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
+                    // Early-persist keeps the chain below the persisted state as reverse diffs; FlatDbManager
+                    // archives and prunes it after the drain instead of removing it here.
+                    if (!_earlyPersist) snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
                 }
                 else if (persistedToPersist is not null)
                 {
@@ -520,7 +527,8 @@ public class PersistenceManager(
             PersistSnapshot(snapshotToPersist);
             CurrentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = CurrentPersistedStateId;
-            snapshotRepository.RemoveStatesUntil(snapshotToPersist.To.BlockNumber);
+            // Early-persist archives/prunes the below-persisted chain in FlatDbManager.FlushCache instead.
+            if (!_earlyPersist) snapshotRepository.RemoveStatesUntil(snapshotToPersist.To.BlockNumber);
         }
 
         return currentPersistedState;
@@ -565,9 +573,32 @@ public class PersistenceManager(
         // Usually at the start of the application
         if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
 
-        long sw = Stopwatch.GetTimestamp();
-        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
+        Snapshot? reverseDiff = null;
+        IPersistence.IPersistenceReader? oldStateReader = null;
+        if (_earlyPersist)
         {
+            if (HasIrreversibleSelfDestruct(snapshot))
+            {
+                // Reversing a self-destruct of an account with persisted storage would need all its old
+                // slots and storage trie nodes, which is unbounded. Collapse the serving window instead;
+                // it restarts at the new persisted state. Post EIP-6780 this effectively never happens.
+                snapshotRepository.ClearHistory();
+                Metrics.HistoricalWindowTruncations++;
+                if (_logger.IsDebug) _logger.Debug($"Snapshot {snapshot.To} self-destructs an account with persisted storage; truncating the historical serving window.");
+            }
+            else
+            {
+                // The reader sees the pre-batch state for the whole batch, so old values can be captured
+                // next to each overwriting write.
+                oldStateReader = persistence.CreateReader();
+                reverseDiff = resourcePool.CreateSnapshot(from: snapshot.To, to: snapshot.From, ResourcePool.Usage.ReverseDiff);
+            }
+        }
+
+        long sw = Stopwatch.GetTimestamp();
+        try
+        {
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To);
             foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
                 if (toSelfDestructStorage.Value)
@@ -580,12 +611,20 @@ public class PersistenceManager(
 
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
+                if (reverseDiff is not null) reverseDiff.Content.Accounts[kv.Key] = oldStateReader!.GetAccount(kv.Key.Key);
+
                 batch.SetAccount(kv.Key.Key, kv.Value);
             }
 
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
+
+                if (reverseDiff is not null)
+                {
+                    UInt256 oldValue = default;
+                    reverseDiff.Content.Storages[kv.Key] = oldStateReader!.TryGetSlot(addr, slot, ref oldValue) ? oldValue : null;
+                }
 
                 batch.SetStorage(addr, slot, kv.Value);
             }
@@ -600,6 +639,14 @@ public class PersistenceManager(
 
                 // TODO: Need to double check this case. Does it need a rewrite or not?
                 if (node.IsHashOnlyPlaceholder()) continue;
+
+                if (reverseDiff is not null)
+                {
+                    // A node absent at the old state is never reached when traversing from an old
+                    // root, so absent keys need no marker.
+                    byte[]? oldRlp = oldStateReader!.TryLoadStateRlp(path, ReadFlags.None);
+                    if (oldRlp is not null) reverseDiff.Content.StateNodes[new HashedKey<TreePath>(path)] = CreateOldStateNode(oldRlp);
+                }
 
                 stateNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
@@ -618,6 +665,12 @@ public class PersistenceManager(
                 // TODO: Need to double check this case. Does it need a rewrite or not?
                 if (node.IsHashOnlyPlaceholder()) continue;
 
+                if (reverseDiff is not null)
+                {
+                    byte[]? oldRlp = oldStateReader!.TryLoadStorageRlp(address, path, ReadFlags.None);
+                    if (oldRlp is not null) reverseDiff.Content.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = CreateOldStateNode(oldRlp);
+                }
+
                 storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
@@ -628,9 +681,41 @@ public class PersistenceManager(
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
             Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
         }
+        catch
+        {
+            reverseDiff?.Dispose();
+            throw;
+        }
+        finally
+        {
+            oldStateReader?.Dispose();
+        }
+
+        // Registered only after the batch commits so a reader can never see the diff alongside the old
+        // persisted state. The opposite window (new state, diff not yet registered) is covered by the
+        // bundle gather retry.
+        if (reverseDiff is not null && !snapshotRepository.TryAddReverseDiff(reverseDiff))
+        {
+            reverseDiff.Dispose();
+        }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
+
+    private static bool HasIrreversibleSelfDestruct(Snapshot snapshot)
+    {
+        foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+        {
+            // false marks an account whose storage already reached persistence; true is a same-tx
+            // created account with nothing on disk (nothing to reverse).
+            if (!toSelfDestructStorage.Value) return true;
+        }
+
+        return false;
+    }
+
+    private static TrieNode CreateOldStateNode(byte[] rlp) =>
+        new(NodeType.Unknown, Keccak.Compute(rlp), rlp) { IsPersisted = true };
 
     internal void PersistPersistedSnapshot(PersistedSnapshot snapshot)
     {
@@ -680,5 +765,4 @@ public class PersistenceManager(
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
     }
-
 }

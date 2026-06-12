@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -91,6 +92,7 @@ public class FlatDbManagerTests
         _persistedSnapshotLoader,
         _config,
         _blocksConfig,
+        new SyncConfig(),
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
@@ -160,6 +162,21 @@ public class FlatDbManagerTests
         bool result = manager.HasStateForBlock(stateId);
 
         Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public async Task HasStateForBlock_HistoricalStateInEarlyPersistMode_ReturnsTrueOnlyWhenEarlyPersist([Values] bool earlyPersist)
+    {
+        _config.EarlyPersist = earlyPersist;
+        StateId stateId = CreateStateId(10);
+        _snapshotRepository.HasState(stateId).Returns(false);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(20));
+        _snapshotRepository.HasHistoricalState(stateId).Returns(true);
+
+        await using FlatDbManager manager = CreateManager();
+        bool result = manager.HasStateForBlock(stateId);
+
+        Assert.That(result, Is.EqualTo(earlyPersist));
     }
 
     // Regression: flushing on dispose persisted the unfinalized tail as the single RocksDB state, so a
@@ -356,6 +373,71 @@ public class FlatDbManagerTests
             _persistenceManager.Received(1).LeaseReader(ReaderFlags.None);
             _persistenceManager.Received(2).LeaseReader(ReaderFlags.FullScan);
         }
+    }
+
+    [Test]
+    public async Task FlushCache_EarlyPersistFlag_ArchivesInsteadOfRemoves([Values] bool earlyPersist)
+    {
+        _config.EarlyPersist = earlyPersist;
+        StateId persisted = CreateStateId(10);
+        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(persisted);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.FlushCache(CancellationToken.None);
+
+        if (earlyPersist)
+        {
+            _snapshotRepository.Received(1).ArchiveStatesUntil(persisted);
+            _snapshotRepository.Received(1).PruneHistory(Arg.Any<long>(), persisted);
+        }
+        else
+        {
+            // Non-early cleanup is delegated to PersistenceManager.FlushToPersistence (mocked here);
+            // FlushCache itself must not touch the historical/archive path.
+            _snapshotRepository.DidNotReceive().ArchiveStatesUntil(Arg.Any<StateId>());
+            _snapshotRepository.DidNotReceive().PruneHistory(Arg.Any<long>(), Arg.Any<StateId>());
+        }
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_BelowPersistedState_UsesHistoricalAssembly()
+    {
+        _config.EarlyPersist = true;
+        StateId persisted = CreateStateId(20);
+        StateId historical = CreateStateId(10);
+        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
+        mockReader.CurrentState.Returns(persisted);
+        _persistenceManager.LeaseReader().Returns(mockReader);
+
+        ResourcePool realResourcePool = new(_config);
+        Snapshot reverseDiff = realResourcePool.CreateSnapshot(persisted, historical, ResourcePool.Usage.ReverseDiff);
+        _snapshotRepository.AssembleHistoricalSnapshots(historical, persisted, Arg.Any<int>())
+            .Returns(FlatTestHelpers.SnapshotList(reverseDiff));
+
+        await using FlatDbManager manager = CreateManager();
+        using (ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(historical))
+        {
+            Assert.That(bundle.SnapshotCount, Is.EqualTo(1));
+        }
+        _snapshotRepository.DidNotReceive().AssembleSnapshots(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<int>());
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_HistoricalStatePruned_ThrowsStateUnavailable()
+    {
+        _config.EarlyPersist = true;
+        StateId persisted = CreateStateId(20);
+        StateId pruned = CreateStateId(5);
+        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
+        mockReader.CurrentState.Returns(persisted);
+        _persistenceManager.LeaseReader().Returns(mockReader);
+        _snapshotRepository.AssembleHistoricalSnapshots(pruned, persisted, Arg.Any<int>())
+            .Returns(_ => SnapshotPooledList.Empty());
+        _snapshotRepository.HasHistoricalState(pruned).Returns(false);
+
+        await using FlatDbManager manager = CreateManager();
+
+        Assert.Throws<StateNotRetainedException>(() => manager.GatherReadOnlySnapshotBundle(pruned));
     }
 
     [Test]

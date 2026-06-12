@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -105,6 +106,7 @@ public class FlatDbManagerPersistedTests
             Substitute.For<IPersistedSnapshotLoader>(),
             _config,
             new BlocksConfig(),
+            new SyncConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false);
 
@@ -138,6 +140,7 @@ public class FlatDbManagerPersistedTests
             Substitute.For<IPersistedSnapshotLoader>(),
             _config,
             new BlocksConfig(),
+            new SyncConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false);
 
@@ -176,7 +179,7 @@ public class FlatDbManagerPersistedTests
         });
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
             Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
-            Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
+            Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), new SyncConfig(), LimboLogs.Instance, false);
 
         Task? disposal = null;
         try
@@ -232,7 +235,7 @@ public class FlatDbManagerPersistedTests
         compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
             Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
-            Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
+            Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), new SyncConfig(), LimboLogs.Instance, false);
 
         Commit(manager, tier.ResourcePool, new StateId(0, Keccak.EmptyTreeHash), failing, 1);
         Commit(manager, tier.ResourcePool, failing, next, 2);
@@ -263,6 +266,7 @@ public class FlatDbManagerPersistedTests
             tier.Resolve<IStateHeaderProvider>(),
             persistence,
             tier.Repository,
+            tier.ResourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             Substitute.For<IPersistedSnapshotCompactor>(),
@@ -278,6 +282,7 @@ public class FlatDbManagerPersistedTests
             Substitute.For<IPersistedSnapshotLoader>(),
             _config,
             new BlocksConfig(),
+            new SyncConfig(),
             LimboLogs.Instance,
             enableDetailedMetrics: false);
 

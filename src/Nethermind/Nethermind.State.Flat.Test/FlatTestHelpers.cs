@@ -96,3 +96,46 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
 
     public void Dispose() => DisposeCount++;
 }
+
+/// <summary>
+/// Hand-rolled fake for <see cref="IPersistence.IPersistenceReader"/> backed by dictionaries.
+/// Used in place of an NSubstitute mock because configuring methods with <c>in</c>/<c>ref</c>
+/// struct parameters (e.g. <see cref="IPersistence.IPersistenceReader.TryGetSlot"/>) is unwieldy.
+/// </summary>
+internal sealed class FakePersistenceReader : IPersistence.IPersistenceReader
+{
+    public Dictionary<Address, Account?> Accounts { get; } = [];
+    public Dictionary<(Address, UInt256), UInt256> Slots { get; } = [];
+    public Dictionary<TreePath, byte[]> StateRlp { get; } = [];
+    public Dictionary<(Hash256, TreePath), byte[]> StorageRlp { get; } = [];
+    public StateId CurrentState { get; set; } = StateId.PreGenesis;
+
+    public Account? GetAccount(Address address) => Accounts.TryGetValue(address, out Account? account) ? account : null;
+
+    public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
+    {
+        if (Slots.TryGetValue((address, slot), out UInt256 value))
+        {
+            outValue = value;
+            return true;
+        }
+
+        return false;
+    }
+
+    public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => StateRlp.TryGetValue(path, out byte[]? rlp) ? rlp : null;
+
+    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => StorageRlp.TryGetValue((address, path), out byte[]? rlp) ? rlp : null;
+
+    public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+
+    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
+
+    public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+
+    public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+
+    public bool IsPreimageMode => false;
+
+    public void Dispose() { }
+}

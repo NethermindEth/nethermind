@@ -65,18 +65,21 @@ public class PersistenceManagerTests
 
         _persistedSnapshotCompactor = Substitute.For<IPersistedSnapshotCompactor>();
 
-        _persistenceManager = new PersistenceManager(
-            _config,
-            _tier.Resolve<ICompactionSchedule>(),
-            _finalizedStateProvider,
-            _persistence,
-            _snapshotRepository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+        _persistenceManager = CreateManager();
     }
+
+    private PersistenceManager CreateManager() => new(
+        _config,
+        _tier.Resolve<ICompactionSchedule>(),
+        _finalizedStateProvider,
+        _persistence,
+        _snapshotRepository,
+        _resourcePool,
+        NullStatePersistenceBarrier.Instance,
+        LimboLogs.Instance,
+        _persistedSnapshotCompactor,
+        _tier.Loader,
+        Substitute.For<IProcessExitSource>());
 
     [TearDown]
     public async Task TearDown()
@@ -462,6 +465,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -517,6 +521,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -593,6 +598,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -771,6 +777,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -1207,6 +1214,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -1394,6 +1402,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -1509,7 +1518,7 @@ public class PersistenceManagerTests
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<PersistenceManager>().Returns(wrappedLogger);
         using PersistenceManager manager = new(config, _tier.Resolve<ICompactionSchedule>(), _finalizedStateProvider,
-            _persistence, _snapshotRepository, NullStatePersistenceBarrier.Instance, logManager,
+            _persistence, _snapshotRepository, _resourcePool, NullStatePersistenceBarrier.Instance, logManager,
             _persistedSnapshotCompactor, _tier.Loader, Substitute.For<IProcessExitSource>());
         StateId head = CreateStateId(64);
         CreateSnapshot(Block0, head);
@@ -1546,6 +1555,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -1578,6 +1588,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -1609,6 +1620,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -1651,6 +1663,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -1735,6 +1748,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
+            _resourcePool,
             NullStatePersistenceBarrier.Instance,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
@@ -1906,6 +1920,132 @@ public class PersistenceManagerTests
         Assert.That(result, Is.EqualTo(target));
         _persistence.Received().CreateWriteBatch(Block0, target);
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_EarlyPersist_IgnoresMinReorgDepthButKeepsFinalizationGate()
+    {
+        _config.EarlyPersist = true;
+        using PersistenceManager pm = CreateManager();
+
+        // Depth 20 is far below MinReorgDepth (64); only the finalization gate should matter.
+        StateId target = CreateStateId(16);
+        StateId latest = CreateStateId(20);
+        using Snapshot expected = CreateSnapshot(Block0, target, compacted: true);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+        Snapshot? whileUnfinalized = pm.DetermineSnapshotAction(latest).ToPersist;
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(18);
+        Snapshot? whenFinalized = pm.DetermineSnapshotAction(latest).ToPersist;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(whileUnfinalized, Is.Null, "boundary above finalized must not persist");
+            Assert.That(whenFinalized, Is.Not.Null, "finalized boundary should persist regardless of depth");
+            Assert.That(whenFinalized?.To, Is.EqualTo(target));
+        }
+
+        whenFinalized?.Dispose();
+    }
+
+    [Test]
+    public void PersistSnapshot_EarlyPersist_BuildsReverseDiffWithOldValuesAndNullMarkers()
+    {
+        _config.EarlyPersist = true;
+        using PersistenceManager pm = CreateManager();
+
+        Account oldAccount = new(5, 500);
+        UInt256 oldSlot = 7;
+        byte[] oldNodeRlp = [1, 2, 3];
+        byte[] oldStorageNodeRlp = [4, 5, 6];
+        TreePath presentPath = TreePath.FromHexString("12");
+        TreePath absentPath = TreePath.FromHexString("34");
+
+        FakePersistenceReader oldState = new() { CurrentState = Block0 };
+        oldState.Accounts[TestItem.AddressA] = oldAccount;
+        oldState.Slots[(TestItem.AddressA, (UInt256)1)] = oldSlot;
+        oldState.StateRlp[presentPath] = oldNodeRlp;
+        oldState.StorageRlp[(TestItem.KeccakA, presentPath)] = oldStorageNodeRlp;
+        _persistence.CreateReader().Returns(oldState);
+
+        StateId to = CreateStateId(16);
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(Block0, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
+        snapshot.Content.Accounts[TestItem.AddressB] = new Account(2, 200);
+        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)1)] = 42;
+        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)2)] = 99;
+        snapshot.Content.StateNodes[presentPath] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot.Content.StateNodes[absentPath] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot.Content.StorageNodes[(TestItem.KeccakA, presentPath)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+
+        FakeWriteBatch writeBatch = new();
+        _persistence.CreateWriteBatch(Block0, to).Returns(writeBatch);
+
+        pm.PersistSnapshot(snapshot);
+
+        using SnapshotPooledList assembled = _snapshotRepository.AssembleHistoricalSnapshots(Block0, to, 1);
+        Assert.That(assembled.Count, Is.EqualTo(1), "reverse diff should be registered");
+        Snapshot reverseDiff = assembled[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reverseDiff.From, Is.EqualTo(to));
+            Assert.That(reverseDiff.To, Is.EqualTo(Block0));
+
+            Assert.That(reverseDiff.TryGetAccount(TestItem.AddressA, out Account? capturedAccount), Is.True);
+            Assert.That(capturedAccount, Is.EqualTo(oldAccount));
+            Assert.That(reverseDiff.TryGetAccount(TestItem.AddressB, out Account? absentAccount), Is.True, "absent old account needs a null marker");
+            Assert.That(absentAccount, Is.Null);
+
+            Assert.That(reverseDiff.TryGetStorage((TestItem.AddressA, (UInt256)1), out UInt256? capturedSlot), Is.True);
+            Assert.That(capturedSlot, Is.EqualTo(oldSlot));
+            Assert.That(reverseDiff.TryGetStorage((TestItem.AddressA, (UInt256)2), out UInt256? absentSlot), Is.True, "absent old slot needs a null marker");
+            Assert.That(absentSlot, Is.Null);
+
+            Assert.That(reverseDiff.TryGetStateNode(presentPath, out TrieNode? capturedNode), Is.True);
+            Assert.That(capturedNode?.FullRlp.ToArray(), Is.EqualTo(oldNodeRlp));
+            Assert.That(capturedNode?.IsPersisted, Is.True);
+            Assert.That(reverseDiff.TryGetStateNode(absentPath, out _), Is.False, "node absent at old state is skipped, not marked");
+
+            Assert.That(reverseDiff.TryGetStorageNode((TestItem.KeccakA, presentPath), out TrieNode? capturedStorageNode), Is.True);
+            Assert.That(capturedStorageNode?.FullRlp.ToArray(), Is.EqualTo(oldStorageNodeRlp));
+        }
+    }
+
+    [Test]
+    public void PersistSnapshot_EarlyPersist_SelfDestruct([Values] bool isNewAccount)
+    {
+        _config.EarlyPersist = true;
+        using PersistenceManager pm = CreateManager();
+        _persistence.CreateReader().Returns(new FakePersistenceReader { CurrentState = Block0 });
+
+        // Pre-existing history that an irreversible self-destruct must truncate.
+        StateId priorBoundary = CreateStateId(4);
+        StateId priorPersisted = CreateStateId(8);
+        _snapshotRepository.TryAddReverseDiff(_resourcePool.CreateSnapshot(priorPersisted, priorBoundary, ResourcePool.Usage.ReverseDiff));
+
+        StateId to = CreateStateId(16);
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(Block0, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snapshot.Content.Accounts[TestItem.AddressB] = new Account(1, 100);
+        snapshot.Content.SelfDestructedStorageAddresses[TestItem.AddressA] = isNewAccount;
+
+        FakeWriteBatch writeBatch = new();
+        _persistence.CreateWriteBatch(Block0, to).Returns(writeBatch);
+
+        pm.PersistSnapshot(snapshot);
+
+        using SnapshotPooledList priorHistory = _snapshotRepository.AssembleHistoricalSnapshots(priorBoundary, priorPersisted, 1);
+        using SnapshotPooledList newDiff = _snapshotRepository.AssembleHistoricalSnapshots(Block0, to, 1);
+        using (Assert.EnterMultipleScope())
+        {
+            // Same-tx created account (true) is reversible: nothing was ever persisted for it.
+            // An account with persisted storage (false) is not: the window is truncated instead.
+            Assert.That(priorHistory.Count, Is.EqualTo(isNewAccount ? 1 : 0), "prior history");
+            Assert.That(newDiff.Count, Is.EqualTo(isNewAccount ? 1 : 0), "new reverse diff");
+            Assert.That(writeBatch.SelfDestructCalls, isNewAccount ? Is.Empty : Is.EqualTo(new[] { TestItem.AddressA }));
+        }
     }
 
     // Chain Block0->1->2->3->4 plus a fork (3)->(4,1); `remaining` lists the main-chain blocks still held afterwards
