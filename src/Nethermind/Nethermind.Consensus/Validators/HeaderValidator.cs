@@ -191,7 +191,6 @@ namespace Nethermind.Consensus.Validators
             else if (parent.Hash != header.ParentHash)
             {
                 error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
-                parent.SlotNumber = 0;
                 return false;
             }
 
@@ -431,13 +430,6 @@ namespace Nethermind.Consensus.Validators
                 {
                     if (_logger.IsWarn) _logger.Warn("SlotNumber field is not set.");
                     error = BlockErrorMessages.MissingSlotNumber;
-                    return false;
-                }
-
-                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
-                {
-                    error = BlockErrorMessages.InvalidSlotNumber;
-                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");
                     return false;
                 }
             }
