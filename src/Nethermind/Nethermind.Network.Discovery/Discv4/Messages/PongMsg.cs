@@ -3,19 +3,20 @@
 
 using System.Net;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Discv4.Messages;
 
 public sealed class PongMsg : DiscoveryMsg
 {
-    public byte[] PingMdc { get; init; }
+    public ValueHash256 PingMdc { get; init; }
 
-    public PongMsg(IPEndPoint farAddress, long expirationTime, byte[] pingMdc) : base(farAddress, expirationTime) => PingMdc = pingMdc ?? throw new ArgumentNullException(nameof(pingMdc));
+    public PongMsg(IPEndPoint farAddress, long expirationTime, ValueHash256 pingMdc)
+        : base(farAddress, expirationTime) => PingMdc = pingMdc;
 
-    public PongMsg(PublicKey farPublicKey, long expirationTime, byte[] pingMdc) : base(farPublicKey, expirationTime) => PingMdc = pingMdc ?? throw new ArgumentNullException(nameof(pingMdc));
+    public PongMsg(PublicKey farPublicKey, long expirationTime, ValueHash256 pingMdc)
+        : base(farPublicKey, expirationTime) => PingMdc = pingMdc;
 
-    public override string ToString() => base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}";
+    public override string ToString() => base.ToString() + $", PingMdc: {PingMdc}";
 
     public override MsgType MsgType => MsgType.Pong;
 }

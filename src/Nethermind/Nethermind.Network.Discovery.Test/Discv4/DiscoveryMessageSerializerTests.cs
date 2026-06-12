@@ -106,7 +106,7 @@ public class DiscoveryMessageSerializerTests
     {
         using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         PongMsg message =
-            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, TestItem.KeccakA.ValueHash256)
             {
                 FarAddress = _farAddress
             };
@@ -152,7 +152,7 @@ public class DiscoveryMessageSerializerTests
         EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
 
         Assert.That(deserialized.Hash, Is.Not.Null);
-        Hash256 hash = new(deserialized.Hash!.Value.Span);
+        Hash256 hash = new(deserialized.Hash!.Value);
 
         Assert.That(hash, Is.EqualTo(new Hash256("0x64c2e38e89cdfca030166b7a271c301dd77cf043172966ab112d97fc3430fa16")));
     }
@@ -170,7 +170,7 @@ public class DiscoveryMessageSerializerTests
         Array.Clear(packet);
 
         Assert.That(deserialized.Hash, Is.Not.Null);
-        Assert.That(new Hash256(deserialized.Hash!.Value.Span), Is.EqualTo(expectedHash));
+        Assert.That(new Hash256(deserialized.Hash!.Value), Is.EqualTo(expectedHash));
     }
 
     [Test]

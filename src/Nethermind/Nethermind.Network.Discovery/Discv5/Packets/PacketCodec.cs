@@ -46,7 +46,7 @@ public sealed class PacketCodec(
 
     private readonly PrivateKey _privateKey = nodeKey.Unprotect();
     private readonly PublicKey _publicKey = nodeKey.PublicKey;
-    private readonly byte[] _localNodeId = nodeKey.PublicKey.Hash.BytesToArray();
+    private readonly Hash256 _localNodeId = nodeKey.PublicKey.Hash;
     private readonly INodeRecordProvider _nodeRecordProvider = nodeRecordProvider;
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly IEcdsa _ecdsa = ecdsa;
@@ -59,7 +59,7 @@ public sealed class PacketCodec(
     }
 
     internal byte[] EncodeOrdinary(PublicKey destination, ReadOnlySpan<byte> encryptionKey, Discv5Message message, ReadOnlySpan<byte> nonce)
-        => EncodePacket(destination.Hash.Bytes, PacketFlag.Ordinary, nonce, _localNodeId, encryptionKey, message);
+        => EncodePacket(destination.Hash.Bytes, PacketFlag.Ordinary, nonce, _localNodeId.Bytes, encryptionKey, message);
 
     [SkipLocalsInit]
     internal byte[] EncodeWhoAreYou(ReadOnlySpan<byte> destinationNodeId, ReadOnlySpan<byte> requestNonce, ulong enrSequence, out Challenge challenge)
@@ -81,7 +81,7 @@ public sealed class PacketCodec(
         DeriveKeys(
             destination,
             ephemeralKey,
-            _localNodeId,
+            _localNodeId.Bytes,
             destination.Hash.Bytes,
             challenge.ChallengeData,
             out byte[] initiatorKey,
@@ -100,7 +100,7 @@ public sealed class PacketCodec(
 
         try
         {
-            _localNodeId.CopyTo(authData);
+            _localNodeId.Bytes.CopyTo(authData);
             authData[NodeIdSize] = IdSignatureSize;
             authData[NodeIdSize + 1] = EphemeralPublicKeySize;
             SignIdNonce(challenge.ChallengeData, ephemeralPublicKey, destination.Hash.Bytes, authData.Slice(HandshakeAuthDataHeadSize, IdSignatureSize));
@@ -315,12 +315,12 @@ public sealed class PacketCodec(
             return false;
         }
 
-        if (!VerifyIdSignature(remoteCompressedPublicKey, idSignature.Span, challenge.ChallengeData, ephemeralPublicKey.Bytes, _localNodeId))
+        if (!VerifyIdSignature(remoteCompressedPublicKey, idSignature.Span, challenge.ChallengeData, ephemeralPublicKey.Bytes, _localNodeId.Bytes))
         {
             return false;
         }
 
-        DeriveKeys(ephemeralPublicKey, sourceNodeId.Bytes, _localNodeId, challenge.ChallengeData, out byte[] initiatorKey, out byte[] recipientKey);
+        DeriveKeys(ephemeralPublicKey, sourceNodeId.Bytes, _localNodeId.Bytes, challenge.ChallengeData, out byte[] initiatorKey, out byte[] recipientKey);
 
         if (!TryDecryptMessage(packet, initiatorKey, out message))
         {

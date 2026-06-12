@@ -27,20 +27,20 @@ public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedP
         AddSignatureAndMdc(byteBuffer, length + 1);
 
         byteBuffer.MarkReaderIndex();
-        msg.Hash = byteBuffer.Slice(0, 32).ReadAllBytesAsArray();
+        msg.Hash = ReadHash(byteBuffer, byteBuffer.ReaderIndex);
         byteBuffer.ResetReaderIndex();
     }
 
     public EnrRequestMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey farPublicKey, Memory<byte> mdc, IByteBuffer data) = PrepareForDeserialization(msgBytes);
+        (PublicKey farPublicKey, ValueHash256 mdc, IByteBuffer data) = PrepareForDeserialization(msgBytes);
         Rlp.ValueDecoderContext ctx = data.AsRlpContext();
 
         ctx.ReadSequenceLength();
         long expirationTime = ctx.DecodeLong();
 
         data.SetReaderIndex(data.ReaderIndex + ctx.Position);
-        EnrRequestMsg msg = new(farPublicKey, mdc.ToArray(), expirationTime);
+        EnrRequestMsg msg = new(farPublicKey, mdc, expirationTime);
         return msg;
     }
 

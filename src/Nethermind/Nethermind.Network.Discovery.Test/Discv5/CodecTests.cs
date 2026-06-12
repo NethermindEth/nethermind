@@ -22,6 +22,7 @@ public class CodecTests
 {
     private static readonly byte[] NodeAId = Bytes.FromHexString("0xaaaa8419e9f49d0083561b48287df592939a8d19947d8c0ef88f2a4856a69fbb");
     private static readonly byte[] NodeBId = Bytes.FromHexString("0xbbbb9d047f0488c0b5a93c1c3f2d8bafc7c8ff337024a55434a0d0555de64db9");
+    private static readonly byte[] Devp2pPingRequestId = [0, 0, 0, 1];
     private const string GethNodeAPrivateKey = "0xeef77acb6c6a6eebc5b363a475ac583ec7eccdb42b6481424c60f59aa326547f";
     private const string GethNodeBPrivateKey = "0x66fb62bfbd66b9177a138c1e5cddbe4f7c30c343e94e68df8769459cb1cde628";
 
@@ -79,7 +80,7 @@ public class CodecTests
             Assert.That(decrypted, Is.True);
             Assert.That(message, Is.InstanceOf<PingMsg>());
             PingMsg ping = (PingMsg)message;
-            Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
+            AssertRequestId(ping.RequestId, Devp2pPingRequestId);
             Assert.That(ping.EnrSequence, Is.EqualTo(2));
             message.Dispose();
         }
@@ -193,7 +194,7 @@ public class CodecTests
             Assert.That(session.ReadKey.ToHexString(true), Is.EqualTo(expectedReadKeyHex));
             Assert.That(message, Is.InstanceOf<PingMsg>());
             PingMsg ping = (PingMsg)message;
-            Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
+            AssertRequestId(ping.RequestId, Devp2pPingRequestId);
             Assert.That(ping.EnrSequence, Is.EqualTo(1));
             Assert.That(nodeRecord is not null, Is.EqualTo(includesRecord));
             message.Dispose();
@@ -382,6 +383,15 @@ public class CodecTests
         message[0] = (byte)messageType;
         payload.Bytes.CopyTo(message.AsSpan(1));
         return message;
+    }
+
+    private static void AssertRequestId(RequestId requestId, ReadOnlySpan<byte> expected)
+    {
+        Assert.That(requestId.Length, Is.EqualTo(expected.Length));
+
+        Span<byte> actual = stackalloc byte[RequestId.MaxLength];
+        requestId.CopyTo(actual);
+        Assert.That(actual[..requestId.Length].SequenceEqual(expected), Is.True);
     }
 
     private sealed class TestNodeRecordProvider(PrivateKey privateKey) : INodeRecordProvider

@@ -96,7 +96,7 @@ public sealed class KademliaAdapter(
             }
         }
 
-        return result.ToArray();
+        return result.Count == 0 ? [] : result.ToArray();
     }
 
     /// <inheritdoc/>
@@ -607,7 +607,7 @@ public sealed class KademliaAdapter(
                 AddFindNodeRecordsAtDistance(distance, requester, allowNonRoutableRelays, seen, ref result);
             }
 
-            return result.ToArray();
+            return result.Count == 0 ? [] : result.ToArray();
         }
         finally
         {

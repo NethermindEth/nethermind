@@ -101,7 +101,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task PongSentReceivedTest()
         {
-            PongMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
+            PongMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, TestItem.KeccakA.ValueHash256)
             {
                 FarAddress = _address2
             };
@@ -110,7 +110,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await SleepWhileWaiting();
             await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Pong));
 
-            PongMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
+            PongMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, TestItem.KeccakA.ValueHash256)
             {
                 FarAddress = _address
             };

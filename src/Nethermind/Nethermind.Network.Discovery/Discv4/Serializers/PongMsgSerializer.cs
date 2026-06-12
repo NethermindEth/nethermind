@@ -26,7 +26,8 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         NettyRlpStream stream = new(byteBuffer);
         stream.StartSequence(contentLength);
         Encode(stream, msg.FarAddress, farAddressLength);
-        stream.Encode(msg.PingMdc);
+        ValueHash256? pingMdc = msg.PingMdc;
+        stream.Encode(in pingMdc);
         stream.Encode(msg.ExpirationTime);
 
         byteBuffer.ResetIndex();
@@ -46,11 +47,16 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
         ctx.DecodeInt(); // TCP port
-        byte[] token = ctx.DecodeByteArraySpan(RlpLimit.L32).ToArray();
+        ReadOnlySpan<byte> token = ctx.DecodeByteArraySpan(RlpLimit.L32);
+        if (token.Length != Hash256.Size)
+        {
+            throw new NetworkingException($"PONG ping MDC must be {Hash256.Size} bytes.", NetworkExceptionType.Validation);
+        }
+
         long expirationTime = ctx.DecodeLong();
 
         data.SetReaderIndex(data.ReaderIndex + ctx.Position);
-        PongMsg msg = new(farPublicKey, expirationTime, token);
+        PongMsg msg = new(farPublicKey, expirationTime, new ValueHash256(token));
         return msg;
     }
 
@@ -70,7 +76,8 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
 
         int farAddressLength = GetIPEndPointLength(message.FarAddress);
         int contentLength = Rlp.LengthOfSequence(farAddressLength);
-        contentLength += Rlp.LengthOf(message.PingMdc);
+        ValueHash256? pingMdc = message.PingMdc;
+        contentLength += Rlp.LengthOf(in pingMdc);
         contentLength += Rlp.LengthOf(message.ExpirationTime);
 
         return (Rlp.LengthOfSequence(contentLength), contentLength, farAddressLength);
