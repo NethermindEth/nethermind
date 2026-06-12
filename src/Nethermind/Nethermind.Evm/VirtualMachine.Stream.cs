@@ -25,6 +25,16 @@ public static class StreamInterpreter
         Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
 
     /// <summary>
+    /// Builds streams eagerly and inline instead of in the background past the execution
+    /// threshold. For tests and consensus gates, where single executions must engage the
+    /// stream deterministically; never for production traffic — the inline build on cold
+    /// contracts is exactly the block-import overhead the background path exists to remove.
+    /// NETHERMIND_EVM_STREAM=1 (the one test-gate environment variable) sets both flags;
+    /// tests set them in-process.
+    /// </summary>
+    public static bool SynchronousBuild = Enabled;
+
+    /// <summary>
     /// Frames executed by the stream interpreter; engagement proof for tests and rollout.
     /// Unsynchronized — an approximate count is enough.
     /// </summary>
