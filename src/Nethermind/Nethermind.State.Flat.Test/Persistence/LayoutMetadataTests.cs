@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
