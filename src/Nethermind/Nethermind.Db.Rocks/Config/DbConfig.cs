@@ -292,7 +292,9 @@ public class DbConfig : IDbConfig
     public string FlatDbRocksDbOptions { get; set; } =
 
         // Common across flat columns.
-        "min_write_buffer_number_to_merge=2;" +
+        // Merge more small memtables into one deduplicated flush; with the buffer-number headroom below
+        // this cuts L0 churn when runtime resizing pins memtables at the floor under small persist batches.
+        "min_write_buffer_number_to_merge=4;" +
         "block_based_table_factory.block_restart_interval=4;" +
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
@@ -350,7 +352,7 @@ public class DbConfig : IDbConfig
 
         // Smaller
         "write_buffer_size=16000000;" +
-        "max_write_buffer_number=4;" +
+        "max_write_buffer_number=8;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
@@ -366,7 +368,7 @@ public class DbConfig : IDbConfig
 
         // Smaller
         "write_buffer_size=32000000;" +
-        "max_write_buffer_number=4;" +
+        "max_write_buffer_number=8;" +
         "";
 
     public string? FlatStorageDbAdditionalRocksDbOptions { get; set; }
@@ -381,7 +383,7 @@ public class DbConfig : IDbConfig
     public string? FlatStateTopNodesDbRocksDbOptions { get; set; } =
         FlatDbCommonTrieOptions +
         "write_buffer_size=64000000;" +
-        "max_write_buffer_number=4;" +
+        "max_write_buffer_number=8;" +
         "";
     public string? FlatStateNodesDbAdditionalRocksDbOptions { get; set; }
 
@@ -389,7 +391,7 @@ public class DbConfig : IDbConfig
     public string? FlatStateNodesDbRocksDbOptions { get; set; } =
         FlatDbCommonTrieOptions +
         "write_buffer_size=32000000;" +
-        "max_write_buffer_number=4;" +
+        "max_write_buffer_number=8;" +
         "";
     public string? FlatStateTopNodesDbAdditionalRocksDbOptions { get; set; }
 
