@@ -386,8 +386,34 @@ public sealed class SszMiddleware
         {
             ReadOnlySpan<char> token = range.TrimStart();
             int semi = IndexOfUnquoted(token, ';');
-            if (semi >= 0) token = token[..semi];
-            return token.TrimEnd().Equals(Octet, StringComparison.OrdinalIgnoreCase);
+            ReadOnlySpan<char> type = (semi >= 0 ? token[..semi] : token).TrimEnd();
+            if (!type.Equals(Octet, StringComparison.OrdinalIgnoreCase))
+                return false;
+            return semi < 0 || !HasZeroQValue(token[(semi + 1)..]);
+        }
+
+        static bool HasZeroQValue(ReadOnlySpan<char> parameters)
+        {
+            while (!parameters.IsEmpty)
+            {
+                int next = IndexOfUnquoted(parameters, ';');
+                ReadOnlySpan<char> param = (next < 0 ? parameters : parameters[..next]).Trim();
+                if (param.Length >= 2 && (param[0] | 0x20) == 'q' && param[1] == '=')
+                    return IsZeroQ(param[2..]);
+                if (next < 0) break;
+                parameters = parameters[(next + 1)..];
+            }
+            return false;
+        }
+
+        static bool IsZeroQ(ReadOnlySpan<char> qValue)
+        {
+            if (qValue.IsEmpty || qValue[0] != '0') return false;
+            for (int i = 1; i < qValue.Length; i++)
+            {
+                if (qValue[i] != '.' && qValue[i] != '0') return false;
+            }
+            return true;
         }
 
         static int IndexOfUnquoted(ReadOnlySpan<char> s, char target)

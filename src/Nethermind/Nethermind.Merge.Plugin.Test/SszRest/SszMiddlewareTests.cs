@@ -198,21 +198,29 @@ public class SszMiddlewareTests
     private static IEnumerable<TestCaseData> AcceptHeaderCases()
     {
         // Single StringValues entry (one header line), octet-stream in various positions.
-        yield return new TestCaseData((object)new[] { OctetStream }, true).SetName("single_octet_only");
-        yield return new TestCaseData((object)new[] { OctetStream + ", application/json" }, true).SetName("single_octet_first");
-        yield return new TestCaseData((object)new[] { "application/json, " + OctetStream }, true).SetName("single_octet_last");
-        yield return new TestCaseData((object)new[] { "text/html, " + OctetStream + ";q=0.9, */*" }, true).SetName("single_octet_middle_with_q");
-        yield return new TestCaseData((object)new[] { OctetStream + " , application/json" }, true).SetName("single_octet_trailing_ows");
-        yield return new TestCaseData((object)new[] { "application/json" }, false).SetName("single_no_octet");
-        yield return new TestCaseData((object)new[] { "application/json, text/html" }, false).SetName("single_csv_no_octet");
-        yield return new TestCaseData((object)new[] { "application/octet-streamx" }, false).SetName("single_octet_substring");
-        yield return new TestCaseData((object)new[] { "application/json;v=\"a, application/octet-stream, b\"" }, false).SetName("octet_inside_quoted_parameter");
+        yield return new TestCaseData(new[] { OctetStream }, true).SetName("single_octet_only");
+        yield return new TestCaseData(new[] { OctetStream + ", application/json" }, true).SetName("single_octet_first");
+        yield return new TestCaseData(new[] { "application/json, " + OctetStream }, true).SetName("single_octet_last");
+        yield return new TestCaseData(new[] { "text/html, " + OctetStream + ";q=0.9, */*" }, true).SetName("single_octet_middle_with_q");
+        yield return new TestCaseData(new[] { OctetStream + " , application/json" }, true).SetName("single_octet_trailing_ows");
+        yield return new TestCaseData(new[] { "application/json" }, false).SetName("single_no_octet");
+        yield return new TestCaseData(new[] { "application/json, text/html" }, false).SetName("single_csv_no_octet");
+        yield return new TestCaseData(new[] { "application/octet-streamx" }, false).SetName("single_octet_substring");
+        yield return new TestCaseData(new[] { "application/json;v=\"a, application/octet-stream, b\"" }, false).SetName("octet_inside_quoted_parameter");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0" }, false).SetName("octet_explicit_zero_quality");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0.0" }, false).SetName("octet_zero_quality_decimal");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0.000" }, false).SetName("octet_zero_quality_decimals");
+        yield return new TestCaseData(new[] { OctetStream + ";Q=0" }, false).SetName("octet_zero_quality_uppercase");
+        yield return new TestCaseData(new[] { OctetStream + ";q=1" }, true).SetName("octet_unit_quality");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0.5" }, true).SetName("octet_positive_quality");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0, application/json" }, false).SetName("multi_octet_zero_then_other");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0, " + OctetStream }, true).SetName("multi_octet_zero_then_octet_default");
 
         // Multiple StringValues entries (Accept sent as separate header lines / string[]).
-        yield return new TestCaseData((object)new[] { OctetStream, "application/json" }, true).SetName("multi_octet_first_entry");
-        yield return new TestCaseData((object)new[] { "application/json", OctetStream }, true).SetName("multi_octet_last_entry");
-        yield return new TestCaseData((object)new[] { "application/json", "text/html, " + OctetStream }, true).SetName("multi_octet_in_csv_entry");
-        yield return new TestCaseData((object)new[] { "application/json", "text/html" }, false).SetName("multi_no_octet");
+        yield return new TestCaseData(new[] { OctetStream, "application/json" }, true).SetName("multi_octet_first_entry");
+        yield return new TestCaseData(new[] { "application/json", OctetStream }, true).SetName("multi_octet_last_entry");
+        yield return new TestCaseData(new[] { "application/json", "text/html, " + OctetStream }, true).SetName("multi_octet_in_csv_entry");
+        yield return new TestCaseData(new[] { "application/json", "text/html" }, false).SetName("multi_no_octet");
     }
 
     [TestCaseSource(nameof(AcceptHeaderCases))]
