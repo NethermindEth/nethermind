@@ -2741,7 +2741,7 @@ public partial class EthRpcModuleTests
                     .WithBlockchainBridge(blockchainBridge!)
                     .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0 })
                     .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
-                    .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
+                    .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_TRIE") != "1"))
                     .Build(wrappedConfigurer).Result,
 
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
