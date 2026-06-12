@@ -468,8 +468,6 @@ public partial struct EvmPooledMemory
         {
             int wanted = (int)Math.Max((uint)Size, MinRentSize);
             _memory = TryReuseBuffer(wanted) ?? SafeArrayPool<byte>.Shared.Rent(wanted);
-            // The reused/rented buffer's contents are undefined (a prior frame may have written into
-            // it), so zero the live [0, Size) region before exposing it to this frame.
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
