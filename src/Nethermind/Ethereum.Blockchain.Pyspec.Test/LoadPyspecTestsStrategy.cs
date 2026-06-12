@@ -32,8 +32,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             ? ResolveTestsDirectory(testsDirectoryName, testsDir)
             : testsDirectoryName;
 
-        // The tests-bal archive ships only a subset of forks (e.g. v7.3.0 is Amsterdam-only), so a
-        // fork fixture class whose directory is absent contributes no tests rather than throwing.
+        // Skip absent fork fixtures instead of throwing
         if (!Directory.Exists(rootDir))
             return [];
 

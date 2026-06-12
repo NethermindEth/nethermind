@@ -433,9 +433,6 @@ namespace Nethermind.Consensus.Validators
                     error = BlockErrorMessages.MissingSlotNumber;
                     return false;
                 }
-
-                // EIP-7843: the slot number is set by the consensus layer; the EL only checks for
-                // presence and imposes no ordering relative to the parent (slots may be non-increasing).
             }
             else
             {
