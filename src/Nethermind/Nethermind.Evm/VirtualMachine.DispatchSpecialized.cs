@@ -79,6 +79,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         // Set the program counter from the current VM state; it may not be zero if resuming after a call.
         int programCounter = VmState.ProgramCounter;
+        // Handlers take the program counter by ref; routing every such call through this
+        // spill variable keeps programCounter itself never-address-taken, so the JIT can hold
+        // it in a register across the dispatch loop (taking a local's address pins it to a
+        // stack slot for the whole method). Where a handler inlines, copy propagation deletes
+        // the round-trip; where it does not, two register moves buy back three memory ops per op.
+        int handlerProgramCounter = 0;
 
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
@@ -126,109 +132,177 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     switch (instruction)
                     {
                         case Instruction.ADD:
-                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.SUB:
-                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpSub, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpSub, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.MUL:
-                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpMul, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpMul, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.LT:
-                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpLt, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpLt, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.GT:
-                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpGt, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpGt, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.EQ:
-                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseEq>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseEq>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.ISZERO:
-                            exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.AND:
-                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseAnd>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseAnd>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.OR:
-                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseOr>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseOr>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.NOT:
-                            exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpNot>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpNot>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.SHL:
                             if (!TSpec.ShiftOpcodesEnabled) goto default;
-                            exceptionType = EvmInstructions.InstructionShift<TGasPolicy, EvmInstructions.OpShl, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionShift<TGasPolicy, EvmInstructions.OpShl, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.SHR:
                             if (!TSpec.ShiftOpcodesEnabled) goto default;
-                            exceptionType = EvmInstructions.InstructionShift<TGasPolicy, EvmInstructions.OpShr, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionShift<TGasPolicy, EvmInstructions.OpShr, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.CALLDATALOAD:
-                            exceptionType = EvmInstructions.InstructionCallDataLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionCallDataLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.MLOAD:
-                            exceptionType = EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.MSTORE:
-                            exceptionType = EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.SLOAD:
-                            exceptionType = EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.JUMP:
-                            exceptionType = EvmInstructions.InstructionJump(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionJump(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.JUMPI:
-                            exceptionType = EvmInstructions.InstructionJumpIf(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionJumpIf(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.JUMPDEST:
-                            exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.POP:
-                            exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.PUSH0:
                             if (!TSpec.IncludePush0Instruction) goto default;
-                            exceptionType = EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.PUSH1:
-                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.PUSH2:
-                            exceptionType = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.PUSH3:
-                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.PUSH4:
-                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op4, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op4, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.DUP1:
-                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.DUP2:
-                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.DUP3:
-                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.DUP4:
-                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op4, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op4, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.DUP5:
-                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op5, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op5, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.SWAP1:
-                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.SWAP2:
-                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         case Instruction.SWAP3:
-                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                         default:
-                            exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
+                            handlerProgramCounter = programCounter;
+                            exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref handlerProgramCounter);
+                            programCounter = handlerProgramCounter;
                             break;
                     }
 
@@ -236,7 +310,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
                 else if (Instruction.POP == instruction)
                 {
-                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                    handlerProgramCounter = programCounter;
+                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref handlerProgramCounter);
+                    programCounter = handlerProgramCounter;
                 }
                 else
                 {
@@ -244,7 +320,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType> opcodeMethod = opcodeMethods[(int)instruction];
                     // Invoke the opcode method, which may modify the stack, gas, and program counter.
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
+                    handlerProgramCounter = programCounter;
+                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref handlerProgramCounter);
+                    programCounter = handlerProgramCounter;
                 }
 
                 // If gas is exhausted, jump to the out-of-gas handler.
