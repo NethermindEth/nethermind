@@ -28,8 +28,8 @@ public class SlotRlpEncodingTests
     private static RocksDbPersistence CreatePersistence(IColumnsDb<FlatDbColumns> db, bool rlpWrap = true)
     {
         // Wrapping is always on for fresh DBs; raw mode only exists for DBs synced before the feature. Pin the
-        // recorded raw slot encoding to exercise the legacy raw path on an otherwise-empty DB.
-        if (!rlpWrap) db.GetColumnDb(FlatDbColumns.Metadata).Set(SlotEncodingKey, new[] { BasePersistence.SlotEncodingRaw });
+        // raw slot encoding to exercise the legacy raw path on an otherwise-empty DB.
+        if (!rlpWrap) BasePersistence.SetSlotEncoding(db.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
         return new RocksDbPersistence(db, LimboLogs.Instance);
     }
 
@@ -158,13 +158,13 @@ public class SlotRlpEncodingTests
             Assert.That(read.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("0102")));
         }
 
-        // A write batch on the legacy DB stays raw and pins SlotEncoding = 0.
+        // A write batch on the legacy DB stays raw and does not stamp any marker (only current-format DBs record
+        // the layout/encoding), so the slot is stored raw and the DB keeps no SlotEncoding key.
         WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("abcd")));
-        Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),
-            Is.EqualTo(new[] { BasePersistence.SlotEncodingRaw }));
+        Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey), Is.Null);
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd"))); // raw, not RLP(0x82abcd)
 
-        // Re-opening resolves via the recorded SlotEncoding = 0 and still reads raw.
+        // Re-opening still resolves to raw from the existing raw slots and reads them correctly.
         RocksDbPersistence reopened = new(db, LimboLogs.Instance);
         using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();
         SlotValue read2 = default;

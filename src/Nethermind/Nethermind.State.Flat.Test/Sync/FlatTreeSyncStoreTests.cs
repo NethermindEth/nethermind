@@ -27,8 +27,8 @@ public class FlatTreeSyncStoreTests
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         // WriteStorageDirectToDb seeds the Storage column with raw (un-wrapped) bytes, so read in raw mode. The
-        // persistence is built before those bytes are written, so pin the recorded raw slot encoding directly
-        // rather than relying on slot-presence detection.
+        // persistence is built before those bytes are written, so pin the raw slot encoding up front rather than
+        // relying on slot-presence detection.
         BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
         _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
     }

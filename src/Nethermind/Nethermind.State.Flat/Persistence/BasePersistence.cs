@@ -71,11 +71,17 @@ public static class BasePersistence
         return (FlatLayout)bytes[0];
     }
 
+    /// <summary>
+    /// Records the flat DB's on-disk format markers: the <see cref="FlatLayout"/> and the RLP slot encoding.
+    /// Both are written together so any DB that records a layout also records the current slot encoding. This is
+    /// only ever called for DBs on the current (RLP-wrapped) format; legacy raw DBs are never re-stamped.
+    /// </summary>
     internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
     {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = (byte)layout;
         kv.PutSpan(LayoutKey, bytes);
+        SetSlotEncoding(kv, SlotEncodingRlp);
     }
 
     /// <summary>
@@ -108,10 +114,11 @@ public static class BasePersistence
     }
 
     /// <summary>
-    /// On the first call, records the persistence's <see cref="FlatLayout"/> in the supplied batch's
-    /// metadata column. Subsequent calls are no-ops. The write goes through the batch, so it is
-    /// committed atomically with the rest of the batch's contents.
+    /// On the first call, records the persistence's <see cref="FlatLayout"/> and slot encoding in the supplied
+    /// batch's metadata column via <see cref="SetLayout"/>. Subsequent calls are no-ops. The write goes through
+    /// the batch, so it is committed atomically with the rest of the batch's contents.
     /// </summary>
+    /// <remarks>Callers must only invoke this for DBs on the current RLP-wrapped format; see <see cref="SetLayout"/>.</remarks>
     internal static void RecordLayoutOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, FlatLayout layout)
     {
         if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
@@ -171,14 +178,6 @@ public static class BasePersistence
     private static void WarnRawDeprecated(ILogger logger)
     {
         if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
-    }
-
-    internal static void RecordSlotEncodingOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, bool rlpWrap)
-    {
-        if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
-        {
-            SetSlotEncoding(metadataBatch, rlpWrap ? SlotEncodingRlp : SlotEncodingRaw);
-        }
     }
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
