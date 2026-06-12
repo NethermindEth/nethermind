@@ -60,7 +60,7 @@ namespace Nethermind.Init.Steps
                 Logging.ILogger coverageLogger = getApi.LogManager.GetClassLogger<InitializeBlockchain>();
                 long coverageTotalTxs = 0;
                 long coveragePooledTxs = 0;
-                getApi.BlockTree!.NewBestSuggestedBlock += (_, blockEventArgs) =>
+                getApi.BlockTree!.NewSuggestedBlock += (_, blockEventArgs) =>
                 {
                     Block suggested = blockEventArgs.Block;
                     Transaction[] transactions = suggested.Transactions;
