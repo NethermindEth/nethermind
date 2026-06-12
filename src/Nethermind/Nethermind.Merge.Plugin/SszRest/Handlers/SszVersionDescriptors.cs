@@ -78,6 +78,17 @@ public interface IForkchoiceUpdatedVersion<TWire> where TWire : struct, ISszCode
     static abstract ulong? GetTimestamp(in TWire wire);
 }
 
+/// <summary>
+/// Helpers shared by all <c>ForkchoiceUpdated</c> descriptors.
+/// </summary>
+internal static class ForkchoiceUpdatedHelpers
+{
+    /// <summary>First-element timestamp of an optional payload-attributes wire list, or <c>null</c>.</summary>
+    public static ulong? FirstTimestamp<TAttr>(TAttr[]? attrs)
+        where TAttr : struct, ISszPayloadAttributesWire
+        => attrs is { Length: > 0 } a ? a[0].Timestamp : null;
+}
+
 public readonly struct ForkchoiceUpdatedDescriptorV1 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV1RequestWire>
 {
     public static int VersionNumber => EngineApiVersions.Fcu.V1;
@@ -88,7 +99,7 @@ public readonly struct ForkchoiceUpdatedDescriptorV1 : IForkchoiceUpdatedVersion
         return engine.engine_forkchoiceUpdatedV1(state, attrs);
     }
     public static ulong? GetTimestamp(in ForkchoiceUpdatedV1RequestWire wire) =>
-        wire.PayloadAttributes is { Length: > 0 } a ? a[0].Timestamp : null;
+        ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV2 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV2RequestWire>
@@ -101,7 +112,7 @@ public readonly struct ForkchoiceUpdatedDescriptorV2 : IForkchoiceUpdatedVersion
         return engine.engine_forkchoiceUpdatedV2(state, attrs);
     }
     public static ulong? GetTimestamp(in ForkchoiceUpdatedV2RequestWire wire) =>
-        wire.PayloadAttributes is { Length: > 0 } a ? a[0].Timestamp : null;
+        ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV3 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV3RequestWire>
@@ -114,7 +125,7 @@ public readonly struct ForkchoiceUpdatedDescriptorV3 : IForkchoiceUpdatedVersion
         return engine.engine_forkchoiceUpdatedV3(state, attrs);
     }
     public static ulong? GetTimestamp(in ForkchoiceUpdatedV3RequestWire wire) =>
-        wire.PayloadAttributes is { Length: > 0 } a ? a[0].Timestamp : null;
+        ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedRequestWire>
@@ -128,7 +139,7 @@ public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion
         return engine.engine_forkchoiceUpdatedV4(state, attrs, custody);
     }
     public static ulong? GetTimestamp(in ForkchoiceUpdatedRequestWire wire) =>
-        wire.PayloadAttributes is { Length: > 0 } a ? a[0].Timestamp : null;
+        ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
 public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<ExecutionPayload>

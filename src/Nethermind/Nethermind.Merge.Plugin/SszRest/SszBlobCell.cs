@@ -2,19 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
 /// <summary>
 /// Inline 1024-byte Blob Cell representation used by Engine API SSZ wire types.
 /// </summary>
-[StructLayout(LayoutKind.Sequential, Size = 1024)]
+[InlineArray(BlobCellLength)]
 public struct SszBlobCell
 {
     public const int BlobCellLength = 1024;
+
+    private byte _element0;
 
     public static SszBlobCell FromSpan(ReadOnlySpan<byte> span)
     {
@@ -24,10 +26,10 @@ public struct SszBlobCell
         }
 
         SszBlobCell result = default;
-        span.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.As<SszBlobCell, byte>(ref result), BlobCellLength));
+        span.CopyTo(result);
         return result;
     }
 
-    public ReadOnlySpan<byte> AsSpan() =>
-        MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<SszBlobCell, byte>(ref Unsafe.AsRef(in this)), BlobCellLength);
+    [UnscopedRef]
+    public ReadOnlySpan<byte> AsSpan() => this;
 }

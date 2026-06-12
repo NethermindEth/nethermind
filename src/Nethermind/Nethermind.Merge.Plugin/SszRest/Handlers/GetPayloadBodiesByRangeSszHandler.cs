@@ -27,18 +27,16 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         // body is empty for GET; parameters come from the query string.
-        if (!long.TryParse(ctx.Request.Query["from"], out long start) || start < 0)
+        if (!QueryParams.TryReadLong(ctx, "from", static n => n >= 0,
+                "must be a non-negative integer block number", out long start, out Task? error))
         {
-            await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                "Missing or invalid 'from' query parameter: must be a non-negative integer block number",
-                SszRestErrorCodes.InvalidRequest);
+            await error;
             return;
         }
-        if (!long.TryParse(ctx.Request.Query["count"], out long count) || count <= 0)
+        if (!QueryParams.TryReadLong(ctx, "count", static n => n > 0,
+                "must be a positive integer", out long count, out error))
         {
-            await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                "Missing or invalid 'count' query parameter: must be a positive integer",
-                SszRestErrorCodes.InvalidRequest);
+            await error;
             return;
         }
         if (count > SszRestLimits.MaxBodiesRequest)

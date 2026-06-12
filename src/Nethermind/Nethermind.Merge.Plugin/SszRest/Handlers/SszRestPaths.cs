@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using Nethermind.Consensus;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -93,70 +94,73 @@ public static class SszRestPaths
     public const string GetV2PayloadBodiesByRange = "GET /engine/v2/" + Amsterdam + "/bodies";
     public const string PostV4Blobs = "POST /engine/v2/blobs/v4";
 
-    private static readonly FrozenDictionary<ForkVersionKey, int> _forkVersionMap =
-        new Dictionary<ForkVersionKey, int>
-        {
-            // newPayload (POST payloads)
-            [new(Paris, Payloads, "POST")] = 1,
-            [new(Shanghai, Payloads, "POST")] = 2,
-            [new(Cancun, Payloads, "POST")] = 3,
-            [new(Prague, Payloads, "POST")] = 4,
-            [new(Osaka, Payloads, "POST")] = 4,
-            [new(Amsterdam, Payloads, "POST")] = 5,
-
-            // getPayload (GET payloads)
-            [new(Paris, Payloads, "GET")] = 1,
-            [new(Shanghai, Payloads, "GET")] = 2,
-            [new(Cancun, Payloads, "GET")] = 3,
-            [new(Prague, Payloads, "GET")] = 4,
-            [new(Osaka, Payloads, "GET")] = 5,
-            [new(Amsterdam, Payloads, "GET")] = 6,
-
-            // forkchoiceUpdated (POST forkchoice)
-            [new(Paris, Forkchoice, "POST")] = 1,
-            [new(Shanghai, Forkchoice, "POST")] = 2,
-            [new(Cancun, Forkchoice, "POST")] = 3,
-            [new(Prague, Forkchoice, "POST")] = 3,
-            [new(Osaka, Forkchoice, "POST")] = 3,
-            [new(Amsterdam, Forkchoice, "POST")] = 4,
-
-            // bodies/hash (POST)
-            [new(Paris, PayloadBodiesByHash, "POST")] = 1,
-            [new(Shanghai, PayloadBodiesByHash, "POST")] = 1,
-            [new(Cancun, PayloadBodiesByHash, "POST")] = 1,
-            [new(Prague, PayloadBodiesByHash, "POST")] = 1,
-            [new(Osaka, PayloadBodiesByHash, "POST")] = 1,
-            [new(Amsterdam, PayloadBodiesByHash, "POST")] = 2,
-
-            // bodies (GET)
-            [new(Paris, PayloadBodiesByRange, "GET")] = 1,
-            [new(Shanghai, PayloadBodiesByRange, "GET")] = 1,
-            [new(Cancun, PayloadBodiesByRange, "GET")] = 1,
-            [new(Prague, PayloadBodiesByRange, "GET")] = 1,
-            [new(Osaka, PayloadBodiesByRange, "GET")] = 1,
-            [new(Amsterdam, PayloadBodiesByRange, "GET")] = 2,
-        }.ToFrozenDictionary();
-
-    public static int? MapForkToVersion(string fork, string resource, string httpMethod) =>
-        _forkVersionMap.TryGetValue(new ForkVersionKey(fork, resource, httpMethod), out int version)
-            ? version
-            : null;
-
     /// <summary>
-    /// Key for <c>_forkVersionMap</c>: fork name and resource compared case-insensitively; HTTP
-    /// method ordinally.
+    /// Per-fork engine method versions. Adding a new fork is one row.
     /// </summary>
-    private readonly record struct ForkVersionKey(string Fork, string Resource, string Method)
-    {
-        public bool Equals(ForkVersionKey other) =>
-            string.Equals(Fork, other.Fork, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(Resource, other.Resource, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(Method, other.Method, StringComparison.Ordinal);
+    private readonly record struct ForkVersions(
+        int NewPayload, int GetPayload, int Forkchoice, int BodiesByHash, int BodiesByRange);
 
-        public override int GetHashCode() =>
-            HashCode.Combine(
-                StringComparer.OrdinalIgnoreCase.GetHashCode(Fork),
-                StringComparer.OrdinalIgnoreCase.GetHashCode(Resource),
-                Method);
+    private static readonly FrozenDictionary<string, ForkVersions> _forkVersions =
+        new Dictionary<string, ForkVersions>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Paris] = new(
+                NewPayload: EngineApiVersions.NewPayload.V1,
+                GetPayload: EngineApiVersions.GetPayload.V1,
+                Forkchoice: EngineApiVersions.Fcu.V1,
+                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
+                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
+            [Shanghai] = new(
+                NewPayload: EngineApiVersions.NewPayload.V2,
+                GetPayload: EngineApiVersions.GetPayload.V2,
+                Forkchoice: EngineApiVersions.Fcu.V2,
+                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
+                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
+            [Cancun] = new(
+                NewPayload: EngineApiVersions.NewPayload.V3,
+                GetPayload: EngineApiVersions.GetPayload.V3,
+                Forkchoice: EngineApiVersions.Fcu.V3,
+                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
+                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
+            [Prague] = new(
+                NewPayload: EngineApiVersions.NewPayload.V4,
+                GetPayload: EngineApiVersions.GetPayload.V4,
+                Forkchoice: EngineApiVersions.Fcu.V3,
+                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
+                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
+            [Osaka] = new(
+                NewPayload: EngineApiVersions.NewPayload.V4,
+                GetPayload: EngineApiVersions.GetPayload.V5,
+                Forkchoice: EngineApiVersions.Fcu.V3,
+                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V1,
+                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V1),
+            [Amsterdam] = new(
+                NewPayload: EngineApiVersions.NewPayload.V5,
+                GetPayload: EngineApiVersions.GetPayload.V6,
+                Forkchoice: EngineApiVersions.Fcu.V4,
+                BodiesByHash: EngineApiVersions.PayloadBodiesByHash.V2,
+                BodiesByRange: EngineApiVersions.PayloadBodiesByRange.V2),
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    public static int? MapForkToVersion(string fork, string resource, string httpMethod)
+    {
+        if (!_forkVersions.TryGetValue(fork, out ForkVersions v)) return null;
+
+        // Resource comparisons are case-insensitive to match the previous behaviour
+        // (URL segments are lowercase per spec, but routing accepts any case).
+        if (string.Equals(httpMethod, "POST", StringComparison.Ordinal))
+        {
+            if (Eq(resource, Payloads)) return v.NewPayload;
+            if (Eq(resource, Forkchoice)) return v.Forkchoice;
+            if (Eq(resource, PayloadBodiesByHash)) return v.BodiesByHash;
+        }
+        else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
+        {
+            if (Eq(resource, Payloads)) return v.GetPayload;
+            if (Eq(resource, PayloadBodiesByRange)) return v.BodiesByRange;
+        }
+
+        return null;
+
+        static bool Eq(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -45,8 +45,18 @@ public partial struct ForkchoiceStateWire
     public Hash256 FinalizedBlockHash { get; set; }
 }
 
+/// <summary>
+/// Marker for the per-fork SSZ payload-attributes wire structs, exposing the field needed
+/// by fork-routing logic (timestamp). Each <c>PayloadAttributes*Wire</c> already has the
+/// <c>Timestamp</c> property; the interface lets generic helpers consume them uniformly.
+/// </summary>
+public interface ISszPayloadAttributesWire
+{
+    ulong Timestamp { get; }
+}
+
 [SszContainer]
-public partial struct PayloadAttributesV1Wire
+public partial struct PayloadAttributesV1Wire : ISszPayloadAttributesWire
 {
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
@@ -54,7 +64,7 @@ public partial struct PayloadAttributesV1Wire
 }
 
 [SszContainer]
-public partial struct PayloadAttributesV2Wire
+public partial struct PayloadAttributesV2Wire : ISszPayloadAttributesWire
 {
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
@@ -63,7 +73,7 @@ public partial struct PayloadAttributesV2Wire
 }
 
 [SszContainer]
-public partial struct PayloadAttributesV3Wire
+public partial struct PayloadAttributesV3Wire : ISszPayloadAttributesWire
 {
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
@@ -73,7 +83,7 @@ public partial struct PayloadAttributesV3Wire
 }
 
 [SszContainer]
-public partial struct PayloadAttributesWire
+public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
 {
     public ulong Timestamp { get; set; }
     public Hash256 PrevRandao { get; set; }
