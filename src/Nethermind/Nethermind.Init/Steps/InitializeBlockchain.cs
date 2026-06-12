@@ -91,6 +91,12 @@ namespace Nethermind.Init.Steps
                 };
             }
 
+            if (blocksConfig.SpeculativeSurvivalDiag)
+            {
+                SpeculativeSurvivalDiag survivalDiag = new(_api.Context, txPool, getApi.BlockTree!, getApi.EthereumEcdsa!, getApi.LogManager);
+                getApi.BlockTree!.NewSuggestedBlock += (_, blockEventArgs) => survivalDiag.OnNewSuggestedBlock(blockEventArgs.Block);
+            }
+
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 

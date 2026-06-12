@@ -102,4 +102,10 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "false",
         HiddenFromDocs = true)]
     bool SpeculativeCoverageDiag { get; set; }
+
+    [ConfigItem(
+        Description = "Diagnostic: shadow-execute each suggested block's pooled transactions against the parent state and log how many survive read-set validation at their in-block position — the realizable ceiling for speculative pre-execution.",
+        DefaultValue = "false",
+        HiddenFromDocs = true)]
+    bool SpeculativeSurvivalDiag { get; set; }
 }
