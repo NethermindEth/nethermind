@@ -102,6 +102,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -118,6 +119,7 @@ jobs:
           git worktree prune
           git worktree remove --force "${base_dir}" >/dev/null 2>&1 || true
           git worktree add --detach -f "${base_dir}" "${base_sha}"
+          git -C "${base_dir}" submodule update --init --recursive
           echo "BASE_WORKTREE=${base_dir}" >> "${GITHUB_ENV}"
 
       - name: Run base benchmark

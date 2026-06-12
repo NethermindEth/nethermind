@@ -35,11 +35,11 @@ public class ImportFlatDb(
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        // Validate that we're not using PreimageFlat layout
-        if (flatDbConfig.Layout == FlatLayout.PreimageFlat)
+        if (flatDbConfig.Layout is FlatLayout.PreimageFlat or FlatLayout.PaprikaFlat)
         {
-            if (_logger.IsError) _logger.Error("Cannot import with FlatLayout.PreimageFlat. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead.");
-            if (_logger.IsError) _logger.Error("PreimageFlat mode does not support importing from trie state because the importer uses hash-based raw operations.");
+            if (_logger.IsError) _logger.Error($"Cannot import with FlatLayout.{flatDbConfig.Layout}. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead.");
+            if (flatDbConfig.Layout == FlatLayout.PreimageFlat && _logger.IsError) _logger.Error("PreimageFlat mode does not support importing from trie state because the importer uses hash-based raw operations.");
+            if (flatDbConfig.Layout == FlatLayout.PaprikaFlat && _logger.IsError) _logger.Error("PaprikaFlat mode does not support trie-state import because the importer uses parallel write batches and Paprika allows only one active write batch.");
             exitSource.Exit(1);
             return;
         }

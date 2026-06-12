@@ -133,6 +133,8 @@ jobs:
 
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Publish Docker image
         id: publish-docker

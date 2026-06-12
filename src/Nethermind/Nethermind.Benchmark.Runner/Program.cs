@@ -12,6 +12,7 @@ using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
 using BenchmarkDotNet.Columns;
+using Nethermind.Benchmarks.State;
 using Nethermind.Merge.Plugin.Benchmark;
 using Nethermind.Precompiles.Benchmark;
 
@@ -48,6 +49,13 @@ namespace Nethermind.Benchmark.Runner
     {
         public static void Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--state-db-schema")
+            {
+                string[] toolArgs = args[1..];
+                Environment.ExitCode = StateDbSchemaBenchmarkTool.Run(toolArgs);
+                return;
+            }
+
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);

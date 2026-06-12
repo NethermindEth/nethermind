@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
@@ -17,7 +19,7 @@ namespace Nethermind.State.Flat.Test.Sync.Snap;
 [TestFixture]
 public class FlatSnapTrieFactoryTests
 {
-    private static (FlatSnapTrieFactory factory, IPersistence persistence) Build(bool doubleWriteCheck = false)
+    private static (FlatSnapTrieFactory factory, IPersistence persistence) Build(bool doubleWriteCheck = false, FlatLayout layout = FlatLayout.Flat)
     {
         IPersistence persistence = Substitute.For<IPersistence>();
         persistence.CreateReader(Arg.Any<ReaderFlags>()).Returns(_ => Substitute.For<IPersistence.IPersistenceReader>());
@@ -27,7 +29,7 @@ public class FlatSnapTrieFactoryTests
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
         syncConfig.EnableSnapDoubleWriteCheck.Returns(doubleWriteCheck);
 
-        FlatSnapTrieFactory factory = new(persistence, syncConfig, LimboLogs.Instance);
+        FlatSnapTrieFactory factory = new(persistence, syncConfig, new FlatDbConfig { Layout = layout }, LimboLogs.Instance);
         return (factory, persistence);
     }
 
@@ -80,5 +82,14 @@ public class FlatSnapTrieFactoryTests
 
         Assert.That(stateTree, Is.Not.Null);
         Assert.That(storageTree, Is.Not.Null);
+    }
+
+    [Test]
+    public void PaprikaFlat_ThrowsBeforeSnapSyncOperations()
+    {
+        (FlatSnapTrieFactory factory, _) = Build(layout: FlatLayout.PaprikaFlat);
+
+        Assert.That(() => factory.EnsureInitialize(), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => factory.CreateStateTree(), Throws.TypeOf<NotSupportedException>());
     }
 }

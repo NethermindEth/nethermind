@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -10,6 +12,7 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
@@ -22,11 +25,14 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Paprika.Store;
 
 namespace Nethermind.Init.Modules;
 
 public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 {
+    private const long PaprikaDiagnosticMemDbCapacity = 256 * 1024 * 1024;
+
     protected override void Load(ContainerBuilder builder)
     {
         builder
@@ -74,6 +80,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
+            .AddSingleton<PaprikaFlatPersistence>()
+            .AddSingleton<Paprika.IDb, IInitConfig>(ConfigurePaprikaDb)
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
             .AddSingleton<PreimageRocksdbPersistence>()
@@ -86,6 +94,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlat => ctx.Resolve<PreimageRocksdbPersistence>(),
+                    FlatLayout.PaprikaFlat => ctx.Resolve<PaprikaFlatPersistence>(),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
@@ -113,4 +122,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
         public ResultWrapper<string> admin_verifyTrie(BlockParameter block) => ResultWrapper<string>.Success("disabled");
     }
+
+    private static Paprika.IDb ConfigurePaprikaDb(IInitConfig initConfig) =>
+        initConfig.DiagnosticMode == DiagnosticMode.MemDb
+            ? PagedDb.NativeMemoryDb(PaprikaDiagnosticMemDbCapacity, 128)
+            : PagedDb.MemoryMappedDb(200.GiB, 128, Path.Combine(initConfig.BaseDbPath, "paprika"));
 }

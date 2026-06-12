@@ -107,6 +107,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: nethermind
+          submodules: recursive
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

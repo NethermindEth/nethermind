@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout Nethermind
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Checkout taiko-mono
         uses: actions/checkout@v6

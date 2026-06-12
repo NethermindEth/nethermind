@@ -72,10 +72,17 @@ public class FlatTreeSyncStoreTests
 
         Assert.That(HasStorageEntries(address), Is.True, "Storage entries should exist before cleanup");
 
-        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), new FlatDbConfig(), LimboLogs.Instance);
         store.EnsureStorageEmpty(Keccak.Compute(address.Bytes));
 
         Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");
     }
 
+    [Test]
+    public void PaprikaFlat_ThrowsBeforeTreeSyncOperations()
+    {
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), new FlatDbConfig { Layout = FlatLayout.PaprikaFlat }, LimboLogs.Instance);
+
+        Assert.That(() => store.EnsureStorageEmpty(Keccak.Compute(TestItem.AddressA.Bytes)), Throws.TypeOf<NotSupportedException>());
+    }
 }

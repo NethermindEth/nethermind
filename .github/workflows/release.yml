@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Detect version
         id: version
@@ -127,6 +129,8 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Create GitHub app token
         id: gh-app
@@ -185,6 +189,8 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Create GitHub app token
         id: gh-app

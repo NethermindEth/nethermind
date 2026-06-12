@@ -32,7 +32,10 @@ public static class BasePersistence
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
 
-    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
+    /// <summary>
+    /// Reads the flat DB current-state marker from the metadata column.
+    /// </summary>
+    public static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
         return bytes is null || bytes.Length == 0
@@ -40,7 +43,10 @@ public static class BasePersistence
             : new StateId(BinaryPrimitives.ReadInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
     }
 
-    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
+    /// <summary>
+    /// Writes the flat DB current-state marker to the metadata column.
+    /// </summary>
+    public static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
     {
         Span<byte> bytes = stackalloc byte[8 + 32];
         BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
@@ -48,7 +54,10 @@ public static class BasePersistence
         kv.PutSpan(CurrentStateKey, bytes);
     }
 
-    internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
+    /// <summary>
+    /// Reads the flat DB layout marker from the metadata column.
+    /// </summary>
+    public static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(LayoutKey);
         if (bytes is null || bytes.Length == 0) return null;
@@ -59,7 +68,10 @@ public static class BasePersistence
         return (FlatLayout)bytes[0];
     }
 
-    internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
+    /// <summary>
+    /// Writes the flat DB layout marker to the metadata column.
+    /// </summary>
+    public static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
     {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = (byte)layout;

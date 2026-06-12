@@ -16,8 +16,10 @@ on:
         required: true
         type: choice
         options:
+          - all
           - halfpath
           - flat
+          - paprika
         default: flat
       payload_set:
         description: Payload set mode
@@ -119,6 +121,7 @@ jobs:
       retrospective_last: ${{ steps.resolve.outputs.retrospective_last }}
       retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
       state_layout: ${{ steps.resolve.outputs.state_layout }}
+      state_layouts: ${{ steps.resolve.outputs.state_layouts }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
     steps:
@@ -219,6 +222,17 @@ jobs:
             dottrace="false"
           fi
 
+          if [[ "${state_layout}" == "all" ]]; then
+            state_layouts='["halfpath","flat","paprika"]'
+          else
+            state_layouts="[\"${state_layout}\"]"
+          fi
+
+          if [[ "${mode}" == "multi" && "${state_layout}" == "all" ]]; then
+            echo "state_layout=all is only supported for single-image benchmarks. Choose one layout for docker_images or retrospective mode."
+            exit 1
+          fi
+
           branch="${branch#refs/heads/}"
           if [[ -z "${branch}" ]]; then
             echo "Failed to resolve branch for event '${EVENT_NAME}'."
@@ -267,15 +281,29 @@ jobs:
             should_trigger_publish_docker="false"
           fi
 
-          if [[ "${state_layout}" == "flat" && "${payload_set}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet-flat.yaml"
-          elif [[ "${state_layout}" == "flat" && "${payload_set}" == "realblocks" ]]; then
-            config_file="github-action-mainnet-flat.yaml"
-          elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet.yaml"
-          else
-            config_file="github-action-mainnet.yaml"
+          resolve_config_file() {
+            local layout="$1"
+            local payload="$2"
+            if [[ "${layout}" == "flat" && "${payload}" == "superblocks" ]]; then
+              echo "github-action-compressed-mainnet-flat.yaml"
+            elif [[ "${layout}" == "flat" && "${payload}" == "realblocks" ]]; then
+              echo "github-action-mainnet-flat.yaml"
+            elif [[ "${layout}" == "paprika" && "${payload}" == "superblocks" ]]; then
+              echo "github-action-compressed-mainnet-paprika.yaml"
+            elif [[ "${layout}" == "paprika" && "${payload}" == "realblocks" ]]; then
+              echo "github-action-mainnet-paprika.yaml"
+            elif [[ "${payload}" == "superblocks" ]]; then
+              echo "github-action-compressed-mainnet.yaml"
+            else
+              echo "github-action-mainnet.yaml"
+            fi
+          }
+
+          config_layout="${state_layout}"
+          if [[ "${config_layout}" == "all" ]]; then
+            config_layout="flat"
           fi
+          config_file="$(resolve_config_file "${config_layout}" "${payload_set}")"
 
           scenario_name="nethermind-${state_layout}-${payload_set}-${clean_branch}-delay${delay_seconds}s"
 
@@ -302,6 +330,7 @@ jobs:
             echo "retrospective_last=${retrospective_last:-100}"
             echo "retrospective_step=${retrospective_step:-10}"
             echo "state_layout=${state_layout}"
+            echo "state_layouts=${state_layouts}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
             echo "additional_extra_flags<<EOF"
@@ -323,6 +352,8 @@ jobs:
       - name: Checkout repository
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Trigger publish-docker.yml
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
@@ -435,12 +466,13 @@ jobs:
           done
 
   benchmark:
-    name: benchmark (${{ matrix.payload_set }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
+    name: benchmark (${{ matrix.state_layout }}, ${{ matrix.payload_set }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
     needs: [resolve, prepare-docker]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     strategy:
       matrix:
         run: ${{ fromJson(needs.resolve.outputs.run_indices) }}
+        state_layout: ${{ fromJson(needs.resolve.outputs.state_layouts) }}
         payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
       max-parallel: 1
       fail-fast: false
@@ -455,7 +487,7 @@ jobs:
         id: resolve-config
         shell: bash
         env:
-          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          STATE_LAYOUT: ${{ matrix.state_layout }}
           PAYLOAD_SET: ${{ matrix.payload_set }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
@@ -467,7 +499,11 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+          elif [[ "${STATE_LAYOUT}" == "paprika" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+            config_file="github-action-compressed-mainnet-paprika.yaml"
+          elif [[ "${STATE_LAYOUT}" == "paprika" && "${PAYLOAD_SET}" == "realblocks" ]]; then
+            config_file="github-action-mainnet-paprika.yaml"
+          elif [[ "${PAYLOAD_SET}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
           else
             config_file="github-action-mainnet.yaml"
@@ -484,6 +520,7 @@ jobs:
       - name: Print resolved inputs
         run: |
           echo "Event: ${{ github.event_name }}"
+          echo "State layout: ${{ matrix.state_layout }}"
           echo "Payload set: ${{ matrix.payload_set }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
@@ -499,10 +536,10 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v4
         with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          path: /tmp/expb-master-metrics-cache-${{ matrix.state_layout }}-${{ matrix.payload_set }}
+          key: expb-master-metrics-v4-${{ matrix.state_layout }}-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-${{ matrix.payload_set }}-
+            expb-master-metrics-v4-${{ matrix.state_layout }}-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -512,6 +549,10 @@ jobs:
             echo "Config file '${EXPB_DATA_DIR}/${CONFIG_FILE}' does not exist."
             echo "Available github-action config files in '${EXPB_DATA_DIR}':"
             ls -1 "${EXPB_DATA_DIR}"/github-action*mainnet*.yaml || true
+            exit 1
+          fi
+          if [[ "${{ matrix.state_layout }}" == "paprika" && "${CONFIG_FILE}" != *paprika* ]]; then
+            echo "Paprika benchmarks require a prepared Paprika-specific EXPB config file."
             exit 1
           fi
 
@@ -525,6 +566,7 @@ jobs:
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           AMOUNT: ${{ needs.resolve.outputs.amount }}
           PAYLOAD_SET: ${{ matrix.payload_set }}
+          STATE_LAYOUT: ${{ matrix.state_layout }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
@@ -581,6 +623,13 @@ jobs:
                 }
               ' \
             > "${flags_file}"
+
+          if [[ "${STATE_LAYOUT}" == "paprika" ]]; then
+            {
+              echo "--FlatDb.Enabled=true"
+              echo "--FlatDb.Layout=PaprikaFlat"
+            } >> "${flags_file}"
+          fi
 
           YQ="${RUNNER_TEMP}/yq"
           if [[ ! -x "${YQ}" ]]; then
@@ -706,6 +755,7 @@ jobs:
         shell: bash
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          STATE_LAYOUT: ${{ matrix.state_layout }}
         run: |
           set -euo pipefail
 
@@ -747,6 +797,25 @@ jobs:
               echo "${severe_lines}"
             fi
           done
+
+          layout_backend_valid="true"
+          if [[ "${STATE_LAYOUT}" == "flat" ]]; then
+            if grep -Eq 'State backend: flat \(layout Flat[,)]' "${clean_log}"; then
+              echo "Confirmed flat state backend for ${STATE_LAYOUT} benchmark."
+            else
+              layout_backend_valid="false"
+              echo "Expected Flat layout backend for ${STATE_LAYOUT} benchmark, but no exact Flat layout marker was found."
+              grep -in "State backend:" "${clean_log}" | head -n 20 || true
+            fi
+          elif [[ "${STATE_LAYOUT}" == "paprika" ]]; then
+            if grep -q "State backend: flat (layout PaprikaFlat" "${clean_log}"; then
+              echo "Confirmed flat state backend for ${STATE_LAYOUT} benchmark."
+            else
+              layout_backend_valid="false"
+              echo "Expected PaprikaFlat backend for ${STATE_LAYOUT} benchmark, but no 'State backend: flat (layout PaprikaFlat' marker was found."
+              grep -in "State backend:" "${clean_log}" | head -n 20 || true
+            fi
+          fi
 
           # Extract client-side processing times from SSE data feed (primary)
           client_ms="${RUNNER_TEMP}/expb-client-ms.txt"
@@ -869,6 +938,7 @@ jobs:
             echo "exception_lines_file=${exception_lines}"
             echo "invalid_block_found=${invalid_block_found}"
             echo "invalid_block_lines_file=${invalid_block_lines}"
+            echo "layout_backend_valid=${layout_backend_valid}"
             echo "metrics_file=${metrics_file}"
             while IFS= read -r line; do
               key="${line%%=*}"
@@ -881,24 +951,24 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
+          name: expb-single-metrics-${{ matrix.state_layout }}-${{ matrix.payload_set }}-run${{ matrix.run }}
           path: ${{ steps.analyze.outputs.metrics_file }}
           retention-days: 30
 
       - name: Prepare master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true' && steps.analyze.outputs.layout_backend_valid != 'false'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}"
-          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}/master-metrics.env"
+          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.state_layout }}-${{ matrix.payload_set }}"
+          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.state_layout }}-${{ matrix.payload_set }}/master-metrics.env"
 
       - name: Save master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true' && steps.analyze.outputs.layout_backend_valid != 'false'
         uses: actions/cache/save@v4
         with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.run_id }}
+          path: /tmp/expb-master-metrics-cache-${{ matrix.state_layout }}-${{ matrix.payload_set }}
+          key: expb-master-metrics-v4-${{ matrix.state_layout }}-${{ matrix.payload_set }}-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -908,6 +978,11 @@ jobs:
 
           if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
             echo "expb execute-scenarios did not finish successfully."
+            exit 1
+          fi
+
+          if [[ "${{ steps.analyze.outcome }}" != "success" ]]; then
+            echo "Benchmark output analysis did not finish successfully."
             exit 1
           fi
 
@@ -927,11 +1002,16 @@ jobs:
             exit 1
           fi
 
+          if [[ "${{ steps.analyze.outputs.layout_backend_valid }}" == "false" ]]; then
+            echo "Expected flat state backend was not confirmed in run output. Failing workflow."
+            exit 1
+          fi
+
       - name: Collect and upload dotTrace snapshots
         if: always() && needs.resolve.outputs.dottrace == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.state_layout }}-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
           MARKER: ${{ runner.temp }}/.expb-run-marker
         run: |
           set -euo pipefail
@@ -960,8 +1040,8 @@ jobs:
         if: always() && needs.resolve.outputs.dottrace == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          name: dottrace-${{ matrix.state_layout }}-${{ matrix.payload_set }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/dottrace-${{ matrix.state_layout }}-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
           retention-days: 30
           if-no-files-found: ignore
 
@@ -995,35 +1075,67 @@ jobs:
           path: ${{ runner.temp }}/all-metrics
           pattern: expb-single-metrics-*
 
-      - name: Restore master metrics (superblocks)
-        id: restore-master-superblocks
+      - name: Restore master metrics (halfpath superblocks)
         continue-on-error: true
         uses: actions/cache/restore@v4
         with:
-          path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v3-superblocks-${{ github.event.pull_request.base.sha }}
+          path: /tmp/expb-master-metrics-cache-halfpath-superblocks
+          key: expb-master-metrics-v4-halfpath-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-superblocks-
+            expb-master-metrics-v4-halfpath-superblocks-
 
-      - name: Restore master metrics (realblocks)
-        id: restore-master-realblocks
+      - name: Restore master metrics (halfpath realblocks)
         continue-on-error: true
         uses: actions/cache/restore@v4
         with:
-          path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v3-realblocks-${{ github.event.pull_request.base.sha }}
+          path: /tmp/expb-master-metrics-cache-halfpath-realblocks
+          key: expb-master-metrics-v4-halfpath-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-realblocks-
+            expb-master-metrics-v4-halfpath-realblocks-
+
+      - name: Restore master metrics (flat superblocks)
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-flat-superblocks
+          key: expb-master-metrics-v4-flat-superblocks-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v4-flat-superblocks-
+
+      - name: Restore master metrics (flat realblocks)
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-flat-realblocks
+          key: expb-master-metrics-v4-flat-realblocks-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v4-flat-realblocks-
+
+      - name: Restore master metrics (paprika superblocks)
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-paprika-superblocks
+          key: expb-master-metrics-v4-paprika-superblocks-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v4-paprika-superblocks-
+
+      - name: Restore master metrics (paprika realblocks)
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-paprika-realblocks
+          key: expb-master-metrics-v4-paprika-realblocks-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v4-paprika-realblocks-
 
       - name: Build PR comparison comment
         id: pr-comment
         shell: bash
         env:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
-          MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
-          MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
           PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
-          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          STATE_LAYOUTS: ${{ needs.resolve.outputs.state_layouts }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -1105,13 +1217,14 @@ jobs:
           }
 
           build_table() {
-            local payload_set="$1"
-            local current_metrics="$2"
-            local master_metrics="$3"
-            local scenario_name="nethermind-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+            local layout="$1"
+            local payload_set="$2"
+            local current_metrics="$3"
+            local master_metrics="$4"
+            local scenario_name="nethermind-${layout}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
 
             append_blank
-            append_line "#### ${payload_set}"
+            append_line "#### ${layout} / ${payload_set}"
             append_blank
 
             if [[ ! -f "${current_metrics}" ]]; then
@@ -1122,7 +1235,7 @@ jobs:
             append_line "Scenario: \`${scenario_name}\`"
 
             if [[ ! -f "${master_metrics}" ]]; then
-              append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
+              append_line "No cached master baseline for \`${layout} / ${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
             fi
 
             # Primary: client-side (SSE) metrics or fallback
@@ -1150,20 +1263,15 @@ jobs:
           append_line "Run: [View workflow run](${RUN_URL})"
 
           # Iterate over each payload_set from the matrix
+          mapfile -t state_layouts < <(echo "${STATE_LAYOUTS}" | jq -r '.[]')
           mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
 
-          for ps in "${payload_sets[@]}"; do
-            # Find the PR metrics artifact (run 1 by default)
-            current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
-
-            # Master metrics from cache
-            if [[ "${ps}" == "superblocks" ]]; then
-              master_metrics="${MASTER_SUPERBLOCKS}"
-            else
-              master_metrics="${MASTER_REALBLOCKS}"
-            fi
-
-            build_table "${ps}" "${current_metrics}" "${master_metrics}"
+          for layout in "${state_layouts[@]}"; do
+            for ps in "${payload_sets[@]}"; do
+              current_metrics="${METRICS_DIR}/expb-single-metrics-${layout}-${ps}-run1/expb-metrics.env"
+              master_metrics="/tmp/expb-master-metrics-cache-${layout}-${ps}/master-metrics.env"
+              build_table "${layout}" "${ps}" "${current_metrics}" "${master_metrics}"
+            done
           done
 
           {
@@ -1231,7 +1339,7 @@ jobs:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
           PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
-          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          STATE_LAYOUTS: ${{ needs.resolve.outputs.state_layouts }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -1250,42 +1358,45 @@ jobs:
           }
 
           mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+          mapfile -t state_layouts < <(echo "${STATE_LAYOUTS}" | jq -r '.[]')
+          layout_label="$(IFS=,; echo "${state_layouts[*]}")"
 
           {
             echo "## EXPB Benchmark Results"
             echo ""
-            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Delay: \`${DELAY_SECONDS}s\` | Runs: \`${run_count}\`"
+            echo "Branch: \`${CLEAN_BRANCH}\` | Layouts: \`${layout_label}\` | Delay: \`${DELAY_SECONDS}s\` | Runs: \`${run_count}\`"
             echo ""
             echo "Run: [View workflow run](${RUN_URL})"
           } > "${summary_file}"
 
-          for ps in "${payload_sets[@]}"; do
-            scenario_name="nethermind-${STATE_LAYOUT}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          for layout in "${state_layouts[@]}"; do
+            for ps in "${payload_sets[@]}"; do
+              scenario_name="nethermind-${layout}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
 
-            {
-              echo ""
-              echo "### ${ps}"
-              echo ""
-              echo "Scenario: \`${scenario_name}\`"
-              echo ""
-            } >> "${summary_file}"
+              {
+                echo ""
+                echo "### ${layout} / ${ps}"
+                echo ""
+                echo "Scenario: \`${scenario_name}\`"
+                echo ""
+              } >> "${summary_file}"
 
-            # Detect metrics source from first available run
-            source_label=""
-            for (( r=1; r<=run_count; r++ )); do
-              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
-              if [[ -f "${mf}" ]]; then
-                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
-                if [[ -n "${ttfb_check}" ]]; then
-                  source_label="SSE"
-                else
-                  source_label="TTFB"
+              # Detect metrics source from first available run
+              source_label=""
+              for (( r=1; r<=run_count; r++ )); do
+                mf="${METRICS_DIR}/expb-single-metrics-${layout}-${ps}-run${r}/expb-metrics.env"
+                if [[ -f "${mf}" ]]; then
+                  ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
+                  if [[ -n "${ttfb_check}" ]]; then
+                    source_label="SSE"
+                  else
+                    source_label="TTFB"
+                  fi
+                  break
                 fi
-                break
-              fi
-            done
+              done
 
-            if [[ "${run_count}" -gt 1 ]]; then
+              if [[ "${run_count}" -gt 1 ]]; then
               # Per-run table
               {
                 echo "| Run | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) |"
@@ -1302,7 +1413,7 @@ jobs:
               valid_runs=0
 
               for (( r=1; r<=run_count; r++ )); do
-                mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+                mf="${METRICS_DIR}/expb-single-metrics-${layout}-${ps}-run${r}/expb-metrics.env"
                 if [[ ! -f "${mf}" ]]; then
                   echo "| ${r} | - | - | - | - | - | - | - | - |" >> "${summary_file}"
                   continue
@@ -1357,9 +1468,9 @@ jobs:
                   echo "| Worst | $(compute_max_of ${avg_values}) | $(compute_max_of ${median_values}) | $(compute_max_of ${p90_values}) | $(compute_max_of ${p95_values}) | $(compute_max_of ${p99_values}) | $(compute_max_of ${min_values}) | $(compute_max_of ${max_values}) |"
                 } >> "${summary_file}"
               fi
-            else
+              else
               # Single run — simple table
-              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+              mf="${METRICS_DIR}/expb-single-metrics-${layout}-${ps}-run1/expb-metrics.env"
               if [[ ! -f "${mf}" ]]; then
                 echo "No metrics were produced." >> "${summary_file}"
               else
@@ -1399,6 +1510,7 @@ jobs:
                 fi
               fi
             fi
+            done
           done
 
           echo "--- Single Benchmark Summary ---"
@@ -1575,6 +1687,7 @@ jobs:
       - name: Print resolved inputs
         run: |
           echo "Multi-image benchmark run"
+          echo "State layout: ${{ needs.resolve.outputs.state_layout }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Image tag: ${{ matrix.tag }}"
           echo "Run: ${{ matrix.run }} of ${{ needs.resolve.outputs.run_count }}"
@@ -1592,6 +1705,10 @@ jobs:
             ls -1 "${EXPB_DATA_DIR}"/github-action*mainnet*.yaml || true
             exit 1
           fi
+          if [[ "${{ needs.resolve.outputs.state_layout }}" == "paprika" && "${CONFIG_FILE}" != *paprika* ]]; then
+            echo "Paprika benchmarks require a prepared Paprika-specific EXPB config file."
+            exit 1
+          fi
 
       - name: Render benchmark config
         id: render-config
@@ -1602,7 +1719,8 @@ jobs:
           DOCKER_TAG: ${{ matrix.tag }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           AMOUNT: ${{ needs.resolve.outputs.amount }}
-          SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          SCENARIO_NAME: nethermind-multi-${{ needs.resolve.outputs.state_layout }}-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
           set -euo pipefail
@@ -1647,6 +1765,13 @@ jobs:
                 }
               ' \
             > "${flags_file}"
+
+          if [[ "${STATE_LAYOUT}" == "paprika" ]]; then
+            {
+              echo "--FlatDb.Enabled=true"
+              echo "--FlatDb.Layout=PaprikaFlat"
+            } >> "${flags_file}"
+          fi
 
           YQ="${RUNNER_TEMP}/yq"
           if [[ ! -x "${YQ}" ]]; then
@@ -1767,6 +1892,7 @@ jobs:
         shell: bash
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           TAG: ${{ matrix.tag }}
           RUN: ${{ matrix.run }}
         run: |
@@ -1819,6 +1945,25 @@ jobs:
             fi
           done
 
+          layout_backend_valid="true"
+          if [[ "${STATE_LAYOUT}" == "flat" ]]; then
+            if grep -Eq 'State backend: flat \(layout Flat[,)]' "${clean_log}"; then
+              echo "Confirmed flat state backend for ${STATE_LAYOUT} benchmark."
+            else
+              layout_backend_valid="false"
+              echo "Expected Flat layout backend for ${STATE_LAYOUT} benchmark, but no exact Flat layout marker was found."
+              grep -in "State backend:" "${clean_log}" | head -n 20 || true
+            fi
+          elif [[ "${STATE_LAYOUT}" == "paprika" ]]; then
+            if grep -q "State backend: flat (layout PaprikaFlat" "${clean_log}"; then
+              echo "Confirmed flat state backend for ${STATE_LAYOUT} benchmark."
+            else
+              layout_backend_valid="false"
+              echo "Expected PaprikaFlat backend for ${STATE_LAYOUT} benchmark, but no 'State backend: flat (layout PaprikaFlat' marker was found."
+              grep -in "State backend:" "${clean_log}" | head -n 20 || true
+            fi
+          fi
+
           # Extract client-side processing times from SSE data feed (primary)
           client_ms="${RUNNER_TEMP}/expb-client-ms-${key}.txt"
           grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
@@ -1850,8 +1995,15 @@ jobs:
               echo "RUN=${RUN}"
               echo "EXCEPTION_FOUND=${exception_found}"
               echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
+              echo "LAYOUT_BACKEND_VALID=${layout_backend_valid}"
               echo "ERROR=no_metrics"
             } > "${metrics_dir}/metrics.env"
+            {
+              echo "exception_found=${exception_found}"
+              echo "invalid_block_found=${invalid_block_found}"
+              echo "layout_backend_valid=${layout_backend_valid}"
+              echo "metrics_file=${metrics_dir}/metrics.env"
+            } >> "${GITHUB_OUTPUT}"
             exit 1
           fi
 
@@ -1904,7 +2056,14 @@ jobs:
             echo "RUN=${RUN}"
             echo "EXCEPTION_FOUND=${exception_found}"
             echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
+            echo "LAYOUT_BACKEND_VALID=${layout_backend_valid}"
           } > "${metrics_dir}/metrics.env"
+          {
+            echo "exception_found=${exception_found}"
+            echo "invalid_block_found=${invalid_block_found}"
+            echo "layout_backend_valid=${layout_backend_valid}"
+            echo "metrics_file=${metrics_dir}/metrics.env"
+          } >> "${GITHUB_OUTPUT}"
           compute_percentiles "${processing_ms}" "" >> "${metrics_dir}/metrics.env"
 
           # Also compute K6 TTFB metrics when client metrics were primary
@@ -1960,15 +2119,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          failed=false
           if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
             echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
-            echo "Continuing multi-image run (fail-fast is disabled)."
+            failed=true
+          fi
+          if [[ "${{ steps.analyze.outcome }}" != "success" ]]; then
+            echo "Benchmark output analysis did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
+            failed=true
           fi
           if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
             echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+            failed=true
           fi
           if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
             echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+            failed=true
+          fi
+          if [[ "${{ steps.analyze.outputs.layout_backend_valid }}" == "false" ]]; then
+            echo "Expected flat state backend was not confirmed for ${{ matrix.tag }} run ${{ matrix.run }}."
+            failed=true
+          fi
+          if [[ "${failed}" == "true" ]]; then
+            exit 1
           fi
 
       - name: Collect and upload dotTrace snapshots

@@ -21,6 +21,7 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
+    [TestCase(FlatLayout.PaprikaFlat)]
     public void SetLayout_Then_ReadLayout_RoundTrips(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
@@ -34,6 +35,7 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
+    [TestCase(FlatLayout.PaprikaFlat)]
     public void ValidateLayout_DoesNotThrow_OnFreshDb(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
@@ -43,6 +45,7 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
+    [TestCase(FlatLayout.PaprikaFlat)]
     public void ValidateLayout_DoesNotThrow_WhenStoredMatches(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
@@ -53,6 +56,7 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
+    [TestCase(FlatLayout.PaprikaFlat)]
     public void ValidateLayoutReturnFlag_ReturnsZero(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
@@ -65,6 +69,10 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.FlatInTrie, FlatLayout.PreimageFlat)]
     [TestCase(FlatLayout.PreimageFlat, FlatLayout.Flat)]
     [TestCase(FlatLayout.PreimageFlat, FlatLayout.FlatInTrie)]
+    [TestCase(FlatLayout.PaprikaFlat, FlatLayout.Flat)]
+    [TestCase(FlatLayout.Flat, FlatLayout.PaprikaFlat)]
+    [TestCase(FlatLayout.PaprikaFlat, FlatLayout.FlatInTrie)]
+    [TestCase(FlatLayout.PaprikaFlat, FlatLayout.PreimageFlat)]
     public void ValidateLayout_Throws_WhenStoredDiffers(FlatLayout stored, FlatLayout configured)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
@@ -80,6 +88,7 @@ public class LayoutMetadataTests
     [TestCase(FlatLayout.Flat)]
     [TestCase(FlatLayout.FlatInTrie)]
     [TestCase(FlatLayout.PreimageFlat)]
+    [TestCase(FlatLayout.PaprikaFlat)]
     public void RecordLayoutOnFirstBatch_WritesAndFlipsFlag_WhenZero(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();

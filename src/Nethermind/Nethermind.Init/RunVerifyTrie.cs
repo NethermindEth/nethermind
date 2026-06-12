@@ -8,9 +8,11 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.Init;
 
@@ -22,6 +24,7 @@ public class RunVerifyTrie(
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,
     IProcessExitSource processExitSource,
+    IFlatDbConfig flatDbConfig,
     ILogManager logManager)
     : IStep
 {
@@ -29,6 +32,12 @@ public class RunVerifyTrie(
 
     public Task Execute(CancellationToken cancellationToken)
     {
+        if (worldStateManager is FlatWorldStateManager && flatDbConfig.Layout == FlatLayout.PaprikaFlat)
+        {
+            if (_logger.IsWarn) _logger.Warn("Skipping trie verification because PaprikaFlat does not support flat state iteration.");
+            return Task.CompletedTask;
+        }
+
         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
         BlockHeader? head = blockTree!.Head?.Header;
         if (head is not null)

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Init;
 using Nethermind.Logging;
@@ -42,16 +44,105 @@ public class FlatStateActivationPolicyTests
         flatDbConfig.Enabled.Returns(flags.HasFlag(Flags.Enabled));
         flatDbConfig.ImportFromPruningTrieState.Returns(flags.HasFlag(Flags.ImportFromPruningTrieState));
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.CurrentState.Returns(flags.HasFlag(Flags.FlatHasData) ? new StateId(1, Nethermind.Core.Crypto.Keccak.Zero) : StateId.PreGenesis);
-        IPersistence flatPersistence = Substitute.For<IPersistence>();
-        flatPersistence.CreateReader().Returns(reader);
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new();
+        if (flags.HasFlag(Flags.FlatHasData))
+        {
+            using IColumnsWriteBatch<FlatDbColumns> batch = flatDb.StartWriteBatch();
+            BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), new StateId(1, Nethermind.Core.Crypto.Keccak.Zero));
+        }
 
         MemDb patriciaDb = new();
         if (flags.HasFlag(Flags.PatriciaHasData))
             patriciaDb.Set([1], [1]);
 
-        FlatStateActivationPolicy policy = new(flatDbConfig, new Lazy<IPersistence>(() => flatPersistence), new Lazy<IDb>(() => patriciaDb), LimboLogs.Instance);
+        FlatStateActivationPolicy policy = new(flatDbConfig, new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb), new Lazy<IDb>(() => patriciaDb), LimboLogs.Instance);
         Assert.That(policy.ShouldTurnOnFlatDb(), Is.EqualTo(expected));
+    }
+
+    [TestCase(false, false, false, Description = "No metadata and no patricia data")]
+    [TestCase(true, false, false, Description = "No metadata and existing patricia data")]
+    [TestCase(false, true, false, Description = "No metadata and import from pruning trie state")]
+    [TestCase(false, false, true, Description = "Committed current state with non-Paprika layout")]
+    public void ShouldTurnOnFlatDb_ThrowsForPaprikaFlatWithoutPreparedMetadata(bool patriciaHasData, bool importFromPruningTrieState, bool writeFlatLayout)
+    {
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(true);
+        flatDbConfig.Layout.Returns(FlatLayout.PaprikaFlat);
+        flatDbConfig.ImportFromPruningTrieState.Returns(importFromPruningTrieState);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new();
+        if (writeFlatLayout)
+        {
+            using IColumnsWriteBatch<FlatDbColumns> batch = flatDb.StartWriteBatch();
+            IWriteBatch metadata = batch.GetColumnBatch(FlatDbColumns.Metadata);
+            BasePersistence.SetCurrentState(metadata, new StateId(1, Nethermind.Core.Crypto.Keccak.Zero));
+            BasePersistence.SetLayout(metadata, FlatLayout.Flat);
+        }
+
+        MemDb patriciaDb = new();
+        if (patriciaHasData)
+        {
+            patriciaDb.Set([1], [1]);
+        }
+
+        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(
+            () => _ = new FlatStateActivationPolicy(flatDbConfig, new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb), new Lazy<IDb>(() => patriciaDb), LimboLogs.Instance));
+        Assert.That(exception.Message, Does.Contain("requires a prepared PaprikaFlat flat DB"));
+    }
+
+    [Test]
+    public void ShouldTurnOnFlatDb_ReturnsTrue_ForPaprikaFlatCommittedState()
+    {
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(true);
+        flatDbConfig.Layout.Returns(FlatLayout.PaprikaFlat);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new();
+        using (IColumnsWriteBatch<FlatDbColumns> batch = flatDb.StartWriteBatch())
+        {
+            IWriteBatch metadata = batch.GetColumnBatch(FlatDbColumns.Metadata);
+            BasePersistence.SetCurrentState(metadata, new StateId(1, Nethermind.Core.Crypto.Keccak.Zero));
+            BasePersistence.SetLayout(metadata, FlatLayout.PaprikaFlat);
+        }
+
+        MemDb patriciaDb = new();
+        FlatStateActivationPolicy policy = new(flatDbConfig, new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb), new Lazy<IDb>(() => patriciaDb), LimboLogs.Instance);
+
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+    }
+
+    [Test]
+    public void ShouldTurnOnFlatDb_ReturnsTrue_ForPaprikaFlatPendingStateWithPatriciaData()
+    {
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(true);
+        flatDbConfig.Layout.Returns(FlatLayout.PaprikaFlat);
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new();
+        using (IColumnsWriteBatch<FlatDbColumns> batch = flatDb.StartWriteBatch())
+        {
+            PaprikaFlatPersistence.SetPendingCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), new StateId(1, Nethermind.Core.Crypto.Keccak.Zero));
+        }
+
+        MemDb patriciaDb = new();
+        patriciaDb.Set([1], [1]);
+
+        FlatStateActivationPolicy policy = new(flatDbConfig, new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb), new Lazy<IDb>(() => patriciaDb), LimboLogs.Instance);
+
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+    }
+
+    [Test]
+    public void ShouldTurnOnFlatDb_DoesNotResolveFlatDb_WhenDisabled()
+    {
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(false);
+
+        FlatStateActivationPolicy policy = new(
+            flatDbConfig,
+            new Lazy<IColumnsDb<FlatDbColumns>>(() => throw new InvalidOperationException("Flat DB should not be resolved.")),
+            new Lazy<IDb>(() => throw new InvalidOperationException("Patricia DB should not be resolved.")),
+            LimboLogs.Instance);
+
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.False);
     }
 }

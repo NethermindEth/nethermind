@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
@@ -17,20 +18,26 @@ namespace Nethermind.State.Flat.Sync.Snap;
 /// EnsureInitialize/FinalizeSync are driven by the snap-sync runner at start/end of the run,
 /// so they don't need internal locking — they're never called concurrently with CreateXxxTree.
 /// </summary>
-public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
+public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfig, IFlatDbConfig flatDbConfig, ILogManager logManager) : ISnapTrieFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
 
     public void EnsureInitialize()
     {
+        ThrowIfPaprikaFlat();
         if (_logger.IsInfo) _logger.Info("Clearing database");
         persistence.Clear();
     }
 
-    public void FinalizeSync() => persistence.Flush();
+    public void FinalizeSync()
+    {
+        ThrowIfPaprikaFlat();
+        persistence.Flush();
+    }
 
     public ISnapTree<PathWithAccount> CreateStateTree()
     {
+        ThrowIfPaprikaFlat();
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager);
@@ -38,8 +45,17 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
     {
+        ThrowIfPaprikaFlat();
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager);
+    }
+
+    private void ThrowIfPaprikaFlat()
+    {
+        if (flatDbConfig.Layout == FlatLayout.PaprikaFlat)
+        {
+            throw new NotSupportedException($"{nameof(FlatLayout.PaprikaFlat)} does not support snap sync because Paprika flat storage does not implement range deletion or in-place flat DB reset.");
+        }
     }
 }

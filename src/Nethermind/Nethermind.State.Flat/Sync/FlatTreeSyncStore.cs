@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
@@ -15,7 +16,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync;
 
-public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
+public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, IFlatDbConfig flatDbConfig, ILogManager logManager) : ITreeSyncStore
 {
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
@@ -24,6 +25,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
+        ThrowIfPaprikaFlat();
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         byte[]? data = address is null
             ? reader.TryLoadStateRlp(path, ReadFlags.None)
@@ -38,6 +40,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
     {
+        ThrowIfPaprikaFlat();
         if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
@@ -224,6 +227,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     public void EnsureStorageEmpty(Hash256 address)
     {
+        ThrowIfPaprikaFlat();
         // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
         // because the trie is always traversed from the account's storage root hash — when the
         // account has EmptyTreeHash or the account no longer exists, no storage trie nodes will
@@ -235,6 +239,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     public void FinalizeSync(BlockHeader pivotHeader)
     {
+        ThrowIfPaprikaFlat();
         if (Interlocked.CompareExchange(ref _wasFinalized, true, false)) throw new InvalidOperationException("Db was finalized");
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
@@ -251,8 +256,19 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         persistence.Flush();
     }
 
-    public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) =>
-        new FlatVerificationContext(persistence, rootNodeData, logManager);
+    public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData)
+    {
+        ThrowIfPaprikaFlat();
+        return new FlatVerificationContext(persistence, rootNodeData, logManager);
+    }
+
+    private void ThrowIfPaprikaFlat()
+    {
+        if (flatDbConfig.Layout == FlatLayout.PaprikaFlat)
+        {
+            throw new NotSupportedException($"{nameof(FlatLayout.PaprikaFlat)} does not support tree sync because Paprika flat storage does not implement account/storage range deletion.");
+        }
+    }
 
     private class FlatVerificationContext : ITreeSyncVerificationContext
     {

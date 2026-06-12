@@ -72,7 +72,7 @@ on:
         description: "Extra options to configure L2 node"
         default: '{"l1_nethermind_image":"", "l2_node_image":"", "l2_el_extra_flags":"", "l2_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
       convert_to_paprika:
-        description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
+        description: "If checked, runs the current branch with FlatDb.Layout=PaprikaFlat. Requires a prepared PaprikaFlat DB."
         default: false
         type: boolean
   workflow_call:
@@ -137,7 +137,7 @@ on:
         default: '{"l1_nethermind_image":"", "l2_node_image":"", "l2_el_extra_flags":"", "l2_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
         required: false
       convert_to_paprika:
-        description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
+        description: "If checked, runs the current branch with FlatDb.Layout=PaprikaFlat. Requires a prepared PaprikaFlat DB."
         default: false
         type: boolean
     outputs:
@@ -291,6 +291,16 @@ jobs:
           echo "layer1_el_endpoint=$(echo '${{ inputs.additional_l2_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
           echo "layer1_cl_endpoint=$(echo '${{ inputs.additional_l2_options }}' | jq -r .layer1_cl_endpoint)" >> $GITHUB_OUTPUT
           echo "NON_VALIDATOR_MODE=${{ inputs.non_validator_mode }}" >> $GITHUB_OUTPUT
+          additional_nethermind_flags="${{ inputs.additional_nethermind_flags }}"
+          if [[ "${{ inputs.convert_to_paprika }}" == "true" ]]; then
+            paprika_flags="FlatDb.Enabled=true FlatDb.Layout=PaprikaFlat"
+            if [[ -n "${additional_nethermind_flags}" ]]; then
+              additional_nethermind_flags="${additional_nethermind_flags} ${paprika_flags}"
+            else
+              additional_nethermind_flags="${paprika_flags}"
+            fi
+          fi
+          echo "additional_nethermind_flags=${additional_nethermind_flags}" >> $GITHUB_OUTPUT
 
       - name: Trigger Node creation Repo Action
         uses: benc-uk/workflow-dispatch@v1
@@ -306,7 +316,7 @@ jobs:
             "nethermind_branch": "${{ env.CLEAN_REF }}",
             "network": "${{ inputs.network }}",
             "cl_client": "${{ inputs.cl_client }}",
-            "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\", \"custom_machine_type\":\"${{ steps.extract_variables.outputs.custom_machine_type }}\", \"convert_to_paprika\": \"${{ inputs.convert_to_paprika }}\"}",
+            "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ steps.extract_variables.outputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\", \"custom_machine_type\":\"${{ steps.extract_variables.outputs.custom_machine_type }}\", \"convert_to_paprika\": \"false\"}",
             "additional_l2_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"l2_node_image\":\"${{ steps.extract_variables.outputs.l2_node_image}}\", \"l2_el_extra_flags\":\"${{ steps.extract_variables.outputs.l2_el_extra_flags}}\", \"l2_cl_extra_flags\":\"${{ steps.extract_variables.outputs.l2_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
             }'
 
