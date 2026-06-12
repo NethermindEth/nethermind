@@ -62,7 +62,8 @@ namespace Nethermind.Init.Steps
                 long coveragePooledTxs = 0;
                 getApi.BlockTree!.NewSuggestedBlock += (_, blockEventArgs) =>
                 {
-                    Block suggested = blockEventArgs.Block;
+                    // Header-only suggests carry no body; never throw inside the suggest path.
+                    if (blockEventArgs.Block is not { } suggested) return;
                     Transaction[] transactions = suggested.Transactions;
                     if (transactions.Length == 0) return;
                     int inPool = 0;
