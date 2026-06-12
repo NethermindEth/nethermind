@@ -368,8 +368,6 @@ public struct EvmPooledMemory
         return new(size, _memory);
     }
 
-    private const int MinRentSize = 1_024;
-
     public void Dispose()
     {
         byte[] memory = _memory;
@@ -424,9 +422,10 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
+        const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            _memory = SafeArrayPool<byte>.Shared.Rent(Math.Max(TruncateToInt32(Size), MinRentSize));
+            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
