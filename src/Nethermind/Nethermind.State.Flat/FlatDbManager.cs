@@ -69,6 +69,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ILogManager logManager,
         bool enableDetailedMetrics)
     {
+        ReadOnlySnapshotBundle.PersistenceMemoMaxEntries = config.PersistenceMemoMaxEntries;
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;

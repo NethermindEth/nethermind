@@ -33,7 +33,9 @@ public sealed class ReadOnlySnapshotBundle(
     // results are memoized deliberately — absent slots are re-read heavily. Past the cap the
     // memo stops growing (reads go to the database); the read-then-add cap check can overshoot
     // by one entry per racing thread, accepted for a lock-free add.
-    private const int PersistenceMemoMaxEntries = 1 << 17;
+    // Set once at startup from IFlatDbConfig.PersistenceMemoMaxEntries; static so the cap
+    // does not have to thread through every bundle construction site.
+    public static int PersistenceMemoMaxEntries = 1 << 17;
 
     // Stored values are shared across every caller on this block: the byte[] slot values and
     // Account instances must never be mutated after insertion.

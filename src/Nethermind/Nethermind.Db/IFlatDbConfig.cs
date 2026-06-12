@@ -7,6 +7,11 @@ namespace Nethermind.Db;
 
 public interface IFlatDbConfig : IConfig
 {
+    [ConfigItem(
+        Description = "Maximum entries in the per-head storage/account read memo serving repeated reads (RPC calls and block processing) at the same head. Past the cap, additional distinct slots read from the database every time.",
+        DefaultValue = "131072")]
+    int PersistenceMemoMaxEntries { get; set; }
+
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     long BlockCacheSizeBudget { get; set; }
 
