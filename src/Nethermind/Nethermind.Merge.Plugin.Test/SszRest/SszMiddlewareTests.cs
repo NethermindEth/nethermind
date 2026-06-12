@@ -202,6 +202,7 @@ public class SszMiddlewareTests
         yield return new TestCaseData((object)new[] { OctetStream + ", application/json" }, true).SetName("single_octet_first");
         yield return new TestCaseData((object)new[] { "application/json, " + OctetStream }, true).SetName("single_octet_last");
         yield return new TestCaseData((object)new[] { "text/html, " + OctetStream + ";q=0.9, */*" }, true).SetName("single_octet_middle_with_q");
+        yield return new TestCaseData((object)new[] { OctetStream + " , application/json" }, true).SetName("single_octet_trailing_ows");
         yield return new TestCaseData((object)new[] { "application/json" }, false).SetName("single_no_octet");
         yield return new TestCaseData((object)new[] { "application/json, text/html" }, false).SetName("single_csv_no_octet");
         yield return new TestCaseData((object)new[] { "application/octet-streamx" }, false).SetName("single_octet_substring");

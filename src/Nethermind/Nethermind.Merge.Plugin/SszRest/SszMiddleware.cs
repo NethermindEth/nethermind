@@ -383,8 +383,8 @@ public sealed class SszMiddleware
         {
             ReadOnlySpan<char> token = range.TrimStart();
             int semi = token.IndexOf(';');
-            if (semi >= 0) token = token[..semi].TrimEnd();
-            return token.Equals(Octet, StringComparison.OrdinalIgnoreCase);
+            if (semi >= 0) token = token[..semi];
+            return token.TrimEnd().Equals(Octet, StringComparison.OrdinalIgnoreCase);
         }
 
         static bool HasOctetMediaValue(string? headerValue)
