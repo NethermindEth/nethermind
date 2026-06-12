@@ -26,6 +26,12 @@ public interface IWorldStateScopeProvider
         void UpdateRootHash();
 
         /// <summary>
+        /// Opportunistically warms the shared read layer for slots execution is about to
+        /// read; fire-and-forget, default no-op for backends without a shared layer.
+        /// </summary>
+        void PrefetchStorageSlots(Address address, UInt256[] slots) { }
+
+        /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
         /// </summary>

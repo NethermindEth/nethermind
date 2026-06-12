@@ -100,6 +100,9 @@ namespace Nethermind.State
         public void SetStorageReadJournaling(bool enabled)
         => _persistentStorageProvider.JournalReads = enabled;
 
+        public void PrefetchStorageSlots(Address address, UInt256[] slots)
+            => _currentScope?.PrefetchStorageSlots(address, slots);
+
         public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();

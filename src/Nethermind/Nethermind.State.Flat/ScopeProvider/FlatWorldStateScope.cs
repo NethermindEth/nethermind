@@ -133,6 +133,29 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
+
+    public void PrefetchStorageSlots(Address address, UInt256[] slots)
+        => System.Threading.ThreadPool.UnsafeQueueUserWorkItem(
+            static state => state.scope.PrefetchStorageSlotsCore(state.address, state.slots),
+            (scope: this, address, slots),
+            preferLocal: false);
+
+    private void PrefetchStorageSlotsCore(Address address, UInt256[] slots)
+    {
+        // Opportunistic: the scope (and its bundle) may complete while this job is queued —
+        // a disposed-bundle read is the acceptable cost of keeping the executing frame free
+        // of any synchronization with the prefetch.
+        try
+        {
+            for (int i = 0; i < slots.Length; i++)
+            {
+                _snapshotBundle.PrefetchSlot(address, in slots[i]);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
     public void UpdateRootHash() => _stateTree.UpdateRootHash();
 
     public Account? Get(Address address)

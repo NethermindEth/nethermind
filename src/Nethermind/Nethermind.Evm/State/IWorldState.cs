@@ -47,6 +47,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void SetStorageReadJournaling(bool enabled) { }
 
     /// <summary>
+    /// Opportunistically warms the shared read layer for storage slots that the entered
+    /// contract is statically known to read. Fire-and-forget; default no-op.
+    /// </summary>
+    void PrefetchStorageSlots(Address address, UInt256[] slots) { }
+
+    /// <summary>
     /// Get the persistent storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>

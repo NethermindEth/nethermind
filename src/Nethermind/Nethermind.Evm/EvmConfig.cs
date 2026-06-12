@@ -7,4 +7,5 @@ public class EvmConfig : IEvmConfig
 {
     public bool StreamInterpreter { get; set; }
     public bool StaticSlotDiag { get; set; }
+    public bool StaticSlotPrefetch { get; set; }
 }

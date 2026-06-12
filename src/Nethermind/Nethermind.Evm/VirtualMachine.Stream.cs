@@ -25,6 +25,13 @@ public static class StreamInterpreter
         Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
 
     /// <summary>
+    /// Whether entering a frame fires a background warm-up of the storage slots the contract
+    /// is statically known to read (see <see cref="InstructionStream.StaticSlots"/>). Set at
+    /// startup from <see cref="IEvmConfig.StaticSlotPrefetch"/>.
+    /// </summary>
+    public static bool StaticSlotPrefetch;
+
+    /// <summary>
     /// Frames executed by the stream interpreter; engagement proof for tests and rollout.
     /// Unsynchronized — an approximate count is enough.
     /// </summary>
@@ -48,6 +55,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// raw code and dispatches the table per op, so the halting op and failure type match
     /// per-op interpretation exactly.
     /// </remarks>
+    /// <summary>
+    /// Once per (block, executing account): queues a background warm-up of the contract's
+    /// statically-known storage slots so the SLOADs ahead find the shared read layer hot.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void PrefetchStaticSlots(InstructionStream stream)
+    {
+        long blockNumber = BlockExecutionContext.Header.Number;
+        Address executingAccount = VmState.Env.ExecutingAccount;
+        if (stream.LastPrefetchBlock == blockNumber && executingAccount == stream.LastPrefetchAddress)
+            return;
+
+        stream.LastPrefetchBlock = blockNumber;
+        stream.LastPrefetchAddress = executingAccount;
+        WorldState.PrefetchStorageSlots(executingAccount, stream.StaticSlots);
+    }
+
     [SkipLocalsInit]
     private CallResult RunStream<TCancelable>(
         InstructionStream stream,
@@ -58,6 +82,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ReturnData = null;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         StreamInterpreter.FramesExecuted++;
+
+        if (StreamInterpreter.StaticSlotPrefetch && stream.StaticSlots.Length != 0)
+            PrefetchStaticSlots(stream);
 
         int programCounter = VmState.ProgramCounter;
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
