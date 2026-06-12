@@ -65,6 +65,8 @@ jobs:
             hash: fb9cba9d13201b31f2788663212836c92b36e8905283dfc1558886dede4722d1
           - input: 25302208.ssz
             hash: 404eb7dc779682304b37dec2df8cccc33f5ea6ff5b28505d0138b4dc391b4920
+          - input: 25303404.ssz
+            hash: aba20005ff85b27a3bc3b4a9967d9730b44512cd5dad01fb30cfbc8967311af2
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
