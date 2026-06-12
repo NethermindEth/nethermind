@@ -178,6 +178,7 @@ public class TaikoChainSpecEngineParametersTests
             (nameof(ITaikoReleaseSpec.IsEip7251Enabled), static s => s.IsEip7251Enabled),
             (nameof(ITaikoReleaseSpec.IsEip7623Enabled), static s => s.IsEip7623Enabled),
             (nameof(ITaikoReleaseSpec.IsEip7702Enabled), static s => s.IsEip7702Enabled),
+            (nameof(ITaikoReleaseSpec.IsEip7594Enabled), static s => s.IsEip7594Enabled),
             (nameof(ITaikoReleaseSpec.IsEip7823Enabled), static s => s.IsEip7823Enabled),
             (nameof(ITaikoReleaseSpec.IsEip7825Enabled), static s => s.IsEip7825Enabled),
             (nameof(ITaikoReleaseSpec.IsEip7883Enabled), static s => s.IsEip7883Enabled),
