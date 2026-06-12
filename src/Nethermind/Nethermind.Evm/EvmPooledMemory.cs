@@ -368,28 +368,13 @@ public struct EvmPooledMemory
         return new(size, _memory);
     }
 
-    private static byte[] RentMemory(int size)
-    {
-#if ZK_EVM
-        // zkVM: no GC/pool; pow2 capacity makes growth O(n) instead of O(n²) realloc churn.
-        if (size < 1_024) size = 1_024;
-        uint cap = (uint)size - 1;
-        cap |= cap >> 1; cap |= cap >> 2; cap |= cap >> 4; cap |= cap >> 8; cap |= cap >> 16;
-        cap += 1;
-        int capacity = cap == 0 || cap > (uint)MaxMemorySize ? (int)MaxMemorySize : (int)cap;
+    private const int MinRentSize = 1_024;
 
-        return new byte[capacity];
-#else
-        return SafeArrayPool<byte>.Shared.Rent(size);
-#endif
-    }
+    private static byte[] RentMemory(int size) =>
+        SafeArrayPool<byte>.Shared.Rent(size < MinRentSize ? MinRentSize : size);
 
-    private static void ReturnMemory(byte[] memory)
-    {
-#if !ZK_EVM
+    private static void ReturnMemory(byte[] memory) =>
         SafeArrayPool<byte>.Shared.Return(memory);
-#endif
-    }
 
     public void Dispose()
     {
@@ -445,10 +430,9 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
-        const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            _memory = RentMemory((int)Math.Max((uint)Size, MinRentSize));
+            _memory = RentMemory(TruncateToInt32(Size));
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
