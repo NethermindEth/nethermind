@@ -85,6 +85,13 @@ public sealed class SpeculativeSurvivalDiag(ILifetimeScope context, ITxPool txPo
 
         using IReadOnlyTxProcessorSource source = _envFactory.Value.Create();
 
+        // The transaction processor accumulates GasUsed into the header it executes under.
+        // block.Header is the live object shared with the block tree and real processing —
+        // shadow passes MUST run on private clones or they corrupt consensus (base fee of
+        // the next block is computed from parent GasUsed).
+        BlockHeader speculationHeader = block.Header.Clone();
+        BlockHeader replayHeader = block.Header.Clone();
+
         int specFailed = 0;
         Dictionary<int, ReadSet> readSets = new(pooledCount);
         using (IReadOnlyTxProcessingScope scope = source.Build(parent))
@@ -94,7 +101,7 @@ public sealed class SpeculativeSurvivalDiag(ILifetimeScope context, ITxPool txPo
                 Transaction? speculated = pooled[i];
                 if (speculated is null) continue;
                 AccessTxTracer tracer = new();
-                TransactionResult result = scope.TransactionProcessor.CallAndRestore(speculated, block.Header, tracer);
+                TransactionResult result = scope.TransactionProcessor.CallAndRestore(speculated, speculationHeader, tracer);
                 if (result && tracer.AccessList is not null)
                 {
                     readSets[i] = ReadSet.Capture(scope.WorldState, tracer.AccessList, block.Header.GasBeneficiary);
@@ -127,8 +134,10 @@ public sealed class SpeculativeSurvivalDiag(ILifetimeScope context, ITxPool txPo
                     }
                 }
 
+                // Same canonical value RecoverSignatures writes on the processing thread;
+                // an atomic reference write of an equal value is safe to race.
                 transaction.SenderAddress ??= pooled[i]?.SenderAddress ?? ecdsa.RecoverAddress(transaction);
-                if (transaction.SenderAddress is null || !scope.TransactionProcessor.Execute(transaction, block.Header, NullTxTracer.Instance))
+                if (transaction.SenderAddress is null || !scope.TransactionProcessor.Execute(transaction, replayHeader, NullTxTracer.Instance))
                 {
                     execFailed++;
                 }
