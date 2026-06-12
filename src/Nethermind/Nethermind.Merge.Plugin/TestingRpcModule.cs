@@ -31,6 +31,7 @@ namespace Nethermind.Merge.Plugin;
 
 public class TestingRpcModule(
     IBlockProducerEnvFactory blockProducerEnvFactory,
+    IMainStateBlockProducerEnvFactory mainStateBlockProducerEnvFactory,
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
@@ -42,9 +43,15 @@ public class TestingRpcModule(
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
     private readonly SemaphoreSlim _commitLock = new(1, 1);
 
+    // testing_commitBlockV1 makes the produced block canonical without re-processing it
+    // through the main BlockchainProcessor, so the producer pass itself must persist the
+    // block's post-state. Only the main-state env writes through to the state backend and
+    // the real receipt storage; the default producer env executes on a detached world
+    // state whose output is discarded, leaving the next commit without a parent state
+    // to scope (#11979).
     // Persistent producer env is safe across calls because BranchProcessor.Process opens
     // a fresh world-state scope on entry, so no mutable state leaks between commits.
-    private readonly IBlockProducerEnv _env = blockProducerEnvFactory.CreatePersistent();
+    private readonly IBlockProducerEnv _commitEnv = mainStateBlockProducerEnvFactory.CreatePersistent();
 
     public void Dispose() => _commitLock.Dispose();
 
@@ -85,9 +92,10 @@ public class TestingRpcModule(
             if (blockTree.Head?.Header is not BlockHeader chainHead)
                 return ResultWrapper<Hash256>.Fail("chain head not found", ErrorCodes.InternalError);
 
-            // Must NOT set ReadOnlyChain — empirically, the producer pass under FlatDb
-            // only appends a snapshot bundle when the chain is not read-only; without
-            // it the next commit's BeginScope(parent) fails with "Unable to gather snapshots".
+            // Mirrors BlockProducerBase.GetProcessingOptions for BuildBlocksOnMainState,
+            // plus ForceProcessing because the produced block is not yet better than the
+            // current head. Whether the produced state is written through is decided by
+            // the env's world state (main-state here), not by these options.
             const ProcessingOptions ProducerOptions =
                 ProcessingOptions.NoValidation
                 | ProcessingOptions.ForceProcessing
@@ -95,7 +103,7 @@ public class TestingRpcModule(
                 | ProcessingOptions.StoreReceipts;
 
             ResultWrapper<ProducedBlock> produced = ProduceBlock(
-                _env, chainHead, payloadAttributes, txRlps, extraData,
+                _commitEnv, chainHead, payloadAttributes, txRlps, extraData,
                 nameof(testing_commitBlockV1), exitToken,
                 NullBlockTracer.Instance, ProducerOptions);
             if (produced.Result.ResultType == ResultType.Failure)

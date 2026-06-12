@@ -336,6 +336,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IJsonRpcServiceConfigurer, SszMiddlewareConfigurer>()
 
             // Testing rpc
+            .AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>()
             .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
 
