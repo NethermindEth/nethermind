@@ -205,13 +205,11 @@ public class PrewarmerScopeProvider(
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
             {
-                if (Nethermind.Evm.StaticSlotDiag.IsEnabled && !isPrewarmer) Nethermind.Evm.StaticSlotDiag.PrewarmCacheHits++;
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 Db.Metrics.IncrementStorageTreeCache();
             }
             else
             {
-                if (Nethermind.Evm.StaticSlotDiag.IsEnabled && !isPrewarmer) Nethermind.Evm.StaticSlotDiag.PrewarmCacheMisses++;
                 value = LoadFromTreeStorage(in storageCell);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in storageCell, value);

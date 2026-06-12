@@ -329,13 +329,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 programCounter++;
                 opCodeCount++;
 
-                if (StaticSlotDiag.IsEnabled && instruction == Instruction.SLOAD)
-                    StaticSlotDiag.BeginSload();
-
                 exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
-
-                if (StaticSlotDiag.IsEnabled && instruction == Instruction.SLOAD)
-                    StaticSlotDiag.EndSload(staticSlot: entry.Operand == 1);
 
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
                 {

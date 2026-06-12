@@ -165,7 +165,6 @@ public sealed class ReadOnlySnapshotBundle(
 
         SlotValue outSlotValue = new();
 
-        if (Nethermind.Evm.StaticSlotDiag.IsEnabled) Nethermind.Evm.StaticSlotDiag.PersistenceLoads++;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
         byte[]? value = outSlotValue.ToEvmBytes();
 

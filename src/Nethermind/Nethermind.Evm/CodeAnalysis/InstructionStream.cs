@@ -178,9 +178,6 @@ public sealed class InstructionStream
 
         int openBlock = -1;
         int pc = 0;
-        // Tracks the previous BYTECODE instruction (not the previous emitted entry) so
-        // boundary ops can be tagged with statically-known operands, e.g. PUSH+SLOAD.
-        Instruction previousInstruction = Instruction.INVALID;
         while (pc < code.Length)
         {
             Instruction instruction = (Instruction)code[pc];
@@ -264,7 +261,6 @@ public sealed class InstructionStream
                     conditional ? FusedOpcode.StaticJumpI : FusedOpcode.StaticJump,
                     conditional ? StreamOpKind.StaticJumpI : StreamOpKind.StaticJump,
                     (ushort)pc, 0, 4, (ulong)dest));
-                previousInstruction = conditional ? Instruction.JUMPI : Instruction.JUMP;
                 pc += 4;
                 continue;
             }
@@ -272,16 +268,11 @@ public sealed class InstructionStream
             {
                 // Includes dynamic JUMP/JUMPI/PUSH2 (the table keeps the fused PUSH2+JUMP
                 // handler) and a trailing PUSH whose immediates are truncated by the end of
-                // code. A boundary op's Operand is otherwise unused; SLOAD reading a slot
-                // pushed as a constant right before it gets Operand = 1 — the marker the
-                // static-slot diagnostics (and any future bytecode-driven prefetch) key on.
-                bool staticSlotSload = instruction == Instruction.SLOAD
-                    && previousInstruction is >= Instruction.PUSH0 and <= Instruction.PUSH32;
+                // code.
                 openBlock = -1;
-                ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, staticSlotSload ? 1UL : 0UL));
+                ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, 0));
             }
 
-            previousInstruction = instruction;
             pc += size;
         }
 

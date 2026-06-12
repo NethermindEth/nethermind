@@ -6,5 +6,4 @@ namespace Nethermind.Evm;
 public class EvmConfig : IEvmConfig
 {
     public bool StreamInterpreter { get; set; }
-    public bool StaticSlotDiag { get; set; }
 }

@@ -512,7 +512,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
-            if (StaticSlotDiag.IsEnabled) StaticSlotDiag.MarkTreeLoad();
             Db.Metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
