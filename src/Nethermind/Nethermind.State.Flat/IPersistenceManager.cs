@@ -3,8 +3,6 @@
 
 using Nethermind.State.Flat.Persistence;
 
-using System;
-
 namespace Nethermind.State.Flat;
 
 public interface IPersistenceManager
