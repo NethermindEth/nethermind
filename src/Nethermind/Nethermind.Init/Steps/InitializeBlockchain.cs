@@ -60,6 +60,8 @@ namespace Nethermind.Init.Steps
                 Logging.ILogger coverageLogger = getApi.LogManager.GetClassLogger<InitializeBlockchain>();
                 long coverageTotalTxs = 0;
                 long coveragePooledTxs = 0;
+                long coverageTotalGas = 0;
+                long coveragePooledGas = 0;
                 getApi.BlockTree!.NewSuggestedBlock += (_, blockEventArgs) =>
                 {
                     // Header-only suggests carry no body; never throw inside the suggest path.
@@ -67,14 +69,25 @@ namespace Nethermind.Init.Steps
                     Transaction[] transactions = suggested.Transactions;
                     if (transactions.Length == 0) return;
                     int inPool = 0;
+                    long blockGas = 0;
+                    long inPoolGas = 0;
                     foreach (Transaction transaction in transactions)
                     {
-                        if (transaction.Hash is not null && txPool.ContainsTx(transaction.Hash, transaction.Type)) inPool++;
+                        // Gas limit, not gas used (unknown pre-execution) — overstates absolute
+                        // cost but the pooled/total ratio is what the gate reads.
+                        blockGas += transaction.GasLimit;
+                        if (transaction.Hash is not null && txPool.ContainsTx(transaction.Hash, transaction.Type))
+                        {
+                            inPool++;
+                            inPoolGas += transaction.GasLimit;
+                        }
                     }
                     long total = Interlocked.Add(ref coverageTotalTxs, transactions.Length);
                     long pooled = Interlocked.Add(ref coveragePooledTxs, inPool);
+                    long totalGas = Interlocked.Add(ref coverageTotalGas, blockGas);
+                    long pooledGas = Interlocked.Add(ref coveragePooledGas, inPoolGas);
                     if (coverageLogger.IsInfo)
-                        coverageLogger.Info($"SpecExecDiag: block {suggested.Number} txs {transactions.Length}, inPool {inPool} ({100.0 * inPool / transactions.Length:F1}%); cumulative {100.0 * pooled / total:F1}%");
+                        coverageLogger.Info($"SpecExecDiag: block {suggested.Number} txs {transactions.Length}, inPool {inPool} ({100.0 * inPool / transactions.Length:F1}%), gas {100.0 * inPoolGas / blockGas:F1}%; cumulative txs {100.0 * pooled / total:F1}%, gas {100.0 * pooledGas / totalGas:F1}%");
                 };
             }
 
