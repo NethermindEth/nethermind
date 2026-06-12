@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -375,9 +375,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            // The clean-cache invariant: writes never pass Size, so clearing that extent
-            // hands back a fully zeroed array.
-            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
+            SafeArrayPool<byte>.Shared.Return(memory);
         }
     }
 
@@ -421,65 +419,37 @@ public struct EvmPooledMemory
         }
     }
 
-    // Every cached array is fully zeroed: Dispose clears the dirtied extent before caching,
-    // and cache misses allocate runtime-zeroed arrays. Rents and in-capacity expansions
-    // therefore never clear at all. The cache is thread-static because a frame's memory is
-    // rented and disposed on its executing thread — a shared pool's bucket locks cost more
-    // than the clears they saved (measured).
-    private const int MinRentSize = 1_024;
-    private const int MaxCachedArrayLength = 1 << 16;
-    private const int CleanCacheSlots = 16;
-
-    [ThreadStatic] private static byte[]?[]? t_cleanArrays;
-    [ThreadStatic] private static int t_cleanArrayCount;
-
-    private static byte[] RentClean(int minLength)
-    {
-        byte[]?[]? cache = t_cleanArrays;
-        for (int i = t_cleanArrayCount - 1; i >= 0; i--)
-        {
-            byte[] candidate = cache![i]!;
-            if (candidate.Length >= minLength)
-            {
-                t_cleanArrayCount--;
-                cache[i] = cache[t_cleanArrayCount];
-                cache[t_cleanArrayCount] = null;
-                return candidate;
-            }
-        }
-
-        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
-    }
-
-    private static void ReturnClean(byte[] array, int dirtyLength)
-    {
-        Array.Clear(array, 0, dirtyLength);
-        if (array.Length > MaxCachedArrayLength)
-            return;
-
-        byte[]?[] cache = t_cleanArrays ??= new byte[CleanCacheSlots][];
-        if (t_cleanArrayCount < CleanCacheSlots)
-            cache[t_cleanArrayCount++] = array;
-    }
-
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
+        const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
+            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
+            Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
-        else if (Size > (ulong)_memory.LongLength)
+        else
         {
-            byte[] beforeResize = _memory;
-            _memory = RentClean(TruncateToInt32(Size));
-            // The new array is clean past the copy; the old one is cached fully cleaned
-            // (its dirty extent is bounded by its length — writes never pass Size).
-            Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            ReturnClean(beforeResize, beforeResize.Length);
+            int lastZeroedSize = (int)_lastZeroedSize;
+            if (Size > (ulong)_memory.LongLength)
+            {
+                byte[] beforeResize = _memory;
+                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
+                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
+                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
+                SafeArrayPool<byte>.Shared.Return(beforeResize);
+            }
+            else if (Size > _lastZeroedSize)
+            {
+                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
+            }
+            else
+            {
+                return;
+            }
         }
 
-        _lastZeroedSize = (ulong)_memory.Length;
+        _lastZeroedSize = Size;
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
