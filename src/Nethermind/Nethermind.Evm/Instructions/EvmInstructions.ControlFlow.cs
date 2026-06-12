@@ -135,7 +135,7 @@ public static partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool TestJumpCondition(ref EvmStack stack, out bool isOverflow)
+    private static bool TestJumpCondition(ref EvmStack stack, out bool isOverflow)
     {
         isOverflow = false;
         // Pop the condition as a byte reference.

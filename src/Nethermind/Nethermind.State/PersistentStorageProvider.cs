@@ -19,7 +19,6 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using EvmMetrics = Nethermind.Evm.Metrics;
 using Nethermind.Logging;
-using Nethermind.Evm;
 
 namespace Nethermind.State;
 

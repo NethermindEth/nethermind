@@ -58,19 +58,6 @@ public static partial class EvmInstructions
         // Deduct gas cost specific to the shift operation.
         TGasPolicy.Consume(ref gas, TOpShift.GasCost);
 
-        return ShiftCore<TOpShift, TTracingInst>(ref stack);
-    }
-
-    /// <summary>
-    /// Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>;
-    /// also run directly by the stream executor inside precharged basic blocks.
-    /// </summary>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst>(ref EvmStack stack)
-        where TOpShift : struct, IOpShift
-        where TTracingInst : struct, IFlag
-    {
         // Amortise the bounds check across both operands (mirrors InstructionSar).
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 

@@ -1230,10 +1230,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// The method uses an unsafe context and function pointers to invoke opcode implementations directly,
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
-    // Fingerprints of the specialized tip-fork dispatch paths; computed once. Cancun and
-    // Prague share dispatch-relevant flags, so Cancun's instantiation serves both.
-    private static readonly int s_osakaDispatchFingerprint = EvmSpecFingerprint.Compute<OsakaEvmSpec>();
-    private static readonly int s_cancunDispatchFingerprint = EvmSpecFingerprint.Compute<CancunEvmSpec>();
+    // The two specialized interpreter instantiations: the tip fork and the one before it.
+    // Any spec whose flag set matches runs the specialized loop; everything else (historical
+    // forks, custom chains) takes the generic, runtime-flag path — never wrong, only slower.
+    private static readonly int _osakaFingerprint = EvmSpecFingerprint.Compute<OsakaEvmSpec>();
+    // Cancun and Prague share every dispatch-relevant flag; one instantiation serves both.
+    private static readonly int _cancunPragueFingerprint = EvmSpecFingerprint.Compute<CancunEvmSpec>();
 
     // Poll cancellation every 1024 opcodes (mask of low bits of the per-frame op counter).
     private const int CancellationCheckMask = 1023;
@@ -1248,18 +1250,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Specs whose dispatch flags match a known tip fork run a specialized loop; custom
         // chains and historical forks keep the generic function-pointer table path.
         int fingerprint = EvmSpecFingerprint.Compute(Spec);
-        bool specialized = fingerprint == s_osakaDispatchFingerprint || fingerprint == s_cancunDispatchFingerprint;
-        if (specialized && StreamInterpreter.Enabled && !TTracingInst.IsActive
-            && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
-        {
-            // The stream executor is fork-agnostic within the specialized fingerprints (its
-            // in-block op set assumes Shanghai+ semantics, which both share).
-            return RunStream<TCancelable>(stream, ref stack, ref gas);
-        }
-
-        if (fingerprint == s_osakaDispatchFingerprint)
+        bool specialized = fingerprint == _osakaFingerprint || fingerprint == _cancunPragueFingerprint;
+        if (fingerprint == _osakaFingerprint)
             return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
-        if (fingerprint == s_cancunDispatchFingerprint)
+        if (fingerprint == _cancunPragueFingerprint)
             return RunByteCodeCore<TTracingInst, TCancelable, CancunEvmSpec>(ref stack, ref gas);
         return RunByteCodeCore<TTracingInst, TCancelable, GenericEvmSpec>(ref stack, ref gas);
     }
