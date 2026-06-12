@@ -12,7 +12,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Test.Runner;
 
 public readonly record struct BlockchainTestsRunnerOptions(
-    string? Filter = null,
+    Regex? Filter = null,
     ulong ChainId = 0,
     bool Trace = false,
     bool TraceMemory = false,
@@ -31,7 +31,8 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader? _testsSource = testsSource;
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
-    private readonly Regex? _filterRegex = options.Filter is not null ? new Regex($"^({options.Filter})", RegexOptions.Compiled) : null;
+    // Compiled once by the caller and shared across the per-file runner instances.
+    private readonly Regex? _filterRegex = options.Filter;
     private readonly ulong _chainId = options.ChainId;
     private readonly bool _trace = options.Trace;
     private readonly bool _traceMemory = options.TraceMemory;
@@ -96,6 +97,8 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
 
         try
         {
+            // Intentionally created per test: each test emits an independent JSONL trace,
+            // so the tracer's block counter resetting between tests is by design.
             using BlockchainTestStreamingTracer? tracer = _trace
                 ? new BlockchainTestStreamingTracer(new() { EnableMemory = _traceMemory, DisableStack = _excludeStack })
                 : null;

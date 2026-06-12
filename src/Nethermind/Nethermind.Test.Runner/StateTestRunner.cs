@@ -24,7 +24,7 @@ namespace Nethermind.Test.Runner
 
     public class StateTestsRunner : GeneralStateTestBase, IStateTestRunner
     {
-        private readonly ITestSourceLoader _testsSource;
+        private readonly ITestSourceLoader? _testsSource;
         private readonly WhenTrace _whenTrace;
         private readonly bool _traceMemory;
         private readonly bool _traceStack;
@@ -34,9 +34,9 @@ namespace Nethermind.Test.Runner
         private readonly bool _suppressOutput;
         private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null, bool enableWarmup = false, bool suppressOutput = false)
+        /// <summary>Creates a runner for <see cref="RunSingleTest"/> callers that supply tests directly.</summary>
+        public StateTestsRunner(WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null, bool enableWarmup = false, bool suppressOutput = false)
         {
-            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _whenTrace = whenTrace;
             _traceMemory = traceMemory;
             _traceStack = traceStack;
@@ -46,6 +46,10 @@ namespace Nethermind.Test.Runner
             _suppressOutput = suppressOutput;
             Setup(null);
         }
+
+        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null, bool enableWarmup = false, bool suppressOutput = false)
+            : this(whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, suppressOutput) =>
+            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
 
         private void WriteOut(List<EthereumTestResult> testResult)
         {
@@ -76,9 +80,9 @@ namespace Nethermind.Test.Runner
                 if (i != 0)
                     builder.Append(',');
 
-                builder.Append('"');
-                builder.Append(stack[i]);
-                builder.Append('"');
+                // Serialize adds the quotes and escapes the value; stack entries are hex
+                // literals today, but a bare append would break on any future quote/backslash.
+                builder.Append(System.Text.Json.JsonSerializer.Serialize(stack[i]));
             }
 
             return builder.ToString();
@@ -86,6 +90,9 @@ namespace Nethermind.Test.Runner
 
         public IEnumerable<EthereumTestResult> RunTests()
         {
+            if (_testsSource is null)
+                throw new InvalidOperationException("RunTests requires a test source; use the constructor that accepts ITestSourceLoader.");
+
             List<EthereumTestResult> results = [];
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             foreach (GeneralStateTest test in tests)

@@ -178,8 +178,10 @@ internal class Program
 
             if (isEngineTest || isBlockTest)
             {
+                // Compiled once and shared by the per-file runner instances.
+                Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
                 BlockchainTestsRunnerOptions runnerOptions = new(
-                    Filter: filter,
+                    Filter: filterRegex,
                     ChainId: chainId,
                     Trace: trace,
                     TraceMemory: traceMemory,
@@ -367,9 +369,7 @@ internal class Program
             List<EthereumTestResult> allResults = [];
             foreach ((int index, GeneralStateTest test) in testCases)
             {
-                StateTestsRunner runner = new(
-                    new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), "dummy"),
-                    whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, suppressOutput: true);
+                StateTestsRunner runner = new(whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, suppressOutput: true);
                 EthereumTestResult result = runner.RunSingleTest(test);
                 allResults.Add(result);
             }
@@ -382,9 +382,7 @@ internal class Program
             new ParallelOptions { MaxDegreeOfParallelism = workers },
             item =>
             {
-                StateTestsRunner runner = new(
-                    new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), "dummy"),
-                    WhenTrace.Never, traceMemory, traceStack, chainId, filter, enableWarmup: false, suppressOutput: true);
+                StateTestsRunner runner = new(WhenTrace.Never, traceMemory, traceStack, chainId, filter, enableWarmup: false, suppressOutput: true);
                 EthereumTestResult result = runner.RunSingleTest(item.test);
                 results[item.index] = result;
             });

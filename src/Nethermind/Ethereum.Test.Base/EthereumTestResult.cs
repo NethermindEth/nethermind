@@ -41,6 +41,10 @@ namespace Ethereum.Test.Base
         [JsonIgnore]
         public double TimeInMs { get; set; }
 
+        /// <summary>
+        /// Post-execution state root. Only populated by state tests; blockchain/engine and
+        /// transaction results leave it null, so the field is omitted from their JSON.
+        /// </summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Hash256? StateRoot { get; set; }
 
