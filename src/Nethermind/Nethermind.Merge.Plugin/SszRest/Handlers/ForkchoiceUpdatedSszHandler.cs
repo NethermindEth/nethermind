@@ -30,56 +30,23 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
         TWire.Decode(body, out TWire wire);
 
         ulong? timestamp = TVersion.GetTimestamp(wire);
-        if (timestamp.HasValue)
+        if (timestamp.HasValue
+            && ctx.Items.TryGetValue("SszRouteFork", out object? forkObj)
+            && forkObj is string urlFork)
         {
-            if (ctx.Items.TryGetValue("SszRouteFork", out object? forkObj) && forkObj is string urlFork)
+            // The fork the payload would activate (from its timestamp) must match the URL's
+            // {fork} segment — otherwise the CL is asking the wrong endpoint for this payload.
+            IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));
+            if (!string.Equals(payloadSpec.Name, urlFork, StringComparison.OrdinalIgnoreCase))
             {
-                if (!TimestampMatchesForkOrdinal(timestamp.Value, SszRestPaths.ForkOrdinal(urlFork)))
-                {
-                    await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                        $"URL fork '{urlFork}' does not match the fork for timestamp {timestamp.Value}",
-                        MergeErrorCodes.UnsupportedFork);
-                    return;
-                }
+                await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                    $"URL fork '{urlFork}' does not match the fork for timestamp {timestamp.Value}",
+                    MergeErrorCodes.UnsupportedFork);
+                return;
             }
         }
 
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await TVersion.Call(engineModule, wire);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeForkchoiceUpdatedResponse);
-    }
-
-    private bool TimestampMatchesForkOrdinal(ulong timestamp, int urlForkOrdinal)
-    {
-        if (urlForkOrdinal < 0)
-            return false;
-
-        IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp));
-
-        // Count distinct spec objects produced by consecutive timestamp-based TransitionActivations.  
-        // The count at which payloadSpec first appears is the payload's fork ordinal in SupportedForksOrdered.
-        int payloadForkOrdinal = -1;
-        int ordinal = 0;
-        IReleaseSpec? lastSeen = null;
-        foreach (ForkActivation fa in specProvider.TransitionActivations)
-        {
-            // Skip block-number-only activations (pre-Merge); post-Merge forks use timestamps.
-            if (fa.Timestamp is null)
-                continue;
-
-            IReleaseSpec s = specProvider.GetSpec(fa);
-            if (ReferenceEquals(s, lastSeen))
-                continue;
-
-            if (ReferenceEquals(s, payloadSpec))
-            {
-                payloadForkOrdinal = ordinal;
-                break;
-            }
-
-            lastSeen = s;
-            ordinal++;
-        }
-
-        return payloadForkOrdinal == urlForkOrdinal;
     }
 }
