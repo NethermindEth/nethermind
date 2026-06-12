@@ -86,13 +86,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
 
     protected ITxTracer _txTracer = NullTxTracer.Instance;
-#if ZK_EVM
-    // ITxTracer.IsTracingActions is read per CALL / per precompile-call (9 hot sites). The
-    // tracer is fixed per execution and its tracing flags are constant, so cache the bool once
-    // (set in ExecuteTransaction) to drop the per-call interface dispatch. Same pattern as the
-    // cached IReleaseSpec flags.
-    private bool _isTracingActionsCached;
-#endif
 
     private ICodeInfoRepository _codeInfoRepository;
 
@@ -106,7 +99,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
 #if ZK_EVM
-    private bool IsTracingActionsFast => _isTracingActionsCached;
+    // ZisK guest always runs with NullTxTracer (StatelessExecutor passes NullBlockTracer.Instance),
+    // so const-fold every IsTracingActions check to false and let the JIT elide the trace branches.
+    private bool IsTracingActionsFast => false;
 #else
     private bool IsTracingActionsFast => _txTracer.IsTracingActions;
 #endif
@@ -157,9 +152,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
-#if ZK_EVM
-        _isTracingActionsCached = txTracer.IsTracingActions;
-#endif
         _worldState = worldState;
 
         // Reset Parity touch bug state to prevent cross-transaction leakage.
