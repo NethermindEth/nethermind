@@ -206,6 +206,7 @@ public class SszMiddlewareTests
         yield return new TestCaseData((object)new[] { "application/json" }, false).SetName("single_no_octet");
         yield return new TestCaseData((object)new[] { "application/json, text/html" }, false).SetName("single_csv_no_octet");
         yield return new TestCaseData((object)new[] { "application/octet-streamx" }, false).SetName("single_octet_substring");
+        yield return new TestCaseData((object)new[] { "application/json;v=\"a, application/octet-stream, b\"" }, false).SetName("octet_inside_quoted_parameter");
 
         // Multiple StringValues entries (Accept sent as separate header lines / string[]).
         yield return new TestCaseData((object)new[] { OctetStream, "application/json" }, true).SetName("multi_octet_first_entry");

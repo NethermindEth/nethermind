@@ -371,9 +371,12 @@ public sealed class SszMiddleware
             {
                 if (entry is null) continue;
                 ReadOnlySpan<char> span = entry.AsSpan();
-                foreach (Range range in span.Split(','))
+                while (!span.IsEmpty)
                 {
-                    if (IsOctetMediaRange(span[range])) return true;
+                    int comma = IndexOfUnquoted(span, ',');
+                    if (IsOctetMediaRange(comma < 0 ? span : span[..comma])) return true;
+                    if (comma < 0) break;
+                    span = span[(comma + 1)..];
                 }
             }
             return false;
@@ -382,9 +385,22 @@ public sealed class SszMiddleware
         static bool IsOctetMediaRange(ReadOnlySpan<char> range)
         {
             ReadOnlySpan<char> token = range.TrimStart();
-            int semi = token.IndexOf(';');
+            int semi = IndexOfUnquoted(token, ';');
             if (semi >= 0) token = token[..semi];
             return token.TrimEnd().Equals(Octet, StringComparison.OrdinalIgnoreCase);
+        }
+
+        static int IndexOfUnquoted(ReadOnlySpan<char> s, char target)
+        {
+            bool inQuote = false;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (inQuote && c == '\\' && i + 1 < s.Length) { i++; continue; }
+                if (c == '"') inQuote = !inQuote;
+                else if (c == target && !inQuote) return i;
+            }
+            return -1;
         }
 
         static bool HasOctetMediaValue(string? headerValue)
