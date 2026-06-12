@@ -163,14 +163,15 @@ public class PrewarmerScopeProvider(
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
-            sink ??= new CacheSink(preBlockCache, storageCache, recentStorageCache);
+            sink ??= new CacheSink(preBlockCache, storageCache, recentStorageCache, useRecentStorageCache: !isPrewarmer);
             return baseScope.HintBal(bal, sink);
         }
 
         private sealed class CacheSink(
             SeqlockCache<AddressAsKey, Account> stateCache,
             SeqlockCache<StorageCell, byte[]> storageCache,
-            SeqlockCache<StorageCell, byte[]> recentStorageCache
+            SeqlockCache<StorageCell, byte[]> recentStorageCache,
+            bool useRecentStorageCache
         ) : IWorldStateScopeProvider.IAsyncBalReaderSink
         {
             public void OnAccountRead(Address address, Account? account)
@@ -182,7 +183,10 @@ public class PrewarmerScopeProvider(
             public void OnStorageRead(in StorageCell storageCell, byte[] value)
             {
                 storageCache.Set(in storageCell, value);
-                recentStorageCache.Set(in storageCell, value);
+                if (useRecentStorageCache)
+                {
+                    recentStorageCache.Set(in storageCell, value);
+                }
             }
 
             public bool StillNeeded(Address address, out Account? account)
@@ -193,7 +197,7 @@ public class PrewarmerScopeProvider(
 
             public bool StillNeeded(in StorageCell storageCell)
                 => !storageCache.TryGetValue(in storageCell, out _) &&
-                   !recentStorageCache.TryGetValue(in storageCell, out _);
+                   (!useRecentStorageCache || !recentStorageCache.TryGetValue(in storageCell, out _));
         }
 
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
@@ -226,7 +230,7 @@ public class PrewarmerScopeProvider(
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 Db.Metrics.IncrementStorageTreeCache();
             }
-            else if (recentStorageCache.TryGetValue(in storageCell, out value))
+            else if (!isPrewarmer && recentStorageCache.TryGetValue(in storageCell, out value))
             {
                 preBlockCache.Set(in storageCell, value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
@@ -237,7 +241,10 @@ public class PrewarmerScopeProvider(
                 value = LoadFromTreeStorage(in storageCell);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in storageCell, value);
-                recentStorageCache.Set(in storageCell, value);
+                if (!isPrewarmer)
+                {
+                    recentStorageCache.Set(in storageCell, value);
+                }
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
             return value;

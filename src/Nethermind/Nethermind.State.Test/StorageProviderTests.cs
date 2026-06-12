@@ -441,7 +441,7 @@ public class StorageProviderTests(bool useFlat)
     public void Recent_storage_cache_survives_pre_block_cache_clear()
     {
         PreBlockCaches preBlockCaches = new();
-        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches, setInitialState: false);
+        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches, setInitialState: false, isPrewarmer: false);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell storageCell = new(ctx.Address1, 1);
         BlockHeader baseBlock;
@@ -477,7 +477,7 @@ public class StorageProviderTests(bool useFlat)
     public void Recent_storage_cache_tracks_committed_writes()
     {
         PreBlockCaches preBlockCaches = new();
-        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches, setInitialState: false);
+        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches, setInitialState: false, isPrewarmer: false);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell storageCell = new(ctx.Address1, 1);
         BlockHeader baseBlock;
@@ -520,6 +520,39 @@ public class StorageProviderTests(bool useFlat)
         preBlockCaches.ValidateRecentStorageCache(Build.A.BlockHeader.WithStateRoot(Keccak.Compute("root B")).TestObject);
 
         Assert.That(preBlockCaches.RecentStorageCache.TryGetValue(in storageCell, out _), Is.False);
+    }
+
+    [Test]
+    public void Read_only_prewarmer_does_not_use_recent_storage_cache()
+    {
+        PreBlockCaches preBlockCaches = new();
+        using Context ctx = new(useFlat, preBlockCaches: preBlockCaches, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell storageCell = new(ctx.Address1, 1);
+        BlockHeader baseBlock;
+
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 0);
+            provider.Set(storageCell, _values[1]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(1);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).WithNumber(1).TestObject;
+        }
+
+        preBlockCaches.ClearCaches();
+        preBlockCaches.ClearRecentStorageCache();
+
+        using (provider.BeginScope(baseBlock))
+        {
+            preBlockCaches.RecentStorageCache.Set(in storageCell, _values[2]);
+            preBlockCaches.MarkRecentStorageCacheStateRoot(Keccak.Compute("newer root"));
+
+            Assert.That(provider.Get(storageCell).ToArray(), Is.EqualTo(_values[1]));
+        }
+
+        Assert.That(preBlockCaches.RecentStorageCache.TryGetValue(in storageCell, out byte[] cached), Is.True);
+        Assert.That(cached, Is.EqualTo(_values[2]));
     }
 
     [Test]
@@ -823,7 +856,7 @@ public class StorageProviderTests(bool useFlat)
         public readonly Address Address1 = new(Keccak.Compute("1"));
         public readonly Address Address2 = new(Keccak.Compute("2"));
 
-        public Context(bool useFlat, PreBlockCaches preBlockCaches = null, bool setInitialState = true, bool trackWrittenData = false)
+        public Context(bool useFlat, PreBlockCaches preBlockCaches = null, bool setInitialState = true, bool trackWrittenData = false, bool isPrewarmer = true)
         {
             IWorldStateScopeProvider scopeProvider;
             if (useFlat)
@@ -839,7 +872,7 @@ public class StorageProviderTests(bool useFlat)
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, LimboLogs.Instance, isPrewarmer: true);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, LimboLogs.Instance, isPrewarmer);
             }
 
             if (trackWrittenData)
