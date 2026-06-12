@@ -853,11 +853,15 @@ public class SszMiddlewareTests
     }
 
     // Trailing slashes and unknown extra path segments must both 404 — spec forbids trailing slashes
-    // and handlers without AcceptsPathExtra must reject stray segments.
+    // and handlers without AcceptsPathExtra must reject stray segments. Unscoped endpoints
+    // (capabilities, identity) must reject any extra segment instead of mis-classifying
+    // the trailing segment as an unsupported fork.
     private static readonly object[] MalformedPathCases =
     [
         new object[] { "POST", $"/engine/v2/{CancunUrl}/forkchoice/", true },
         new object[] { "GET", "/engine/v2/capabilities/", false },
+        new object[] { "GET", "/engine/v2/capabilities/foo", true },
+        new object[] { "GET", "/engine/v2/identity/foo", true },
         new object[] { "POST", $"/engine/v2/{CancunUrl}/forkchoice/whatever", false },
     ];
 
