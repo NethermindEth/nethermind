@@ -402,13 +402,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     /// one page-local leaf (popping them, pushing the leaf) and clear <see cref="_pendingCount"/>.
     /// No-op when nothing is pending.
     /// </summary>
-    /// <remarks>
-    /// Only the contiguous on-current-page suffix is wrapped — earlier pending descriptors (stranded
-    /// past a 4 KiB boundary by a streaming value or a large Add) stay in <c>CurrentLevel</c> as
-    /// sealed direct Entry children. A singleton on-page run skips the wrap (pure header + slot
-    /// overhead) and just clears the counter; the single-entry-HSST root case is handled separately
-    /// by <see cref="WrapLoneEntryAsLeaf"/>.
-    /// </remarks>
     private void MaybeEmitInlineLeaf()
     {
         if (_pendingCount == 0) return;

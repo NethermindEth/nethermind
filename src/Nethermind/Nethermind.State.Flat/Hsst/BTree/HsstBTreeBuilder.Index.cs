@@ -461,11 +461,11 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     private int ChooseIntermediateChildCount(
         scoped ReadOnlySpan<HsstIndexNodeInfo> level,
         scoped ReadOnlySpan<byte> levelFirstKeys,
-        int childIdx,
+        int startIdx,
         long nodeStart, long firstOffset,
         scoped ReadOnlySpan<byte> commonPrefixArr)
     {
-        int remaining = level.Length - childIdx;
+        int remaining = level.Length - startIdx;
         int hardMax = Math.Min(MaxIntermediateEntries, remaining);
         if (hardMax <= 1) return hardMax;
 
@@ -475,7 +475,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         // index 0 included). Seed maxSepLen / commonLen / firstSep from that same
         // length so the heuristic models what the writer emits — for a non-first
         // group the boundary LCP can exceed firstChild.PrefixLen.
-        HsstIndexNodeInfo firstChild = level[childIdx];
+        HsstIndexNodeInfo firstChild = level[startIdx];
         int firstNaturalSep = Math.Min(commonPrefixArr[firstChild.FirstEntry] + 1, _keyLength);
         int firstSepLen = Math.Max(firstNaturalSep, firstChild.PrefixLen);
         int childCount = 1;
@@ -502,14 +502,16 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         firstSepList.Clear();
         if (firstSepLen > 0)
         {
-            // First child's first-key sits at slot childIdx of levelFirstKeys.
-            firstSepList.AddRange(levelFirstKeys.Slice(childIdx * _keyLength, firstSepLen));
+            // First child's first-key sits at slot startIdx of levelFirstKeys.
+            firstSepList.AddRange(levelFirstKeys.Slice(startIdx * _keyLength, firstSepLen));
         }
         ReadOnlySpan<byte> firstSep = firstSepList.AsSpan();
 
         while (childCount < hardMax)
         {
-            HsstIndexNodeInfo curr = level[childIdx + childCount];
+            // Index in `level` of the candidate child being considered for this group.
+            int currentIdx = startIdx + childCount;
+            HsstIndexNodeInfo curr = level[currentIdx];
             // Adjacency invariant: prev.LastEntry == curr.FirstEntry - 1, so
             // commonPrefixArr[curr.FirstEntry] is exactly LCP(leftKey, rightKey).
             // Natural separator length is min(LCP + 1, _keyLength); the actual stored
@@ -517,13 +519,11 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             // carries every byte of the child's prefix at descent time.
             int naturalSep = Math.Min(commonPrefixArr[curr.FirstEntry] + 1, _keyLength);
             int sepLen = Math.Max(naturalSep, curr.PrefixLen);
-            // curr's first-key sits at slot (childIdx + childCount) of levelFirstKeys —
-            // childCount currently being the number of children already committed in
-            // this group, so the next candidate sits exactly after them.
+            // curr's first-key sits at slot currentIdx of levelFirstKeys.
             sepBufList.Clear();
             if (sepLen > 0)
             {
-                int rightSlot = (childIdx + childCount) * _keyLength;
+                int rightSlot = currentIdx * _keyLength;
                 sepBufList.AddRange(levelFirstKeys.Slice(rightSlot, sepLen));
             }
             ReadOnlySpan<byte> sepBuf = sepBufList.AsSpan();
@@ -564,7 +564,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             // node's parent-level separator.
             int effMaxSepLen = newMaxSepLen;
             int effCommonLen = newCommonLen;
-            int next2Idx = childIdx + childCount + 1;
+            int next2Idx = currentIdx + 1;
             if (next2Idx < level.Length)
             {
                 HsstIndexNodeInfo next2 = level[next2Idx];
@@ -610,17 +610,14 @@ public ref partial struct HsstBTreeBuilder<TWriter>
     // optional CommonPrefixLen byte + a small slack.
     private const int NodeHeaderUpperBound = 16;
 
-    // Conservative upper bound on an intermediate node's serialised size with phantom
-    // slot 0 restored: a node holding <paramref name="count"/> children emits a
-    // <paramref name="keysSectionBytes"/>-byte keys section and <paramref name="count"/>
-    // values. The per-entry term (2 + valueSlotSize) intentionally over-allocates by 2
-    // bytes per value: Uniform values on disk are just valueSlotSize bytes each (no
-    // length prefix), but the +2 absorbs Variable-section length-table overhead and
-    // rounding slack so the bound stays above the actual size for every layout the
-    // planner picks.
+    // Conservative upper bound on an intermediate node's serialised size with phantom slot 0
+    // restored: header + the <paramref name="keysSectionBytes"/> keys section + one value per
+    // child. Intermediate values are Uniform child-offset deltas (valueSlotSize bytes each, no
+    // length prefix), so for the slot widths these offsets ever use (<= 8 bytes) the value term
+    // is exact; a wider slot gets a +2/entry slack for any rounding / Variable-section overhead.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IntermediateNodeSizeUpperBound(int count, int keysSectionBytes, int valueSlotSize)
-        => NodeHeaderUpperBound + keysSectionBytes + count * (2 + valueSlotSize);
+        => NodeHeaderUpperBound + keysSectionBytes + count * (valueSlotSize <= 8 ? valueSlotSize : valueSlotSize + 2);
 
     /// <summary>
     /// True if a node of <paramref name="candidateSize"/> bytes starting at
