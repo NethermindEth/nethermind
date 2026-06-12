@@ -13,7 +13,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct EvmPooledMemory
+public partial struct EvmPooledMemory
 {
     public const int WordSize = 32;
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
@@ -412,27 +412,6 @@ public struct EvmPooledMemory
         return new(size, _memory);
     }
 
-#if !ZK_EVM
-    // Per-thread free-list of previously-rented EVM memory buffers. EVM call frames execute on a
-    // single block-processing (or prewarm) thread but nest (CALL/CREATE), so several buffers can be
-    // live at once on one thread — a one-deep cache misses the nested frames and falls back to the
-    // contended shared ArrayPool, which dotTrace showed dominating MSTORE (SharedArrayPool.Rent).
-    // A small bounded stack lets each frame in a nesting chain reuse a buffer and return it on exit,
-    // keeping the common nesting depths off the shared pool entirely. Bounded so deep/abnormal
-    // recursion cannot pin unbounded memory; overflow falls back to the shared pool. GC reclaims the
-    // stack on thread exit.
-    //
-    // ZK_EVM build is single-threaded and uses SafeArrayPool's pow2 bucket pool for retention;
-    // there is no shared-pool contention to avoid, so the thread-local cache is pure overhead and
-    // would also bypass the bucket pool's reuse. Compiled out entirely in that build.
-    private const int ThreadBufferStackDepth = 8;
-
-    [ThreadStatic]
-    private static byte[]?[]? _threadBufferStack;
-    [ThreadStatic]
-    private static int _threadBufferCount;
-#endif
-
     public void Dispose()
     {
         byte[]? memory = _memory;
@@ -440,23 +419,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-
-#if !ZK_EVM
-            byte[]?[]? stack = _threadBufferStack ??= new byte[]?[ThreadBufferStackDepth];
-            int count = _threadBufferCount;
-            if (count < ThreadBufferStackDepth)
-            {
-                stack[count] = memory;
-                _threadBufferCount = count + 1;
-            }
-            else
-            {
-                // Stack full (unusually deep nesting): return to the shared pool rather than grow.
-                SafeArrayPool<byte>.Shared.Return(memory);
-            }
-#else
-            SafeArrayPool<byte>.Shared.Return(memory);
-#endif
+            StashBuffer(memory);
         }
     }
 
@@ -507,23 +470,7 @@ public struct EvmPooledMemory
         if (_memory is null)
         {
             int wanted = (int)Math.Max((uint)Size, MinRentSize);
-#if !ZK_EVM
-            // Prefer reusing a buffer from this thread's free-list (released by prior/outer frames)
-            // over a shared-pool rent; it is already allocated and avoids the contended pool.
-            byte[]?[]? stack = _threadBufferStack;
-            int count = _threadBufferCount;
-            byte[]? reused = null;
-            if (stack is not null && count > 0 && stack[count - 1] is byte[] top && top.Length >= wanted)
-            {
-                stack[count - 1] = null;
-                _threadBufferCount = count - 1;
-                reused = top;
-            }
-
-            _memory = reused ?? SafeArrayPool<byte>.Shared.Rent(wanted);
-#else
-            _memory = SafeArrayPool<byte>.Shared.Rent(wanted);
-#endif
+            _memory = TryReuseBuffer(wanted) ?? SafeArrayPool<byte>.Shared.Rent(wanted);
             // The reused/rented buffer's contents are undefined (a prior frame may have written into
             // it), so zero the live [0, Size) region before exposing it to this frame.
             Array.Clear(_memory, 0, TruncateToInt32(Size));

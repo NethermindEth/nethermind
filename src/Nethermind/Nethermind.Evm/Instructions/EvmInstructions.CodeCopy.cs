@@ -191,8 +191,6 @@ public static partial class EvmInstructions
 
             // Slice the external code starting at the source offset with appropriate zero-padding.
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
-            // UpdateMemoryCost above already validated the destination bounds and grew memory for
-            // (a, result), so the write cannot violate or fail — skip TrySave's redundant re-check.
             vm.VmState.Memory.SaveAfterGas(in a, in slice);
 
             // Report memory changes if tracing is enabled.

@@ -1180,8 +1180,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 goto OutOfGas;
             }
 
-            // UpdateMemoryCost above already validated the destination bounds and grew memory for
-            // (localPreviousDest, previousCallOutput.Length), so skip TrySave's redundant re-check.
             vmState.Memory.SaveAfterGas(in localPreviousDest, in previousCallOutput);
         }
 
