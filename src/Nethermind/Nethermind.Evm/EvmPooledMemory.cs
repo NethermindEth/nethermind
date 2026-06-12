@@ -368,6 +368,29 @@ public struct EvmPooledMemory
         return new(size, _memory);
     }
 
+    private static byte[] RentMemory(int size)
+    {
+#if ZK_EVM
+        // zkVM: no GC/pool; pow2 capacity makes growth O(n) instead of O(n²) realloc churn.
+        if (size < 1_024) size = 1_024;
+        uint cap = (uint)size - 1;
+        cap |= cap >> 1; cap |= cap >> 2; cap |= cap >> 4; cap |= cap >> 8; cap |= cap >> 16;
+        cap += 1;
+        int capacity = cap == 0 || cap > (uint)MaxMemorySize ? (int)MaxMemorySize : (int)cap;
+
+        return new byte[capacity];
+#else
+        return SafeArrayPool<byte>.Shared.Rent(size);
+#endif
+    }
+
+    private static void ReturnMemory(byte[] memory)
+    {
+#if !ZK_EVM
+        SafeArrayPool<byte>.Shared.Return(memory);
+#endif
+    }
+
     public void Dispose()
     {
         byte[] memory = _memory;
@@ -375,7 +398,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            SafeArrayPool<byte>.Shared.Return(memory);
+            ReturnMemory(memory);
         }
     }
 
@@ -425,7 +448,7 @@ public struct EvmPooledMemory
         const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
+            _memory = RentMemory((int)Math.Max((uint)Size, MinRentSize));
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
@@ -434,10 +457,10 @@ public struct EvmPooledMemory
             if (Size > (ulong)_memory.LongLength)
             {
                 byte[] beforeResize = _memory;
-                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
+                _memory = RentMemory(TruncateToInt32(Size));
                 Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
                 Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-                SafeArrayPool<byte>.Shared.Return(beforeResize);
+                ReturnMemory(beforeResize);
             }
             else if (Size > _lastZeroedSize)
             {
