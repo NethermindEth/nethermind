@@ -51,9 +51,6 @@ namespace Nethermind.Init.Steps
                 evmLogger.Info("EVM stream interpreter enabled");
             if (evmConfig.StaticSlotDiag)
                 StaticSlotDiag.Enable(evmLogger);
-            StreamInterpreter.StaticSlotPrefetch = evmConfig.StaticSlotPrefetch;
-            if (StreamInterpreter.StaticSlotPrefetch && evmLogger.IsInfo)
-                evmLogger.Info("EVM static-slot prefetch enabled");
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?

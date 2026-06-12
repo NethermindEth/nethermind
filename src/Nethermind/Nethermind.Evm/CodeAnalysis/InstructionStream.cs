@@ -141,10 +141,6 @@ public sealed class InstructionStream
     /// <summary>Entry-index sentinel for program counters that are not an entry start.</summary>
     public const ushort InvalidEntry = ushort.MaxValue;
 
-    /// <summary>Bounds the prefetchable-slot set so a pathological contract cannot turn the
-    /// prefetcher into a read amplifier.</summary>
-    private const int MaxStaticSlots = 64;
-
     public readonly StreamOp[] Ops;
     public readonly long[] BlockGas;
     /// <summary>Pool for pre-decoded PUSH9..PUSH32 constants, referenced by entry operand.</summary>
@@ -155,22 +151,12 @@ public sealed class InstructionStream
     /// <summary>Entry index for every entry-start pc; <see cref="InvalidEntry"/> for immediate
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
-    /// <summary>Distinct storage slots this code reads at statically-known keys (a PUSH
-    /// constant directly before SLOAD) — the prefetchable set.</summary>
-    public readonly UInt256[] StaticSlots;
-
-    /// <summary>Last (block, executing account) the static slots were prefetched for; plain
-    /// racy fields — a lost update merely repeats an idempotent warm-up.</summary>
-    public long LastPrefetchBlock = -1;
-    public Address? LastPrefetchAddress;
-
-    private InstructionStream(StreamOp[] ops, long[] blockGas, UInt256[] constants, ushort[] pcToEntry, UInt256[] staticSlots)
+    private InstructionStream(StreamOp[] ops, long[] blockGas, UInt256[] constants, ushort[] pcToEntry)
     {
         Ops = ops;
         BlockGas = blockGas;
         Constants = constants;
         PcToEntry = pcToEntry;
-        StaticSlots = staticSlots;
 
         ConstantBytes = new byte[constants.Length * 32];
         for (int i = 0; i < constants.Length; i++)
@@ -187,7 +173,6 @@ public sealed class InstructionStream
         List<StreamOp> ops = new(code.Length / 2);
         List<long> blockGas = new(code.Length / 16);
         List<UInt256> constants = new(code.Length / 32);
-        HashSet<UInt256>? staticSlots = null;
         ushort[] pcToEntry = new ushort[code.Length + 1];
         pcToEntry.AsSpan().Fill(InvalidEntry);
 
@@ -196,7 +181,6 @@ public sealed class InstructionStream
         // Tracks the previous BYTECODE instruction (not the previous emitted entry) so
         // boundary ops can be tagged with statically-known operands, e.g. PUSH+SLOAD.
         Instruction previousInstruction = Instruction.INVALID;
-        int previousPc = 0;
         while (pc < code.Length)
         {
             Instruction instruction = (Instruction)code[pc];
@@ -281,7 +265,6 @@ public sealed class InstructionStream
                     conditional ? StreamOpKind.StaticJumpI : StreamOpKind.StaticJump,
                     (ushort)pc, 0, 4, (ulong)dest));
                 previousInstruction = conditional ? Instruction.JUMPI : Instruction.JUMP;
-                previousPc = pc;
                 pc += 4;
                 continue;
             }
@@ -294,20 +277,11 @@ public sealed class InstructionStream
                 // static-slot diagnostics (and any future bytecode-driven prefetch) key on.
                 bool staticSlotSload = instruction == Instruction.SLOAD
                     && previousInstruction is >= Instruction.PUSH0 and <= Instruction.PUSH32;
-                if (staticSlotSload && (staticSlots ??= []).Count < MaxStaticSlots)
-                {
-                    int pushImmediates = previousInstruction - Instruction.PUSH0;
-                    staticSlots.Add(pushImmediates == 0
-                        ? UInt256.Zero
-                        : ReadWideImmediate(code.Slice(previousPc + 1, pushImmediates)));
-                }
-
                 openBlock = -1;
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.Boundary, (ushort)pc, 0, (byte)size, staticSlotSload ? 1UL : 0UL));
             }
 
             previousInstruction = instruction;
-            previousPc = pc;
             pc += size;
         }
 
@@ -330,8 +304,7 @@ public sealed class InstructionStream
             }
         }
 
-        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry,
-            staticSlots is null ? [] : [.. staticSlots]);
+        return new InstructionStream(ops.ToArray(), blockGas.ToArray(), constants.ToArray(), pcToEntry);
     }
 
     /// <summary>

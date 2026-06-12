@@ -17,9 +17,4 @@ public interface IEvmConfig : IConfig
         DefaultValue = "false",
         HiddenFromDocs = true)]
     bool StaticSlotDiag { get; set; }
-
-    [ConfigItem(
-        Description = "Whether entering a contract warms its statically-known storage slots in the background before execution reads them. Requires StreamInterpreter.",
-        DefaultValue = "false")]
-    bool StaticSlotPrefetch { get; set; }
 }

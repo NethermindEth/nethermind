@@ -106,14 +106,6 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
     }
 
-    /// <summary>
-    /// Warms the shared read-only layer (memo and below) for a slot execution is about to
-    /// read. Safe from any thread — the read-only bundle serves concurrent prewarmer scopes
-    /// already; the mutable per-scope layers are deliberately not touched.
-    /// </summary>
-    public void PrefetchSlot(Address address, in UInt256 index)
-        => _readOnlySnapshotBundle.GetSlot(address, in index, selfDestructStateIdx: 0);
-
     public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
     {
         GuardDispose();
