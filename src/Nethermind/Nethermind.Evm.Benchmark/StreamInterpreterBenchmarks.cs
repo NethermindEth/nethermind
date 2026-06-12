@@ -108,7 +108,6 @@ namespace Nethermind.Evm.Benchmark
         public void GlobalSetup()
         {
             StreamInterpreter.Enabled = Mode != InterpreterMode.ByteCodeLoop;
-        StreamInterpreter.SynchronousBuild = Mode != InterpreterMode.ByteCodeLoop;
 
             BlockHeader header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One,
                 MainnetSpecProvider.ParisBlockNumber + 4, Int64.MaxValue,
@@ -154,7 +153,6 @@ namespace Nethermind.Evm.Benchmark
             _straightLineEnvironment.Dispose();
             _stateScope.Dispose();
             StreamInterpreter.Enabled = Environment.GetEnvironmentVariable("NETHERMIND_EVM_STREAM") == "1";
-        StreamInterpreter.SynchronousBuild = StreamInterpreter.Enabled;
         }
 
         [Benchmark]

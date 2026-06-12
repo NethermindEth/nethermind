@@ -53,54 +53,28 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     private readonly JumpDestinationAnalyzer? _analyzer;
     private InstructionStream? _stream;
-    private int _streamBuildQueued;
-    private volatile bool _streamUnavailable;
 
     /// <summary>
-    /// Returns the preprocessed instruction stream for this code. The first execution queues
-    /// the build on the thread pool — it runs in the gaps the IO-bound frames leave on the
-    /// cores, never on the executing frame. Returns <c>null</c> while the build is in flight
-    /// and permanently when the code cannot be streamed (empty, precompile, oversized) —
-    /// callers fall back to the bytecode loop.
+    /// Returns the preprocessed instruction stream for this code, building it on first use.
+    /// Returns <c>null</c> when the code cannot be streamed (empty, precompile, oversized).
     /// </summary>
     /// <remarks>
-    /// With <see cref="StreamInterpreter.SynchronousBuild"/> (tests and consensus gates) the
-    /// build is eager and inline so single executions engage the stream deterministically.
+    /// Benign race: concurrent first callers may build twice; one immutable instance wins the
+    /// CAS and is the only one ever published.
     /// </remarks>
     public InstructionStream? GetOrBuildStream()
     {
         InstructionStream? stream = Volatile.Read(ref _stream);
         if (stream is not null)
             return stream;
-        if (_streamUnavailable || IsEmpty || IsPrecompile)
+        if (IsEmpty || IsPrecompile)
             return null;
 
-        if (StreamInterpreter.SynchronousBuild)
-        {
-            BuildAndPublishStream();
-            return Volatile.Read(ref _stream);
-        }
-
-        if (Interlocked.Exchange(ref _streamBuildQueued, 1) == 0)
-        {
-            ThreadPool.UnsafeQueueUserWorkItem(static codeInfo => codeInfo.BuildAndPublishStream(), this, preferLocal: false);
-        }
-
-        return null;
-    }
-
-    private void BuildAndPublishStream()
-    {
-        InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
+        stream = InstructionStream.TryBuild(CodeSpan);
         if (stream is null)
-        {
-            // Ordered after any (here: no) stream write; later callers short-circuit before
-            // touching the counter, so unbuildable code is never re-analyzed.
-            _streamUnavailable = true;
-            return;
-        }
+            return null;
 
-        Interlocked.CompareExchange(ref _stream, stream, null);
+        return Interlocked.CompareExchange(ref _stream, stream, null) ?? stream;
     }
 
     /// <summary>

@@ -348,11 +348,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         TestState.InsertCode(SolidityExampleAddress, Core.Extensions.Bytes.FromHexString(SolidityExampleRuntime), Spec);
 
         bool enabledBefore = StreamInterpreter.Enabled;
-        bool syncBuildBefore = StreamInterpreter.SynchronousBuild;
         StreamInterpreter.Enabled = useStream;
-        // Single executions must engage the stream deterministically; production tiering
-        // would leave them on the bytecode loop and the differential would prove nothing.
-        StreamInterpreter.SynchronousBuild = useStream;
         try
         {
             // The base Execute helper caps gas at 100k; the CREATE-heavy cases need more.
@@ -364,7 +360,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         finally
         {
             StreamInterpreter.Enabled = enabledBefore;
-            StreamInterpreter.SynchronousBuild = syncBuildBefore;
         }
     }
 
