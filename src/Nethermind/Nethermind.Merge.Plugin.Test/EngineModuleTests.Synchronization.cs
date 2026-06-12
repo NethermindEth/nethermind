@@ -217,6 +217,9 @@ public partial class EngineModuleTests
             Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
             Assert.That(blockCacheService.FinalizedHash, Is.EqualTo(TestItem.KeccakC));
             Assert.That(blockCacheService.HeadBlockHash, Is.EqualTo(block.Hash));
+            // The cache is in-memory only; a node killed here must find the hash again after restart,
+            // so it must also reach the block tree's persisted forkchoice slots.
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(TestItem.KeccakC));
         }
     }
 
