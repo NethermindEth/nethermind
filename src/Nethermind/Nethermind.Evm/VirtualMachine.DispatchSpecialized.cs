@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
@@ -56,23 +58,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     // Poll cancellation every 1024 opcodes (mask of low bits of the per-frame op counter).
     private const int CancellationCheckMask = 1023;
 
-    [SkipLocalsInit]
-    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
-        scoped ref EvmStack stack,
-        scoped ref TGasPolicy gas)
-        where TTracingInst : struct, IFlag
-        where TCancelable : struct, IFlag
-    {
-        // Specs whose dispatch flags match a known tip fork run a specialized loop; custom
-        // chains and historical forks keep the generic function-pointer table path.
-        int fingerprint = EvmSpecFingerprint.Compute(Spec);
-        bool specialized = fingerprint == _osakaFingerprint || fingerprint == _cancunPragueFingerprint;
-        if (fingerprint == _osakaFingerprint)
-            return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
-        if (fingerprint == _cancunPragueFingerprint)
-            return RunByteCodeCore<TTracingInst, TCancelable, CancunEvmSpec>(ref stack, ref gas);
-        return RunByteCodeCore<TTracingInst, TCancelable, GenericEvmSpec>(ref stack, ref gas);
-    }
 
     [SkipLocalsInit]
     private CallResult RunByteCodeCore<TTracingInst, TCancelable, TSpec>(

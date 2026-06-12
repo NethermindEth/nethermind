@@ -1204,6 +1204,26 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return new(EvmExceptionType.OutOfGas);
     }
 
+    /// <summary>
+    /// Runs the frame's bytecode: picks the per-fork-specialized interpreter loop when the
+    /// spec's dispatch fingerprint matches a tip fork (see VirtualMachine.DispatchSpecialized),
+    /// otherwise the generic, runtime-flag loop — never wrong, only unspecialized.
+    /// </summary>
+    [SkipLocalsInit]
+    protected virtual CallResult RunByteCode<TTracingInst, TCancelable>(
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+    {
+        int fingerprint = EvmSpecFingerprint.Compute(Spec);
+        if (fingerprint == _osakaFingerprint)
+            return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
+        if (fingerprint == _cancunPragueFingerprint)
+            return RunByteCodeCore<TTracingInst, TCancelable, CancunEvmSpec>(ref stack, ref gas);
+        return RunByteCodeCore<TTracingInst, TCancelable, GenericEvmSpec>(ref stack, ref gas);
+    }
+
 
     private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
     {
