@@ -53,7 +53,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static TPin Pin(scoped in TReader reader, Bound b) =>
-        reader.PinBuffer(b.Offset, b.Length);
+        reader.PinBuffer(b);
 
     // ---------------- PerAddress (column 0x01: Account + SD + Slots) ----------------
 

@@ -85,12 +85,12 @@ public class HsstReaderTests
             return true;
         }
 
-        public readonly PooledArrayPin PinBuffer(long offset, long size)
+        public readonly PooledArrayPin PinBuffer(Bound bound)
         {
-            if ((ulong)offset + (ulong)size > (ulong)_data.Length)
-                throw new ArgumentOutOfRangeException(nameof(offset));
-            PooledArrayPin pin = PooledArrayPin.Rent((int)size, out Span<byte> rented);
-            _data.AsSpan((int)offset, (int)size).CopyTo(rented);
+            if ((ulong)bound.Offset + (ulong)bound.Length > (ulong)_data.Length)
+                throw new ArgumentOutOfRangeException(nameof(bound));
+            PooledArrayPin pin = PooledArrayPin.Rent((int)bound.Length, out Span<byte> rented);
+            _data.AsSpan((int)bound.Offset, (int)bound.Length).CopyTo(rented);
             return pin;
         }
 

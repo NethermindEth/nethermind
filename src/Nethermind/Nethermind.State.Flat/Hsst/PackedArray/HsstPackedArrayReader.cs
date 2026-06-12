@@ -95,7 +95,7 @@ internal static class HsstPackedArrayReader
         int metaLen;
         long metaAbsStart;
 
-        using (TPin tailPin = reader.PinBuffer(tailAbsStart, tailLen))
+        using (TPin tailPin = reader.PinBuffer(new Bound(tailAbsStart, tailLen)))
         {
             ReadOnlySpan<byte> tail = tailPin.Buffer;
             metaLen = tail[tailLen - 2];
@@ -111,7 +111,7 @@ internal static class HsstPackedArrayReader
         }
 
         // Cold path: metadata exceeds the tail window. Re-pin precisely.
-        using (TPin metaPin = reader.PinBuffer(metaAbsStart, metaLen))
+        using (TPin metaPin = reader.PinBuffer(new Bound(metaAbsStart, metaLen)))
         {
             return ParseMetadata(metaPin.Buffer, hsstStart, metaAbsStart, ref layout);
         }
@@ -254,7 +254,7 @@ internal static class HsstPackedArrayReader
         // the floor → exact match; otherwise the floor is the answer for the floor-lookup path.
         long count = rangeEnd - rangeStart + 1;
         if (count <= 0) return false;
-        using (TPin dataPin = reader.PinBuffer(L.EntryAbsStart(rangeStart), count * L.EntryStride))
+        using (TPin dataPin = reader.PinBuffer(new Bound(L.EntryAbsStart(rangeStart), count * L.EntryStride)))
         {
             ReadOnlySpan<byte> dataSpan = dataPin.Buffer;
             int localFloor = L.IsLittleEndian
@@ -310,7 +310,7 @@ internal static class HsstPackedArrayReader
         long count = hi - lo;
         if (count <= 0) return lo;
 
-        using TPin pin = reader.PinBuffer(levelStart + lo * keySize, count * keySize);
+        using TPin pin = reader.PinBuffer(new Bound(levelStart + lo * keySize, count * keySize));
         ReadOnlySpan<byte> span = pin.Buffer;
 
         int localFloor = isLittleEndian

@@ -54,7 +54,7 @@ internal static class HsstTwoByteSlotMerger
         while (cursor.MoveNext())
         {
             Bound vb = cursor.MinValue;
-            using TPin valPin = cursor.CreateMinReader().PinBuffer(vb.Offset, vb.Length);
+            using TPin valPin = cursor.CreateMinReader().PinBuffer(vb);
             ReadOnlySpan<byte> key = cursor.MinKey;
             callback.OnKey(key);
             scratchKeys.AddRange(key);

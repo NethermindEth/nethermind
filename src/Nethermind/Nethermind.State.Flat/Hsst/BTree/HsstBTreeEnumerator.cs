@@ -250,7 +250,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - lebStart);
             int pos;
             long valueLength;
-            using (TPin lebPin = reader.PinBuffer(lebStart, lebWindow))
+            using (TPin lebPin = reader.PinBuffer(new Bound(lebStart, lebWindow)))
             {
                 ReadOnlySpan<byte> leb = lebPin.Buffer;
                 pos = 0;
@@ -268,7 +268,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
             int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - lebStart);
             int pos;
             long valueLength;
-            using (TPin lebPin = reader.PinBuffer(lebStart, lebWindow))
+            using (TPin lebPin = reader.PinBuffer(new Bound(lebStart, lebWindow)))
             {
                 ReadOnlySpan<byte> leb = lebPin.Buffer;
                 pos = 0;

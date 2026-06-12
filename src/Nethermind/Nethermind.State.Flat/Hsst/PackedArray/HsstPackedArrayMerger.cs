@@ -39,7 +39,7 @@ internal static class HsstPackedArrayMerger
         {
             Bound valBound = cursor.MinValue;
             TReader minReader = cursor.CreateMinReader();
-            using TPin valPin = minReader.PinBuffer(valBound.Offset, valBound.Length);
+            using TPin valPin = minReader.PinBuffer(valBound);
             builder.Add(cursor.MinKey, valPin.Buffer);
             callback.OnKey(cursor.MinKey);
             cursor.AdvanceMatching();

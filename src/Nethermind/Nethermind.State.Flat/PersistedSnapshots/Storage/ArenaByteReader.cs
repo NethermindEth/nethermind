@@ -50,12 +50,12 @@ public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
         return true;
     }
 
-    public NoOpPin PinBuffer(long offset, long size)
+    public NoOpPin PinBuffer(Bound bound)
     {
-        if ((ulong)offset + (ulong)size > (ulong)_length)
-            throw new ArgumentOutOfRangeException(nameof(offset));
-        TouchRange(offset, size);
-        return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + offset, checked((int)size)));
+        if ((ulong)bound.Offset + (ulong)bound.Length > (ulong)_length)
+            throw new ArgumentOutOfRangeException(nameof(bound));
+        TouchRange(bound.Offset, bound.Length);
+        return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + bound.Offset, checked((int)bound.Length)));
     }
 
     /// <summary>
