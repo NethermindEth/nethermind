@@ -69,31 +69,29 @@ internal static class HsstBTreeReader
 
         long trailerLen = 5L + rootPrefixLen;
         long rootStart = bound.Offset + bound.Length - trailerLen - rootSize;
-        long scopeEnd = bound.Offset + bound.Length - trailerLen;
 
-        return TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStart, scopeEnd,
+        return TrySeekFromRoot<TReader, TPin>(in reader, bound, rootStart,
             rootPrefix, trailerKeyLength, key, exactMatch, keyFirst, out resultBound);
     }
 
     /// <summary>
     /// Walk-only variant of <see cref="TrySeek"/> for callers that have already resolved the
-    /// BTree's root descriptor (start offset, scope end, root prefix bytes, trailer key length)
-    /// — typically because they cache it for the life of their backing container. Skips the
-    /// two trailer-region reads that <see cref="TrySeek"/> issues to recover the same values
-    /// and jumps straight into the node-walk loop.
+    /// BTree's root descriptor (start offset, root prefix bytes, trailer key length) — typically
+    /// because they cache it for the life of their backing container. Skips the two trailer-region
+    /// reads that <see cref="TrySeek"/> issues to recover the same values and jumps straight into
+    /// the node-walk loop.
     /// </summary>
     /// <remarks>
     /// <paramref name="rootStart"/> is the absolute byte offset of the root node's flag byte
     /// (the same value <see cref="TrySeek"/> computes as
-    /// <c>bound.Offset + bound.Length - trailerLen - rootSize</c>). <paramref name="scopeEnd"/>
-    /// is the absolute upper edge available to nodes — the trailer's lower edge. The bound is
-    /// still required because <see cref="DecodeEntry"/> uses it to derive entry-region offsets
-    /// and validate value lengths against the HSST's total span.
+    /// <c>bound.Offset + bound.Length - trailerLen - rootSize</c>). The bound is still required
+    /// because <see cref="DecodeEntry"/> uses it to derive entry-region offsets and validate value
+    /// lengths against the HSST's total span.
     /// </remarks>
     [SkipLocalsInit]
     public static bool TrySeekFromRoot<TReader, TPin>(
         scoped in TReader reader, Bound bound,
-        long rootStart, long scopeEnd,
+        long rootStart,
         scoped ReadOnlySpan<byte> rootPrefix,
         int trailerKeyLength,
         scoped ReadOnlySpan<byte> key,
@@ -134,7 +132,7 @@ internal static class HsstBTreeReader
             reader.Prefetch(currentAbsStart);
 
             // Leaf or Intermediate — parse as a BTreeNode node.
-            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, scopeEnd, parentSeparator, out BTreeNodeReader node, out TPin pin))
+            if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;
             using (pin)
             {
@@ -224,11 +222,11 @@ internal static class HsstBTreeReader
     }
 
     /// <summary>
-    /// Speculative pin window. Sized to cover a typical small leaf body in one read; nodes
-    /// aren't page-aligned so there's no gain from rounding up further. Larger leaves and
-    /// intermediates fall back to a precise re-pin.
+    /// Upper bound on the speculative pin window (one 4 KiB page). The actual window is further
+    /// clamped to the end of the node's page (see <see cref="TryLoadNode"/>), since the builder
+    /// keeps every node within a single page; nodes that don't fit fall back to a precise re-pin.
     /// </summary>
-    private const int SpeculativePinSize = 1024;
+    private const int SpeculativePinSize = PageLayout.PageSize;
 
     /// <summary>
     /// Load the index node whose first byte is at <paramref name="absStart"/> via the reader's
@@ -242,9 +240,10 @@ internal static class HsstBTreeReader
     /// precisely. The forward layout means the prefetcher pulls keys/values during the header
     /// read. Cold path (oversized leaves) disposes the speculative pin and re-pins exactly.
     /// </summary>
+    /// <param name="absStart">Absolute offset of the node's first byte (its flag byte).</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryLoadNode<TReader, TPin>(
-        scoped in TReader reader, long absStart, long scopeEnd,
+        scoped in TReader reader, long absStart,
         ReadOnlySpan<byte> parentSeparator,
         out BTreeNodeReader node, out TPin pin)
         where TPin : struct, IBufferPin, allows ref struct
@@ -253,11 +252,17 @@ internal static class HsstBTreeReader
         node = default;
         pin = default;
 
-        long available = scopeEnd - absStart;
+        // The reader's own end is always a safe upper bound for the pin window.
+        long available = reader.Length - absStart;
         // 12 = fixed header bytes.
         if (available < 12) return false;
 
-        int winLen = (int)Math.Min(SpeculativePinSize, available);
+        // Cap the window at the end of absStart's 4 KiB page so the speculative pin never faults
+        // a second page. The builder guarantees a node never straddles a page boundary, so the
+        // remainder of the page always holds the whole node (oversized nodes fall to the cold
+        // re-pin below).
+        long pageRemaining = PageLayout.PageSize - (absStart & PageLayout.PageMask);
+        int winLen = (int)Math.Min(Math.Min(SpeculativePinSize, available), pageRemaining);
 
         TPin speculativePin = reader.PinBuffer(new Bound(absStart, winLen));
         bool keepSpeculative = false;
@@ -282,8 +287,7 @@ internal static class HsstBTreeReader
 
             if (totalNodeSize <= winLen)
             {
-                // Hot path: node fits in the speculative window. ReadFromStart parses the
-                // header at win[0..] and slices keys/values forward within the node range.
+                // Hot path: node fits in the speculative window — keep this pin instead of re-pinning.
                 node = BTreeNodeReader.ReadFromStart(win, 0, parentSeparator);
                 pin = speculativePin;
                 keepSpeculative = true;

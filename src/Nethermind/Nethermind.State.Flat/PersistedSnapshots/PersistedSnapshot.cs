@@ -55,7 +55,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // "no entry" without bothering with the BTree at all.
     private readonly Bound _addressBtreeBound;
     private readonly long _addressBtreeRootStart;
-    private readonly long _addressBtreeScopeEnd;
     private readonly byte[] _addressBtreeRootPrefix = [];
 
     // Scope of the metadata column (tag 0x00), resolved once at construction. ReadBlobRange and
@@ -206,7 +205,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                         long trailerLen = 5L + rootPrefixLen;
                         _addressBtreeBound = addrColBound;
                         _addressBtreeRootStart = addrColBound.Offset + addrColBound.Length - trailerLen - rootSize;
-                        _addressBtreeScopeEnd = addrColBound.Offset + addrColBound.Length - trailerLen;
                         _addressBtreeRootPrefix = rootPrefix;
                     }
                 }
@@ -357,7 +355,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             return false;
         }
         if (!HsstBTreeReader.TrySeekFromRoot<ArenaByteReader, NoOpPin>(
-                in reader, _addressBtreeBound, _addressBtreeRootStart, _addressBtreeScopeEnd,
+                in reader, _addressBtreeBound, _addressBtreeRootStart,
                 _addressBtreeRootPrefix, PersistedSnapshotTags.AddressKeyLength,
                 address.Bytes, exactMatch: true, keyFirst: false, out addressBound))
             return false;
