@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm;
@@ -21,6 +22,7 @@ public partial struct EvmPooledMemory
     [ThreadStatic]
     private static int _threadBufferCount;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void StashBuffer(byte[] memory)
     {
         byte[]?[]? stack = _threadBufferStack ??= new byte[]?[ThreadBufferStackDepth];
@@ -36,6 +38,7 @@ public partial struct EvmPooledMemory
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte[]? TryReuseBuffer(int wanted)
     {
         byte[]?[]? stack = _threadBufferStack;
