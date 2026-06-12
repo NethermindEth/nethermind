@@ -12,7 +12,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Net.Http.Headers;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
@@ -36,6 +35,7 @@ public sealed class SszMiddleware
 
     // Path: /engine/v{N}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v";
+    private const string Octet = MediaTypeNames.Application.Octet;
 
     /// <summary>
     /// Maximum allowed request body size in bytes (16 MiB).
@@ -350,10 +350,8 @@ public sealed class SszMiddleware
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsSszRequest(HttpContext ctx)
     {
-        const string Octet = MediaTypeNames.Application.Octet;
-
         PathString path = ctx.Request.Path;
-        if (!path.HasValue || path.Value?.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase) != true)
+        if (!path.HasValue || !path.Value!.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))
             return false;
 
         return AcceptsSszResponse(ctx);
@@ -369,20 +367,21 @@ public sealed class SszMiddleware
 
         static bool AcceptsOctet(HttpRequest request)
         {
-            // GetTypedHeaders parses the Accept header per RFC: each entry is one media range
-            // with commas, quoted-strings and ;q= parameters already split out. So MediaType
-            // is the bare type/subtype, and an exact match is all that's needed here. This
-            // allocates a RequestHeaders wrapper and a List<MediaTypeHeaderValue> (one per range):
-            // acceptable on the comparatively cold GET path - the hot POST/newPayload path keeps
-            // the raw-string HasOctetMediaValue check below.
-            IList<MediaTypeHeaderValue> accept = request.GetTypedHeaders().Accept;
-            int count = accept.Count;
-            for (int i = 0; i < count; i++)
+            foreach (string? entry in request.Headers.Accept)
             {
-                if (accept[i].MediaType.Equals(Octet, StringComparison.OrdinalIgnoreCase))
-                    return true;
+                if (entry is null) continue;
+                ReadOnlySpan<char> span = entry.AsSpan();
+                while (!span.IsEmpty)
+                {
+                    int comma = span.IndexOf(',');
+                    ReadOnlySpan<char> token = (comma < 0 ? span : span[..comma]).TrimStart();
+                    int semi = token.IndexOf(';');
+                    if (semi >= 0) token = token[..semi].TrimEnd();
+                    if (token.Equals(Octet, StringComparison.OrdinalIgnoreCase)) return true;
+                    if (comma < 0) break;
+                    span = span[(comma + 1)..];
+                }
             }
-
             return false;
         }
 

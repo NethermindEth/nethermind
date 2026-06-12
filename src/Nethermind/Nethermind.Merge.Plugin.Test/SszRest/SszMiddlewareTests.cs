@@ -239,6 +239,7 @@ public class SszMiddlewareTests
     [TestCase("application/octet-stream; charset=utf-8", true)]
     [TestCase("application/octet-streamx", false)]
     [TestCase("application/json", false)]
+    [TestCase(" application/octet-stream", false)]
     public async Task Post_negotiates_ssz_on_content_type_boundary(string contentType, bool handledAsSsz)
     {
         bool nextInvoked = false;
