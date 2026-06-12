@@ -238,21 +238,18 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         ref NativeMemoryList<byte> currentFirstKeys = ref bufs.CurrentLevelFirstKeys;
         ref NativeMemoryList<byte> nextFirstKeys = ref bufs.NextLevelFirstKeys;
 
+        // If level 0 has a single node (one page-local leaf written by trigger 3), it
+        // IS the root: the loop below is skipped and the shared root-capture tail returns
+        // these. The leaf was just written above, so its bytes occupy
+        // <c>[only.ChildOffset, absoluteIndexStart)</c>, and its descriptor carries the
+        // planner-picked prefix length recorded at MaybeEmitInlineLeaf time.
         int lastNodeLen = 0;
         int lastNodePrefixLen = 0;
-
-        // If level 0 has a single node (one page-local leaf written by trigger 3), it
-        // IS the root — return its byte length without writing any intermediate. The
-        // leaf was just written above, so its bytes occupy
-        // <c>[only.ChildOffset, absoluteIndexStart)</c>. The leaf descriptor carries
-        // the planner-picked prefix length recorded at MaybeEmitInlineLeaf time; that
-        // becomes the root's prefix length for the trailer.
         if (currentNative.Count == 1)
         {
             HsstIndexNodeInfo only = currentNative.AsSpan()[0];
-            _rootPrefixLen = only.PrefixLen;
-            CaptureRootFirstKey(ref bufs, currentFirstKeys.AsSpan());
-            return checked((int)(absoluteIndexStart - only.ChildOffset));
+            lastNodeLen = checked((int)(absoluteIndexStart - only.ChildOffset));
+            lastNodePrefixLen = only.PrefixLen;
         }
 
         // Build internal levels until single root.
@@ -488,7 +485,12 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         // the current max delta over children[0..]; slot 0 itself contributes a 0 delta.
         long baseChildOffset = firstChild.ChildOffset;
         long maxOff = baseChildOffset;
-        int committedValueSlot = HsstValueSlot.MinBytesFor(0);
+        // Running upper-bound size of the committed group (childCount children). Seeded for
+        // the lone slot-0 child, then replaced on each accepted child by that iteration's
+        // candidateSize — the next committedSize is exactly the prior candidateSize, so the
+        // group size is never recomputed from scratch.
+        int committedSize = IntermediateNodeSizeUpperBound(
+            childCount, childCount * WidenedSlotWidth(maxSepLen, _keyLength), HsstValueSlot.MinBytesFor(0));
         // Common-prefix length across separators observed so far. With phantom slot 0 restored
         // the first separator (firstChild) seeds commonLen so the running LCP is meaningful from
         // childCount == 1 onward.
@@ -566,10 +568,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             }
             int newEffSepLen = effMaxSepLen - effCommonLen;
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newKeysBytes, valueSlotSize);
-            int committedSize = IntermediateNodeSizeUpperBound(
-                childCount,
-                childCount * WidenedSlotWidth(maxSepLen, _keyLength),
-                committedValueSlot);
             if (childCount >= MinIntermediateChildren &&
                 (newEffSepLen > 8 ||
                  WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
@@ -577,7 +575,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
             childCount = newCount;
             maxOff = newMaxOff;
-            committedValueSlot = valueSlotSize;
+            committedSize = candidateSize;
             maxSepLen = newMaxSepLen;
             commonLen = newCommonLen;
         }
