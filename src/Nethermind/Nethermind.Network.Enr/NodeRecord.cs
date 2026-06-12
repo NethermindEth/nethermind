@@ -28,6 +28,8 @@ public class NodeRecord
 
     internal byte[]? OriginalRlp { get; set; }
 
+    internal byte[]? OriginalContentRlp { get; set; }
+
     /// <summary>
     /// Represents the version / id / sequence of the node record data. It should be increased by one with each
     /// update to the node data. Setting sequence on this class wipes out <see cref="EnrString"/> and
@@ -73,6 +75,11 @@ public class NodeRecord
 
     private Hash256 CalculateContentHash()
     {
+        if (OriginalContentRlp is not null)
+        {
+            return ValueKeccak.Compute(OriginalContentRlp).ToCommitment();
+        }
+
         KeccakRlpStream rlpStream = new();
         EncodeContent(rlpStream);
         return rlpStream.GetHash();
@@ -88,6 +95,7 @@ public class NodeRecord
         {
             _signature = value;
             OriginalRlp = null;
+            OriginalContentRlp = null;
             _enrString = null;
             _contentHash = null;
         }
@@ -233,6 +241,7 @@ public class NodeRecord
 
         Entries[entry.Key] = entry;
         OriginalRlp = null;
+        OriginalContentRlp = null;
         _enrString = null;
         _contentHash = null;
         _signature = null;

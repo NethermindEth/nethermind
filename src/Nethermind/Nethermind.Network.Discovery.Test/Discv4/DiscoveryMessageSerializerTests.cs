@@ -119,9 +119,37 @@ public class DiscoveryMessageSerializerTests
             Assert.That(deserializedMessage.MsgType, Is.EqualTo(message.MsgType));
             Assert.That(deserializedMessage.FarPublicKey, Is.EqualTo(message.FarPublicKey));
             Assert.That(deserializedMessage.ExpirationTime, Is.EqualTo(message.ExpirationTime));
-
             Assert.That(deserializedMessage.PingMdc, Is.EqualTo(message.PingMdc));
+            Assert.That(deserializedMessage.EnrSequence, Is.Null);
         }
+    }
+
+    [Test]
+    public void Pong_with_enr_sequence_there_and_back()
+    {
+        PongMsg pongMsg = new(TestItem.PublicKeyA, long.MaxValue, TestItem.KeccakA.ValueHash256, 3)
+        {
+            FarAddress = _farAddress
+        };
+
+        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(pongMsg).AsDisposable();
+        pongMsg = _messageSerializationService.Deserialize<PongMsg>(serialized);
+
+        Assert.That(pongMsg.EnrSequence, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Pong_with_enr_sequence_and_extra_tail_reads_enr_sequence()
+    {
+        PongMsg pongMsg = new(TestItem.PublicKeyA, long.MaxValue, TestItem.KeccakA.ValueHash256, 3)
+        {
+            FarAddress = _farAddress
+        };
+        byte[] serialized = CreatePongWithExtraTail(pongMsg, [4, 5, 6]);
+
+        pongMsg = _messageSerializationService.Deserialize<PongMsg>(serialized);
+
+        Assert.That(pongMsg.EnrSequence, Is.EqualTo(3));
     }
 
     [Test]
@@ -337,6 +365,51 @@ public class DiscoveryMessageSerializerTests
         NodeRecordSigner signer = new(new Ecdsa(), _privateKey);
         signer.Sign(nodeRecord);
         return new EnrResponseMsg(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
+    }
+
+    private byte[] CreatePongWithExtraTail(PongMsg message, byte[] extraTail)
+    {
+        byte[] addressBytes = message.FarAddress!.Address.GetAddressBytes();
+        int farAddressLength =
+            Rlp.LengthOf(addressBytes) +
+            Rlp.LengthOf(message.FarAddress.Port) +
+            Rlp.LengthOf(message.FarAddress.Port);
+        int contentLength =
+            Rlp.LengthOfSequence(farAddressLength) +
+            Rlp.LengthOf(message.PingMdc) +
+            Rlp.LengthOf(message.ExpirationTime) +
+            Rlp.LengthOf(message.EnrSequence.GetValueOrDefault()) +
+            Rlp.LengthOf(extraTail);
+        byte[] messageRlp = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpStream rlpStream = new(messageRlp);
+        rlpStream.StartSequence(contentLength);
+        rlpStream.StartSequence(farAddressLength);
+        rlpStream.Encode(addressBytes);
+        rlpStream.Encode(message.FarAddress.Port);
+        rlpStream.Encode(message.FarAddress.Port);
+        rlpStream.Encode(message.PingMdc);
+        rlpStream.Encode(message.ExpirationTime);
+        rlpStream.Encode(message.EnrSequence.GetValueOrDefault());
+        rlpStream.Encode(extraTail);
+
+        byte[] signedPayload = new byte[1 + messageRlp.Length];
+        signedPayload[0] = (byte)MsgType.Pong;
+        messageRlp.CopyTo(signedPayload.AsSpan(1));
+
+        Ecdsa ecdsa = new();
+        ValueHash256 toSign = ValueKeccak.Compute(signedPayload);
+        Signature signature = ecdsa.Sign(_privateKey, in toSign);
+
+        byte[] signatureAndPayload = new byte[65 + signedPayload.Length];
+        signature.Bytes.CopyTo(signatureAndPayload.AsSpan(0, 64));
+        signatureAndPayload[64] = signature.RecoveryId;
+        signedPayload.CopyTo(signatureAndPayload.AsSpan(65));
+
+        ValueHash256 mdc = ValueKeccak.Compute(signatureAndPayload);
+        byte[] packet = new byte[32 + signatureAndPayload.Length];
+        mdc.Bytes.CopyTo(packet.AsSpan(0, 32));
+        signatureAndPayload.CopyTo(packet.AsSpan(32));
+        return packet;
     }
 
     [Test]

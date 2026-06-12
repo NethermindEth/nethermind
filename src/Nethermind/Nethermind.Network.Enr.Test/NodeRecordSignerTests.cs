@@ -119,10 +119,77 @@ public class NodeRecordSignerTests
     }
 
     [Test]
+    public void Can_deserialize_eth_entry_with_uint64_next_and_extra_values()
+    {
+        byte[] forkHash = [1, 2, 3, 4];
+        ulong nextBlock = (ulong)long.MaxValue + 1;
+        byte[] extraValue = [5, 6, 7];
+        RlpStream rlpStream = CreateRecord(
+            (EnrContentKey.Eth, stream => EncodeEthEntry(stream, forkHash, nextBlock, extraValue), LengthOfEthEntry(forkHash, nextBlock, extraValue)),
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")));
+        NodeRecordSigner signer = new(new Ecdsa());
+
+        NodeRecord nodeRecord = signer.Deserialize(rlpStream);
+        ForkId? forkId = nodeRecord.GetValue<ForkId>(EnrContentKey.Eth);
+
+        Assert.That(forkId, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkId!.Value.ForkHash, Is.EqualTo(forkHash));
+            Assert.That(forkId.Value.NextBlock, Is.EqualTo(nextBlock));
+        }
+    }
+
+    [TestCase(3)]
+    [TestCase(5)]
+    public void Throws_when_eth_fork_hash_has_invalid_length(int forkHashLength)
+    {
+        byte[] forkHash = new byte[forkHashLength];
+        RlpStream rlpStream = CreateRecord(
+            (EnrContentKey.Eth, stream => EncodeEthEntry(stream, forkHash, 0, []), LengthOfEthEntry(forkHash, 0, [])),
+            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")));
+        NodeRecordSigner signer = new(new Ecdsa());
+
+        Assert.That(() => signer.Deserialize(rlpStream), Throws.Exception);
+    }
+
+    [TestCase(3)]
+    [TestCase(5)]
+    public void Eth_entry_rejects_invalid_fork_hash_length(int forkHashLength)
+    {
+        byte[] forkHash = new byte[forkHashLength];
+
+        Assert.That(() => new EthEntry(forkHash, 0), Throws.TypeOf<ArgumentException>());
+    }
+
+    [Test]
+    public void FromEnrString_can_verify_eth_entry_with_extra_values()
+    {
+        byte[] forkHash = [1, 2, 3, 4];
+        ulong nextBlock = (ulong)long.MaxValue + 1;
+        byte[] recordBytes = CreateSignedRecordWithEthExtraValue(
+            new PrivateKey(TestPrivateKey),
+            forkHash,
+            nextBlock,
+            [5, 6, 7]);
+
+        NodeRecord fromBytes = NodeRecord.FromBytes(recordBytes);
+        NodeRecord fromEnrString = NodeRecord.FromEnrString(CreateEnrString(recordBytes));
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertEthForkId(fromBytes, forkHash, nextBlock);
+            AssertEthForkId(fromEnrString, forkHash, nextBlock);
+            Assert.That(fromBytes.ToRlpBytes(), Is.EqualTo(recordBytes));
+            Assert.That(fromEnrString.ToRlpBytes(), Is.EqualTo(recordBytes));
+        }
+    }
+
+    [Test]
     public void Can_serialize_eth_entry_as_nested_fork_id_list()
     {
         byte[] forkHash = [1, 2, 3, 4];
-        const long nextBlock = 0x0506;
+        const ulong nextBlock = 0x0506;
         byte[] expectedEntryBytes = Bytes.FromHexString("83657468c9c88401020304820506");
 
         Ecdsa ecdsa = new();
@@ -337,6 +404,91 @@ public class NodeRecordSignerTests
         byte[] recordBytes = nodeRecord.ToRlpBytes().AsSpan().ToArray();
         recordBytes[4] ^= 0x01;
         return recordBytes;
+    }
+
+    private static int LengthOfEthEntry(byte[] forkHash, ulong nextBlock, byte[] extraValue)
+    {
+        int forkIdContentLength = Rlp.LengthOf(forkHash) + Rlp.LengthOf(nextBlock);
+        int ethEntryContentLength = Rlp.LengthOfSequence(forkIdContentLength) + Rlp.LengthOf(extraValue);
+        return Rlp.LengthOfSequence(ethEntryContentLength);
+    }
+
+    private static void EncodeEthEntry(RlpStream rlpStream, byte[] forkHash, ulong nextBlock, byte[] extraValue)
+    {
+        int forkIdContentLength = Rlp.LengthOf(forkHash) + Rlp.LengthOf(nextBlock);
+        int ethEntryContentLength = Rlp.LengthOfSequence(forkIdContentLength) + Rlp.LengthOf(extraValue);
+        rlpStream.StartSequence(ethEntryContentLength);
+        rlpStream.StartSequence(forkIdContentLength);
+        rlpStream.Encode(forkHash);
+        rlpStream.Encode(nextBlock);
+        rlpStream.Encode(extraValue);
+    }
+
+    private static byte[] CreateSignedRecordWithEthExtraValue(
+        PrivateKey privateKey,
+        byte[] forkHash,
+        ulong nextBlock,
+        byte[] extraValue)
+    {
+        byte[] publicKey = privateKey.CompressedPublicKey.Bytes;
+        int contentLength = LengthOfRecordContentWithoutSignature(forkHash, nextBlock, extraValue, publicKey);
+        byte[] content = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpStream contentStream = new(content);
+        contentStream.StartSequence(contentLength);
+        EncodeRecordContentWithoutSignature(contentStream, forkHash, nextBlock, extraValue, publicKey);
+
+        Ecdsa ecdsa = new();
+        ValueHash256 contentHash = ValueKeccak.Compute(content);
+        Signature signature = ecdsa.Sign(privateKey, in contentHash);
+
+        int signedContentLength = Rlp.LengthOf(signature.Bytes) + contentLength;
+        byte[] recordBytes = new byte[Rlp.LengthOfSequence(signedContentLength)];
+        RlpStream recordStream = new(recordBytes);
+        recordStream.StartSequence(signedContentLength);
+        recordStream.Encode(signature.Bytes);
+        EncodeRecordContentWithoutSignature(recordStream, forkHash, nextBlock, extraValue, publicKey);
+        return recordBytes;
+    }
+
+    private static int LengthOfRecordContentWithoutSignature(byte[] forkHash, ulong nextBlock, byte[] extraValue, byte[] publicKey)
+        => Rlp.LengthOf(1UL) +
+           Rlp.LengthOf(EnrContentKey.Eth) +
+           LengthOfEthEntry(forkHash, nextBlock, extraValue) +
+           Rlp.LengthOf(EnrContentKey.Id) +
+           Rlp.LengthOf("v4") +
+           Rlp.LengthOf(EnrContentKey.SecP256k1) +
+           Rlp.LengthOf(publicKey);
+
+    private static void EncodeRecordContentWithoutSignature(
+        RlpStream rlpStream,
+        byte[] forkHash,
+        ulong nextBlock,
+        byte[] extraValue,
+        byte[] publicKey)
+    {
+        rlpStream.Encode(1UL);
+        rlpStream.Encode(EnrContentKey.Eth);
+        EncodeEthEntry(rlpStream, forkHash, nextBlock, extraValue);
+        rlpStream.Encode(EnrContentKey.Id);
+        rlpStream.Encode("v4");
+        rlpStream.Encode(EnrContentKey.SecP256k1);
+        rlpStream.Encode(publicKey);
+    }
+
+    private static string CreateEnrString(byte[] recordBytes)
+    {
+        string base64String = Convert.ToBase64String(recordBytes).Replace('+', '-').Replace('/', '_');
+        int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0;
+        return string.Concat("enr:", base64String.AsSpan(0, base64String.Length - skipLast));
+    }
+
+    private static void AssertEthForkId(NodeRecord nodeRecord, byte[] forkHash, ulong nextBlock)
+    {
+        ForkId? forkId = nodeRecord.GetValue<ForkId>(EnrContentKey.Eth);
+
+        Assert.That(forkId, Is.Not.Null);
+        Assert.That(forkId!.Value.ForkHash, Is.EqualTo(forkHash));
+        Assert.That(forkId.Value.NextBlock, Is.EqualTo(nextBlock));
     }
 
     private static TestCaseData InvalidRecordCase(Func<RlpStream> createRecord, Type exceptionType, string name)

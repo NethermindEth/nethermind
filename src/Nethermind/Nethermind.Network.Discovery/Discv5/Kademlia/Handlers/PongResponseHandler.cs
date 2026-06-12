@@ -12,8 +12,11 @@ internal sealed class PongResponseHandler(Node receiver) : ResponseHandler<PongM
 
     public override Task Task => _completion.Task;
 
+    public ulong EnrSequence { get; private set; }
+
     public override bool Handle(PongMsg message)
     {
+        EnrSequence = message.EnrSequence;
         receiver.ValidatedProtocol = true;
         _completion.TrySetResult();
         return true;

@@ -63,6 +63,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
 
         ReadOnlySpan<byte> sigBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
         Signature signature = new(sigBytes, 0);
+        int contentStartPosition = ctx.Position;
 
         bool hasV4Id = false;
         ulong enrSequence = ctx.DecodeULong();
@@ -102,10 +103,19 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                         break;
                     }
                 case 3 when key.SequenceEqual(EnrContentKey.EthU8):
-                    _ = ctx.ReadSequenceLength();
-                    _ = ctx.ReadSequenceLength();
-                    byte[] forkHash = ctx.DecodeByteArray();
-                    long nextBlock = ctx.DecodeLong();
+                    int ethEntryLength = ctx.ReadSequenceLength();
+                    int ethEntryCheck = ctx.Position + ethEntryLength;
+                    int forkIdLength = ctx.ReadSequenceLength();
+                    int forkIdCheck = ctx.Position + forkIdLength;
+                    byte[] forkHash = ctx.DecodeByteArray(RlpLimit.L4, EthEntry.ForkHashLength);
+                    ulong nextBlock = ctx.DecodeULong();
+                    ctx.Check(forkIdCheck);
+
+                    while (ctx.Position < ethEntryCheck)
+                    {
+                        ctx.SkipItem();
+                    }
+                    ctx.Check(ethEntryCheck);
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
@@ -156,8 +166,15 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         }
 
         int endPosition = ctx.Position;
+        int originalContentLength = endPosition - contentStartPosition;
+        byte[] originalContent = new byte[Rlp.LengthOfSequence(originalContentLength)];
+        RlpStream originalContentStream = new(originalContent);
+        originalContentStream.StartSequence(originalContentLength);
+        originalContentStream.Write(ctx.Data.Slice(contentStartPosition, originalContentLength));
+
         nodeRecord.EnrSequence = enrSequence;
         nodeRecord.Signature = signature;
+        nodeRecord.OriginalContentRlp = originalContent;
         nodeRecord.OriginalRlp = ctx.Data.Slice(startPosition, endPosition - startPosition).ToArray();
 
         return nodeRecord;

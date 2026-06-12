@@ -60,6 +60,42 @@ public class WireTests
     }
 
     [Test]
+    public async Task Ping_Refreshes_Remote_Enr_When_Pong_Advertises_Newer_Sequence()
+    {
+        IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
+        IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
+        TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA);
+        TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB, enrSequence: 2);
+        NodeRecord staleRecord = BuildNodeRecord(TestItem.PrivateKeyB, endpointB, includeEndpoint: true, enrSequence: 1);
+        Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
+        {
+            Enr = staleRecord.EnrString
+        };
+
+        using CancellationTokenSource cancellationSource = new(10_000);
+        Task runA = peerA.Adapter.RunAsync(cancellationSource.Token);
+        Task runB = peerB.Adapter.RunAsync(cancellationSource.Token);
+
+        Task pingTask = peerA.Adapter.Ping(nodeB, cancellationSource.Token);
+        await PumpUntilComplete(pingTask, peerA, peerB, cancellationSource.Token);
+        await pingTask;
+
+        await PumpUntil(
+            () => peerA.Kademlia.ReceivedCallsMatching(
+                kademlia => kademlia.AddOrRefresh(Arg.Is<Node>(node =>
+                    node.Id.Equals(TestItem.PrivateKeyB.PublicKey) &&
+                    TestEnrBuilder.HasEnrSequence(node, peerB.NodeRecordProvider.Current.EnrSequence))),
+                requiredNumberOfCalls: 1,
+                maxNumberOfCalls: int.MaxValue),
+            peerA,
+            peerB,
+            cancellationSource.Token);
+
+        await cancellationSource.CancelAsync();
+        await Task.WhenAll(runA, runB);
+    }
+
+    [Test]
     public async Task Ping_Rehandshakes_After_RemoteSessionLost()
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
@@ -197,14 +233,18 @@ public class WireTests
         peerA.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyC.PublicKey)));
     }
 
-    private static TestPeer CreatePeer(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpointInRecord = true)
+    private static TestPeer CreatePeer(
+        PrivateKey privateKey,
+        IPEndPoint endpoint,
+        bool includeEndpointInRecord = true,
+        ulong enrSequence = 1)
     {
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
         NettyDiscoveryV5Handler handler = new(new TestLogManager());
         EmbeddedChannel channel = new();
         handler.InitializeChannel(channel);
 
-        TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord);
+        TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord, enrSequence);
         PacketCodec packetCodec = new(
             new InsecureProtectedPrivateKey(privateKey),
             new CryptoRandom(),
@@ -222,6 +262,20 @@ public class WireTests
 
         return new TestPeer(adapter, handler, channel, packetCodec, kademlia, nodeRecordProvider, endpoint);
     }
+
+    private static NodeRecord BuildNodeRecord(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint, ulong enrSequence)
+        => includeEndpoint
+            ? TestEnrBuilder.BuildSigned(
+                privateKey,
+                endpoint.Address,
+                tcpPort: endpoint.Port,
+                udpPort: endpoint.Port,
+                enrSequence: enrSequence,
+                configureExtras: static enr => enr.SetEntry(IdEntry.Instance))
+            : TestEnrBuilder.BuildSignedWithoutEndpoint(
+                privateKey,
+                enrSequence,
+                configureExtras: static enr => enr.SetEntry(IdEntry.Instance));
 
     private static async Task PumpUntilComplete(Task task, TestPeer peerA, TestPeer peerB, CancellationToken token)
     {
@@ -284,11 +338,10 @@ public class WireTests
         }
     }
 
-    private sealed class TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint) : INodeRecordProvider
+    private sealed class TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint, ulong enrSequence)
+        : INodeRecordProvider
     {
-        public NodeRecord Current { get; } = includeEndpoint
-            ? TestEnrBuilder.BuildSigned(privateKey, endpoint.Address, tcpPort: endpoint.Port, udpPort: endpoint.Port)
-            : TestEnrBuilder.BuildSignedWithoutEndpoint(privateKey);
+        public NodeRecord Current { get; } = BuildNodeRecord(privateKey, endpoint, includeEndpoint, enrSequence);
 
         public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default) => new(Current);
     }

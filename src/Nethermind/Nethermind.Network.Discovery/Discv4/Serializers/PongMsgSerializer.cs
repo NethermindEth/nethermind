@@ -29,6 +29,10 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         ValueHash256? pingMdc = msg.PingMdc;
         stream.Encode(in pingMdc);
         stream.Encode(msg.ExpirationTime);
+        if (msg.EnrSequence.HasValue)
+        {
+            stream.Encode(msg.EnrSequence.Value);
+        }
 
         byteBuffer.ResetIndex();
 
@@ -41,7 +45,8 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
 
         Rlp.ValueDecoderContext ctx = data.AsRlpContext();
 
-        ctx.ReadSequenceLength();
+        int contentLength = ctx.ReadSequenceLength();
+        int checkPosition = ctx.Position + contentLength;
         ctx.ReadSequenceLength();
 
         ctx.DecodeByteArraySpan(IpAddressRlpLimit);
@@ -54,9 +59,15 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         }
 
         long expirationTime = ctx.DecodeLong();
+        ulong? enrSequence = null;
+        if (ctx.Position < checkPosition && IsNextUnsignedInteger(ctx))
+        {
+            enrSequence = ctx.DecodeULong();
+        }
 
+        ctx.Position = checkPosition;
         data.SetReaderIndex(data.ReaderIndex + ctx.Position);
-        PongMsg msg = new(farPublicKey, expirationTime, new ValueHash256(token));
+        PongMsg msg = new(farPublicKey, expirationTime, new ValueHash256(token), enrSequence);
         return msg;
     }
 
@@ -79,7 +90,22 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         ValueHash256? pingMdc = message.PingMdc;
         contentLength += Rlp.LengthOf(in pingMdc);
         contentLength += Rlp.LengthOf(message.ExpirationTime);
+        if (message.EnrSequence.HasValue)
+        {
+            contentLength += Rlp.LengthOf(message.EnrSequence.Value);
+        }
 
         return (Rlp.LengthOfSequence(contentLength), contentLength, farAddressLength);
+    }
+
+    private static bool IsNextUnsignedInteger(Rlp.ValueDecoderContext ctx)
+    {
+        if (ctx.IsSequenceNext())
+        {
+            return false;
+        }
+
+        byte prefix = ctx.PeekByte();
+        return prefix <= 136;
     }
 }

@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Test;
 
@@ -54,13 +55,34 @@ internal static class TestEnrBuilder
         return enr;
     }
 
-    public static NodeRecord BuildSignedWithoutEndpoint(PrivateKey privateKey, ulong enrSequence = 1)
+    public static NodeRecord BuildSignedWithoutEndpoint(
+        PrivateKey privateKey,
+        ulong enrSequence = 1,
+        Action<NodeRecord>? configureExtras = null)
     {
         NodeRecord enr = new();
         enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        configureExtras?.Invoke(enr);
         enr.EnrSequence = enrSequence;
         Sign(enr, privateKey);
         return enr;
+    }
+
+    public static bool HasEnrSequence(Node node, ulong enrSequence)
+    {
+        if (string.IsNullOrEmpty(node.Enr))
+        {
+            return false;
+        }
+
+        try
+        {
+            return NodeRecord.FromEnrString(node.Enr).EnrSequence == enrSequence;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static void Sign(NodeRecord enr, PrivateKey privateKey) => new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);

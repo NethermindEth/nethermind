@@ -3,7 +3,9 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -48,7 +50,7 @@ public class DiscoveryV5AppTests
             Bootnodes = [],
             ExternalIp = externalIp.ToString()
         };
-        IProtectedPrivateKey nodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyF);
+        IProtectedPrivateKey nodeKey = new InsecureProtectedPrivateKey(new PrivateKey(TestItem.PrivateKeyF.KeyBytes));
         IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
         IIPResolver ipResolver = new FixedIpResolver(networkConfig);
         EthereumEcdsa ecdsa = new(0);
@@ -62,6 +64,9 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(new CryptoRandom()).As<ICryptoRandom>();
         builder.RegisterInstance(new NetworkStorage(_discoveryDb, LimboLogs.Instance)).Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
         builder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
+        builder.RegisterInstance(Substitute.For<IBlockTree>()).As<IBlockTree>();
+        builder.RegisterInstance(Substitute.For<IForkInfo>()).As<IForkInfo>();
         builder.RegisterType<NodeRecordProvider>().As<INodeRecordProvider>().WithAttributeFiltering().SingleInstance();
         IContainer container = builder.Build();
         _containers.Add(container);

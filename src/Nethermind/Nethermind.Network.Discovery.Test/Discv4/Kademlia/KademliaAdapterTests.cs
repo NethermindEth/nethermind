@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -91,11 +92,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _networkConfig.MaxActivePeers.Returns(25);
             _kademliaConfig = new KademliaConfig<Node> { CurrentNodeId = _testNode };
 
-            _selfNodeRecord = TestEnrBuilder.BuildSigned(
-                TestItem.PrivateKeyA,
-                IPAddress.Parse("192.168.1.1"),
-                tcpPort: _networkConfig.P2PPort,
-                udpPort: _networkConfig.DiscoveryPort);
+            _selfNodeRecord = CreateNodeRecord();
 
             _logManager = LimboLogs.Instance;
             _timestamper = Substitute.For<ITimestamper>();
@@ -146,6 +143,23 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _nodeStatsManager.Received(1).GetOrAdd(Arg.Is<Node>(node => node.Id == _receiver.Id));
         }
 
+        private NodeRecord CreateNodeRecord()
+            => CreateNodeRecord(
+                TestItem.PrivateKeyA,
+                IPAddress.Parse("192.168.1.1"),
+                _networkConfig.P2PPort,
+                _networkConfig.DiscoveryPort,
+                1);
+
+        private static NodeRecord CreateNodeRecord(PrivateKey privateKey, IPAddress ipAddress, int tcpPort, int udpPort, ulong enrSequence)
+            => TestEnrBuilder.BuildSigned(
+                privateKey,
+                ipAddress,
+                tcpPort,
+                udpPort,
+                enrSequence: enrSequence,
+                configureExtras: static enr => enr.SetEntry(IdEntry.Instance));
+
         [TearDown]
         public async Task TearDown() => await _adapter.DisposeAsync();
 
@@ -156,6 +170,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             msg = _receiverSerializationManager.Deserialize<T>(buffer);
             msg.FarAddress = farAddress;
             return msg;
+        }
+
+        private PingMsg CreatePingWithEnrSequence(ulong enrSequence)
+        {
+            PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address)
+            {
+                EnrSequence = enrSequence,
+                FarAddress = _receiver.Address
+            };
+            return AddReceiverFarAddress(pingMsg);
         }
 
         private async Task<bool> HasResponse(NoResponseRequest request, CancellationToken token) =>
@@ -381,6 +405,232 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
                 m.PingMdc == expectedPingMdc));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_with_newer_enr_sequence_should_request_and_apply_enr(CancellationToken token)
+        {
+            await BondReceiver(token);
+
+            NodeRecord remoteRecord = CreateNodeRecord(
+                TestItem.PrivateKeyB,
+                _receiver.Address.Address,
+                _receiver.Address.Port,
+                _receiver.Address.Port,
+                2);
+            byte[] requestHash = TestItem.KeccakA.BytesToArray();
+            TaskCompletionSource enrRefreshCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _nodeHealthTracker
+                .When(x => x.OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                    n.Id.Equals(_receiver.Id) &&
+                    TestEnrBuilder.HasEnrSequence(n, remoteRecord.EnrSequence))))
+                .Do(_ => enrRefreshCompleted.TrySetResult());
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
+                .Do(ci =>
+                {
+                    EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                    sent.Hash = new ValueHash256(requestHash);
+                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(
+                        _receiver.Address,
+                        remoteRecord,
+                        new Hash256(requestHash)));
+                    _adapter.OnIncomingMsg(response).GetAwaiter().GetResult();
+                });
+
+            PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address)
+            {
+                EnrSequence = remoteRecord.EnrSequence
+            };
+            pingMsg.FarAddress = _receiver.Address;
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+            await enrRefreshCompleted.Task.WaitAsync(token);
+
+            await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
+            _nodeHealthTracker.Received().OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                n.Id.Equals(_receiver.Id) &&
+                TestEnrBuilder.HasEnrSequence(n, remoteRecord.EnrSequence)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_with_newer_enr_sequence_should_apply_udp_discovery_port(CancellationToken token)
+        {
+            await BondReceiver(token);
+
+            int udpPort = _receiver.Address.Port;
+            int tcpPort = udpPort + 1;
+            NodeRecord remoteRecord = CreateNodeRecord(
+                TestItem.PrivateKeyB,
+                _receiver.Address.Address,
+                tcpPort,
+                udpPort,
+                2);
+            byte[] requestHash = TestItem.KeccakA.BytesToArray();
+            TaskCompletionSource enrRefreshCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _nodeHealthTracker
+                .When(x => x.OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                    n.Id.Equals(_receiver.Id) &&
+                    n.Address.Port == udpPort &&
+                    TestEnrBuilder.HasEnrSequence(n, remoteRecord.EnrSequence))))
+                .Do(_ => enrRefreshCompleted.TrySetResult());
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
+                .Do(ci =>
+                {
+                    EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                    sent.Hash = new ValueHash256(requestHash);
+                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(
+                        _receiver.Address,
+                        remoteRecord,
+                        new Hash256(requestHash)));
+                    _adapter.OnIncomingMsg(response).GetAwaiter().GetResult();
+                });
+
+            PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address)
+            {
+                EnrSequence = remoteRecord.EnrSequence
+            };
+            pingMsg.FarAddress = _receiver.Address;
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+            await enrRefreshCompleted.Task.WaitAsync(token);
+
+            _nodeHealthTracker.Received().OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                n.Id.Equals(_receiver.Id) &&
+                n.Address.Port == udpPort &&
+                TestEnrBuilder.HasEnrSequence(n, remoteRecord.EnrSequence)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_with_newer_pong_enr_sequence_should_request_and_apply_enr(CancellationToken token)
+        {
+            NodeRecord remoteRecord = CreateNodeRecord(
+                TestItem.PrivateKeyB,
+                _receiver.Address.Address,
+                _receiver.Address.Port,
+                _receiver.Address.Port,
+                2);
+            byte[] requestHash = TestItem.KeccakA.BytesToArray();
+            TaskCompletionSource enrRefreshCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _nodeHealthTracker
+                .When(x => x.OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                    n.Id.Equals(_receiver.Id) &&
+                    TestEnrBuilder.HasEnrSequence(n, remoteRecord.EnrSequence))))
+                .Do(_ => enrRefreshCompleted.TrySetResult());
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<PingMsg>()))
+                .Do(ci =>
+                {
+                    PingMsg sent = (PingMsg)ci[0]!;
+                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+                    PongMsg pong = new(msg.FarPublicKey!, _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value, remoteRecord.EnrSequence)
+                    {
+                        FarAddress = _receiver.Address
+                    };
+                    _adapter.OnIncomingMsg(pong).GetAwaiter().GetResult();
+                });
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
+                .Do(ci =>
+                {
+                    EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                    sent.Hash = new ValueHash256(requestHash);
+                    EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(
+                        _receiver.Address,
+                        remoteRecord,
+                        new Hash256(requestHash)));
+                    _adapter.OnIncomingMsg(response).GetAwaiter().GetResult();
+                });
+
+            bool result = await _adapter.Ping(_receiver, token);
+            await enrRefreshCompleted.Task.WaitAsync(token);
+
+            Assert.That(result, Is.True);
+            await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
+            _nodeHealthTracker.Received().OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                n.Id.Equals(_receiver.Id) &&
+                TestEnrBuilder.HasEnrSequence(n, remoteRecord.EnrSequence)));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Out_of_order_enr_response_should_not_downgrade_known_record(CancellationToken token)
+        {
+            await BondReceiver(token);
+
+            NodeRecord staleRecord = CreateNodeRecord(
+                TestItem.PrivateKeyB,
+                _receiver.Address.Address,
+                _receiver.Address.Port,
+                _receiver.Address.Port,
+                2);
+            NodeRecord newerRecord = CreateNodeRecord(
+                TestItem.PrivateKeyB,
+                _receiver.Address.Address,
+                _receiver.Address.Port,
+                _receiver.Address.Port,
+                3);
+            byte[] firstRequestHash = TestItem.KeccakA.BytesToArray();
+            byte[] secondRequestHash = TestItem.KeccakB.BytesToArray();
+            TaskCompletionSource firstRequestSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource secondRequestSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource newerRecordApplied = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            int enrRequestCount = 0;
+            _nodeHealthTracker
+                .When(x => x.OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                    n.Id.Equals(_receiver.Id) &&
+                    TestEnrBuilder.HasEnrSequence(n, newerRecord.EnrSequence))))
+                .Do(_ => newerRecordApplied.TrySetResult());
+            _msgSender
+                .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
+                .Do(ci =>
+                {
+                    EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                    int requestNumber = Interlocked.Increment(ref enrRequestCount);
+                    if (requestNumber == 1)
+                    {
+                        sent.Hash = new ValueHash256(firstRequestHash);
+                        firstRequestSent.TrySetResult();
+                    }
+                    else if (requestNumber == 2)
+                    {
+                        sent.Hash = new ValueHash256(secondRequestHash);
+                        secondRequestSent.TrySetResult();
+                    }
+                    else
+                    {
+                        Assert.Fail("Unexpected extra ENR request.");
+                    }
+                });
+
+            await _adapter.OnIncomingMsg(CreatePingWithEnrSequence(staleRecord.EnrSequence));
+            await firstRequestSent.Task.WaitAsync(token);
+            await _adapter.OnIncomingMsg(CreatePingWithEnrSequence(newerRecord.EnrSequence));
+            await secondRequestSent.Task.WaitAsync(token);
+
+            EnrResponseMsg newerResponse = AddReceiverFarAddress(new EnrResponseMsg(
+                _receiver.Address,
+                newerRecord,
+                new Hash256(secondRequestHash)));
+            await _adapter.OnIncomingMsg(newerResponse);
+            await newerRecordApplied.Task.WaitAsync(token);
+
+            EnrResponseMsg staleResponse = AddReceiverFarAddress(new EnrResponseMsg(
+                _receiver.Address,
+                staleRecord,
+                new Hash256(firstRequestHash)));
+            await _adapter.OnIncomingMsg(staleResponse);
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                n.Id.Equals(_receiver.Id) &&
+                TestEnrBuilder.HasEnrSequence(n, staleRecord.EnrSequence)));
+            Assert.That(enrRequestCount, Is.EqualTo(2));
         }
 
         [Test]

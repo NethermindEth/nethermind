@@ -10,11 +10,19 @@ public sealed class PongMsg : DiscoveryMsg
 {
     public ValueHash256 PingMdc { get; init; }
 
-    public PongMsg(IPEndPoint farAddress, long expirationTime, ValueHash256 pingMdc)
-        : base(farAddress, expirationTime) => PingMdc = pingMdc;
+    public ulong? EnrSequence { get; set; }
 
-    public PongMsg(PublicKey farPublicKey, long expirationTime, ValueHash256 pingMdc)
-        : base(farPublicKey, expirationTime) => PingMdc = pingMdc;
+    public PongMsg(IPEndPoint farAddress, long expirationTime, ValueHash256 pingMdc, ulong? enrSequence = null) : base(farAddress, expirationTime)
+    {
+        PingMdc = pingMdc;
+        EnrSequence = enrSequence;
+    }
+
+    public PongMsg(PublicKey farPublicKey, long expirationTime, ValueHash256 pingMdc, ulong? enrSequence = null) : base(farPublicKey, expirationTime)
+    {
+        PingMdc = pingMdc;
+        EnrSequence = enrSequence;
+    }
 
     public override string ToString() => base.ToString() + $", PingMdc: {PingMdc}";
 
