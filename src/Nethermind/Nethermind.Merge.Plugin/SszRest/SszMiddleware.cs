@@ -371,18 +371,20 @@ public sealed class SszMiddleware
             {
                 if (entry is null) continue;
                 ReadOnlySpan<char> span = entry.AsSpan();
-                while (!span.IsEmpty)
+                foreach (Range range in span.Split(','))
                 {
-                    int comma = span.IndexOf(',');
-                    ReadOnlySpan<char> token = (comma < 0 ? span : span[..comma]).TrimStart();
-                    int semi = token.IndexOf(';');
-                    if (semi >= 0) token = token[..semi].TrimEnd();
-                    if (token.Equals(Octet, StringComparison.OrdinalIgnoreCase)) return true;
-                    if (comma < 0) break;
-                    span = span[(comma + 1)..];
+                    if (IsOctetMediaRange(span[range])) return true;
                 }
             }
             return false;
+        }
+
+        static bool IsOctetMediaRange(ReadOnlySpan<char> range)
+        {
+            ReadOnlySpan<char> token = range.TrimStart();
+            int semi = token.IndexOf(';');
+            if (semi >= 0) token = token[..semi].TrimEnd();
+            return token.Equals(Octet, StringComparison.OrdinalIgnoreCase);
         }
 
         static bool HasOctetMediaValue(string? headerValue)
