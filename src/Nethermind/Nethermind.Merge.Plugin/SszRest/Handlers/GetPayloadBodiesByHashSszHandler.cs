@@ -42,9 +42,9 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
             return;
         }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
-        string? urlFork = ctx.Items.TryGetValue("SszRouteFork", out object? f) ? f as string : null;
         if (result.Result.ResultType == ResultType.Success && result.Data is not null)
         {
+            string? urlFork = ctx.Items.TryGetValue("SszRouteFork", out object? f) ? f as string : null;
             result = ResultWrapper<IReadOnlyList<TResult?>>.Success(
                 BodiesForkFilter.FilterByHash(result.Data, hashes, urlFork, blockFinder, specProvider));
         }
