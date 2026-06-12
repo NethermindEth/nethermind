@@ -41,21 +41,6 @@ public static class StreamInterpreter
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
     /// <summary>
-    /// Executes a frame over the preprocessed <see cref="InstructionStream"/> instead of the
-    /// raw bytecode: per-basic-block static gas is charged once at each block's first entry,
-    /// static-cost ops run gas-free cores, fused PUSH+op pairs run against their pre-decoded
-    /// constant in a single dispatch, and every other op runs the standard table handler with
-    /// the standard per-op epilogue.
-    /// </summary>
-    /// <remarks>
-    /// Non-tracing executions only — callers gate on the tracing flag and a tip-fork dispatch
-    /// fingerprint (the analyzer's in-block op set assumes Shanghai+ opcode semantics).
-    /// When a block's full static cost exceeds remaining gas — or execution lands past a
-    /// block's charging entry — the block runs through the metered micro-loop, which reads
-    /// raw code and dispatches the table per op, so the halting op and failure type match
-    /// per-op interpretation exactly.
-    /// </remarks>
-    /// <summary>
     /// Once per (block, executing account): queues a background warm-up of the contract's
     /// statically-known storage slots so the SLOADs ahead find the shared read layer hot.
     /// </summary>
@@ -72,6 +57,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         WorldState.PrefetchStorageSlots(executingAccount, stream.StaticSlots);
     }
 
+    /// <summary>
+    /// Executes a frame over the preprocessed <see cref="InstructionStream"/> instead of the
+    /// raw bytecode: per-basic-block static gas is charged once at each block's first entry,
+    /// static-cost ops run gas-free cores, fused PUSH+op pairs run against their pre-decoded
+    /// constant in a single dispatch, and every other op runs the standard table handler with
+    /// the standard per-op epilogue.
+    /// </summary>
+    /// <remarks>
+    /// Non-tracing executions only — callers gate on the tracing flag and a tip-fork dispatch
+    /// fingerprint (the analyzer's in-block op set assumes Shanghai+ opcode semantics).
+    /// When a block's full static cost exceeds remaining gas — or execution lands past a
+    /// block's charging entry — the block runs through the metered micro-loop, which reads
+    /// raw code and dispatches the table per op, so the halting op and failure type match
+    /// per-op interpretation exactly.
+    /// </remarks>
     [SkipLocalsInit]
     private CallResult RunStream<TCancelable>(
         InstructionStream stream,

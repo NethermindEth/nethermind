@@ -13,6 +13,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
+using Nethermind.Evm;
 
 namespace Nethermind.State.Flat;
 
@@ -140,6 +141,7 @@ public sealed class ReadOnlySnapshotBundle(
 
         SlotValue outSlotValue = new();
 
+        if (StaticSlotDiag.IsEnabled) StaticSlotDiag.PersistenceLoads++;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
         byte[]? value = outSlotValue.ToEvmBytes();
 

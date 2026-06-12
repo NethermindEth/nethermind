@@ -26,6 +26,13 @@ public static class StaticSlotDiag
     public static long StaticSloadMisses;
     public static long DynamicSloadMisses;
 
+    // Layer attribution for main-loop storage reads that left the EVM block caches:
+    // served by the prewarmer's shared cache, or fell through — and of the fall-throughs,
+    // how many reached actual persistence (the expensive reads).
+    public static long PrewarmCacheHits;
+    public static long PrewarmCacheMisses;
+    public static long PersistenceLoads;
+
     [ThreadStatic]
     private static bool t_missedTree;
 
@@ -62,11 +69,13 @@ public static class StaticSlotDiag
         long se = StaticSloadExecutions, de = DynamicSloadExecutions;
         long sm = StaticSloadMisses, dm = DynamicSloadMisses;
         long executions = se + de, misses = sm + dm;
+        long ph = PrewarmCacheHits, pm = PrewarmCacheMisses, pl = PersistenceLoads;
         if (s_logger.IsInfo)
             s_logger.Info(
                 $"StaticSlotDiag: SLOAD executions {executions} (static-slot {se}, {Percent(se, executions)}); " +
                 $"tree loads {misses} (static-slot {sm}, {Percent(sm, misses)}); " +
-                $"miss rate static {Percent(sm, se)} vs dynamic {Percent(dm, de)}");
+                $"miss rate static {Percent(sm, se)} vs dynamic {Percent(dm, de)}; " +
+                $"prewarm hit {ph} vs miss {pm} ({Percent(ph, ph + pm)} hit); persistence loads {pl} ({Percent(pl, ph + pm)} of post-cache reads)");
 
         static string Percent(long part, long whole) => whole == 0 ? "-" : $"{100.0 * part / whole:F1}%";
     }
