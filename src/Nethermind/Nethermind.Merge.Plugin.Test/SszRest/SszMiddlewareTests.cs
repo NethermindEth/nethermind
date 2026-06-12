@@ -163,13 +163,13 @@ public class SszMiddlewareTests
         return w.WrittenSpan.ToArray();
     }
 
-    private static readonly object[] s_newPayloadRoutingCases =
+    private static readonly object[] NewPayloadRoutingCases =
     [
-        new object[] { 1, $"/engine/v2/{ParisUrl}/payloads" },
-        new object[] { 2, $"/engine/v2/{ShanghaiUrl}/payloads" },
+        new object[] { EngineApiVersions.NewPayload.V1, $"/engine/v2/{ParisUrl}/payloads" },
+        new object[] { EngineApiVersions.NewPayload.V2, $"/engine/v2/{ShanghaiUrl}/payloads" },
     ];
 
-    [TestCaseSource(nameof(s_newPayloadRoutingCases))]
+    [TestCaseSource(nameof(NewPayloadRoutingCases))]
     public async Task NewPayload_routes_to_correct_engine_module_version(int version, string path)
     {
         PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
@@ -189,13 +189,13 @@ public class SszMiddlewareTests
         await _engineModule.Received(version == 2 ? 1 : 0).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
     }
 
-    private static readonly object[] s_getPayloadRoutingCases =
+    private static readonly object[] GetPayloadRoutingCases =
     [
-        new object[] { 1, $"/engine/v2/{ParisUrl}/payloads/0x0102030405060708" },
-        new object[] { 2, $"/engine/v2/{ShanghaiUrl}/payloads/0x0102030405060708" },
+        new object[] { EngineApiVersions.GetPayload.V1, $"/engine/v2/{ParisUrl}/payloads/0x0102030405060708" },
+        new object[] { EngineApiVersions.GetPayload.V2, $"/engine/v2/{ShanghaiUrl}/payloads/0x0102030405060708" },
     ];
 
-    [TestCaseSource(nameof(s_getPayloadRoutingCases))]
+    [TestCaseSource(nameof(GetPayloadRoutingCases))]
     public async Task GetPayload_routes_to_correct_handler_with_no_store_header(int version, string path)
     {
         _engineModule.engine_getPayloadV1(Arg.Any<byte[]>())
@@ -213,15 +213,15 @@ public class SszMiddlewareTests
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadV2(Arg.Any<byte[]>());
     }
 
-    private static readonly object[] s_forkchoiceRoutingCases =
+    private static readonly object[] ForkchoiceRoutingCases =
     [
-        new object[] { $"/engine/v2/{ParisUrl}/forkchoice", 1 },
-        new object[] { $"/engine/v2/{ShanghaiUrl}/forkchoice", 2 },
-        new object[] { $"/engine/v2/{CancunUrl}/forkchoice", 3 },
-        new object[] { $"/engine/v2/{AmsterdamUrl}/forkchoice", 4 },
+        new object[] { $"/engine/v2/{ParisUrl}/forkchoice", EngineApiVersions.Fcu.V1 },
+        new object[] { $"/engine/v2/{ShanghaiUrl}/forkchoice", EngineApiVersions.Fcu.V2 },
+        new object[] { $"/engine/v2/{CancunUrl}/forkchoice", EngineApiVersions.Fcu.V3 },
+        new object[] { $"/engine/v2/{AmsterdamUrl}/forkchoice", EngineApiVersions.Fcu.V4 },
     ];
 
-    [TestCaseSource(nameof(s_forkchoiceRoutingCases))]
+    [TestCaseSource(nameof(ForkchoiceRoutingCases))]
     public async Task Forkchoice_calls_correct_engine_module_version(string path, int version)
     {
         ForkchoiceUpdatedV1Result fcuResult = new()
@@ -312,13 +312,13 @@ public class SszMiddlewareTests
         await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
     }
 
-    private static readonly object[] s_bodiesByHashRoutingCases =
+    private static readonly object[] BodiesByHashRoutingCases =
     [
-        new object[] { 1, $"/engine/v2/{ShanghaiUrl}/bodies/hash" },
-        new object[] { 2, $"/engine/v2/{AmsterdamUrl}/bodies/hash" },
+        new object[] { EngineApiVersions.PayloadBodiesByHash.V1, $"/engine/v2/{ShanghaiUrl}/bodies/hash" },
+        new object[] { EngineApiVersions.PayloadBodiesByHash.V2, $"/engine/v2/{AmsterdamUrl}/bodies/hash" },
     ];
 
-    [TestCaseSource(nameof(s_bodiesByHashRoutingCases))]
+    [TestCaseSource(nameof(BodiesByHashRoutingCases))]
     public async Task GetPayloadBodiesByHash_routes_to_correct_engine_method(int version, string path)
     {
         _engineModule.engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>())
@@ -338,13 +338,13 @@ public class SszMiddlewareTests
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByHashV2(Arg.Any<IReadOnlyList<Hash256>>());
     }
 
-    private static readonly object[] s_bodiesByRangeRoutingCases =
+    private static readonly object[] BodiesByRangeRoutingCases =
     [
-        new object[] { 1, $"/engine/v2/{ShanghaiUrl}/bodies" },
-        new object[] { 2, $"/engine/v2/{AmsterdamUrl}/bodies" },
+        new object[] { EngineApiVersions.PayloadBodiesByRange.V1, $"/engine/v2/{ShanghaiUrl}/bodies" },
+        new object[] { EngineApiVersions.PayloadBodiesByRange.V2, $"/engine/v2/{AmsterdamUrl}/bodies" },
     ];
 
-    [TestCaseSource(nameof(s_bodiesByRangeRoutingCases))]
+    [TestCaseSource(nameof(BodiesByRangeRoutingCases))]
     public async Task GetPayloadBodiesByRange_routes_to_correct_engine_method_with_correct_args(int version, string path)
     {
         const long expectedStart = 7;
@@ -854,14 +854,14 @@ public class SszMiddlewareTests
 
     // Trailing slashes and unknown extra path segments must both 404 — spec forbids trailing slashes
     // and handlers without AcceptsPathExtra must reject stray segments.
-    private static readonly object[] s_malformedPathCases =
+    private static readonly object[] MalformedPathCases =
     [
         new object[] { "POST", $"/engine/v2/{CancunUrl}/forkchoice/", true },
         new object[] { "GET", "/engine/v2/capabilities/", false },
         new object[] { "POST", $"/engine/v2/{CancunUrl}/forkchoice/whatever", false },
     ];
 
-    [TestCaseSource(nameof(s_malformedPathCases))]
+    [TestCaseSource(nameof(MalformedPathCases))]
     public async Task Malformed_or_trailing_path_returns_404(string method, string path, bool assertMethodNotFoundBody)
     {
         DefaultHttpContext ctx = method == "POST"

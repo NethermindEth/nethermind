@@ -35,7 +35,7 @@ public class PayloadAttributesValidateTests
 
     // Each case asserts a distinct branch of PayloadAttributes.Validate against the spec.
     // mustContain/mustNotContain are checked when non-null.
-    private static readonly object[] s_validateCases =
+    private static readonly object[] ValidateCases =
     [
         new object[] { /* isAmsterdam */ true,  /* withSlot */ false, /* fcu */ PayloadAttributesVersions.V4,
             PayloadAttributesValidationResult.InvalidPayloadAttributes, "must be provided", "expected" },
@@ -45,7 +45,7 @@ public class PayloadAttributesValidateTests
             PayloadAttributesValidationResult.UnsupportedFork, null!, null! },
     ];
 
-    [TestCaseSource(nameof(s_validateCases))]
+    [TestCaseSource(nameof(ValidateCases))]
     public void Validate_returns_expected_result(
         bool isAmsterdam, bool withSlotNumber, int fcuVersion,
         PayloadAttributesValidationResult expected, string errorMustContain, string errorMustNotContain)
