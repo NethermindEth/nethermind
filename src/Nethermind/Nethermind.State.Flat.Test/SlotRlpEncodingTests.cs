@@ -27,8 +27,7 @@ public class SlotRlpEncodingTests
 
     private static RocksDbPersistence CreatePersistence(IColumnsDb<FlatDbColumns> db, bool rlpWrap = true)
     {
-        // Wrapping is always on for fresh DBs; raw mode only exists for DBs synced before the feature. Pin the
-        // raw slot encoding to exercise the legacy raw path on an otherwise-empty DB.
+        // Raw mode only exists for DBs synced before the feature; pin it to exercise the legacy path.
         if (!rlpWrap) BasePersistence.SetSlotEncoding(db.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
         return new RocksDbPersistence(db, LimboLogs.Instance);
     }
@@ -138,10 +137,8 @@ public class SlotRlpEncodingTests
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("820102")));
     }
 
-    // Regression: a DB synced before this feature holds raw slot values and may lack BOTH the SlotEncoding and
-    // the Layout marker — the Layout key postdates flat sync, and tooling can provision a DB while bypassing the
-    // metadata column. Detection must key on existing raw slots, not the Layout marker; otherwise those raw
-    // values are misread as RLP and crash on decode (RlpException) during the first SLOAD.
+    // Regression: a pre-feature DB holds raw slots but may lack BOTH metadata markers, so detection must key
+    // on slot presence — otherwise the raw values are misread as RLP and crash on the first SLOAD.
     [TestCase(true)]
     [TestCase(false)]
     public void Pre_feature_db_with_raw_slots_falls_back_to_raw(bool seedLayoutMarker)
@@ -158,13 +155,11 @@ public class SlotRlpEncodingTests
             Assert.That(read.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("0102")));
         }
 
-        // A write batch on the legacy DB stays raw and does not stamp any marker (only current-format DBs record
-        // the layout/encoding), so the slot is stored raw and the DB keeps no SlotEncoding key.
+        // Writes on the legacy DB stay raw and never stamp the metadata markers.
         WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("abcd")));
         Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey), Is.Null);
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd"))); // raw, not RLP(0x82abcd)
 
-        // Re-opening still resolves to raw from the existing raw slots and reads them correctly.
         RocksDbPersistence reopened = new(db, LimboLogs.Instance);
         using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();
         SlotValue read2 = default;
@@ -172,8 +167,7 @@ public class SlotRlpEncodingTests
         Assert.That(read2.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("abcd")));
     }
 
-    // An empty DB with no recorded SlotEncoding is brand-new and wraps, even if a Layout marker is already
-    // present (e.g. accounts synced but no storage yet) — there are no raw slots to misread.
+    // A Layout marker without slots (e.g. accounts synced but no storage yet) is still a brand-new DB — it wraps.
     [Test]
     public void Empty_db_with_layout_marker_defaults_to_rlp()
     {

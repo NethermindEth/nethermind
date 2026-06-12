@@ -73,8 +73,7 @@ public static class BasePersistence
 
     /// <summary>
     /// Records the flat DB's on-disk format markers: the <see cref="FlatLayout"/> and the RLP slot encoding.
-    /// Both are written together so any DB that records a layout also records the current slot encoding. This is
-    /// only ever called for DBs on the current (RLP-wrapped) format; legacy raw DBs are never re-stamped.
+    /// Only for DBs on the current (RLP-wrapped) format; legacy raw DBs are never re-stamped.
     /// </summary>
     internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
     {
@@ -118,7 +117,6 @@ public static class BasePersistence
     /// batch's metadata column via <see cref="SetLayout"/>. Subsequent calls are no-ops. The write goes through
     /// the batch, so it is committed atomically with the rest of the batch's contents.
     /// </summary>
-    /// <remarks>Callers must only invoke this for DBs on the current RLP-wrapped format; see <see cref="SetLayout"/>.</remarks>
     internal static void RecordLayoutOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, FlatLayout layout)
     {
         if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
@@ -146,13 +144,10 @@ public static class BasePersistence
     /// version of an existing DB always wins so its on-disk format is read back correctly.
     /// </summary>
     /// <remarks>
-    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a DB synced before this feature
-    /// existed both lack it. They are distinguished by <paramref name="slotStore"/>: wrapping is only safe when no
-    /// pre-existing slot values are present, since any already-stored slot is in the raw encoding and would be
-    /// misread as RLP. A non-empty slot column therefore pins the DB to raw (with a deprecation warning).
-    /// The <see cref="LayoutKey"/> is not a reliable discriminator here: it postdates flat sync, so a DB synced
-    /// before the Layout marker existed (or one provisioned by tooling that bypasses the metadata column) holds
-    /// raw slots without a Layout key and must not be treated as brand-new.
+    /// An absent <see cref="SlotEncodingKey"/> is ambiguous: a brand-new DB and a pre-feature DB both lack it.
+    /// A non-empty <paramref name="slotStore"/> pins the DB to raw (with a deprecation warning), as its slots
+    /// are raw-encoded and would be misread as RLP. The <see cref="LayoutKey"/> is no discriminator: it
+    /// postdates flat sync and tooling can bypass the metadata column, so legacy raw DBs may lack it too.
     /// </remarks>
     /// <param name="slotStore">The column that holds storage slot values for this layout.</param>
     internal static bool ResolveSlotEncoding(IColumnsDb<FlatDbColumns> db, ISortedKeyValueStore slotStore, ILogger logger)
@@ -162,8 +157,7 @@ public static class BasePersistence
         {
             SlotEncodingRlp => true,
             SlotEncodingRaw => false,
-            // No recorded version: only a DB with no existing slots is brand-new and safe to wrap; a DB that
-            // already holds slots predates this feature and is on the raw encoding.
+            // No recorded version: brand-new (no slots) wraps; existing slots are legacy raw.
             null => slotStore.FirstKey is null,
             byte version => throw new InvalidConfigurationException(
                 $"Flat DB metadata contains an unrecognized slot encoding version '{version}'. The DB may be corrupt or was written by a newer version.",
