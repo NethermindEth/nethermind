@@ -370,12 +370,6 @@ public struct EvmPooledMemory
 
     private const int MinRentSize = 1_024;
 
-    private static byte[] RentMemory(int size) =>
-        SafeArrayPool<byte>.Shared.Rent(size < MinRentSize ? MinRentSize : size);
-
-    private static void ReturnMemory(byte[] memory) =>
-        SafeArrayPool<byte>.Shared.Return(memory);
-
     public void Dispose()
     {
         byte[] memory = _memory;
@@ -383,7 +377,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            ReturnMemory(memory);
+            SafeArrayPool<byte>.Shared.Return(memory);
         }
     }
 
@@ -432,7 +426,7 @@ public struct EvmPooledMemory
     {
         if (_memory is null)
         {
-            _memory = RentMemory(TruncateToInt32(Size));
+            _memory = SafeArrayPool<byte>.Shared.Rent(Math.Max(TruncateToInt32(Size), MinRentSize));
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
@@ -441,10 +435,10 @@ public struct EvmPooledMemory
             if (Size > (ulong)_memory.LongLength)
             {
                 byte[] beforeResize = _memory;
-                _memory = RentMemory(TruncateToInt32(Size));
+                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
                 Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
                 Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-                ReturnMemory(beforeResize);
+                SafeArrayPool<byte>.Shared.Return(beforeResize);
             }
             else if (Size > _lastZeroedSize)
             {
