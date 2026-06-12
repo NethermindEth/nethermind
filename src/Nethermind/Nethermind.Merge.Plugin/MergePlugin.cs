@@ -38,13 +38,13 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Trie.Pruning;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
@@ -286,6 +286,17 @@ public class BaseMergePluginModule : Module
             // Rendezvous lives in the root scope so the JSON-RPC handler can take it directly; the
             // main-processing module simply consumes it when EIP-7928 is enabled.
             .AddSingleton<WitnessRendezvous>()
+            // The capture session also lives at root: the main-world trie store below is constructed
+            // at root, before the main-processing child scope exists, so its read-tap must consult a
+            // root-scoped session. The main-processing module's decorators resolve this same instance.
+            .AddSingleton<WitnessCaptureSession>()
+            // Read-tap on the patricia main-world trie store (registered by PruningTrieStoreModule).
+            // Inert — one null check per node read — until the witness-capturing block processor arms
+            // the session. Never constructed on flat, where no main-world ITrieStore is resolved.
+            // Lambda registration because the write-through flag is not container-resolvable: the
+            // live store persists state, so commits must forward rather than hit NullCommitter.
+            .AddDecorator<ITrieStore>((ctx, trieStore) =>
+                new WitnessCapturingTrieStore(trieStore, ctx.Resolve<WitnessCaptureSession>(), readOnly: false))
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()

@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,43 +17,49 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// <see cref="IBlockProcessor"/> decorator that, when a witness has been requested for the block
-/// being processed, installs a fresh <see cref="WitnessGeneratingWorldState"/> recorder onto the
-/// main-pipeline <see cref="WitnessCapturingWorldStateProxy"/> for the duration of a single
-/// <see cref="ProcessOne"/> call, then projects the recorded set into a <see cref="Witness"/> and
-/// publishes it via <see cref="WitnessRendezvous"/>.
+/// being processed, arms the <see cref="WitnessCaptureSession"/> with fresh per-block recorders for
+/// the duration of one <see cref="ProcessOne"/> call, then projects the recorded set into a
+/// <see cref="Witness"/> and publishes it via <see cref="WitnessRendezvous"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Two complementary capture layers are active during each witnessed <c>ProcessOne</c> call:
+/// Three complementary capture surfaces are active during each witnessed <c>ProcessOne</c> call,
+/// all gated by the session:
 /// </para>
 /// <list type="number">
 ///   <item>
 ///     <b><see cref="WitnessCapturingWorldStateProxy"/> / <see cref="WitnessGeneratingWorldState"/></b>
 ///     — records every account/slot/bytecode access via <see cref="IWorldState"/> call hooks.
-///     Drives <see cref="WitnessProofCollector"/> which runs a tree visitor over the recorded keys
-///     to produce Merkle proofs.
+///     Drives <see cref="WitnessGeneratingWorldState.GetWitness"/>, which runs a tree visitor over
+///     the recorded keys to produce Merkle proofs.
 ///   </item>
 ///   <item>
-///     <b><see cref="WitnessCapturingTrieStore"/></b> — intercepts raw trie node reads at the
-///     storage layer. This catches sibling reads that occur during <c>RecalculateStateRoot()</c>
-///     when branch nodes collapse after account deletion or storage clearing. Those reads never
-///     surface at the <see cref="IWorldState"/> level, so layer (1) alone would silently omit
-///     them, producing a witness that stateless verifiers cannot use to reconstruct the post-state root.
+///     <b><see cref="WitnessCapturingHeaderFinder"/> / <see cref="WitnessHeaderRecorder"/></b>
+///     — catches header lookups from the EVM (e.g. BLOCKHASH) and the rest of the processing
+///     pipeline so the witness header chain extends back to whatever the block touched.
+///   </item>
+///   <item>
+///     <b><see cref="WitnessCapturingTrieStore"/> / <see cref="WitnessTrieStoreRecorder"/></b>
+///     — intercepts raw trie node reads at the storage layer for the case where branch nodes
+///     collapse during state-root recomputation and siblings are read that never surface at the
+///     <see cref="IWorldState"/> level.
 ///   </item>
 /// </list>
 /// <para>
-/// All capture state lives on per-call instances — there is no global armed/disarmed flag, no
-/// shared mutable dictionaries, and no nested-arming guard beyond the proxy's atomic
-/// activate/deactivate. Blocks with no pending request bypass the recorder entirely.
+/// All capture state lives on per-call instances installed onto the session — there is no global
+/// armed/disarmed flag, no shared mutable dictionaries, and the session's atomic
+/// <see cref="WitnessCaptureSession.TryArm"/> rejects nested or concurrent capture attempts.
+/// Blocks with no pending request bypass the capture machinery entirely.
 /// </para>
 /// </remarks>
 public sealed class WitnessCapturingBlockProcessor(
     IBlockProcessor inner,
     WitnessCapturingWorldStateProxy proxy,
+    WitnessCapturingHeaderFinder headerFinder,
+    WitnessCapturingTrieStore trieStore,
+    WitnessCaptureSession session,
     WitnessRendezvous rendezvous,
     IStateReader stateReader,
-    IHeaderFinder headerFinder,
-    IWorldStateManager worldStateManager,
     ILogManager? logManager = null) : IBlockProcessor
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<WitnessCapturingBlockProcessor>();
@@ -85,19 +90,24 @@ public sealed class WitnessCapturingBlockProcessor(
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
         long parentBlockNumber = suggestedBlock.Number - 1;
-        BlockHeader parent = headerFinder.Get(parentHash, parentBlockNumber)
+        BlockHeader parent = headerFinder.Inner.Get(parentHash, parentBlockNumber)
             ?? throw new ArgumentException($"Unable to find parent for block {parentBlockNumber} with hash {parentHash}");
 
-        WitnessGeneratingHeaderFinder perBlockHeaderFinder = new(headerFinder);
+        WitnessTrieStoreRecorder trieRecorder = new();
+        WitnessHeaderRecorder headerRecorder = new();
+        WitnessGeneratingWorldState recorder = new(
+            proxy.InnerState,
+            stateReader,
+            trieStore,
+            trieRecorder,
+            headerRecorder,
+            headerFinder.Inner);
 
-        WitnessCapturingTrieStore trieStore = new(worldStateManager.CreateReadOnlyTrieStore());
-        WitnessGeneratingWorldState recorder = new(proxy.InnerState, stateReader, trieStore, perBlockHeaderFinder);
-
-        if (!proxy.TryActivate(recorder))
+        if (!session.TryArm(recorder, headerRecorder, trieRecorder))
         {
-            // Another capture is in progress for some other block on this proxy. Skip capture for
-            // this one rather than risking interleaved recording.
-            if (_logger.IsWarn) _logger.Warn($"{nameof(WitnessCapturingBlockProcessor)}: proxy already active when processing {blockHash}; skipping capture.");
+            // Another capture is in progress for some other block on this session. Skip capture
+            // for this one rather than risking interleaved recording.
+            if (_logger.IsWarn) _logger.Warn($"{nameof(WitnessCapturingBlockProcessor)}: session already armed when processing {blockHash}; skipping capture.");
             return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
 
@@ -127,7 +137,7 @@ public sealed class WitnessCapturingBlockProcessor(
         }
         finally
         {
-            proxy.Deactivate(recorder);
+            session.Disarm();
         }
     }
 }

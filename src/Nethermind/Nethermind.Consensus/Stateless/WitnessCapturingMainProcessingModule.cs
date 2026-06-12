@@ -2,20 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// On EIP-7928 chains, wires up in-flight witness capture for the main processing pipeline:
-/// installs the thin <see cref="WitnessCapturingWorldStateProxy"/> as the <see cref="IWorldState"/>
-/// decorator, registers the <see cref="WitnessRendezvous"/> for handler↔processor coordination,
-/// and decorates <see cref="IBlockProcessor"/> with <see cref="WitnessCapturingBlockProcessor"/>.
+/// installs the <see cref="WitnessCapturingWorldStateProxy"/>, <see cref="WitnessCapturingHeaderFinder"/>
+/// and <see cref="WitnessCapturingBlockProcessor"/> decorators, and the shared
+/// <see cref="WitnessCaptureSession"/> that they all consult for the active per-block recorders.
 /// </summary>
 public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvider) : Module, IMainProcessingModule
 {
@@ -23,13 +25,37 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
     {
         if (!specProvider.GetFinalSpec().IsEip7928Enabled) return;
 
+        // Note: WitnessCaptureSession is registered at root (by the merge plugin) so the main-world
+        // trie store's read-tap — constructed at root, before this child scope exists — shares the
+        // same instance the decorators below consult. Re-registering it here would shadow it.
+
         builder.AddDecorator<IWorldState, WitnessCapturingWorldStateProxy>();
         // Expose the same proxy instance as a typed singleton so the block-processor decorator can
         // take it directly. Cast through IWorldState because Autofac doesn't model decorator chains
         // as typed singletons.
         builder.AddSingleton<WitnessCapturingWorldStateProxy>(ctx =>
             (WitnessCapturingWorldStateProxy)ctx.Resolve<IWorldState>());
-        builder.AddDecorator<ICodeInfoRepository, CodeInfoRepository>();
+
+        builder.AddDecorator<IHeaderFinder, WitnessCapturingHeaderFinder>();
+        // Same typed-singleton bridge for the header-finder decorator so the block processor can
+        // grab its undecorated inner via .Inner when building the per-block recorder.
+        builder.AddSingleton<WitnessCapturingHeaderFinder>(ctx =>
+            (WitnessCapturingHeaderFinder)ctx.Resolve<IHeaderFinder>());
+
+        // Main-pipeline components in this child scope resolve a session-aware decorator that, when
+        // capture is armed, routes calls to a non-caching CodeInfoRepository (so every bytecode
+        // lookup flows through IWorldState → proxy → recorder) and, when disarmed, routes back to
+        // the cached repository registered at root. Other scopes (block production, RPC simulation,
+        // the legacy debug_executionWitness sandbox) are untouched.
+        builder.AddDecorator<ICodeInfoRepository, CodeInfoRepositoryProxy>();
+
+        // Typed-singleton bridge for the main-world trie store's read-tap (registered as the
+        // ITrieStore decorator by the merge plugin at root), mirroring the proxy and header-finder
+        // bridges above: the block processor hands it to the per-block recorder so GetWitness's
+        // fallback root resolution flows through the tap and lands on the armed trie recorder.
+        builder.AddSingleton<WitnessCapturingTrieStore>(ctx =>
+            (WitnessCapturingTrieStore)ctx.Resolve<ITrieStore>());
+
         builder.AddDecorator<IBlockProcessor, WitnessCapturingBlockProcessor>();
     }
 }

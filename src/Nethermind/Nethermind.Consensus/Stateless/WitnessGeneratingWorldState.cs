@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Collections.Pooled;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -20,7 +21,13 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateReader, WitnessCapturingTrieStore trieStore, WitnessGeneratingHeaderFinder headerFinder)
+public class WitnessGeneratingWorldState(
+    IWorldState state,
+    IStateReader stateReader,
+    WitnessCapturingTrieStore trieStore,
+    WitnessTrieStoreRecorder trieRecorder,
+    WitnessHeaderRecorder headerRecorder,
+    IHeaderFinder headerFinder)
     : WorldStateDecorator(state)
 {
     private readonly Dictionary<Address, HashSet<UInt256>> _storageSlots = [];
@@ -48,11 +55,12 @@ public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateRe
         // trie traversal with trie nodes capture along the path to be compatible with other clients.
         //
 
-        if (!trieStore.TouchedNodesRlp.Any())
+        if (!trieRecorder.TouchedNodesRlp.Any())
         {
             // When there are no storage-slot or account reads, lazy TrieNode handling can leave the root node
             // unrecorded, especially when recording is skipped for nodes with an unknown type.
-            // To ensure the witness still includes the root node in this case, we explicitly resolve it here.
+            // To ensure the witness still includes the root node in this case, we explicitly resolve it here
+            // through the capturing trie store so the read lands on the recorder.
             // This usually works because trie nodes, and especially the root node, tend to be cached.
             ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
             TreePath path = TreePath.Empty;
@@ -60,7 +68,7 @@ public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateRe
             node.ResolveNode(stateResolver, path);
         }
 
-        using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
+        using PooledSet<byte[]> stateNodes = new(trieRecorder.TouchedNodesRlp, Bytes.EqualityComparer);
         foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
         {
             AccountProofCollector accountProofCollector = new(account, slots);
@@ -101,7 +109,7 @@ public class WitnessGeneratingWorldState(IWorldState state, IStateReader stateRe
             Codes = codes,
             State = state,
             Keys = keys,
-            Headers = headerFinder.GetWitnessHeaders(parentHeader.Hash!)
+            Headers = headerRecorder.BuildHeaders(parentHeader.Hash!, headerFinder)
         };
     }
 

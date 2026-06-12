@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -18,38 +17,21 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// <see cref="IWorldState"/> decorator installed on the main-processing pipeline that routes every
-/// call to either the active per-block recorder (when capture is in progress) or straight through
-/// to the inner world state.
+/// call to either the per-block recorder published on <see cref="WitnessCaptureSession"/> or
+/// straight through to the inner world state when no capture is armed.
 /// </summary>
 /// <remarks>
-/// Holds no recording state itself — the recorder ([[witness-generating-world-state]]) owns the
-/// recording dictionaries for the lifetime of one <c>ProcessOne</c> call. The block-processor
-/// decorator ([[witness-capturing-block-processor]]) drives <see cref="TryActivate"/> /
-/// <see cref="Deactivate"/>, and the rendezvous ([[witness-rendezvous]]) owns the cross-thread
-/// completion.
+/// Holds no recording state of its own — the session ([[witness-capture-session]]) owns the active
+/// recorder pointer, the recorder ([[witness-generating-world-state]]) owns the captured data, and
+/// <see cref="WitnessCapturingBlockProcessor"/> arms/disarms the session for one <c>ProcessOne</c>
+/// call.
 /// </remarks>
-public sealed class WitnessCapturingWorldStateProxy(IWorldState inner) : IWorldState
+public sealed class WitnessCapturingWorldStateProxy(IWorldState inner, WitnessCaptureSession session) : IWorldState
 {
-    private WitnessGeneratingWorldState? _active;
-
     /// <summary>The undecorated inner world state. Used by the block-processor decorator to anchor a fresh recorder.</summary>
     internal IWorldState InnerState => inner;
 
-    /// <summary>True iff a recorder is currently installed (i.e. capture is in progress).</summary>
-    internal bool IsActive => _active is not null;
-
-    /// <summary>
-    /// Atomically install <paramref name="recorder"/> as the active routing target. Returns <c>false</c>
-    /// if another recorder is already active (nested or concurrent capture is not supported).
-    /// </summary>
-    internal bool TryActivate(WitnessGeneratingWorldState recorder)
-        => Interlocked.CompareExchange(ref _active, recorder, null) is null;
-
-    /// <summary>Remove <paramref name="recorder"/> if it is the active one; no-op otherwise.</summary>
-    internal void Deactivate(WitnessGeneratingWorldState recorder)
-        => Interlocked.CompareExchange(ref _active, null, recorder);
-
-    private IWorldState Current => _active ?? inner;
+    private IWorldState Current => session.WorldStateRecorder ?? inner;
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => Current.HasStateForBlock(baseBlock);
     public void Restore(Snapshot snapshot) => Current.Restore(snapshot);

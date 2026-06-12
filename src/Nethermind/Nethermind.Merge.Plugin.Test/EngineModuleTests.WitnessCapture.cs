@@ -568,7 +568,7 @@ public partial class EngineModuleTests
 
         Assert.That(witness!.Headers.Count, Is.GreaterThanOrEqualTo(1),
             "Witness.Headers must contain at least the parent block header " +
-            "(WitnessGeneratingHeaderFinder.GetWitnessHeaders always includes parentHash).");
+            "(WitnessGeneratingHeaderFinder.BuildHeaders always includes parentHash).");
     }
 
     [Test]

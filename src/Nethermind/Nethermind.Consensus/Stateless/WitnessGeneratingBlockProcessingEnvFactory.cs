@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -26,11 +26,21 @@ public interface IWitnessGeneratingBlockProcessingEnvFactory
     IWitnessGeneratingBlockProcessingEnvScope CreateScope();
 }
 
-public sealed class ExecutionRecordingScope(ILifetimeScope envLifetimeScope) : IWitnessGeneratingBlockProcessingEnvScope
+/// <summary>
+/// Wraps an Autofac lifetime scope with the witness sandbox session that was armed for its
+/// lifetime. <see cref="Dispose"/> disarms the session before tearing the scope down so a
+/// subsequent <see cref="WitnessGeneratingBlockProcessingEnvFactory.CreateScope"/> can re-arm
+/// cleanly.
+/// </summary>
+public sealed class ExecutionRecordingScope(ILifetimeScope envLifetimeScope, WitnessCaptureSession session) : IWitnessGeneratingBlockProcessingEnvScope
 {
     public IWitnessGeneratingBlockProcessingEnv Env { get; } = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
 
-    public void Dispose() => envLifetimeScope.Dispose();
+    public void Dispose()
+    {
+        session.Disarm();
+        envLifetimeScope.Dispose();
+    }
 }
 
 public class WitnessGeneratingBlockProcessingEnvFactory(
@@ -43,26 +53,43 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     public IWitnessGeneratingBlockProcessingEnvScope CreateScope()
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-        WitnessCapturingTrieStore trieStore = new(worldStateManager.CreateReadOnlyTrieStore());
+
+        // Sandbox-local session — separate from the main pipeline's WitnessCaptureSession so the
+        // legacy debug_executionWitness re-execution can run without contending on the main one.
+        WitnessCaptureSession session = new();
+
+        WitnessCapturingTrieStore trieStore = new(worldStateManager.CreateReadOnlyTrieStore(), session);
         IStateReader stateReader = new StateReader(trieStore, readOnlyDbProvider.CodeDb, logManager);
         IWorldState baseWorldState = new WorldState(
             new TrieStoreScopeProvider(trieStore, readOnlyDbProvider.CodeDb, logManager), logManager);
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
-        WitnessGeneratingHeaderFinder headerFinder = new(headerStore);
-        WitnessGeneratingWorldState witnessWorldState = new(baseWorldState, stateReader, trieStore, headerFinder);
+        WitnessTrieStoreRecorder trieRecorder = new();
+        WitnessHeaderRecorder headerRecorder = new();
+        WitnessCapturingHeaderFinder capturingHeaderFinder = new(headerStore, session);
+        WitnessGeneratingWorldState witnessWorldState = new(
+            baseWorldState,
+            stateReader,
+            trieStore,
+            trieRecorder,
+            headerRecorder,
+            headerStore);
+
+        // Arm the session for the sandbox lifetime. Disarm runs in ExecutionRecordingScope.Dispose
+        // so the next CreateScope() starts on a clean (disarmed) session.
+        session.TryArm(witnessWorldState, headerRecorder, trieRecorder);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
             .AddScoped<IStateReader>(stateReader)
             .AddScoped<IWorldState>(witnessWorldState)
             .AddScoped<WitnessGeneratingWorldState>(witnessWorldState)
-            .AddScoped<IHeaderFinder>(headerFinder)
+            .AddScoped<IHeaderFinder>(capturingHeaderFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 
-        return new ExecutionRecordingScope(envLifetimeScope);
+        return new ExecutionRecordingScope(envLifetimeScope, session);
     }
 }

@@ -95,15 +95,19 @@ public partial class DebugRpcModuleTests
         // Construct witness-generating infrastructure manually to demonstrate the tree visitor pattern.
         IReadOnlyTrieStore readOnlyTrieStore = blockchain.Container.Resolve<IWorldStateManager>().CreateReadOnlyTrieStore();
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(blockchain.DbProvider, true);
-        WitnessCapturingTrieStore capturingTrieStore = new(readOnlyTrieStore);
+        WitnessCaptureSession session = new();
+        WitnessCapturingTrieStore capturingTrieStore = new(readOnlyTrieStore, session);
         StateReader stateReader = new(capturingTrieStore, readOnlyDbProvider.CodeDb, blockchain.LogManager);
         WorldState worldState = new(new TrieStoreScopeProvider(capturingTrieStore, readOnlyDbProvider.CodeDb, blockchain.LogManager), blockchain.LogManager);
-        WitnessGeneratingHeaderFinder headerFinder = new(blockchain.Container.Resolve<IHeaderFinder>());
-        WitnessGeneratingWorldState witnessState = new(worldState, stateReader, capturingTrieStore, headerFinder);
+        IHeaderFinder headerFinder = blockchain.Container.Resolve<IHeaderFinder>();
+        WitnessTrieStoreRecorder trieRecorder = new();
+        WitnessHeaderRecorder headerRecorder = new();
+        WitnessGeneratingWorldState witnessState = new(worldState, stateReader, capturingTrieStore, trieRecorder, headerRecorder, headerFinder);
+        session.TryArm(witnessState, headerRecorder, trieRecorder);
 
         using (witnessState.BeginScope(parent))
         {
-            int capturedNodesBefore = capturingTrieStore.TouchedNodesRlp.Count();
+            int capturedNodesBefore = trieRecorder.TouchedNodesRlp.Count();
 
             // Take snapshot before modifying state
             Snapshot snapshot = witnessState.TakeSnapshot();
@@ -116,7 +120,7 @@ public partial class DebugRpcModuleTests
             witnessState.Set(in storageCell, [99]); // some random value (does not matter)
 
             // Verify no new trie nodes were captured by the trie store during Set()
-            Assert.That(capturingTrieStore.TouchedNodesRlp.Count(), Is.EqualTo(capturedNodesBefore),
+            Assert.That(trieRecorder.TouchedNodesRlp.Count(), Is.EqualTo(capturedNodesBefore),
                 "Set() should not traverse the trie");
 
             // Simulate tx revert by reverting the write — cached write is discarded but _storageSlots retains the slot

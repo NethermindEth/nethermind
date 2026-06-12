@@ -16,6 +16,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -46,7 +47,8 @@ public partial class BlockAccessListManager(
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    bool witnessMode = false)
+    bool witnessMode = false,
+    WitnessCaptureSession? witnessSession = null)
     : IBlockAccessListManager, IDisposable
 {
     private BlockExecutionContext? _blockExecutionContext;
@@ -121,11 +123,17 @@ public partial class BlockAccessListManager(
 
         // Parallel execution needs the decoded BAL body (RLP fixtures only carry the hash)
         // and an active state scope (so we can capture the parent state root for workers).
+        //
+        // Witness capture forces sequential: parallel workers read pre-state through pooled
+        // parent-reader snapshots that bypass the capturing world-state proxy, so their accesses
+        // would be missing from the witness. Gated per block via the session so regular
+        // blocks on EIP-7928 chains keep parallel execution.
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
-            && stateProvider.IsInScope;
+            && stateProvider.IsInScope
+            && !(witnessMode && witnessSession?.IsActive is true);
 
         // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
         // HintBal honours the same opt-in config as the prewarmer path.
