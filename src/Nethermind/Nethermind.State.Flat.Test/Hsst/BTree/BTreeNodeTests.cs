@@ -745,7 +745,7 @@ public class BTreeNodeTests
     }
 
     /// <summary>
-    /// lcp can take the full <c>crossEntryLcp</c> (clamped only by minLen, keyLength-1,
+    /// lcp can take the full <c>crossEntryLcp</c> (clamped only by maxLen, keyLength-1,
     /// and the MaxCommonKeyPrefixLen header field) because the builder pads each slot
     /// from the key's data section past the natural separator. Slot widening runs AFTER
     /// the strip: the user-observed leaf (firstLen=4, others=5, crossEntryLcp=4, 105
@@ -755,7 +755,7 @@ public class BTreeNodeTests
     /// SIMD slot — proves we don't sacrifice lcp to chase SIMD.
     /// </summary>
     [TestCase(4, 5, 105, 4, 32, 4, 1, 2, true, TestName = "Plan_FullLcp_UserScenario_105Entries")]
-    [TestCase(4, 5, 2, 10, 32, 4, 1, 2, true, TestName = "Plan_FullLcp_TwoEntries_ClampedByMinLen")]
+    [TestCase(4, 5, 2, 10, 32, 5, 1, 2, true, TestName = "Plan_FullLcp_TwoEntries_ClampedByMaxLen")]
     [TestCase(5, 6, 10, 5, 32, 5, 1, 2, true, TestName = "Plan_FullLcp_MinLen5_FirstShorter")]
     [TestCase(5, 5, 10, 5, 5, 4, 1, 1, false, TestName = "Plan_FullLcp_AllSameLen_TightBudget_NoSimd")]
     public void LayoutPlanner_FullLcpPlusUniformSnap(

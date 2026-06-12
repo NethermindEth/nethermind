@@ -163,10 +163,12 @@ internal static class BTreeNodeWriter<TWriter>
     {
         // SoA layout: [ prefixArr N×u16 ][ offsetArr N×u16 ][ remainingkeys ].
         // Each key contributes 4 bytes (prefix slot + offset slot) plus max(0, len-2) tail bytes.
+        // len is clamped at 0: the strip length (prefixLen) can exceed the first separator's own
+        // length — see WriteVariableKeys — in which case that entry stores no key bytes.
         int tailBytes = 0;
         for (int i = 0; i < count; i++)
         {
-            int len = sepLengths[i] - prefixLen;
+            int len = Math.Max(0, sepLengths[i] - prefixLen);
             if (len > 2) tailBytes += len - 2;
         }
         if (tailBytes > MaxVariableKeyTailBytes)
@@ -284,7 +286,12 @@ internal static class BTreeNodeWriter<TWriter>
         int tailCursor = 0;
         for (int i = 0; i < count; i++)
         {
-            int len = sepLengths[i] - prefixLen;
+            // The stripped prefix (prefixLen) can be longer than a separator's own length — only
+            // the first entry's can be, since its separator is sized against the previous leaf,
+            // not its siblings (see ComputeLayout's crossEntryLcp loop). Such an entry stores no
+            // key bytes; its separator reconstructs to just the common prefix, which is a valid
+            // routing key because the leftmost child's lower bound is never consulted.
+            int len = Math.Max(0, sepLengths[i] - prefixLen);
             ReadOnlySpan<byte> key = fullKeys.Slice(i * fullKeyLength + prefixLen, len);
 
             // Prefix slot: LE-stored = byte-reversed original prefix. Original prefix
@@ -313,7 +320,7 @@ internal static class BTreeNodeWriter<TWriter>
         // Tail bytes (only for keys with len > 2; in entry order).
         for (int i = 0; i < count; i++)
         {
-            int len = sepLengths[i] - prefixLen;
+            int len = Math.Max(0, sepLengths[i] - prefixLen);
             if (len > 2)
             {
                 IByteBufferWriter.Copy(ref writer, fullKeys.Slice(i * fullKeyLength + prefixLen + 2, len - 2));

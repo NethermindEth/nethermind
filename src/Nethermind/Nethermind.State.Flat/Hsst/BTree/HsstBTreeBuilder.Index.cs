@@ -136,21 +136,17 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         bool allSameLen = minLen == maxLen;
 
-        // BTreeNodeWriter takes `keySlotSize` bytes per entry from
-        // currKey.Slice(prefixLen, slot) for Uniform layouts, padding from key data
-        // past each entry's natural separator length when the slot exceeds it. For
-        // Variable layouts the writer instead slices `currKey.Slice(prefixLen,
-        // sepLength - prefixLen)` per entry, which requires lcp ≤ every sep length
-        // (i.e. lcp ≤ minLen) or the slice goes negative. Since the planner picks
-        // Uniform-vs-Variable AFTER fixing lcp, we conservatively clamp to minLen
-        // even though Uniform alone could safely take lcp = crossEntryLcp (writer
-        // pads short slots from key data past the natural sep). The missed
-        // optimization fires only when entry 0's LCP with the previous leaf's last
-        // key is shorter than the leaf-internal crossEntryLcp.
-        //
-        // Then clamp by keyLength - 1 to reserve at least one byte per slot, and by
-        // the header's u8 prefix-length field.
-        int lcp = Math.Min(crossEntryLcp, minLen);
+        // lcp = the common prefix stripped from every separator and stored once in the node
+        // header, capped (each line below) by:
+        //  (1) maxLen, the longest separator — can't strip more than a separator holds, or the
+        //      post-strip residual (effMaxLen) would go negative. Also bounds the single-child
+        //      MaxKeyLen sentinel (crossEntryLcp over an empty adjacency range).
+        //  (2) keyLength - 1, so every Uniform slot keeps at least one byte.
+        //  (3) MaxCommonKeyPrefixLen, the u8 prefix-length header field.
+        // A separator shorter than lcp (only the first one can be — see the crossEntryLcp loop
+        // above) is not handled here: the Variable writer clamps that entry's stored length to 0,
+        // and Uniform reads a fixed slot from the full key regardless of the separator length.
+        int lcp = Math.Min(crossEntryLcp, maxLen);
         if (lcp > keyLength - 1) lcp = keyLength - 1;
         if (lcp > MaxCommonKeyPrefixLen) lcp = MaxCommonKeyPrefixLen;
 
