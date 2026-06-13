@@ -97,6 +97,9 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         // that two distinct engine errors sharing the same status emit different type URIs.
         string type = errorCode switch
         {
+            // JSON-RPC standard codes (-32xxx)
+            ErrorCodes.ParseError => "/engine-api/errors/parse-error",
+
             // Engine-API extension codes (-38xxx)
             MergeErrorCodes.UnknownPayload => "/engine-api/errors/unknown-payload",
             MergeErrorCodes.InvalidForkchoiceState => "/engine-api/errors/invalid-forkchoice",
