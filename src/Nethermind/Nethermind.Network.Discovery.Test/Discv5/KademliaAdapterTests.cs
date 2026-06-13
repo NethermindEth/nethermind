@@ -151,6 +151,7 @@ public class KademliaAdapterTests
             new DiscoveryConfig(),
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
+            Discv5RecordFilter.ExecutionLayer,
             LimboLogs.Instance);
     }
 
