@@ -59,6 +59,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             return LastNewPayloadStatus = PayloadStatusV1.Invalid(null, e.Message);
         }
 
+        Metrics.BeaconChainNewPayloadCalls++;
         // EIP-4788: the payload's parent_beacon_block_root is the parent root of the beacon block carrying it.
         ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(
             payload,
@@ -74,6 +75,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// </summary>
     public async Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
     {
+        Metrics.BeaconChainForkchoiceUpdatedCalls++;
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await detector.InnerEngine.engine_forkchoiceUpdatedV3(
             new ForkchoiceStateV1(headExecHash, finalizedExecHash, safeExecHash));
         return LastForkchoiceStatus = Unwrap(result.Result, result.Data?.PayloadStatus, "forkchoiceUpdatedV3");

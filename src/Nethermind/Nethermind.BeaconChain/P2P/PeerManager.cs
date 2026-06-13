@@ -128,6 +128,8 @@ public class PeerManager(
             }
 
             _peers[address] = peer;
+            Metrics.BeaconChainPeersConnected++;
+            Metrics.BeaconChainPeerCount = _peers.Count;
             if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} (head slot {peer.HeadSlot})");
             return true;
         }
@@ -179,6 +181,8 @@ public class PeerManager(
     {
         if (_logger.IsInfo) _logger.Info($"Dropping beacon chain peer {peer.Id}: {detail}");
         _peers.TryRemove(peer.Id, out _);
+        Metrics.BeaconChainPeersDropped++;
+        Metrics.BeaconChainPeerCount = _peers.Count;
         PeerDropped?.Invoke(peer.Id);
         await p2p.GoodbyeAsync(peer.Session, reason, token);
         try

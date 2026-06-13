@@ -193,6 +193,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return;
         }
 
+        Metrics.BeaconChainGossipAccepted++;
         raise(value);
     }
 
@@ -224,6 +225,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     private void Drop(string name, GossipDropReason reason)
     {
+        Metrics.BeaconChainGossipDropped++;
         Interlocked.Increment(ref _dropCounts[(int)reason]);
         if (_logger.IsTrace) _logger.Trace($"Dropped {name} gossip message: {reason}");
     }

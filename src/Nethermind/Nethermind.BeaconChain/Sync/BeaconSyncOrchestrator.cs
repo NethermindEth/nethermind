@@ -283,9 +283,12 @@ public sealed class BeaconSyncOrchestrator(
     internal async Task<BlockImportResult> ImportBlockAsync(SignedBeaconBlock block, CancellationToken token)
     {
         Hash256 root = SszRoots.HashTreeRoot(block.Message!);
+        long startMs = Environment.TickCount64;
         BlockImportResult result = _importer!.Import(block, root, verifySignatures: true);
         if (result == BlockImportResult.Imported)
         {
+            Metrics.BeaconChainBlocksImported++;
+            Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
             await OnImportedAsync(root, block.Message!.Slot, token);
         }
 
@@ -488,6 +491,11 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         _lastHead = head;
+        Metrics.BeaconChainHeadSlot = head.HeadSlot;
+        Metrics.BeaconChainHeadSlotDelay = (long)slotClock.CurrentSlot - (long)head.HeadSlot;
+        Metrics.BeaconChainFinalizedEpoch = head.Finalized.Epoch;
+        Metrics.BeaconChainJustifiedEpoch = head.Justified.Epoch;
+        Metrics.BeaconChainElInSync = _elInSync ? 1 : 0;
         statusHolder.CurrentStatus = new StatusMessageV2
         {
             ForkDigest = _currentDigest,
@@ -621,6 +629,7 @@ public sealed class BeaconSyncOrchestrator(
                 continue;
             }
 
+            Metrics.BeaconChainDialAttempts++;
             await dialGate.WaitAsync(token);
             _ = DialCandidateAsync(candidate, dialGate, token);
         }
