@@ -43,10 +43,4 @@ internal readonly record struct RequestId(ulong Value, byte Length)
         return Rlp.LengthOfByteString(Length, firstByte);
     }
 
-    public byte[] ToArray()
-    {
-        byte[] bytes = new byte[Length];
-        CopyTo(bytes);
-        return bytes;
-    }
 }

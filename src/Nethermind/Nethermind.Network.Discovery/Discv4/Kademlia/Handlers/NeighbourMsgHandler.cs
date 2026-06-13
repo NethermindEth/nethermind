@@ -62,6 +62,11 @@ public sealed class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
     {
         lock (_lock)
         {
+            if (_count == _nodes.Length)
+            {
+                return _nodes;
+            }
+
             return _nodes.AsSpan(0, _count).ToArray();
         }
     }

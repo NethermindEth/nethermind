@@ -16,6 +16,7 @@ namespace Nethermind.Core.Caching
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly McsLock _lock = new();
         private readonly string _name;
+        private readonly Action<TValue>? _onEvict;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
         public LruCache(int maxCapacity, int startCapacity, string name, Action<TValue>? onEvict = null)
@@ -24,11 +25,7 @@ namespace Nethermind.Core.Caching
 
             _name = name;
             _maxCapacity = maxCapacity;
-            if (onEvict is not null)
-            {
-                OnEvict += onEvict;
-            }
-
+            _onEvict = onEvict;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
@@ -38,8 +35,6 @@ namespace Nethermind.Core.Caching
             : this(maxCapacity, 0, name, onEvict)
         {
         }
-
-        public event Action<TValue>? OnEvict;
 
         public void Clear()
         {
@@ -292,7 +287,7 @@ namespace Nethermind.Core.Caching
 
         private TValue[]? GetEvictedValues()
         {
-            if (OnEvict is null || _cacheMap.Count == 0)
+            if (_onEvict is null || _cacheMap.Count == 0)
             {
                 return null;
             }
@@ -322,10 +317,9 @@ namespace Nethermind.Core.Caching
 
         private void NotifyEvicted(TValue value)
         {
-            Action<TValue>? onEvict = OnEvict;
-            if (onEvict is not null && value is not null)
+            if (_onEvict is not null && value is not null)
             {
-                onEvict(value);
+                _onEvict(value);
             }
         }
 

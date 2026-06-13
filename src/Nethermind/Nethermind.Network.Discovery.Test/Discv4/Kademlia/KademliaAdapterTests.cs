@@ -65,7 +65,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     PongMsg pong = new(
                         msg.FarPublicKey!,
                         _timestamper.UnixTime.SecondsLong + 1,
-                        sent.Mdc!);
+                        sent.Mdc!.Value);
                     pong.FarAddress = _receiver.Address;
                     Task.Run(() => _adapter.OnIncomingMsg(pong));
                 });
@@ -214,7 +214,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         {
             ConfigureBondCallback();
 
-            byte[] requestHash = TestItem.KeccakA.BytesToArray();
+            ValueHash256 requestHash = TestItem.KeccakA.ValueHash256;
             _msgSender
                 .When(x => x.SendMsg(Arg.Any<EnrRequestMsg>()))
                 .Do(ci =>
@@ -242,7 +242,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Do(ci =>
                 {
                     EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
-                    sent.Hash = TestItem.KeccakA.BytesToArray();
+                    sent.Hash = TestItem.KeccakA.ValueHash256;
                     EnrResponseMsg response = AddReceiverFarAddress(new EnrResponseMsg(_receiver.Address, _selfNodeRecord, TestItem.KeccakB));
                     Task.Run(() => _adapter.OnIncomingMsg(response));
                 });
@@ -335,7 +335,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             _nodeHealthTracker.ClearReceivedCalls();
 
-            PongMsg response = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 1, sent!.Mdc!);
+            PongMsg response = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 1, sent!.Mdc!.Value);
             response = AddReceiverFarAddress(response);
             await _adapter.OnIncomingMsg(response);
 
@@ -356,9 +356,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             await Task.Delay(100);
 
+            ValueHash256 expectedPingMdc = pingMsg.Mdc!.Value;
             await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
-                m.PingMdc!.SequenceEqual(pingMsg.Mdc!)));
+                m.PingMdc == expectedPingMdc));
         }
 
         [Test]
@@ -432,7 +433,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             EnrRequestMsg enrRequestMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20);
             enrRequestMsg = AddReceiverFarAddress(enrRequestMsg);
-            Hash256 expectedRequestHash = new(enrRequestMsg.Hash!.Value.Span);
+            Hash256 expectedRequestHash = new(enrRequestMsg.Hash!.Value);
 
             await _adapter.OnIncomingMsg(enrRequestMsg);
 

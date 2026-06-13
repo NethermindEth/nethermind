@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.Discv4.Messages;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
@@ -14,6 +13,6 @@ public sealed class EnrResponseHandler(EnrRequestMsg request) : ITaskCompleter<E
         !TaskCompletionSource.Task.IsCompleted
         && msg is EnrResponseMsg resp
         && request.Hash is { } expected
-        && Bytes.AreEqual(resp.RequestKeccak.Bytes, expected.Span)
+        && resp.RequestKeccak == expected
         && TaskCompletionSource.TrySetResult(DiscoveryResponse<EnrResponseMsg>.From(resp));
 }

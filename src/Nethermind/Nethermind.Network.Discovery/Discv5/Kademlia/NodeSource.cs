@@ -16,7 +16,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 public sealed class NodeSource(
     IKademlia<PublicKey, Node> kademlia,
     KademliaConfig<Node> kademliaConfig,
-    Discv5RecordFilter recordFilter,
+    IDiscv5RecordFilter recordFilter,
     ILogManager logManager)
     : IKademliaNodeSource
 {

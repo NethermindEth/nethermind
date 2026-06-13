@@ -48,6 +48,11 @@ internal sealed class FindNodeMsgSerializer : MsgSerializerBase<FindNodeMsg>
     {
         int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(checkPosition);
+        if (count > Distances.MaxCount)
+        {
+            throw new RlpException($"discv5 FINDNODE distance count {count} exceeds {Distances.MaxCount}.");
+        }
+
         Distances distances = new(count);
         try
         {

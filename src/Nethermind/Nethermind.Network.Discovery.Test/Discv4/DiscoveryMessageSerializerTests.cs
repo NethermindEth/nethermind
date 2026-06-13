@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using System.Linq;
 using DotNetty.Buffers;
@@ -105,7 +106,7 @@ public class DiscoveryMessageSerializerTests
     {
         using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
         PongMsg message =
-            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, TestItem.KeccakA.ValueHash256)
             {
                 FarAddress = _farAddress
             };
@@ -151,9 +152,25 @@ public class DiscoveryMessageSerializerTests
         EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
 
         Assert.That(deserialized.Hash, Is.Not.Null);
-        Hash256 hash = new(deserialized.Hash!.Value.Span);
+        Hash256 hash = new(deserialized.Hash!.Value);
 
         Assert.That(hash, Is.EqualTo(new Hash256("0x64c2e38e89cdfca030166b7a271c301dd77cf043172966ab112d97fc3430fa16")));
+    }
+
+    [Test]
+    public void Enr_request_hash_does_not_alias_input_buffer()
+    {
+        EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
+        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
+        byte[] packet = serialized.ReadAllBytesAsArray();
+        Hash256 expectedHash = new(packet.AsSpan(0, 32));
+
+        using DisposableByteBuffer input = Unpooled.WrappedBuffer(packet).AsDisposable();
+        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(input);
+        Array.Clear(packet);
+
+        Assert.That(deserialized.Hash, Is.Not.Null);
+        Assert.That(new Hash256(deserialized.Hash!.Value), Is.EqualTo(expectedHash));
     }
 
     [Test]
@@ -275,6 +292,55 @@ public class DiscoveryMessageSerializerTests
         }
     }
 
+    [Test]
+    public void NeighborsMessage_Drops_Empty_List_Node_Entries()
+    {
+        // A misbehaving peer can encode a node entry as an RLP empty list (0xc0), which
+        // DecodeArray materializes as a null node; such entries must never reach consumers.
+        byte[] ip = [192, 168, 1, 2];
+        byte[] id = TestItem.PublicKeyA.Bytes;
+        const int port = 30303;
+        long expirationTime = 60 + _timestamper.UnixTime.MillisecondsLong;
+
+        int nodeContentLength = Rlp.LengthOf(ip) + 2 * Rlp.LengthOf(port) + Rlp.LengthOf(id);
+        int nodesContentLength = Rlp.LengthOfSequence(nodeContentLength) + Rlp.OfEmptyList.Bytes.Length;
+        int contentLength = Rlp.LengthOfSequence(nodesContentLength) + Rlp.LengthOf(expirationTime);
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.StartSequence(nodesContentLength);
+        stream.StartSequence(nodeContentLength);
+        stream.Encode(ip);
+        stream.Encode(port);
+        stream.Encode(port);
+        stream.Encode(id);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(expirationTime);
+
+        NeighborsMsg deserialized = _messageSerializationService.Deserialize<NeighborsMsg>(
+            SignAndWrapDiscoveryPacket((byte)MsgType.Neighbors, stream.Data.ToArray()!));
+
+        Assert.That(deserialized.Nodes, Has.Count.EqualTo(1));
+        Assert.That(deserialized.Nodes[0].Id, Is.EqualTo(TestItem.PublicKeyA));
+    }
+
+    private byte[] SignAndWrapDiscoveryPacket(byte msgType, byte[] data)
+    {
+        // [<mdc 32 bytes><sig 64 bytes><sig recovery id><msg type><data>]
+        byte[] packet = new byte[32 + 64 + 1 + 1 + data.Length];
+        packet[97] = msgType;
+        data.CopyTo(packet, 98);
+
+        ValueHash256 toSign = ValueKeccak.Compute(packet.AsSpan(97));
+        Signature signature = new Ecdsa().Sign(_privateKey, in toSign);
+        signature.Bytes.CopyTo(packet.AsSpan(32));
+        packet[96] = signature.RecoveryId;
+
+        ValueHash256 mdc = ValueKeccak.Compute(packet.AsSpan(32));
+        mdc.BytesAsSpan.CopyTo(packet);
+        return packet;
+    }
+
     private EnrResponseMsg BuildEnrResponse(CompressedPublicKey enrPublicKey)
     {
         NodeRecord nodeRecord = new();
@@ -313,5 +379,24 @@ public class DiscoveryMessageSerializerTests
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
         Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(data));
+    }
+
+    [Test]
+    public void PongMessage_Rejects_Oversized_Ping_Mdc()
+    {
+        RlpStream stream = new(128);
+        long expirationTime = 60 + _timestamper.UnixTime.MillisecondsLong;
+        int addressContentLength = Rlp.LengthOf(new byte[] { 127, 0, 0, 1 }) + Rlp.LengthOf(30303) + Rlp.LengthOf(30303);
+        int contentLength = Rlp.LengthOfSequence(addressContentLength) + Rlp.LengthOf(new byte[33]) + Rlp.LengthOf(expirationTime);
+        stream.StartSequence(contentLength);
+        stream.StartSequence(addressContentLength);
+        stream.Encode(new byte[] { 127, 0, 0, 1 });
+        stream.Encode(30303);
+        stream.Encode(30303);
+        stream.Encode(new byte[33]);
+        stream.Encode(expirationTime);
+
+        Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<PongMsg>(
+            SignAndWrapDiscoveryPacket((byte)MsgType.Pong, stream.Data.ToArray()!)));
     }
 }

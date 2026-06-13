@@ -22,6 +22,7 @@ public class CodecTests
 {
     private static readonly byte[] NodeAId = Bytes.FromHexString("0xaaaa8419e9f49d0083561b48287df592939a8d19947d8c0ef88f2a4856a69fbb");
     private static readonly byte[] NodeBId = Bytes.FromHexString("0xbbbb9d047f0488c0b5a93c1c3f2d8bafc7c8ff337024a55434a0d0555de64db9");
+    private static readonly byte[] Devp2pPingRequestId = [0, 0, 0, 1];
     private const string GethNodeAPrivateKey = "0xeef77acb6c6a6eebc5b363a475ac583ec7eccdb42b6481424c60f59aa326547f";
     private const string GethNodeBPrivateKey = "0x66fb62bfbd66b9177a138c1e5cddbe4f7c30c343e94e68df8769459cb1cde628";
 
@@ -79,9 +80,21 @@ public class CodecTests
             Assert.That(decrypted, Is.True);
             Assert.That(message, Is.InstanceOf<PingMsg>());
             PingMsg ping = (PingMsg)message;
-            Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
+            AssertRequestId(ping.RequestId, Devp2pPingRequestId);
             Assert.That(ping.EnrSequence, Is.EqualTo(2));
             message.Dispose();
+        }
+    }
+
+    [Test]
+    public void PacketCodec_Rejects_Packets_Larger_Than_Spec()
+    {
+        byte[] packetBytes = new byte[PacketCodec.MaxPacketSize + 1];
+
+        bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
+        using (packet)
+        {
+            Assert.That(decoded, Is.False);
         }
     }
 
@@ -181,7 +194,7 @@ public class CodecTests
             Assert.That(session.ReadKey.ToHexString(true), Is.EqualTo(expectedReadKeyHex));
             Assert.That(message, Is.InstanceOf<PingMsg>());
             PingMsg ping = (PingMsg)message;
-            Assert.That(ping.RequestId.ToArray(), Is.EqualTo(new byte[] { 0, 0, 0, 1 }));
+            AssertRequestId(ping.RequestId, Devp2pPingRequestId);
             Assert.That(ping.EnrSequence, Is.EqualTo(1));
             Assert.That(nodeRecord is not null, Is.EqualTo(includesRecord));
             message.Dispose();
@@ -228,6 +241,18 @@ public class CodecTests
         Assert.That(decodedPong.EnrSequence, Is.EqualTo(message.EnrSequence));
         Assert.That(decodedPong.RecipientIp, Is.EqualTo(message.RecipientIp));
         Assert.That(decodedPong.RecipientPort, Is.EqualTo(message.RecipientPort));
+    }
+
+    [Test]
+    public void MessageCodec_Rejects_Oversized_Pong_Ip()
+    {
+        byte[] message = CreateMessage(MessageType.Pong, Rlp.Encode(
+            Rlp.Encode(new byte[] { 1 }),
+            Rlp.Encode(1),
+            Rlp.Encode(new byte[17]),
+            Rlp.Encode(30303)));
+
+        Assert.That(() => MessageCodec.Decode(message), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -316,6 +341,26 @@ public class CodecTests
         Assert.That(nodes.Records[0].EnrString, Is.EqualTo(expectedRecord.EnrString));
     }
 
+    [Test]
+    public void MessageCodec_Rejects_Too_Many_FindNode_Distances()
+    {
+        Rlp[] distances = new Rlp[Distances.MaxCount + 1];
+        Array.Fill(distances, Rlp.Encode(1));
+        byte[] message = CreateMessage(MessageType.FindNode, Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(distances)));
+
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void MessageCodec_Rejects_Too_Many_Nodes_Records()
+    {
+        Rlp[] records = new Rlp[17];
+        Array.Fill(records, Rlp.Encode(Array.Empty<byte>()));
+        byte[] message = CreateMessage(MessageType.Nodes, Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(1), Rlp.Encode(records)));
+
+        Assert.That(() => MessageCodec.Decode(message), Throws.TypeOf<RlpException>());
+    }
+
     private static PacketCodec CreateCodec(PrivateKey privateKey)
         => new(
             new InsecureProtectedPrivateKey(privateKey),
@@ -331,6 +376,23 @@ public class CodecTests
 
     private static NodeRecord CreateNodeRecord(PrivateKey privateKey) =>
         TestEnrBuilder.BuildSigned(privateKey, tcpPort: null, udpPort: null);
+
+    private static byte[] CreateMessage(MessageType messageType, Rlp payload)
+    {
+        byte[] message = new byte[payload.Length + 1];
+        message[0] = (byte)messageType;
+        payload.Bytes.CopyTo(message.AsSpan(1));
+        return message;
+    }
+
+    private static void AssertRequestId(RequestId requestId, ReadOnlySpan<byte> expected)
+    {
+        Assert.That(requestId.Length, Is.EqualTo(expected.Length));
+
+        Span<byte> actual = stackalloc byte[RequestId.MaxLength];
+        requestId.CopyTo(actual);
+        Assert.That(actual[..requestId.Length].SequenceEqual(expected), Is.True);
+    }
 
     private sealed class TestNodeRecordProvider(PrivateKey privateKey) : INodeRecordProvider
     {

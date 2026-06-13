@@ -30,7 +30,7 @@ public sealed class KademliaAdapter(
     IDiscoveryConfig discoveryConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<Hash256> distance,
-    Discv5RecordFilter recordFilter,
+    IDiscv5RecordFilter recordFilter,
     ILogManager logManager) : IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
@@ -97,7 +97,7 @@ public sealed class KademliaAdapter(
             }
         }
 
-        return result.ToArray();
+        return result.Count == 0 ? [] : result.ToArray();
     }
 
     /// <inheritdoc/>
@@ -608,7 +608,7 @@ public sealed class KademliaAdapter(
                 AddFindNodeRecordsAtDistance(distance, requester, allowNonRoutableRelays, seen, ref result);
             }
 
-            return result.ToArray();
+            return result.Count == 0 ? [] : result.ToArray();
         }
         finally
         {
@@ -763,8 +763,8 @@ public sealed class KademliaAdapter(
         }
     }
 
-    internal static bool IsAcceptableNodeRecord(NodeRecord record, Hash256 expectedNodeId, bool allowNonRoutable, Discv5RecordFilter? recordFilter = null)
-        => !(recordFilter ?? Discv5RecordFilter.ExecutionLayer).Excludes(record) &&
+    internal static bool IsAcceptableNodeRecord(NodeRecord record, Hash256 expectedNodeId, bool allowNonRoutable, IDiscv5RecordFilter recordFilter)
+        => !recordFilter.Excludes(record) &&
             Node.TryFromDiscoveryEnr(record, out Node? node) &&
             node.Id.Hash.Equals(expectedNodeId) &&
             DiscoveryV5App.IsDiscoveryAddressAcceptable(node.Address.Address, allowNonRoutable);

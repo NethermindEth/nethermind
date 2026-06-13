@@ -13,7 +13,7 @@ public sealed class EnrRequestMsg : DiscoveryMsg
 {
     public override MsgType MsgType => MsgType.EnrRequest;
 
-    public Memory<byte>? Hash { get; set; }
+    public ValueHash256? Hash { get; set; }
 
     public EnrRequestMsg(IPEndPoint farAddress, long expirationDate)
         : base(farAddress, expirationDate)
@@ -25,6 +25,6 @@ public sealed class EnrRequestMsg : DiscoveryMsg
     {
     }
 
-    internal EnrRequestMsg(PublicKey farPublicKey, Memory<byte> hash, long expirationDate)
+    internal EnrRequestMsg(PublicKey farPublicKey, ValueHash256 hash, long expirationDate)
         : base(farPublicKey, expirationDate) => Hash = hash;
 }

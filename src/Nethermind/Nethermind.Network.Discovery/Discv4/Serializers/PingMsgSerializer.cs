@@ -37,13 +37,13 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         AddSignatureAndMdc(byteBuffer, totalLength + 1);
 
         byteBuffer.MarkReaderIndex();
-        msg.Mdc = byteBuffer.Slice(0, 32).ReadAllBytesAsArray();
+        msg.Mdc = ReadHash(byteBuffer, byteBuffer.ReaderIndex);
         byteBuffer.ResetReaderIndex();
     }
 
     public PingMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
+        (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
         Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
         ctx.ReadSequenceLength();
         int version = ctx.DecodeInt();
@@ -62,7 +62,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         IPEndPoint destination = GetAddress(destinationAddress, destinationUdpPort, allowZeroPort: true);
 
         long expireTime = ctx.DecodeLong();
-        PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc.ToArray()) { Version = version };
+        PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc) { Version = version };
 
         if (version == 4)
         {

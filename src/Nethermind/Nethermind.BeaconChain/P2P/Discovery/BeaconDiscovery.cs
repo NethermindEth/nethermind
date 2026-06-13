@@ -47,7 +47,7 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 /// </summary>
 /// <remarks>
 /// Composes the same discv5 Kademlia services as <c>DiscoveryV5App</c> in a private container, but with
-/// <see cref="Discv5RecordFilter.AcceptAll"/> (consensus-only ENRs are the peers we are after), the persisted
+/// <see cref="AcceptAllDiscv5RecordFilter"/> (consensus-only ENRs are the peers we are after), the persisted
 /// libp2p identity as the node key (so the ENR's secp256k1 key matches the libp2p peer id), and a local ENR
 /// carrying the <c>eth2</c> fork id entry. Discovered ENRs are filtered by fork digest and converted to dialable
 /// libp2p multiaddrs.
@@ -107,7 +107,7 @@ public sealed class BeaconDiscovery : IAsyncDisposable
             .AddSingleton<IEcdsa>(new Ecdsa())
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new NodeKeyWrapper(nodeKey))
             .AddSingleton<INodeRecordProvider>(_localEnr)
-            .AddSingleton(Discv5RecordFilter.AcceptAll)
+            .AddSingleton<IDiscv5RecordFilter>(AcceptAllDiscv5RecordFilter.Instance)
             .Build();
 
         _adapter = _discv5Services.Resolve<IKademliaAdapter>();

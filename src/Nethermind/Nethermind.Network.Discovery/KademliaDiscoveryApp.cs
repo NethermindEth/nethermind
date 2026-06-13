@@ -26,6 +26,9 @@ public abstract class KademliaDiscoveryApp(
     private IKademliaNodeSource? _kademliaNodeSource;
     private IKademlia<PublicKey, Node>? _kademlia;
     private Task? _runningTask;
+    private Task? _stopTask;
+    private Task? _disposeTask;
+    private readonly object _lifetimeLock = new();
     private int _activationStarted;
 
     protected ILogger Logger { get; } = logger;
@@ -47,17 +50,19 @@ public abstract class KademliaDiscoveryApp(
         }
     }
 
-    public async Task StopAsync()
+    public Task StopAsync()
+    {
+        lock (_lifetimeLock)
+        {
+            return _stopTask ??= StopAsyncInternal();
+        }
+    }
+
+    private async Task StopAsyncInternal()
     {
         DetachEventHandlers();
 
-        try
-        {
-            await _stopCts.CancelAsync();
-        }
-        catch (ObjectDisposedException)
-        {
-        }
+        await _stopCts.CancelAsync();
 
         try
         {
@@ -97,14 +102,29 @@ public abstract class KademliaDiscoveryApp(
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_kademlia is not null)
+        lock (_lifetimeLock)
         {
-            _kademlia.OnNodeRemoved -= OnKademliaNodeRemoved;
+            return new ValueTask(_disposeTask ??= DisposeAsyncInternal());
         }
+    }
 
-        await DisposeAsyncCore();
+    private async Task DisposeAsyncInternal()
+    {
+        try
+        {
+            await StopAsync();
+        }
+        finally
+        {
+            if (_kademlia is not null)
+            {
+                _kademlia.OnNodeRemoved -= OnKademliaNodeRemoved;
+            }
+
+            await DisposeAsyncCore();
+        }
     }
 
     protected void UseKademliaServices(IKademliaNodeSource kademliaNodeSource, IKademlia<PublicKey, Node> kademlia)

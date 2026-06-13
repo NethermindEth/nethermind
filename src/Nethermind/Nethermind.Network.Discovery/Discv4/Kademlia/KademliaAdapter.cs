@@ -243,7 +243,7 @@ public sealed class KademliaAdapter(
             return false;
         }
 
-        await SendMessage(session, new EnrResponseMsg(node.Address, nodeRecordProvider.Current, new Hash256(requestHash.Span)), token);
+        await SendMessage(session, new EnrResponseMsg(node.Address, nodeRecordProvider.Current, new Hash256(requestHash)), token);
         return true;
     }
 
@@ -275,7 +275,13 @@ public sealed class KademliaAdapter(
     private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
-        PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), ping.Mdc!);
+        if (ping.Mdc is not { } pingMdc)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rejecting ping without packet hash from {node}");
+            return;
+        }
+
+        PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc);
         session.OnPingReceived();
         await SendMessage(session, msg, token);
 

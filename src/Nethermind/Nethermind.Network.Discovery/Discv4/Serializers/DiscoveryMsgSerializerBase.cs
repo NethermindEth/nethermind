@@ -89,7 +89,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         byteBuffer.SetWriterIndex(startWriteIndex + length);
     }
 
-    protected (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) PrepareForDeserialization(IByteBuffer msg)
+    protected (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) PrepareForDeserialization(IByteBuffer msg)
     {
         if (msg.ReadableBytes < 98)
         {
@@ -97,17 +97,28 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         }
         IByteBuffer data = msg.Slice(98, msg.ReadableBytes - 98);
         Memory<byte> msgBytes = msg.ReadAllBytesAsMemory();
-        Memory<byte> mdc = msgBytes[..32];
+        ValueHash256 mdc = new(msgBytes.Span[..Hash256.Size]);
         Span<byte> sigAndData = msgBytes.Span[32..];
         Span<byte> computedMdc = ValueKeccak.Compute(sigAndData).BytesAsSpan;
 
-        if (!Bytes.AreEqual(mdc.Span, computedMdc))
+        if (!Bytes.AreEqual(mdc.Bytes, computedMdc))
         {
             throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
         }
 
         PublicKey nodeId = _nodeIdResolver.GetNodeId(sigAndData[..64], sigAndData[64], sigAndData[65..]);
         return (nodeId, mdc, data);
+    }
+
+    protected static ValueHash256 ReadHash(IByteBuffer byteBuffer, int index)
+    {
+        Span<byte> hash = stackalloc byte[Hash256.Size];
+        for (int i = 0; i < Hash256.Size; i++)
+        {
+            hash[i] = byteBuffer.GetByte(index + i);
+        }
+
+        return new ValueHash256(hash);
     }
 
     protected static void Encode(RlpStream stream, IPEndPoint address, int length)
