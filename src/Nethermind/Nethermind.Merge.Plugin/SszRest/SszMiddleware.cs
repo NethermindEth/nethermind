@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net.Mime;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -34,6 +35,7 @@ public sealed class SszMiddleware
 
     // Path: /engine/v{N}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v";
+    private const string Octet = MediaTypeNames.Application.Octet;
 
     /// <summary>
     /// Maximum allowed request body size in bytes (16 MiB).
@@ -345,29 +347,91 @@ public sealed class SszMiddleware
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsSszRequest(HttpContext ctx)
     {
-        string path = ctx.Request.Path.Value ?? string.Empty;
-        if (!path.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))
+        PathString path = ctx.Request.Path;
+        if (!path.HasValue || !path.Value!.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        switch (ctx.Request.Method)
-        {
-            case "POST":
-                return ctx.Request.ContentType?.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true;
-            case "GET":
-                {
-                    foreach (string? v in ctx.Request.Headers.Accept)
-                    {
-                        if (v is not null && v.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
+        return AcceptsSszResponse(ctx);
 
-                    return false;
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static bool AcceptsSszResponse(HttpContext ctx) =>
+            ctx.Request.Method switch
+            {
+                "POST" => HasOctetMediaValue(ctx.Request.ContentType),
+                "GET" => AcceptsOctet(ctx.Request),
+                _ => false
+            };
+
+        static bool AcceptsOctet(HttpRequest request)
+        {
+            foreach (string? entry in request.Headers.Accept)
+            {
+                if (entry is null) continue;
+                ReadOnlySpan<char> span = entry.AsSpan();
+                while (!span.IsEmpty)
+                {
+                    int comma = IndexOfUnquoted(span, ',');
+                    if (IsOctetMediaRange(comma < 0 ? span : span[..comma])) return true;
+                    if (comma < 0) break;
+                    span = span[(comma + 1)..];
                 }
-            default:
-                return false;
+            }
+            return false;
         }
+
+        static bool IsOctetMediaRange(ReadOnlySpan<char> range)
+        {
+            ReadOnlySpan<char> token = range.TrimStart();
+            int semi = IndexOfUnquoted(token, ';');
+            ReadOnlySpan<char> type = (semi >= 0 ? token[..semi] : token).TrimEnd();
+            if (!type.Equals(Octet, StringComparison.OrdinalIgnoreCase))
+                return false;
+            return semi < 0 || !HasZeroQValue(token[(semi + 1)..]);
+        }
+
+        static bool HasZeroQValue(ReadOnlySpan<char> parameters)
+        {
+            while (!parameters.IsEmpty)
+            {
+                int next = IndexOfUnquoted(parameters, ';');
+                ReadOnlySpan<char> param = (next < 0 ? parameters : parameters[..next]).Trim();
+                if (param.Length >= 2 && (param[0] | 0x20) == 'q' && param[1] == '=')
+                    return IsZeroQ(param[2..]);
+                if (next < 0) break;
+                parameters = parameters[(next + 1)..];
+            }
+            return false;
+        }
+
+        static bool IsZeroQ(ReadOnlySpan<char> qValue)
+        {
+            if (qValue.IsEmpty || qValue[0] != '0') return false;
+            for (int i = 1; i < qValue.Length; i++)
+            {
+                if (qValue[i] != '.' && qValue[i] != '0') return false;
+            }
+            return true;
+        }
+
+        static int IndexOfUnquoted(ReadOnlySpan<char> s, char target)
+        {
+            bool inQuote = false;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (inQuote && c == '\\' && i + 1 < s.Length) { i++; continue; }
+                if (c == '"') inQuote = !inQuote;
+                else if (c == target && !inQuote) return i;
+            }
+            return -1;
+        }
+
+        static bool HasOctetMediaValue(string? headerValue)
+            => headerValue is not null && headerValue.StartsWith(Octet, StringComparison.OrdinalIgnoreCase) &&
+                (headerValue.Length == Octet.Length || headerValue[Octet.Length] is ';' or ' ' or '\t');
     }
 
     /// <summary>

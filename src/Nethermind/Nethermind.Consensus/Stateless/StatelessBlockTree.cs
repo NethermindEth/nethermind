@@ -239,4 +239,8 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 
         return Task.FromResult(result);
     }
+
+    // No-op: the stateless block tree is its own cache (headers are fixed for the verification scope),
+    // there is no auxiliary growing structure to drop. Required by IBlockhashCache.
+    public void Clear() { }
 }

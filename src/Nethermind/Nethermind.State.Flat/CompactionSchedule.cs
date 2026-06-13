@@ -49,6 +49,12 @@ public sealed class CompactionSchedule : ICompactionSchedule
     {
         if (_compactSize <= 1) return 0;
 
+        if (config.CompactionOffset >= 0)
+        {
+            if (logger.IsInfo) logger.Info($"Using configured FlatDb compaction offset {config.CompactionOffset}");
+            return config.CompactionOffset;
+        }
+
         if (config.RegenerateCompactionOffset)
         {
             long regenerated = GenerateAndPersist(metadataDb);

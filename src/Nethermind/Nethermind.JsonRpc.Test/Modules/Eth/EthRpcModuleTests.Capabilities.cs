@@ -294,13 +294,16 @@ public partial class EthRpcModuleTests
             Substitute.For<IHistoryConfig>(),
             Substitute.For<IHistoryPruner>()).GetCapabilities();
 
-        Assert.That(caps.Head, Is.EqualTo(new ChainHead(0, Hash256.Zero)));
-        Assert.That(caps.State, Is.EqualTo(Disabled));
-        Assert.That(caps.Stateproofs, Is.EqualTo(Disabled));
-        Assert.That(caps.Receipts, Is.EqualTo(Disabled));
-        Assert.That(caps.Blocks, Is.EqualTo(Disabled));
-        Assert.That(caps.Tx, Is.EqualTo(Disabled));
-        Assert.That(caps.Logs, Is.EqualTo(Disabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caps.Head, Is.EqualTo(new ChainHead(0, Hash256.Zero)));
+            Assert.That(caps.State, Is.EqualTo(Disabled));
+            Assert.That(caps.Stateproofs, Is.EqualTo(Disabled));
+            Assert.That(caps.Receipts, Is.EqualTo(Disabled));
+            Assert.That(caps.Blocks, Is.EqualTo(Disabled));
+            Assert.That(caps.Tx, Is.EqualTo(Disabled));
+            Assert.That(caps.Logs, Is.EqualTo(Disabled));
+        }
     }
 
     [TestCaseSource(nameof(CapabilitiesScenarios))]
@@ -309,14 +312,17 @@ public partial class EthRpcModuleTests
         EthCapabilities caps = GetCaps(s.RetentionWindow, s.HeadNumber, s.OldestStateBlock, s.SyncConfig,
             s.LowestInsertedBody, s.LowestInsertedReceipt, s.HistoryConfig, s.HistoryPruner);
 
-        Assert.That(caps.Head.Number, Is.EqualTo(s.HeadNumber));
-        Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
-        Assert.That(caps.State, Is.EqualTo(s.ExpectedState), nameof(caps.State));
-        Assert.That(caps.Stateproofs, Is.EqualTo(s.ExpectedStateproofs), nameof(caps.Stateproofs));
-        Assert.That(caps.Tx, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Tx));
-        Assert.That(caps.Logs, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Logs));
-        Assert.That(caps.Receipts, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Receipts));
-        Assert.That(caps.Blocks, Is.EqualTo(s.ExpectedBlocks), nameof(caps.Blocks));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caps.Head.Number, Is.EqualTo(s.HeadNumber));
+            Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
+            Assert.That(caps.State, Is.EqualTo(s.ExpectedState), nameof(caps.State));
+            Assert.That(caps.Stateproofs, Is.EqualTo(s.ExpectedStateproofs), nameof(caps.Stateproofs));
+            Assert.That(caps.Tx, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Tx));
+            Assert.That(caps.Logs, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Logs));
+            Assert.That(caps.Receipts, Is.EqualTo(s.ExpectedReceipts), nameof(caps.Receipts));
+            Assert.That(caps.Blocks, Is.EqualTo(s.ExpectedBlocks), nameof(caps.Blocks));
+        }
     }
 
     /// <summary>

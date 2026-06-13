@@ -58,9 +58,12 @@ public class TestingRpcModuleTests
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(result.Data, Is.AssignableTo<GetPayloadV5Result>());
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
-        Assert.That(payloadResult.ExecutionPayload.BlobGasUsed, Is.EqualTo(0));
-        Assert.That(payloadResult.ExecutionPayload.ExcessBlobGas, Is.EqualTo(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance)));
-        Assert.That(suggestedWithdrawalsRoot, Is.EqualTo(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payloadResult.ExecutionPayload.BlobGasUsed, Is.EqualTo(0));
+            Assert.That(payloadResult.ExecutionPayload.ExcessBlobGas, Is.EqualTo(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Osaka.Instance)));
+            Assert.That(suggestedWithdrawalsRoot, Is.EqualTo(new WithdrawalTrie(payloadAttributes.Withdrawals!).RootHash));
+        }
     }
 
     [Test]
@@ -188,8 +191,11 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("expected 2 transactions but only 1 were included"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("expected 2 transactions but only 1 were included"));
+        }
     }
 
     [Test]
@@ -201,8 +207,11 @@ public class TestingRpcModuleTests
         ResultWrapper<object> result = await module.testing_buildBlockV1(
             unknownHash, CreateDefaultPayloadAttributes(parentHeader), null);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("unknown parent block"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("unknown parent block"));
+        }
     }
 
     [Test]
@@ -219,9 +228,12 @@ public class TestingRpcModuleTests
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
 
         Block suggested = blockTree.SuggestedBlock!;
-        Assert.That(suggested.Header.Number, Is.EqualTo(chainHeadHeader.Number + 1));
-        Assert.That(suggested.Hash, Is.Not.Null);
-        Assert.That(result.Data, Is.EqualTo(suggested.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggested.Header.Number, Is.EqualTo(chainHeadHeader.Number + 1));
+            Assert.That(suggested.Hash, Is.Not.Null);
+            Assert.That(result.Data, Is.EqualTo(suggested.Hash!));
+        }
     }
 
     [Test]
@@ -239,10 +251,13 @@ public class TestingRpcModuleTests
             "ShouldProcess would force the main BlockchainProcessor to re-execute every tx; " +
             "ForceDontSetAsMain leaves the main-chain write to TryUpdateMainChain (single writer).");
 
-        Assert.That(blockTree.TryUpdatePreloadedBlocks?.Length, Is.EqualTo(1), "the already-executed block is handed over as the preloaded cache, not re-read");
-        Assert.That(blockTree.TryUpdateWereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
-        Assert.That(blockTree.TryUpdateForceUpdateHeadBlock, Is.True,
-            "post-merge chains have TotalDifficulty=0; without forceUpdateHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.TryUpdatePreloadedBlocks?.Length, Is.EqualTo(1), "the already-executed block is handed over as the preloaded cache, not re-read");
+            Assert.That(blockTree.TryUpdateWereProcessed, Is.True, "the producer already executed the block; the main chain must reflect that");
+            Assert.That(blockTree.TryUpdateForceUpdateHeadBlock, Is.True,
+                "post-merge chains have TotalDifficulty=0; without forceUpdateHeadBlock MoveToMain skips UpdateHeadBlock and the next commit reads a stale head.");
+        }
     }
 
     [Test]
@@ -260,12 +275,15 @@ public class TestingRpcModuleTests
 
         Assert.That(observedOptions, Is.Not.Null);
         ProcessingOptions opts = observedOptions!.Value;
-        Assert.That(opts.ContainsFlag(ProcessingOptions.StoreReceipts), Is.True);
-        Assert.That(opts.ContainsFlag(ProcessingOptions.NoValidation), Is.True);
-        Assert.That(opts.ContainsFlag(ProcessingOptions.ForceProcessing), Is.True);
-        Assert.That(opts.ContainsFlag(ProcessingOptions.DoNotUpdateHead), Is.True);
-        Assert.That(opts.ContainsFlag(ProcessingOptions.ReadOnlyChain), Is.False,
-            "ReadOnlyChain blocks FlatDb snapshot append; the producer must write FlatDb here");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(opts.ContainsFlag(ProcessingOptions.StoreReceipts), Is.True);
+            Assert.That(opts.ContainsFlag(ProcessingOptions.NoValidation), Is.True);
+            Assert.That(opts.ContainsFlag(ProcessingOptions.ForceProcessing), Is.True);
+            Assert.That(opts.ContainsFlag(ProcessingOptions.DoNotUpdateHead), Is.True);
+            Assert.That(opts.ContainsFlag(ProcessingOptions.ReadOnlyChain), Is.False,
+                "ReadOnlyChain blocks FlatDb snapshot append; the producer must write FlatDb here");
+        }
     }
 
     [Test]
@@ -279,8 +297,11 @@ public class TestingRpcModuleTests
             [],
             null);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -294,8 +315,11 @@ public class TestingRpcModuleTests
             [],
             null);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -308,9 +332,12 @@ public class TestingRpcModuleTests
             new[] { new byte[] { 0xff, 0xff, 0xff } },
             null);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("invalid transaction RLP"));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("invalid transaction RLP"));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+        }
     }
 
     private (TestingRpcModule module, IBlockTree blockTree, IBlockFinder blockFinder, BlockHeader parentHeader) CreateModuleWithMocks(

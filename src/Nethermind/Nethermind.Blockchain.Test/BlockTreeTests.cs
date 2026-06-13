@@ -142,9 +142,7 @@ public class BlockTreeTests
         AddBlockResult result = blockTree.SuggestBlock(block);
         blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
 
-        Assert.That(hasNotified, Is.True, "notification");
-        Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -160,9 +158,7 @@ public class BlockTreeTests
         Block block = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
         AddBlockResult result = blockTree.SuggestBlock(block);
 
-        Assert.That(hasNotified, Is.True, "notification");
-        Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -191,9 +187,7 @@ public class BlockTreeTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
         blockTree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
 
-        Assert.That(hasNotified, Is.True, "notification");
-        Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -219,8 +213,11 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block3);
         blockTree.TryUpdateMainChain(block3.Header, true, preloadedBlocks: new[] { block1, block2, block3 });
 
-        Assert.That(newHeadBlockNotifications, Is.EqualTo(1), "new head block");
-        Assert.That(blockAddedToMainNotifications, Is.EqualTo(3), "block added to main");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newHeadBlockNotifications, Is.EqualTo(1), "new head block");
+            Assert.That(blockAddedToMainNotifications, Is.EqualTo(3), "block added to main");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -265,9 +262,12 @@ public class BlockTreeTests
 
         blockTree.TryUpdateMainChain(block2.Header, wereProcessed: true, preloadedBlocks: new[] { block1, block2 });
 
-        Assert.That(blockAddedDbObservations, Is.EqualTo(new[] { true, true }));
-        Assert.That(newHeadDbObserved, Is.True);
-        Assert.That(onUpdateDbObserved, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockAddedDbObservations, Is.EqualTo(new[] { true, true }));
+            Assert.That(newHeadDbObserved, Is.True);
+            Assert.That(onUpdateDbObserved, Is.True);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -342,9 +342,7 @@ public class BlockTreeTests
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
 
-        Assert.That(hasNotified, Is.True, "notification");
-        Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -366,10 +364,13 @@ public class BlockTreeTests
 
         AddBlockResult result = blockTree.SuggestBlock(block2);
 
-        Assert.That(hasNotifiedBest, Is.False, "notification best");
-        Assert.That(hasNotifiedHead, Is.False, "notification head");
-        Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
-        Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasNotifiedBest, Is.False, "notification best");
+            Assert.That(hasNotifiedHead, Is.False, "notification head");
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
+            Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -421,15 +422,18 @@ public class BlockTreeTests
             .WithDatabaseFrom(builder)
             .TestObject;
 
-        Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
-        Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
-        Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
-        Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
-        Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
+            Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
+            Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
+            Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
+            Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
+            Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+            Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
+            Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -466,17 +470,20 @@ public class BlockTreeTests
             .WithDatabaseFrom(builder)
             .TestObject;
 
-        Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
-        Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
-        Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
+            Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
+            Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+            Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
+            Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
+            Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
 
-        Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
-        Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
-        Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
+            Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
+            Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
+            Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -612,9 +619,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 0, false);
-        Assert.That(headers.Count, Is.EqualTo(2));
-        Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
-        Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers.Count, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -629,9 +639,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 1, false);
-        Assert.That(headers.Count, Is.EqualTo(2));
-        Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
-        Assert.That(headers[1].Hash, Is.EqualTo(block2.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers.Count, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[1].Hash, Is.EqualTo(block2.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -650,9 +663,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block4);
 
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block2.Hash, 2, 0, true);
-        Assert.That(headers.Count, Is.EqualTo(2));
-        Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
-        Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers.Count, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
+            Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -667,9 +683,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block2.Hash, 2, 1, true);
-        Assert.That(headers.Count, Is.EqualTo(2));
-        Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
-        Assert.That(headers[1].Hash, Is.EqualTo(block0.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers.Count, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
+            Assert.That(headers[1].Hash, Is.EqualTo(block0.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -684,9 +703,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 2, 1, true);
-        Assert.That(headers.Count, Is.EqualTo(2));
-        Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
-        Assert.That(headers[1], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers.Count, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[1], Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -701,11 +723,14 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
-        Assert.That(headers.Count, Is.EqualTo(100));
-        Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
-        Assert.That(headers[3], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers.Count, Is.EqualTo(100));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[3], Is.Null);
 
-        Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
+            Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -720,11 +745,14 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
-        Assert.That(headers.Count, Is.EqualTo(100));
-        Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
-        Assert.That(headers[3], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headers.Count, Is.EqualTo(100));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[3], Is.Null);
 
-        Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
+            Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -740,10 +768,13 @@ public class BlockTreeTests
 
         int length = 256;
         using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
-        Assert.That(blocks.Count, Is.EqualTo(length));
-        Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
-        Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
-        Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Count, Is.EqualTo(length));
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -759,9 +790,12 @@ public class BlockTreeTests
 
         int length = 2;
         using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block1.Hash, length, 0, false);
-        Assert.That(blocks.Count, Is.EqualTo(length));
-        Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block1.Hash));
-        Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Count, Is.EqualTo(length));
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -777,10 +811,13 @@ public class BlockTreeTests
 
         int length = 3;
         using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
-        Assert.That(blocks.Count, Is.EqualTo(length));
-        Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
-        Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
-        Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Count, Is.EqualTo(length));
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -795,10 +832,13 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block2.Hash, 3, 0, true);
-        Assert.That(blocks.Count, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Count, Is.EqualTo(3));
 
-        Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block2.Hash));
-        Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block2.Hash));
+            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block0.Hash));
+        }
     }
 
 
@@ -844,9 +884,12 @@ public class BlockTreeTests
         AddToMain(blockTree, block2);
 
         using IOwnedReadOnlyList<BlockHeader> blocks = blockTree.FindHeaders(block0.Hash, 2, 1, false);
-        Assert.That(blocks.Count, Is.EqualTo(2), "length");
-        Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
-        Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Count, Is.EqualTo(2), "length");
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -912,8 +955,11 @@ public class BlockTreeTests
         AddToMain(blockTree, block0);
         blockTree.SuggestBlock(block1);
 
-        Assert.That(blockTree.Head!.CalculateHash(), Is.EqualTo(block0.Hash), "head block");
-        Assert.That(blockTree.BestSuggestedHeader!.CalculateHash(), Is.EqualTo(block1.Hash), "best suggested");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.Head!.CalculateHash(), Is.EqualTo(block0.Hash), "head block");
+            Assert.That(blockTree.BestSuggestedHeader!.CalculateHash(), Is.EqualTo(block1.Hash), "best suggested");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -933,8 +979,11 @@ public class BlockTreeTests
         Hash256 finalizedBlockHash = TestItem.KeccakB;
         Hash256 safeBlockHash = TestItem.KeccakC;
         blockTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
-        Assert.That(blockTree.FinalizedHash, Is.EqualTo(finalizedBlockHash));
-        Assert.That(blockTree.SafeHash, Is.EqualTo(safeBlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+            Assert.That(blockTree.SafeHash, Is.EqualTo(safeBlockHash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -979,8 +1028,11 @@ public class BlockTreeTests
             .WithBlockInfoDb(blockInfosDb)
             .WithSpecProvider(OlympicSpecProvider.Instance)
             .TestObject;
-        Assert.That(blockTree.Head?.Hash, Is.EqualTo(headBlock.Hash), "head");
-        Assert.That(blockTree.Genesis?.Hash, Is.EqualTo(headBlock.Hash), "genesis");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.Head?.Hash, Is.EqualTo(headBlock.Hash), "head");
+            Assert.That(blockTree.Genesis?.Hash, Is.EqualTo(headBlock.Hash), "genesis");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1064,12 +1116,15 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
         blockTree.SuggestBlock(block1);
         blockTree.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
-        Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(block1.Header));
-        Assert.That(blockTree.PendingHash, Is.EqualTo(block0.Hash!));
-        Block? pending = ((IBlockFinder)blockTree).FindPendingBlock();
-        Assert.That(pending!.Header, Is.SameAs(block0.Header));
-        Assert.That(pending.Body, Is.EqualTo(block0.Body));
-        Assert.That(((IBlockFinder)blockTree).FindPendingHeader(), Is.SameAs(block0.Header));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(block1.Header));
+            Assert.That(blockTree.PendingHash, Is.EqualTo(block0.Hash!));
+            Block? pending = ((IBlockFinder)blockTree).FindPendingBlock();
+            Assert.That(pending!.Header, Is.SameAs(block0.Header));
+            Assert.That(pending.Body, Is.EqualTo(block0.Body));
+            Assert.That(((IBlockFinder)blockTree).FindPendingHeader(), Is.SameAs(block0.Header));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1130,9 +1185,12 @@ public class BlockTreeTests
         tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
         tree.DeleteInvalidBlock(block2);
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(block1.Number));
-        Assert.That(tree.Head?.Header, Is.EqualTo(block1.Header));
-        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block1.Header));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(block1.Number));
+            Assert.That(tree.Head?.Header, Is.EqualTo(block1.Header));
+            Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block1.Header));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1159,17 +1217,20 @@ public class BlockTreeTests
         tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
         tree.DeleteInvalidBlock(block2);
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(1L), "best known");
-        Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
-        Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(1L), "best known");
+            Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
+            Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+            Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
+            Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
+            Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
 
-        Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
-        Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
-        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+            Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
+            Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
+            Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1207,24 +1268,27 @@ public class BlockTreeTests
         tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
         tree.DeleteInvalidBlock(block1b);
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(3L), "best known");
-        Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
-        Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(3L), "best known");
+            Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
+            Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
-        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Not.Null, "block 2");
-        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Not.Null, "block 3");
-        Assert.That(blockStore.Get(block1b.Number, block1b.Hash!), Is.Null, "block 1b");
-        Assert.That(blockStore.Get(block2b.Number, block2b.Hash!), Is.Null, "block 2b");
-        Assert.That(blockStore.Get(block3b.Number, block3b.Hash!), Is.Null, "block 3b");
+            Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
+            Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Not.Null, "block 2");
+            Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Not.Null, "block 3");
+            Assert.That(blockStore.Get(block1b.Number, block1b.Hash!), Is.Null, "block 1b");
+            Assert.That(blockStore.Get(block2b.Number, block2b.Hash!), Is.Null, "block 2b");
+            Assert.That(blockStore.Get(block3b.Number, block3b.Hash!), Is.Null, "block 3b");
 
-        Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
-        Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
-        Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
+            Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
+            Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
+            Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
 
-        Assert.That(repository.LoadLevel(1)!.BlockInfos.Length, Is.EqualTo(1));
-        Assert.That(repository.LoadLevel(2)!.BlockInfos.Length, Is.EqualTo(1));
-        Assert.That(repository.LoadLevel(3)!.BlockInfos.Length, Is.EqualTo(1));
+            Assert.That(repository.LoadLevel(1)!.BlockInfos.Length, Is.EqualTo(1));
+            Assert.That(repository.LoadLevel(2)!.BlockInfos.Length, Is.EqualTo(1));
+            Assert.That(repository.LoadLevel(3)!.BlockInfos.Length, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1301,9 +1365,12 @@ public class BlockTreeTests
         tree.TryUpdateMainChain(block5.Header, true, preloadedBlocks: new[] { block5 });
         tree.DeleteInvalidBlock(block3bad);
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "best known");
-        Assert.That(tree.Head?.Header, Is.EqualTo(block5.Header), "head");
-        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "best known");
+            Assert.That(tree.Head?.Header, Is.EqualTo(block5.Header), "head");
+            Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
+        }
     }
 
     [Test]
@@ -1317,11 +1384,14 @@ public class BlockTreeTests
         blockTree.ReportBadBlock(bad);
 
         Block[] stored = builder.BadBlockStore.GetAll().ToArray();
-        Assert.That(stored, Has.Length.EqualTo(1));
-        Assert.That(stored[0].Hash, Is.EqualTo(bad.Hash!));
-        Assert.That(blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
-        Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(originalSuggested),
-            "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored, Has.Length.EqualTo(1));
+            Assert.That(stored[0].Hash, Is.EqualTo(bad.Hash!));
+            Assert.That(blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
+            Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(originalSuggested),
+                "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
+        }
     }
 
     [Test]
@@ -1498,8 +1568,11 @@ public class BlockTreeTests
             .WithSyncConfig(syncConfig)
             .TestObject;
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(expectedResult), "tree");
-        Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(expectedResult), "loaded tree");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(expectedResult), "tree");
+            Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(expectedResult), "loaded tree");
+        }
     }
 
     [Test]
@@ -1592,8 +1665,11 @@ public class BlockTreeTests
             .WithSyncConfig(syncConfig)
             .TestObject;
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "tree");
-        Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "loaded tree");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "tree");
+            Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "loaded tree");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1634,8 +1710,11 @@ public class BlockTreeTests
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         tree.SuggestBlock(genesis);
-        Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
-        Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
+            Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1735,8 +1814,11 @@ public class BlockTreeTests
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         ChainLevelInfo info = blockTree.FindLevel(0)!;
-        Assert.That(info.HasBlockOnMainChain, Is.True);
-        Assert.That(info.BlockInfos.Length, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.HasBlockOnMainChain, Is.True);
+            Assert.That(info.BlockInfos.Length, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1744,8 +1826,11 @@ public class BlockTreeTests
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         ChainLevelInfo info = blockTree.FindLevel(1)!;
-        Assert.That(info.HasBlockOnMainChain, Is.True);
-        Assert.That(info.BlockInfos.Length, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.HasBlockOnMainChain, Is.True);
+            Assert.That(info.BlockInfos.Length, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1769,9 +1854,12 @@ public class BlockTreeTests
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         blockTree.DeleteChainSlice(2, 2);
-        Assert.That(blockTree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null);
-        Assert.That(blockTree.FindHeader(2, BlockTreeLookupOptions.None), Is.Null);
-        Assert.That(blockTree.FindLevel(2), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindHeader(2, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindLevel(2), Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1779,9 +1867,12 @@ public class BlockTreeTests
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         blockTree.DeleteChainSlice(2, 2);
-        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.None), Is.Not.Null);
-        Assert.That(blockTree.FindHeader(1, BlockTreeLookupOptions.None), Is.Not.Null);
-        Assert.That(blockTree.FindLevel(1), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(blockTree.FindHeader(1, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(blockTree.FindLevel(1), Is.Not.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1797,8 +1888,11 @@ public class BlockTreeTests
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         blockTree.DeleteChainSlice(1, 2);
-        Assert.That(blockTree.FindLevel(1), Is.Null);
-        Assert.That(blockTree.FindLevel(2), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindLevel(1), Is.Null);
+            Assert.That(blockTree.FindLevel(2), Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2381,19 +2475,22 @@ public class BlockTreeTests
         blockTree.SuggestBlock(blockC);
         blockTree.TryUpdateMainChain(blockC.Header, true, preloadedBlocks: new[] { blockC });
 
-        // C (the third sibling, originally at index 2) must now be canonical
-        Block? byNumber = blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
-        Assert.That(byNumber, Is.Not.Null, "RequireCanonical lookup must find C");
-        Assert.That(byNumber!.Hash, Is.EqualTo(blockC.Hash!), "C is the last canonical, SwapToMain must have moved it to index 0");
+        using (Assert.EnterMultipleScope())
+        {
+            // C (the third sibling, originally at index 2) must now be canonical
+            Block? byNumber = blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
+            Assert.That(byNumber, Is.Not.Null, "RequireCanonical lookup must find C");
+            Assert.That(byNumber!.Hash, Is.EqualTo(blockC.Hash!), "C is the last canonical, SwapToMain must have moved it to index 0");
 
-        // A and B must not be canonical
-        Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "A must not be canonical after C was set");
-        Assert.That(blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "B must not be canonical after C was set");
+            // A and B must not be canonical
+            Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "A must not be canonical after C was set");
+            Assert.That(blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "B must not be canonical after C was set");
 
-        // All three are still findable by hash (non-canonical lookup)
-        Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "A findable by hash");
-        Assert.That(blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "B findable by hash");
-        Assert.That(blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "C findable by hash");
+            // All three are still findable by hash (non-canonical lookup)
+            Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "A findable by hash");
+            Assert.That(blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "B findable by hash");
+            Assert.That(blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "C findable by hash");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2413,11 +2510,14 @@ public class BlockTreeTests
         // Reorg to B with wereProcessed=false (sync path)
         blockTree.TryUpdateMainChain(blockB.Header, wereProcessed: false, preloadedBlocks: new[] { blockB });
 
-        // Canonical marker must be updated even without wereProcessed
-        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blockB.Hash!), "B must be canonical at height 1 even when TryUpdateMainChain was called with wereProcessed=false");
+        using (Assert.EnterMultipleScope())
+        {
+            // Canonical marker must be updated even without wereProcessed
+            Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blockB.Hash!), "B must be canonical at height 1 even when TryUpdateMainChain was called with wereProcessed=false");
 
-        Assert.That(blockTree.IsMainChain(blockB.Header), Is.True, "B is canonical");
-        Assert.That(blockTree.IsMainChain(blockA.Header), Is.False, "A is no longer canonical");
+            Assert.That(blockTree.IsMainChain(blockB.Header), Is.True, "B is canonical");
+            Assert.That(blockTree.IsMainChain(blockA.Header), Is.False, "A is no longer canonical");
+        }
     }
 
     [TestCase(1, false, TestName = "SingleDescendant")]
@@ -2623,8 +2723,11 @@ public class BlockTreeTests
 
         blockTree.HealCanonicalChain(chain[1].Hash!, maxBlockDepth: 10);
 
-        Assert.That(blockTree.FindBlock(chain[1].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "b2 must remain canonical");
-        Assert.That(blockTree.FindBlock(chain[0].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "b1 must remain canonical");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindBlock(chain[1].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "b2 must remain canonical");
+            Assert.That(blockTree.FindBlock(chain[0].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "b1 must remain canonical");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2790,8 +2893,11 @@ public class BlockTreeTests
         // Forward processing H=2 (forceUpdateHeadBlock: false) must not clear H=3, H=4
         blockTree.TryUpdateMainChain(chain[1].Header, wereProcessed: true, forceUpdateHeadBlock: false, preloadedBlocks: new[] { chain[1] });
 
-        Assert.That(blockTree.IsMainChain(chain[2].Header), Is.True, "H=3 marker must survive");
-        Assert.That(blockTree.IsMainChain(chain[3].Header), Is.True, "H=4 marker must survive");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.IsMainChain(chain[2].Header), Is.True, "H=3 marker must survive");
+            Assert.That(blockTree.IsMainChain(chain[3].Header), Is.True, "H=4 marker must survive");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2855,11 +2961,23 @@ public class BlockTreeTests
         blockTree.SuggestBlock(b1);
         blockTree.TryUpdateMainChain(b1.Header, true, preloadedBlocks: new[] { b1 });
 
-        // Height 2 was orphaned: must return null, not the stale A2
-        Assert.That(blockTree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null, "orphaned height 2 must return null after reorg in PoS — not the stale A2 block");
+        using (Assert.EnterMultipleScope())
+        {
+            // Height 2 was orphaned: must return null, not the stale A2
+            Assert.That(blockTree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null, "orphaned height 2 must return null after reorg in PoS — not the stale A2 block");
 
-        // Height 1 must return the new canonical B1
-        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(b1.Hash!), "height 1 must return B1 after reorg");
+            // Height 1 must return the new canonical B1
+            Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(b1.Hash!), "height 1 must return B1 after reorg");
+        }
     }
 
+    private static void AssertSuggestNotifications(AddBlockResult result, bool hasNotified, bool hasNotifiedNewSuggested)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasNotified, Is.True, "notification");
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
+            Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
+        }
+    }
 }
