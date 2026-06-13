@@ -609,10 +609,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     {
         if (!PersistedSnapshotReader.TryGetSlot<TReader, TPin>(in reader, addrBound, in index, out Bound b))
             return false;
-        Span<byte> buf = stackalloc byte[32];
+        Span<byte> buf = stackalloc byte[PersistedSnapshotTags.RlpSlotValueBufferSize];
         Span<byte> raw = buf[..checked((int)b.Length)];
         reader.TryRead(b.Offset, raw);
-        slotValue = SlotValue.FromSpanWithoutLeadingZero(raw);
+        // length 0 = null/deleted slot (empty payload); a present value is RLP-wrapped.
+        ReadOnlySpan<byte> value = raw.Length == 0 ? raw : new Rlp.ValueDecoderContext(raw).DecodeByteArraySpan();
+        slotValue = SlotValue.FromSpanWithoutLeadingZero(value);
         return true;
     }
 

@@ -15,6 +15,10 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
+using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
+    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionView,
+    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
+    Nethermind.State.Flat.Hsst.NoOpPin>;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -82,6 +86,15 @@ public class PersistedSnapshotTests
             value[31] = 0xFF;
             c.Storages[(TestItem.AddressA, (UInt256)42)] = new SlotValue(value);
         })).SetName("Storage_SingleSlot");
+
+        // Single significant byte < 0x80: RLP wraps it to the byte itself (1 byte), so the
+        // stored length is still 1 — distinct from the length-0 absent sentinel.
+        yield return new TestCaseData((Action<SnapshotContent>)(c =>
+        {
+            byte[] value = new byte[32];
+            value[31] = 0x05;
+            c.Storages[(TestItem.AddressA, (UInt256)9)] = new SlotValue(value);
+        })).SetName("Storage_SmallSingleByteSlot");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
         {
@@ -183,6 +196,46 @@ public class PersistedSnapshotTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
         Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted));
+    }
+
+    // Covers the scanner slot-decode path (PersistedSnapshotScanner.SlotEntry.Value), which
+    // PersistPersistedSnapshot uses to flush slots back into the flat DB. Slot values are now
+    // RLP-wrapped; this asserts varied widths (1-byte < 0x80, 1-byte >= 0x80, full 32 bytes)
+    // decode correctly and that a null/deleted slot is surfaced as null (length-0 sentinel).
+    [Test]
+    public void Slot_scanner_round_trips_rlp_wrapped_values()
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("scan"));
+
+        byte[] small = new byte[32]; small[31] = 0x05;      // RLP(0x05) = 0x05
+        byte[] high = new byte[32]; high[31] = 0xFF;         // RLP(0xff) = 0x81 0xff
+        byte[] full = new byte[32];
+        for (int i = 0; i < 32; i++) full[i] = (byte)(i + 1); // RLP = 0xa0 + 32 bytes
+
+        SnapshotContent content = new();
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(small);
+        content.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(high);
+        content.Storages[(TestItem.AddressA, (UInt256)3)] = null;          // deleted slot
+        content.Storages[(TestItem.AddressB, (UInt256)4)] = new SlotValue(full);
+
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        Dictionary<(Address, UInt256), SlotValue?> scanned = [];
+        using (WholeReadSession session = persisted.BeginWholeReadSession())
+        {
+            WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
+            foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+                foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
+                    scanned[(entry.Address, slot.Slot)] = slot.Value;
+        }
+
+        Assert.That(scanned[(TestItem.AddressA, (UInt256)1)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(small));
+        Assert.That(scanned[(TestItem.AddressA, (UInt256)2)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(high));
+        Assert.That(scanned[(TestItem.AddressA, (UInt256)3)], Is.Null, "deleted slot must surface as null");
+        Assert.That(scanned[(TestItem.AddressB, (UInt256)4)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(full));
     }
 
     [Test]

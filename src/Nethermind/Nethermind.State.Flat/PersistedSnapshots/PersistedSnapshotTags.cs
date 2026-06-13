@@ -122,7 +122,12 @@ internal static class PersistedSnapshotTags
 
     // On-disk format version, written as the value of MetadataVersionKey by the builder
     // and copied through by the merger. Bump when the columnar layout changes.
-    internal static readonly byte[] MetadataFormatVersion = [0x03];
+    // v4: storage slot values are RLP-wrapped byte-strings (matching the flat DB).
+    internal static readonly byte[] MetadataFormatVersion = [0x04];
+
+    // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0)
+    // plus 32 bytes. Mirrors BaseFlatPersistence.RlpSlotValueBufferSize.
+    internal const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
 
     // Presence marker for MetadataNodeRefsKey. The key itself is the signal; the value
     // just satisfies the HSST builder's non-empty-value requirement.

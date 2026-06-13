@@ -378,7 +378,7 @@ public static class PersistedSnapshotBuilder
                         if (!slotKey[..slotPrefixLength].SequenceEqual(currentPrefix))
                             break;
                         SlotValue? v = sortedStorages[groupEnd].Value;
-                        groupValueBytes += v.HasValue ? v.Value.AsReadOnlySpan.WithoutLeadingZeros().Length : 0;
+                        groupValueBytes += v.HasValue ? Rlp.LengthOf(v.Value.AsReadOnlySpan.WithoutLeadingZeros()) : 0;
                         groupEnd++;
                     }
 
@@ -395,8 +395,11 @@ public static class PersistedSnapshotBuilder
                             bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
                             SlotValue? value = sortedStorages[i].Value;
                             ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
+                            // Present values are RLP-wrapped (≥ 1 byte even for zero → 0x80); null/deleted
+                            // slots keep an empty payload so the length-0 = absent sentinel survives wrapping.
+                            // Reuses the method-level rlpBuffer (free here; account RLP is written later).
                             ReadOnlySpan<byte> payload = value.HasValue
-                                ? value.Value.AsReadOnlySpan.WithoutLeadingZeros()
+                                ? rlpBuffer.AsSpan(0, Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer))
                                 : [];
                             suffixLevel.Add(suffixKey, payload);
                         }
