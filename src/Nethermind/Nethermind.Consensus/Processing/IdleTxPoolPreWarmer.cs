@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -30,6 +32,9 @@ namespace Nethermind.Consensus.Processing;
 /// scopes at the head's state root and never touches the shared block-processing caches
 /// (<c>PreBlockCaches</c>); the database caches it warms hold immutable on-disk blocks, not
 /// version-specific values. A reorg merely means some warmed blocks go unused.
+///
+/// Each pass records the hashes it warmed; when the next block is suggested, the warmer logs what
+/// fraction of that block's transactions it had pre-warmed — the realizable coverage of the feature.
 /// </summary>
 public sealed class IdleTxPoolPreWarmer : IDisposable
 {
@@ -42,10 +47,7 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
     private readonly int _concurrency;
     private readonly ILogger _logger;
 
-    // Cancellation source of the in-flight warming pass. Swapped atomically on each head/suggest event.
-    // It is intentionally never disposed: no WaitHandle is ever allocated so nothing leaks, and skipping
-    // disposal avoids a cancel-after-dispose race with the background pass that observes the token.
-    private CancellationTokenSource? _currentPass;
+    private WarmPass? _currentPass;
 
     public IdleTxPoolPreWarmer(
         ILifetimeScope context,
@@ -68,23 +70,49 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
         _blockTree.NewSuggestedBlock += OnNewSuggestedBlock;
     }
 
-    // A new block is about to be processed: stop idle warming so it does not contend with block
-    // processing for cores and IO bandwidth.
-    private void OnNewSuggestedBlock(object? sender, BlockEventArgs e) => CancelCurrentPass();
+    // A new block is about to be processed: stop idle warming (so it does not contend with block
+    // processing for cores and IO) and report how much of the arriving block we had pre-warmed.
+    private void OnNewSuggestedBlock(object? sender, BlockEventArgs e)
+    {
+        WarmPass? pass = Interlocked.Exchange(ref _currentPass, null);
+        if (pass is null) return;
+
+        pass.Cancel();
+        LogCoverage(e.Block, pass);
+    }
 
     // The head has settled: warm the pool against it during the idle gap until the next block arrives.
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         BlockHeader head = e.Block.Header;
-        CancellationTokenSource pass = new();
+        WarmPass pass = new();
         Interlocked.Exchange(ref _currentPass, pass)?.Cancel();
-        Task.Run(() => WarmPool(head, pass.Token), pass.Token);
+        Task.Run(() => WarmPool(head, pass), pass.Token);
     }
 
     private void CancelCurrentPass() => Interlocked.Exchange(ref _currentPass, null)?.Cancel();
 
-    private void WarmPool(BlockHeader head, CancellationToken token)
+    private void LogCoverage(Block block, WarmPass pass)
     {
+        if (!_logger.IsInfo || pass.WarmedCount == 0) return;
+
+        Transaction[] transactions = block.Transactions;
+        int covered = 0;
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Hash256? hash = transactions[i].Hash;
+            if (hash is not null && pass.Warmed.ContainsKey(hash)) covered++;
+        }
+
+        double percent = transactions.Length == 0 ? 0 : 100.0 * covered / transactions.Length;
+        _logger.Info(
+            $"IdlePreWarm: block {block.Number} warmed {pass.WarmedCount} pool txs in {pass.ElapsedMs} ms; " +
+            $"block txs covered {covered}/{transactions.Length} ({percent:F1}%)");
+    }
+
+    private void WarmPool(BlockHeader head, WarmPass pass)
+    {
+        CancellationToken token = pass.Token;
         try
         {
             if (token.IsCancellationRequested) return;
@@ -95,7 +123,7 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
                 _txPool.GetPendingTransactionsBySender(filterToReadyTx: true, head.BaseFeePerGas);
             if (bySender.Count == 0) return;
 
-            WarmSenderGroups(head, bySender.Values, blockContext, token);
+            WarmSenderGroups(head, bySender.Values, blockContext, pass);
         }
         catch (OperationCanceledException)
         {
@@ -111,9 +139,9 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
         BlockHeader head,
         ICollection<Transaction[]> senderGroups,
         BlockExecutionContext blockContext,
-        CancellationToken token)
+        WarmPass pass)
     {
-        int warmedCount = 0;
+        CancellationToken token = pass.Token;
         ParallelOptions options = new() { MaxDegreeOfParallelism = _concurrency };
 
         Parallel.ForEach(
@@ -124,13 +152,14 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
             {
                 foreach (Transaction transaction in senderTransactions)
                 {
-                    if (token.IsCancellationRequested || Interlocked.Increment(ref warmedCount) > MaxWarmedTransactions)
+                    if (token.IsCancellationRequested || pass.WarmedCount >= MaxWarmedTransactions)
                     {
                         loopState.Stop();
                         break;
                     }
 
                     WarmTransaction(scope.Scope, transaction);
+                    pass.Record(transaction.Hash);
                 }
 
                 return scope;
@@ -179,6 +208,29 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
         {
             Scope.Dispose();
             source.Dispose();
+        }
+    }
+
+    // Tracks one idle warming pass: its cancellation, the hashes it warmed (for coverage reporting),
+    // and elapsed time. The cancellation source is intentionally never disposed (no WaitHandle is
+    // allocated, so nothing leaks) to avoid a cancel-after-dispose race with the background pass.
+    private sealed class WarmPass
+    {
+        private readonly CancellationTokenSource _cts = new();
+        private readonly long _startTick = Environment.TickCount64;
+        private int _count;
+
+        public ConcurrentDictionary<Hash256, bool> Warmed { get; } = new();
+        public CancellationToken Token => _cts.Token;
+        public int WarmedCount => Volatile.Read(ref _count);
+        public long ElapsedMs => Environment.TickCount64 - _startTick;
+
+        public void Cancel() => _cts.Cancel();
+
+        public void Record(Hash256? hash)
+        {
+            Interlocked.Increment(ref _count);
+            if (hash is not null) Warmed.TryAdd(hash, true);
         }
     }
 }
