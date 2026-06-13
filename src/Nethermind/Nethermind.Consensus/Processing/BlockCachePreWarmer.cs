@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -34,13 +36,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly IdleWarmedSet? _idleWarmedSet;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
-        ILogManager logManager
+        ILogManager logManager,
+        IdleWarmedSet? idleWarmedSet = null
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
@@ -48,7 +52,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _idleWarmedSet = idleWarmedSet;
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -81,7 +89,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
-                BlockState blockState = new(this, suggestedBlock, parent, spec);
+                ConcurrentDictionary<Hash256, bool>? warmedHashes = _idleWarmedSet?.GetFor(parent.Hash);
+                BlockState blockState = new(this, suggestedBlock, parent, spec, warmedHashes);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
@@ -281,6 +290,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         try
         {
+            // Already warmed during the idle gap (its DB reads are hot): let the main thread re-read
+            // it cheaply and spend this pre-warmer thread on the cold (unseen/private) transactions.
+            if (blockState.WarmedHashes is not null && tx.Hash is not null && blockState.WarmedHashes.ContainsKey(tx.Hash))
+            {
+                return;
+            }
+
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 
@@ -478,5 +494,5 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ConcurrentDictionary<Hash256, bool>? WarmedHashes);
 }

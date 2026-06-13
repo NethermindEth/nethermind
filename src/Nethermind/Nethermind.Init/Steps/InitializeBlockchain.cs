@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -58,6 +59,7 @@ namespace Nethermind.Init.Steps
                     txPool,
                     getApi.BlockTree!,
                     getApi.SpecProvider!,
+                    _api.Context.Resolve<IdleWarmedSet>(),
                     blocksConfig,
                     getApi.LogManager);
                 _api.DisposeStack.Push(idleTxPoolPreWarmer);

@@ -44,6 +44,7 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
     private readonly ITxPool _txPool;
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
+    private readonly IdleWarmedSet _idleWarmedSet;
     private readonly int _concurrency;
     private readonly ILogger _logger;
 
@@ -54,6 +55,7 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
         ITxPool txPool,
         IBlockTree blockTree,
         ISpecProvider specProvider,
+        IdleWarmedSet idleWarmedSet,
         IBlocksConfig blocksConfig,
         ILogManager logManager)
     {
@@ -61,6 +63,7 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
         _txPool = txPool;
         _blockTree = blockTree;
         _specProvider = specProvider;
+        _idleWarmedSet = idleWarmedSet;
         _concurrency = blocksConfig.PreWarmStateConcurrency == 0
             ? Math.Min(Environment.ProcessorCount - 1, 16)
             : blocksConfig.PreWarmStateConcurrency;
@@ -87,6 +90,11 @@ public sealed class IdleTxPoolPreWarmer : IDisposable
         BlockHeader head = e.Block.Header;
         WarmPass pass = new();
         Interlocked.Exchange(ref _currentPass, pass)?.Cancel();
+
+        // Publish the (still-filling) warmed set keyed by this head: the next block builds on it,
+        // and the arrival pre-warmer reads whatever we have warmed by the time it arrives.
+        if (head.Hash is not null) _idleWarmedSet.Publish(head.Hash, pass.Warmed);
+
         Task.Run(() => WarmPool(head, pass), pass.Token);
     }
 
