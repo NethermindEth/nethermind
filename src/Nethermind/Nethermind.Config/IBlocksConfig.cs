@@ -46,6 +46,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
+    [ConfigItem(Description = "Experimental: during the idle gap between blocks, speculatively read the transaction-pool transactions' state against the chain head to warm the database read caches before the next block arrives. Reduces cold-read latency on the portion of the next block already seen in the public mempool. Off by default.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmTxPoolDuringIdle { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

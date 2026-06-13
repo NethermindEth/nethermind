@@ -51,6 +51,18 @@ namespace Nethermind.Init.Steps
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
+            if (blocksConfig.PreWarmTxPoolDuringIdle && blocksConfig.PreWarmStateOnBlockProcessing)
+            {
+                IdleTxPoolPreWarmer idleTxPoolPreWarmer = new(
+                    _api.Context,
+                    txPool,
+                    getApi.BlockTree!,
+                    getApi.SpecProvider!,
+                    blocksConfig,
+                    getApi.LogManager);
+                _api.DisposeStack.Push(idleTxPoolPreWarmer);
+            }
+
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
