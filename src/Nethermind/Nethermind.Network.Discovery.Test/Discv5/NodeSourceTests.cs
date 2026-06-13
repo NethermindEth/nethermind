@@ -30,7 +30,7 @@ public class NodeSourceTests
         NodeSource source = new(
             kademlia,
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
-            Discv5RecordFilter.ExecutionLayer,
+            ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
@@ -72,7 +72,7 @@ public class NodeSourceTests
         NodeSource source = new(
             kademlia,
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
-            Discv5RecordFilter.ExecutionLayer,
+            ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
@@ -99,7 +99,7 @@ public class NodeSourceTests
         NodeSource source = new(
             kademlia,
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
-            Discv5RecordFilter.ExecutionLayer,
+            ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
