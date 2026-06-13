@@ -159,13 +159,6 @@ public class SszMiddlewareTests
         return ms.ToArray();
     }
 
-    private static byte[] EncodeToBytes<T>(T value, Func<T, IBufferWriter<byte>, int> encode)
-    {
-        ArrayBufferWriter<byte> w = new();
-        encode(value, w);
-        return w.WrittenSpan.ToArray();
-    }
-
     private static readonly object[] NewPayloadRoutingCases =
     [
         new object[] { EngineApiVersions.NewPayload.V1, $"/engine/v2/{ParisUrl}/payloads" },
@@ -710,31 +703,6 @@ public class SszMiddlewareTests
 
     private static byte[] BuildPayloadBodiesByHashRequest(Hash256[] hashes) =>
         BuildHashListRequest(Array.ConvertAll(hashes, h => h.Bytes.ToArray()));
-
-    private static byte[] BuildPayloadBodiesByRangeRequest(ulong start, ulong count)
-    {
-        byte[] result = new byte[16];
-        BitConverter.TryWriteBytes(result.AsSpan(0, 8), start);
-        BitConverter.TryWriteBytes(result.AsSpan(8, 8), count);
-        return result;
-    }
-
-    private static byte[] BuildCapabilitiesRequest(string[] capabilities) =>
-        EncodeToBytes<IReadOnlyList<string>>(capabilities, SszCodec.EncodeCapabilitiesResponse);
-
-    private static byte[] BuildClientVersionRequest()
-    {
-        byte[] clientVersion = new byte[16];
-        uint offset = 16;
-        BitConverter.TryWriteBytes(clientVersion.AsSpan(0, 4), offset);
-        BitConverter.TryWriteBytes(clientVersion.AsSpan(4, 4), offset);
-        BitConverter.TryWriteBytes(clientVersion.AsSpan(8, 4), offset);
-
-        byte[] request = new byte[4 + clientVersion.Length];
-        BitConverter.TryWriteBytes(request.AsSpan(0, 4), (uint)4);
-        Buffer.BlockCopy(clientVersion, 0, request, 4, clientVersion.Length);
-        return request;
-    }
 
     [Test]
     public async Task ClientVersion_reads_X_Engine_Client_Version_header()

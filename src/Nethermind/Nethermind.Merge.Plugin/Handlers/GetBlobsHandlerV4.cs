@@ -19,9 +19,6 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
 {
     private const int MaxRequest = 128;
 
-    private static readonly Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> NotFound =
-        Task.FromResult(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(null));
-
     public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> HandleAsync(GetBlobsHandlerV4Request request)
     {
         if (request.BlobVersionedHashes.Length > MaxRequest)

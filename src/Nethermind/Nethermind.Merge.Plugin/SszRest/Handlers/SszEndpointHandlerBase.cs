@@ -143,7 +143,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         await ctx.Response.WriteAsync(body, ctx.RequestAborted);
     }
 
-    private static int ErrorCodeToHttpStatus(int errorCode) => errorCode switch
+    protected static int ErrorCodeToHttpStatus(int errorCode) => errorCode switch
     {
         MergeErrorCodes.UnknownPayload => StatusCodes.Status404NotFound,
         MergeErrorCodes.InvalidForkchoiceState => StatusCodes.Status409Conflict,

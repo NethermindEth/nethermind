@@ -31,6 +31,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         // Per execution-apis #793: custody-column updates are best-effort, errors swallowed.
         // No EL-side custody consumer wired yet — log at trace level so the CL request is auditable.
+        // TODO(custody): once a consumer is wired, validate custodyColumns.Length == 128 here
+        // (the SSZ wire enforces this on REST, but the JSON-RPC signature does not).
         if (custodyColumns is not null && _logger.IsTrace)
             _logger.Trace($"engine_forkchoiceUpdatedV4 received custody columns ({custodyColumns.Count} bits) — not yet applied");
         return ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);

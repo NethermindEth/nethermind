@@ -39,7 +39,8 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule, ILogM
 
         if (result.Result.ResultType != ResultType.Success)
         {
-            await WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, result.Result.Error ?? "engine_getClientVersionV1 failed");
+            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
+                result.Result.Error ?? "engine_getClientVersionV1 failed", result.ErrorCode);
             return;
         }
 

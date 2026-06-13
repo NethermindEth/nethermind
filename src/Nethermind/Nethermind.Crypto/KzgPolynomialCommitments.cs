@@ -74,6 +74,6 @@ public static partial class KzgPolynomialCommitments
         Ckzg.ComputeCellsAndKzgProofs(new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell], cellProofs, blob, _ckzgSetup);
 
     /// <param name="blob">The input blob data.</param>
-    /// <param name="cells">The output span of size <c>CELLS_PER_EXT_BLOB * BYTES_PER_CELL</c> (131072 bytes) where cells will be written.</param>
+    /// <param name="cells">The output span of size <c>CELLS_PER_EXT_BLOB * BYTES_PER_CELL</c> (262144 bytes) where cells will be written.</param>
     public static void ComputeCells(ReadOnlySpan<byte> blob, Span<byte> cells) => Ckzg.ComputeCells(cells, blob, _ckzgSetup);
 }
