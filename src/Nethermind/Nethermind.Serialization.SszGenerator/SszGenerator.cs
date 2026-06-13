@@ -318,9 +318,9 @@ internal static class SszCodecHelpers
         }
     }
 
-    internal static void ValidateSszBitlistLimit(BitArray? bits, int limit, string typeName, string fieldName)
+    internal static void ValidateSszBitlistLimit(BitArray? bits, ulong limit, string typeName, string fieldName)
     {
-        if (bits is not null && bits.Length > limit)
+        if (bits is not null && (ulong)bits.Length > limit)
         {
             ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} bits but found {bits.Length}.");
         }
@@ -645,10 +645,9 @@ internal static class SszCodecHelpers
         {
             Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
-            Kind.List when property.Type.Name == "BitArray" => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
-            Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             _ => string.Empty,
         };
 
@@ -1035,7 +1034,9 @@ internal static class SszCodecHelpers
         string arguments = $"{target}, {EncodeValueExpression(property, expression)}";
         if (property.Kind == Kind.BitList)
         {
-            arguments += $", {property.Limit}";
+            // The bitlist Encode limit parameter is int-typed (and unused); clamp so bitlists
+            // declared with limits beyond int.MaxValue still emit compilable code.
+            arguments += $", {Math.Min(property.Limit!.Value, int.MaxValue)}";
         }
         else if (property.Kind == Kind.ProgressiveBitList)
         {
