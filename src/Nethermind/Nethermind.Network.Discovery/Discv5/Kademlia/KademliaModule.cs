@@ -17,6 +17,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 public sealed class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(masterNode, bootNodes)
 {
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
+        .AddSingleton<IDiscv5RecordFilter>(ExecutionLayerDiscv5RecordFilter.Instance)
         .AddSingleton<IKademliaNodeSource, NodeSource>()
         .AddSingleton<IKademliaAdapter, KademliaAdapter>()
         .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()

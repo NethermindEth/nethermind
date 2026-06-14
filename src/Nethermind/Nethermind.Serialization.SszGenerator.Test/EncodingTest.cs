@@ -100,6 +100,51 @@ public class EncodingTest
     }
 
     [Test]
+    public void Supports_list_limits_beyond_int_range()
+    {
+        const ulong Limit = 1_099_511_627_776; // 2^40, VALIDATOR_REGISTRY_LIMIT
+        ulong[] basicItems = [1, 2, 3];
+        FixedC[] compositeItems = [new() { Fixed1 = 1, Fixed2 = 2 }, new() { Fixed1 = 3, Fixed2 = 4 }];
+
+        HugeLimitBasicList basicList = new() { Items = basicItems };
+        byte[] encoded = HugeLimitBasicList.Encode(basicList);
+        HugeLimitBasicList.Decode(encoded, out HugeLimitBasicList decodedBasic);
+        HugeLimitBasicList.Merkleize(basicList, out UInt256 basicRoot);
+
+        // Reference roots computed via the runtime ulong-limit merkleization primitives
+        Merkle.Merkleize(out UInt256 expectedBasicRoot, MemoryMarshal.AsBytes<ulong>(basicItems), Limit / 4);
+        Merkle.MixIn(ref expectedBasicRoot, basicItems.Length);
+
+        HugeLimitCompositeList compositeList = new() { Items = compositeItems };
+        HugeLimitCompositeList.Merkleize(compositeList, out UInt256 compositeRoot);
+
+        Span<UInt256> itemRoots = stackalloc UInt256[compositeItems.Length];
+        for (int i = 0; i < compositeItems.Length; i++)
+        {
+            FixedC.Merkleize(compositeItems[i], out itemRoots[i]);
+        }
+        Merkle.Merkleize(out UInt256 expectedCompositeRoot, itemRoots, Limit);
+        Merkle.MixIn(ref expectedCompositeRoot, compositeItems.Length);
+
+        // Bitlists with huge limits must still produce compilable generated code (the runtime
+        // bitlist Encode limit is int-typed and unused; validation/merkleization take ulong).
+        HugeLimitBitlist bitlist = new() { Bits = MakeSampleBits10() };
+        byte[] encodedBits = HugeLimitBitlist.Encode(bitlist);
+        HugeLimitBitlist.Decode(encodedBits, out HugeLimitBitlist decodedBits);
+        HugeLimitBitlist.Merkleize(bitlist, out UInt256 bitlistRoot);
+        Merkle.Merkleize(out UInt256 expectedBitlistRoot, MakeSampleBits10(), Limit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedBasic.Items, Is.EqualTo(basicItems));
+            Assert.That(basicRoot, Is.EqualTo(expectedBasicRoot));
+            Assert.That(compositeRoot, Is.EqualTo(expectedCompositeRoot));
+            Assert.That(decodedBits.Bits!.Cast<bool>(), Is.EqualTo(bitlist.Bits!.Cast<bool>()));
+            Assert.That(bitlistRoot, Is.EqualTo(expectedBitlistRoot));
+        }
+    }
+
+    [Test]
     public void Encode_and_decode_signed_primitive_collections_round_trip()
     {
         SignedPrimitiveCollectionContainer container = new()

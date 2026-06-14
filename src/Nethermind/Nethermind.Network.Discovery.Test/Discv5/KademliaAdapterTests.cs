@@ -102,7 +102,8 @@ public class KademliaAdapterTests
             KademliaAdapter.IsAcceptableNodeRecord(
                 documentationRecord,
                 TestItem.PrivateKeyB.PublicKey.Hash,
-                allowNonRoutable: true),
+                allowNonRoutable: true,
+                ExecutionLayerDiscv5RecordFilter.Instance),
             Is.False);
     }
 
@@ -115,7 +116,8 @@ public class KademliaAdapterTests
             KademliaAdapter.IsAcceptableNodeRecord(
                 record,
                 TestItem.PrivateKeyA.PublicKey.Hash,
-                allowNonRoutable: false),
+                allowNonRoutable: false,
+                ExecutionLayerDiscv5RecordFilter.Instance),
             Is.False);
     }
 
@@ -128,7 +130,8 @@ public class KademliaAdapterTests
             KademliaAdapter.IsAcceptableNodeRecord(
                 loopbackRecord,
                 TestItem.PrivateKeyB.PublicKey.Hash,
-                allowNonRoutable: true),
+                allowNonRoutable: true,
+                ExecutionLayerDiscv5RecordFilter.Instance),
             Is.True);
     }
 
@@ -151,6 +154,7 @@ public class KademliaAdapterTests
             new DiscoveryConfig(),
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
+            ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
     }
 
@@ -166,7 +170,8 @@ public class KademliaAdapterTests
             KademliaAdapter.IsAcceptableNodeRecord(
                 NodeRecord.FromEnrString(record.EnrString),
                 TestItem.PrivateKeyB.PublicKey.Hash,
-                allowNonRoutable: false),
+                allowNonRoutable: false,
+                ExecutionLayerDiscv5RecordFilter.Instance),
             Is.False);
     }
 

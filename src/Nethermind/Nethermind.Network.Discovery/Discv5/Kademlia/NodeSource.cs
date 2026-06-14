@@ -16,6 +16,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 public sealed class NodeSource(
     IKademlia<PublicKey, Node> kademlia,
     KademliaConfig<Node> kademliaConfig,
+    IDiscv5RecordFilter recordFilter,
     ILogManager logManager)
     : IKademliaNodeSource
 {
@@ -95,7 +96,7 @@ public sealed class NodeSource(
         try
         {
             NodeRecord record = NodeRecord.FromEnrString(discoveryNode.Enr);
-            if (DiscoveryV5App.IsConsensusOnlyNodeRecord(record))
+            if (recordFilter.Excludes(record))
             {
                 return false;
             }

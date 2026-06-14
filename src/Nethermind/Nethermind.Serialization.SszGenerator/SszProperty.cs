@@ -60,7 +60,12 @@ class SszProperty
             AttributeData? listAttr = GetAttribute(attributes, nameof(SszListAttribute));
             if (listAttr is not null)
             {
-                result.Limit = listAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
+                result.Limit = listAttr.ConstructorArguments.FirstOrDefault().Value switch
+                {
+                    ulong limit => limit,
+                    int limit => (ulong)limit,
+                    _ => 0UL,
+                };
             }
 
             result.IsProgressiveList = HasAttribute(attributes, nameof(SszProgressiveListAttribute));
@@ -247,7 +252,7 @@ class SszProperty
     }
 
     public int? Length { get; set; }
-    public int? Limit { get; set; }
+    public ulong? Limit { get; set; }
 
     public bool IsCompatibleWith(SszProperty other, HashSet<(SszType, SszType)> visited)
     {
