@@ -30,21 +30,24 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IResourcePool _resourcePool;
     private readonly IPersistedSnapshotRepository _persistedRepo;
 
-    // ReadOnlySnapshotBundle assembly isn't slow per-call, but it's called ~1.8k/sec, so caching saves CPU.
+    // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
+    // it save a decent amount of CPU.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
 
-    // Pipeline stage 1: an added snapshot enters here for compaction.
+    // First it go to here
     private readonly Task _compactorTask;
     private readonly Channel<StateId> _compactorJobs;
 
-    // Pipeline stage 1 (parallel): populate the trie-node cache ASAP — important for read performance.
+    // And here in parallel.
+    // The node cache is kinda important for performance, so we want it populated as quickly as possible.
     private readonly Task _populateTrieNodeCacheTask;
     private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
 
-    // Pipeline stage 2: a compacted snapshot lands here, which decides what to persist.
+    // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
+    // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
     private readonly Task _clearBundleCacheTask;
 
     private readonly int _compactSize;
@@ -126,6 +129,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
+        // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
         if (_snapshotCompactor.DoCompactSnapshot(stateId))

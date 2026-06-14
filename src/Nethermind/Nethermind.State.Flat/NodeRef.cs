@@ -18,25 +18,16 @@ public readonly struct NodeRef(ushort blobArenaId, int rlpDataOffset)
     public const int Size = 6;
 
     /// <summary>
-    /// ID of the blob arena <em>file</em> that holds the RLP bytes — equals the
-    /// underlying <c>ArenaFile.Id</c>. Many writers across many base snapshots
-    /// append into the same file, so the id alone is not enough to locate the
-    /// value: <see cref="RlpDataOffset"/> is the file-absolute offset. 16-bit:
-    /// per-tier file count is capped at <c>ushort.MaxValue</c> (65 535) files.
-    /// Combined with the 2 GiB-per-file ceiling enforced by
-    /// <see cref="RlpDataOffset"/>, total per-tier capacity is ~128 TiB.
+    /// ID of the blob arena <em>file</em> holding the RLP bytes (equals <c>ArenaFile.Id</c>).
+    /// 16-bit, so the per-tier file count is capped at <c>ushort.MaxValue</c>; with the
+    /// 2 GiB-per-file ceiling from <see cref="RlpDataOffset"/> that is ~128 TiB per tier.
     /// </summary>
     public ushort BlobArenaId { get; } = blobArenaId;
 
     /// <summary>
-    /// File-absolute byte offset of the RLP item's first byte within the blob arena
-    /// file. Length is recovered by parsing the RLP header (see
-    /// <c>RlpHelpers.PeekNextRlpLength</c>), so the index does not carry per-entry
-    /// value-length metadata.
-    ///
-    /// 32-bit caps a single blob arena file at 2 GiB. <see cref="BlobArenaWriter"/>
-    /// enforces this on append; <see cref="BlobArenaManager.CreateWriter"/> picks
-    /// a fresh file when the estimate exceeds the current file's headroom.
+    /// File-absolute byte offset of the RLP item's first byte. Length is recovered by parsing the
+    /// RLP header, so no per-entry length is stored. 32-bit caps a single blob arena file at 2 GiB
+    /// (enforced by <see cref="BlobArenaWriter"/> on append).
     /// </summary>
     public int RlpDataOffset { get; } = rlpDataOffset;
 

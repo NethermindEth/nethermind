@@ -16,7 +16,6 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
 
     public int SnapshotCount => 0;
     public StateId? LastRegisteredState => null;
-    public void LoadFromCatalog() { }
     public PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
         => throw new NotSupportedException($"{nameof(NullPersistedSnapshotRepository)} cannot host persisted snapshots.");
     public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false)

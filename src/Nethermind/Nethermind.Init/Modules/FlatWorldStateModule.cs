@@ -81,13 +81,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 IColumnsDb<PersistedSnapshotCatalogColumns> catalogColumns =
                     ctx.Resolve<IColumnsDb<PersistedSnapshotCatalogColumns>>();
                 IDb catalogDb = catalogColumns.GetColumnDb(PersistedSnapshotCatalogColumns.Catalog);
-                PersistedSnapshotRepository repo = new(
+                return new PersistedSnapshotRepository(
                     ctx.Resolve<ArenaManager>(),
                     ctx.Resolve<BlobArenaManager>(),
                     catalogDb, cfg,
                     ctx.Resolve<ILogManager>());
-                repo.LoadFromCatalog();
-                return repo;
             })
             .AddSingleton<IPersistedSnapshotCompactor>((ctx) =>
             {
@@ -97,8 +95,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     ctx.Resolve<ArenaManager>(),
                     cfg,
                     ctx.Resolve<ICompactionSchedule>(),
-                    ctx.Resolve<ILogManager>(),
-                    maxCompactSize: cfg.PersistedSnapshotMaxCompactSize);
+                    ctx.Resolve<ILogManager>());
             })
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0

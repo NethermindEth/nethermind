@@ -16,8 +16,8 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Logarithmic compaction for the persisted snapshots, bounded above by a
-/// <c>maxCompactSize</c> ceiling. A single instance is wired over the
+/// Logarithmic compaction for the persisted snapshots, bounded above by the
+/// <c>PersistedSnapshotMaxCompactSize</c> ceiling. A single instance is wired over the
 /// repository. <see cref="DoCompactSnapshot"/> compacts a block's natural power-of-2 window —
 /// the sub-<c>CompactSize</c> intermediates and the <c>&gt;CompactSize</c> hierarchical
 /// merges; <see cref="DoCompactPersistable"/> produces the <c>CompactSize</c>-wide
@@ -30,12 +30,11 @@ public class PersistedSnapshotCompactor(
     IArenaManager arenaManager,
     IFlatDbConfig config,
     ICompactionSchedule schedule,
-    ILogManager logManager,
-    int maxCompactSize) : IPersistedSnapshotCompactor
+    ILogManager logManager) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly ICompactionSchedule _schedule = schedule;
-    private readonly int _maxCompactSize = maxCompactSize;
+    private readonly int _maxCompactSize = config.PersistedSnapshotMaxCompactSize;
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;

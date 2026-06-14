@@ -64,22 +64,21 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     private readonly ArenaReservation _reservation;
     // Manager that owns the per-id blob arena slots. The repository acquires one lease per
-    // referenced id before this ctor runs and releases them in CleanUp / PersistOnShutdown,
-    // resolving each id via _blobManager.GetFile(id) (lock-free O(1) array read). The
-    // canonical list of leased ids lives on disk inside this snapshot's metadata HSST under
-    // the "ref_ids" key — no in-memory dict.
+    // referenced id before this ctor runs and releases them in CleanUp / PersistOnShutdown.
+    // Each id is resolved on demand via _blobManager.GetFile(id), a lock-free O(1) array read:
+    // the manager keys files by a dense int id in a direct array, so the per-snapshot lookup
+    // cost is negligible and there is no need to carry a Dictionary<int, BlobArenaFile> on every
+    // snapshot. The canonical leased-id list lives on disk in this snapshot's metadata HSST
+    // under the "ref_ids" key.
     private readonly BlobArenaManager _blobManager;
 
     public StateId From { get; }
     public StateId To { get; }
 
-    // The unified bloom gating reads of this snapshot — covers address / slot / self-destruct
-    // keys plus state-trie and storage-trie paths in one filter. Owned by this snapshot: the
-    // lease that keeps the snapshot alive keeps its bloom alive, and CleanUp disposes it.
-    // Defaults to the AlwaysTrue sentinel (no filtering, never a false negative) for snapshots
-    // created before their real bloom is available — base/compacted snapshots get their filter
-    // at convert / merge time, and reload populates it via SetBloom once every snapshot is in
-    // place. The query path probes Bloom.MightContain before paying for any disk read.
+    // Unified bloom gating all reads of this snapshot (address / slot / self-destruct keys and
+    // state- / storage-trie paths in one filter). Owned by the snapshot — the keep-alive lease
+    // keeps it alive and CleanUp disposes it. Defaults to the AlwaysTrue sentinel (never a false
+    // negative) until the real filter is set via SetBloom at convert / merge time or on reload.
     private BloomFilter _bloom;
     public BloomFilter Bloom => _bloom;
 
@@ -96,16 +95,17 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// The contiguous trie-RLP region this snapshot occupies in its blob arena. Non-empty
-    /// only for base snapshots (which write all their RLPs through one
-    /// <see cref="BlobArenaWriter"/>); <see cref="BlobRange.None"/> for compacted /
+    /// The contiguous trie-RLP region this snapshot occupies in its blob arena, used to prefetch
+    /// the whole region in one bulk read-ahead (<see cref="AdviseWillNeedBlobRange"/>) when a
+    /// persistable snapshot is persisted — its scattered <c>NodeRef</c> reads then stream from
+    /// already-warm pages. Non-empty only for base snapshots (which write all their RLPs through
+    /// one <see cref="BlobArenaWriter"/>); <see cref="BlobRange.None"/> for compacted /
     /// persistable snapshots, whose <c>NodeRef</c>s scatter across many blob arenas.
     /// </summary>
     /// <remarks>
-    /// Read once at construction from this snapshot's own metadata HSST (the
-    /// <c>blob_range</c> key in column 0x00), the same way the leased <c>ref_ids</c> are
-    /// walked. A snapshot whose metadata carries no <c>blob_range</c> key resolves to
-    /// <see cref="BlobRange.None"/>.
+    /// Read once at construction from this snapshot's own metadata HSST (the <c>blob_range</c>
+    /// key in column 0x00). A snapshot whose metadata carries no <c>blob_range</c> key resolves
+    /// to <see cref="BlobRange.None"/>.
     /// </remarks>
     public BlobRange BlobRange { get; }
 
@@ -231,19 +231,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// Forward iterator over this snapshot's referenced blob arena ids. Reads
-    /// the ref_ids HSST value little-endian-ushort at a time.
+    /// Forward iterator over this snapshot's referenced blob arena ids, reading the ref_ids HSST
+    /// value a little-endian ushort at a time. Used during construction, <see cref="CleanUp"/> and
+    /// <see cref="PersistOnShutdown"/> to walk the leased ids. Backed by a plain
+    /// <see cref="ArenaByteReader"/> (not a <see cref="WholeReadSession"/>) that holds no resources
+    /// of its own — the surrounding snapshot's lease keeps the mmap alive.
     /// </summary>
-    /// <remarks>
-    /// Backed by a plain <see cref="ArenaByteReader"/> over the snapshot's reservation
-    /// rather than a <see cref="WholeReadSession"/>: ref_ids is a tiny, frequently-accessed
-    /// metadata entry that fits in a single OS page, so the page-residency tracker (touched
-    /// on each <c>ArenaByteReader.TryRead</c>) is the right consumer of these reads. A
-    /// session would either bypass the tracker and drop pages from the kernel page cache on
-    /// dispose, or skip the dispose-time <c>MADV_DONTNEED</c> only to keep paying for the
-    /// per-session mmap view + lease bookkeeping for a 2-byte read. The reader holds no
-    /// resources of its own; the surrounding snapshot's lease keeps the mmap alive.
-    /// </remarks>
     private RefIdsEnumerator<ArenaByteReader, NoOpPin> GetRefIdsEnumerator() => new(_reservation.CreateReader(), _metadataScope);
 
     /// <summary>
@@ -520,6 +513,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             }
         }
 
+        // A hand-rolled spin-lock rather than System.Threading.SpinLock: the lock bit
+        // (MetaLockBit) is packed into _meta alongside the clock hand (MetaHandMask), keeping
+        // the cache's whole mutable state in one int so the struct stays inline on the snapshot.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void AcquireLock(ref int meta)
         {
