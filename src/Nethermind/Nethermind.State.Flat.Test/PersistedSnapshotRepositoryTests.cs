@@ -50,7 +50,7 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void PersistSnapshot_And_Query()
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -83,7 +83,7 @@ public class PersistedSnapshotRepositoryTests
     {
         // 64 MiB shared arena: a 256k-slot snapshot (~10 MiB) stays below the 512 MiB
         // dedicated-arena threshold, so it must fit within a single shared arena file.
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 4 * 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -110,7 +110,7 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void NewerSnapshot_OverridesOlderValue()
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -150,7 +150,7 @@ public class PersistedSnapshotRepositoryTests
         MemDb catalogDb = new();
 
         // Session 1: persist a snapshot
-        using (ArenaManager smallArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
+        using (ArenaManager smallArena1 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
@@ -160,7 +160,7 @@ public class PersistedSnapshotRepositoryTests
         }
 
         // Session 2: reload from disk
-        using (ArenaManager smallArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
+        using (ArenaManager smallArena2 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
@@ -174,7 +174,7 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void ConvertSnapshot_RoundTrip_AllDataCategories()
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -235,7 +235,7 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void RemoveStatesUntil_RemovesOldSnapshots()
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -264,7 +264,7 @@ public class PersistedSnapshotRepositoryTests
     [TestCase(5)]
     public void TryGetSnapshotFrom_WalksBaseChainFromSeed(int chainLength)
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -290,7 +290,7 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void LastRegisteredState_TracksRegistrationsAcrossConvertAndPrune()
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -320,7 +320,7 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void TryGetSnapshotFrom_Parameterless_SelfSeedsFromLastRegisteredState()
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -355,7 +355,7 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void TryGetSnapshotFrom_EmptyRepo_ReturnsNull()
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -370,7 +370,7 @@ public class PersistedSnapshotRepositoryTests
     [TestCase(-1)] // seed below fromState block (constructed via from at block 5)
     public void TryGetSnapshotFrom_SeedNotAboveTarget_ReturnsNull(int seedOffset)
     {
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -392,7 +392,7 @@ public class PersistedSnapshotRepositoryTests
         // base whose From == s0) is pruned. BFS must navigate through the compacted skip
         // pointer for free but NEVER return the compacted entry — base-only is the new
         // contract — so the result is null.
-        using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
+        using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 4 * 1024 * 1024);
         using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -439,7 +439,7 @@ public class PersistedSnapshotRepositoryTests
         // bug: ids were minted per ConvertSnapshotToPersistedSnapshot call, so 65k base
         // snapshots used 65k blob arena ids. Per-file ids pack many writers into one file —
         // file count stays bounded under steady state.
-        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -464,7 +464,7 @@ public class PersistedSnapshotRepositoryTests
     [TestCase(false, TestName = "ConvertSnapshot_RecordsBlobRange(no trie nodes)")]
     public void ConvertSnapshot_RecordsBlobRange(bool withTrieNode)
     {
-        using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+        using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "base"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -503,7 +503,7 @@ public class PersistedSnapshotRepositoryTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
+        using (ArenaManager arena1 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024))
         using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
         using (PersistedSnapshotRepository repo1 = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
@@ -516,7 +516,7 @@ public class PersistedSnapshotRepositoryTests
                 new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
         }
 
-        using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using ArenaManager arena2 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
         using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance);
         repo2.LoadFromCatalog();
@@ -530,7 +530,7 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void LeaseBaseSnapshotsInRange_ReturnsBasesTilingWindow()
     {
-        using ArenaManager arena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+        using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "base"), 1024 * 1024);
         using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
         repo.LoadFromCatalog();
@@ -569,7 +569,7 @@ public class PersistedSnapshotRepositoryTests
         string blobDir = Path.Combine(_testDir, "blobs", "base");
 
         // Session 1: 4 bases + a CompactSize=4 persistable covering all 4 of them.
-        using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
+        using (ArenaManager arena1 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024))
         using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
@@ -588,7 +588,7 @@ public class PersistedSnapshotRepositoryTests
         }
 
         // Session 2: reload. LoadFromCatalog now auto-calls ReconstructBloom.
-        using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using ArenaManager arena2 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
         using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance);
         repo2.LoadFromCatalog();
@@ -646,7 +646,7 @@ public class PersistedSnapshotRepositoryTests
         string arenaDir = Path.Combine(_testDir, "arenas", "rt");
         string blobDir = Path.Combine(_testDir, "blobs", "rt");
 
-        using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
+        using (ArenaManager arena1 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024))
         using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
@@ -666,7 +666,7 @@ public class PersistedSnapshotRepositoryTests
             Assert.That(repo.SnapshotCount, Is.EqualTo(5), "session 1 must hold 4 bases + 1 persistable");
         }
 
-        using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using ArenaManager arena2 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
         using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance);
         repo2.LoadFromCatalog();
@@ -705,7 +705,7 @@ public class PersistedSnapshotRepositoryTests
         string arenaDir = Path.Combine(_testDir, "arenas", "par");
         string blobDir = Path.Combine(_testDir, "blobs", "par");
 
-        using (ArenaManager arena1 = new(arenaDir, 0, maxArenaSize: 64 * 1024))
+        using (ArenaManager arena1 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024))
         using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
         using (PersistedSnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
@@ -727,7 +727,7 @@ public class PersistedSnapshotRepositoryTests
             compactor.DoCompactPersistable(ids[16]);
         }
 
-        using ArenaManager arena2 = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using ArenaManager arena2 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
         using PersistedSnapshotRepository repo2 = new(arena2, blobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance);
         repo2.LoadFromCatalog();

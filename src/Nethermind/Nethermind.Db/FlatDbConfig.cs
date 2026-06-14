@@ -27,6 +27,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool EnableLongFinality { get; set; } = false;
     public int LongFinalityReorgDepth { get; set; } = 90000;
     public long ArenaFileSizeBytes { get; set; } = 1.GiB;
+    public long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; } = 1.GiB;
     public long PersistedSnapshotArenaPageCacheBytes { get; set; } = 8.GiB;
     public bool PersistedSnapshotFadviseOnPageEviction { get; set; } = false;
     public bool PersistedSnapshotPunchHoleOnReclaim { get; set; } = true;

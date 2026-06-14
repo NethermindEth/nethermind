@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -14,6 +15,11 @@ namespace Nethermind.State.Flat.Test;
 public class StorageLayerTests
 {
     private string _testDir = null!;
+
+    // Look up a catalog entry by (To, depth) over the public Entries list — the catalog itself
+    // no longer exposes a Find method (production reads the whole Entries list).
+    private static SnapshotCatalog.CatalogEntry? FindEntry(SnapshotCatalog catalog, StateId to, long depth) =>
+        catalog.Entries.FirstOrDefault(e => e.To.Equals(to) && e.To.BlockNumber - e.From.BlockNumber == depth);
 
     [SetUp]
     public void SetUp()
@@ -79,9 +85,9 @@ public class StorageLayerTests
         Assert.That(loaded.Entries.Count, Is.EqualTo(4));
 
         // All three entries at sharedTo must survive distinct.
-        SnapshotCatalog.CatalogEntry? loadedBase = loaded.Find(sharedTo, depth: 1);
-        SnapshotCatalog.CatalogEntry? loadedCompacted = loaded.Find(sharedTo, depth: 2);
-        SnapshotCatalog.CatalogEntry? loadedPersistable = loaded.Find(sharedTo, depth: 4);
+        SnapshotCatalog.CatalogEntry? loadedBase = FindEntry(loaded, sharedTo, depth: 1);
+        SnapshotCatalog.CatalogEntry? loadedCompacted = FindEntry(loaded, sharedTo, depth: 2);
+        SnapshotCatalog.CatalogEntry? loadedPersistable = FindEntry(loaded, sharedTo, depth: 4);
         Assert.That(loadedBase, Is.Not.Null);
         Assert.That(loadedBase!.From, Is.EqualTo(s_base_from));
         Assert.That(loadedBase.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
@@ -95,7 +101,7 @@ public class StorageLayerTests
         Assert.That(loadedPersistable.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
         Assert.That(loadedPersistable.Kind, Is.EqualTo(SnapshotKind.Persistable));
 
-        SnapshotCatalog.CatalogEntry? loadedTail = loaded.Find(s2, depth: 100);
+        SnapshotCatalog.CatalogEntry? loadedTail = FindEntry(loaded, s2, depth: 100);
         Assert.That(loadedTail, Is.Not.Null);
         Assert.That(loadedTail!.From, Is.EqualTo(sharedTo));
         Assert.That(loadedTail.Location, Is.EqualTo(new SnapshotLocation(0, 7168, 2048)));
@@ -117,35 +123,20 @@ public class StorageLayerTests
         // Same To (s2), different depth (s_compactedFrom→s2 has depth=2 vs s1→s2 depth=1).
         catalog.Add(new(s_compactedFrom, s2, new(0, 200, 100), SnapshotKind.Compacted));
 
-        Assert.That(catalog.Find(s1, depth: 1), Is.Not.Null);
+        Assert.That(FindEntry(catalog, s1, depth: 1), Is.Not.Null);
         Assert.That(catalog.Remove(s1, depth: 1), Is.True);
-        Assert.That(catalog.Find(s1, depth: 1), Is.Null);
+        Assert.That(FindEntry(catalog, s1, depth: 1), Is.Null);
         Assert.That(catalog.Entries.Count, Is.EqualTo(2));
         Assert.That(catalog.Remove(missing, depth: 1), Is.False);
 
         // Removing one (To, depth) leaves the sibling at the same To intact.
-        Assert.That(catalog.Find(s2, depth: 1), Is.Not.Null);
-        Assert.That(catalog.Find(s2, depth: 2), Is.Not.Null);
+        Assert.That(FindEntry(catalog, s2, depth: 1), Is.Not.Null);
+        Assert.That(FindEntry(catalog, s2, depth: 2), Is.Not.Null);
         Assert.That(catalog.Remove(s2, depth: 1), Is.True);
-        Assert.That(catalog.Find(s2, depth: 1), Is.Null);
-        Assert.That(catalog.Find(s2, depth: 2), Is.Not.Null);
+        Assert.That(FindEntry(catalog, s2, depth: 1), Is.Null);
+        Assert.That(FindEntry(catalog, s2, depth: 2), Is.Not.Null);
     }
 
-    [Test]
-    public void SnapshotCatalog_UpdateLocation()
-    {
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
-
-        SnapshotCatalog catalog = new(new MemDb());
-        SnapshotLocation origLoc = new(0, 0, 100);
-        SnapshotLocation newLoc = new(1, 500, 100);
-        catalog.Add(new(s0, s1, origLoc, SnapshotKind.Base));
-
-        catalog.UpdateLocation(s1, depth: 1, newLoc);
-
-        Assert.That(catalog.Find(s1, depth: 1)!.Location, Is.EqualTo(newLoc));
-    }
 
     [Test]
     public void SnapshotCatalog_Load_EmptyOrMissing_ReturnsEmpty()
@@ -160,7 +151,7 @@ public class StorageLayerTests
     public void ArenaManager_CreateWriterAndComplete_WritesToArena()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 4096);
+        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 4096);
         manager.Initialize([]);
 
         byte[] data = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -185,7 +176,7 @@ public class StorageLayerTests
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
-        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
         manager.Initialize([]);
 
         // First write some data to establish a baseline
@@ -224,7 +215,7 @@ public class StorageLayerTests
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
-        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
         manager.Initialize([]);
 
         // Write small data via ArenaWriter
@@ -259,7 +250,7 @@ public class StorageLayerTests
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // Lower the dedicated threshold so the test doesn't need to allocate 512 MiB.
-        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 4096, dedicatedArenaThreshold: 64 * 1024);
+        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 4096, dedicatedArenaThreshold: 64 * 1024);
         manager.Initialize([]);
 
         const long estimate = 256 * 1024;
@@ -284,7 +275,7 @@ public class StorageLayerTests
     public void ArenaManager_ConcurrentWriters_UseDifferentArenas()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 200);
+        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 200);
         manager.Initialize([]);
 
         // Write some data

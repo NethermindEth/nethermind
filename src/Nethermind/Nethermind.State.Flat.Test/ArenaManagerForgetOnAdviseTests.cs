@@ -35,7 +35,7 @@ public class ArenaManagerForgetOnAdviseTests
     }
 
     private ArenaManager NewManager() =>
-        new(Path.Combine(_testDir, "arenas"), pageCacheBytes: 1024L * Environment.SystemPageSize, maxArenaSize: 1L << 20);
+        ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas"), pageCacheBytes: 1024L * Environment.SystemPageSize, maxArenaSize: 1L << 20);
 
     // Throwaway file backing — the manager's `_arenas` dict still doesn't know about the
     // synthesised reservation's id, so the file-level madvise path operates on the synthetic

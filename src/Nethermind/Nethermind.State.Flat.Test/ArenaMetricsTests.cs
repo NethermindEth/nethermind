@@ -45,7 +45,7 @@ public class ArenaMetricsTests
         long resvBytesBefore = Metrics.ArenaReservationBytes;
 
         string arenaDir = Path.Combine(_testDir, "arena");
-        using ArenaManager arena = new(arenaDir, pageCacheBytes: 0,
+        using ArenaManager arena = ArenaManagerTestFactory.Create(arenaDir, pageCacheBytes: 0,
             maxArenaSize: maxArenaSize);
 
         // Before any write the file isn't materialised yet (CreateArenaFile fires on first writer).

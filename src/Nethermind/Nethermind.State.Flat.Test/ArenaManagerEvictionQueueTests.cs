@@ -46,7 +46,7 @@ public class ArenaManagerEvictionQueueTests
     }
 
     private ArenaManager NewManager(long pageCacheBytes) =>
-        new(Path.Combine(_testDir, "arenas"), pageCacheBytes, maxArenaSize: 64 * 1024);
+        ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas"), pageCacheBytes, maxArenaSize: 64 * 1024);
 
     [Test]
     public void DisabledTracker_NoQueueOrDrain_QueueEvictionIsNoOp()

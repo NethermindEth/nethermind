@@ -207,22 +207,16 @@ public sealed class BlobArenaManager : IDisposable
         lock (_lock)
         {
             if (hasHeadroom) _mutableFiles.Add(file.BlobArenaId);
-            PushFrontierDelta(file);
+            // Ratchet BlobAllocatedBytes up to file.Frontier: push the delta since the last report
+            // and bring ReportedFrontier in sync. Bytes are **allocated** (Frontier), not mapped
+            // (MaxSize) — sparse-file zeros after the frontier are excluded.
+            long delta = file.Frontier - file.ReportedFrontier;
+            if (delta != 0)
+            {
+                file.ReportedFrontier = file.Frontier;
+                Interlocked.Add(ref Metrics._blobAllocatedBytes, delta);
+            }
         }
-    }
-
-    // Ratchet BlobAllocatedBytes up to file.Frontier. Matches ArenaManager.PushFrontierDelta's
-    // semantics: push the delta since the last report, bring ReportedFrontier in sync. Bytes are
-    // **allocated** (Frontier), not mapped (MaxSize) — sparse-file zeros after the frontier are
-    // excluded.
-    private static void PushFrontierDelta(BlobArenaFile file)
-    {
-        long current = file.Frontier;
-        long reported = file.ReportedFrontier;
-        long delta = current - reported;
-        if (delta == 0) return;
-        file.ReportedFrontier = current;
-        Interlocked.Add(ref Metrics._blobAllocatedBytes, delta);
     }
 
     /// <summary>

@@ -65,6 +65,10 @@ public sealed class SnapshotCatalog(IDb db)
     private static readonly byte[] MetadataKey = new byte[4];
 
     private readonly IDb _db = db;
+    // In-memory index over the DB-persisted entries, (re)built by Load. The live snapshot count
+    // is small and bounded (in-memory base tier + persisted tiers), so caching every entry keeps
+    // Entries / Add (dedup by key) O(1) without a DB round-trip; the DB remains the source of
+    // truth that survives restart.
     private readonly Dictionary<(StateId To, long Depth), CatalogEntry> _entries = [];
 
     /// <summary>
@@ -98,24 +102,6 @@ public sealed class SnapshotCatalog(IDb db)
         WriteKey(key, to, depth);
         _db.Remove(key);
         return true;
-    }
-
-    public CatalogEntry? Find(in StateId to, long depth) =>
-        _entries.TryGetValue((to, depth), out CatalogEntry? entry) ? entry : null;
-
-    /// <summary>
-    /// Update the location of a catalog entry (used after arena compaction).
-    /// </summary>
-    public void UpdateLocation(in StateId to, long depth, SnapshotLocation newLocation)
-    {
-        if (!_entries.TryGetValue((to, depth), out CatalogEntry? entry)) return;
-        CatalogEntry updated = entry with { Location = newLocation };
-        _entries[(to, depth)] = updated;
-        Span<byte> key = stackalloc byte[KeySize];
-        WriteKey(key, to, depth);
-        byte[] value = new byte[EntrySize];
-        WriteEntry(value, updated);
-        _db.Set(key, value);
     }
 
     private static long Depth(CatalogEntry entry) => entry.To.BlockNumber - entry.From.BlockNumber;

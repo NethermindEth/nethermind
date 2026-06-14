@@ -42,7 +42,7 @@ public class ArenaReclaimPunchHoleTests
         int pageSize = Environment.SystemPageSize;
         string arenaDir = Path.Combine(_testDir, "arena");
 
-        using ArenaManager manager = new(arenaDir, pageCacheBytes: 0,
+        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, pageCacheBytes: 0,
             maxArenaSize: 8L * 1024 * 1024,
             punchHoleOnReclaim: punchHoleOnReclaim);
 

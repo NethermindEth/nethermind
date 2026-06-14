@@ -64,6 +64,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }
 
+    [ConfigItem(Description = "Estimated-size threshold (bytes) at or above which a persisted-snapshot arena write goes to its own dedicated file instead of being packed into a shared arena.", DefaultValue = "1073741824")]
+    long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; }
+
     [ConfigItem(Description = "Page-cache budget (bytes) for the persisted-snapshot arena. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker.", DefaultValue = "8589934592")]
     long PersistedSnapshotArenaPageCacheBytes { get; set; }
 

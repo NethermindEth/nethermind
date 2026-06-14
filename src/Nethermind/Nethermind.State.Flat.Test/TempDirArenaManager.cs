@@ -27,7 +27,7 @@ public sealed class TempDirArenaManager : IArenaManager
         // ArenaFile requires the mmap to be page-aligned; 4 KiB floor avoids tiny test sizes
         // tripping the mmap minimum.
         long maxArenaSize = Math.Max(arenaSize, Environment.SystemPageSize);
-        _inner = new ArenaManager(_tempDir, pageCacheBytes: 0, maxArenaSize: maxArenaSize);
+        _inner = ArenaManagerTestFactory.Create(_tempDir, pageCacheBytes: 0, maxArenaSize: maxArenaSize);
     }
 
     public PageResidencyTracker PageTracker => _inner.PageTracker;

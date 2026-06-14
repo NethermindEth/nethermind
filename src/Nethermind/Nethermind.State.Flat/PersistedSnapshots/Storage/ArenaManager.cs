@@ -4,6 +4,8 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Numerics;
+using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -17,13 +19,13 @@ public sealed class ArenaManager : IArenaManager
     private const string ArenaFilePrefix = "arena_";
     private const string DedicatedArenaFilePrefix = "dedicated_";
     private const string ArenaFileExtension = ".bin";
-    private const long DefaultDedicatedArenaThreshold = 512L * 1024 * 1024;
 
     private readonly string _basePath;
     private readonly long _maxArenaSize;
     private readonly long _dedicatedArenaThreshold;
     private readonly bool _fadviseOnEviction;
     private readonly bool _punchHoleOnReclaim;
+    private readonly ILogger _logger;
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
     // Shared (non-dedicated) arenas with headroom AND not currently held by a writer. A writer
     // reserves a file by removing it from this set; its Complete / Cancel re-adds it if room
@@ -49,15 +51,16 @@ public sealed class ArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
-    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, bool punchHoleOnReclaim = true)
+    public ArenaManager(string basePath, IFlatDbConfig config, ILogManager logManager)
     {
         _basePath = basePath;
-        _maxArenaSize = maxArenaSize;
-        _dedicatedArenaThreshold = dedicatedArenaThreshold;
-        _fadviseOnEviction = fadviseOnEviction;
-        _punchHoleOnReclaim = punchHoleOnReclaim;
+        _maxArenaSize = config.ArenaFileSizeBytes;
+        _dedicatedArenaThreshold = config.PersistedSnapshotDedicatedArenaThresholdBytes;
+        _fadviseOnEviction = config.PersistedSnapshotFadviseOnPageEviction;
+        _punchHoleOnReclaim = config.PersistedSnapshotPunchHoleOnReclaim;
+        _logger = logManager.GetClassLogger<ArenaManager>();
         Directory.CreateDirectory(basePath);
-        _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
+        _pageTracker = PageResidencyTracker.FromByteBudget(config.PersistedSnapshotArenaPageCacheBytes);
         // ResidentBytes is refreshed by _metricsTimer below; seed to 0 so the gauge appears immediately.
         Metrics.PageTrackerResidentBytes = 0L;
         Metrics.PageTrackerMetadataBytes = _pageTracker.MetadataBytes;
@@ -109,14 +112,21 @@ public sealed class ArenaManager : IArenaManager
             }
 
             // Compute frontiers (max end-offset of any slice referencing the arena) and live
-            // sizes from the catalog. Entries pointing at arena ids we didn't load on disk
-            // are dropped silently — the catalog is the slower-moving authority but the
-            // on-disk file set is what we can actually serve.
+            // sizes from the catalog. Entries pointing at arena ids we didn't load on disk are
+            // dropped — the catalog is the slower-moving authority but the on-disk file set is
+            // what we can actually serve. The drop signals catalog/disk drift, so warn once per
+            // missing arena id (not per entry).
             Dictionary<int, long> liveSizes = [];
+            HashSet<int> missingArenas = [];
             foreach (SnapshotCatalog.CatalogEntry entry in entries)
             {
                 int aid = entry.Location.ArenaId;
-                if (!_arenas.TryGetValue(aid, out ArenaFile? arena)) continue;
+                if (!_arenas.TryGetValue(aid, out ArenaFile? arena))
+                {
+                    if (missingArenas.Add(aid) && _logger.IsWarn)
+                        _logger.Warn($"Persisted-snapshot catalog references arena {aid} with no on-disk file; dropping its entries.");
+                    continue;
+                }
                 long end = entry.Location.Offset + entry.Location.Size;
                 if (end > arena.Frontier) arena.Frontier = end;
 
@@ -172,7 +182,14 @@ public sealed class ArenaManager : IArenaManager
         lock (_lock)
         {
             if (hasHeadroom) _mutableArenas.Add(file.Id);
-            PushFrontierDelta(file);
+            // Ratchet ArenaAllocatedBytes up to file.Frontier (post-write high-water): push the
+            // delta since the last report and bring file.ReportedFrontier in sync.
+            long delta = file.Frontier - file.ReportedFrontier;
+            if (delta != 0)
+            {
+                file.ReportedFrontier = file.Frontier;
+                Interlocked.Add(ref Metrics._arenaAllocatedBytes, delta);
+            }
         }
     }
 
@@ -379,19 +396,6 @@ public sealed class ArenaManager : IArenaManager
         file.ReportedFrontier = 0;
         if (reported > 0)
             Interlocked.Add(ref Metrics._arenaAllocatedBytes, -reported);
-    }
-
-    // Ratchet ArenaAllocatedBytes up to file.Frontier. Called from OnWriteCompleted —
-    // the writer has just advanced file.Frontier to the post-write high-water; push the delta
-    // since the last time we reported and bring file.ReportedFrontier in sync.
-    private static void PushFrontierDelta(ArenaFile file)
-    {
-        long current = file.Frontier;
-        long reported = file.ReportedFrontier;
-        long delta = current - reported;
-        if (delta == 0) return;
-        file.ReportedFrontier = current;
-        Interlocked.Add(ref Metrics._arenaAllocatedBytes, delta);
     }
 
     // Mirror the tracker's resident-bytes counter into the gauge from a 1s timer. ResidentBytes
