@@ -485,7 +485,8 @@ internal static class EvmMemoryPool
     public static ArrayPool<byte> Pool
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => SafeArrayPool<byte>.Shared;
+        // Fully qualified so the using isn't stripped as unused in non-ZK builds.
+        get => Nethermind.Core.Collections.SafeArrayPool<byte>.Shared;
     }
 #else
     [ThreadStatic] private static ArrayPool<byte>? _threadLocal;
