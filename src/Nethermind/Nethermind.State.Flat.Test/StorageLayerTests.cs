@@ -167,7 +167,7 @@ public class StorageLayerTests
 
         // Read back and verify
         using (WholeReadSession session = manager.Open(location).BeginWholeReadSession())
-            Assert.That(session.AsSpanIntBounded().ToArray(), Is.EqualTo(data));
+            Assert.That(TestFixtureHelpers.ReadAll(session), Is.EqualTo(data));
         Assert.That(location.Size, Is.EqualTo(data.Length));
     }
 
@@ -268,7 +268,7 @@ public class StorageLayerTests
 
         Assert.That(new FileInfo(dedicatedFile).Length, Is.EqualTo(data.Length));
         using WholeReadSession session = manager.Open(location).BeginWholeReadSession();
-        Assert.That(session.AsSpanIntBounded().ToArray(), Is.EqualTo(data));
+        Assert.That(TestFixtureHelpers.ReadAll(session), Is.EqualTo(data));
     }
 
     [Test]

@@ -18,6 +18,18 @@ namespace Nethermind.State.Flat.Test;
 internal static class TestFixtureHelpers
 {
     /// <summary>
+    /// Materialise an entire reservation's bytes through a fresh reader. Test convenience for
+    /// asserting on small whole-reservation payloads (throws if the reservation exceeds int range).
+    /// </summary>
+    public static byte[] ReadAll(WholeReadSession session)
+    {
+        WholeReadSessionReader reader = session.CreateReader();
+        byte[] buf = new byte[checked((int)reader.Length)];
+        reader.TryRead(0, buf);
+        return buf;
+    }
+
+    /// <summary>
     /// Read the <c>ref_ids</c> list from the metadata HSST inside <paramref name="reservation"/>
     /// and acquire a lease per id on <paramref name="blobs"/>. Mirrors what
     /// <c>PersistedSnapshotRepository</c> does at load time — the resulting

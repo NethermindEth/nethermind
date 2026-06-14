@@ -53,21 +53,6 @@ public sealed unsafe class WholeReadSession : IDisposable, IHsstReaderSource<Who
     /// </summary>
     public WholeReadSessionReader CreateReader() => new(_basePtr, _size);
 
-    /// <summary>
-    /// Materialise the entire reservation as a single <see cref="ReadOnlySpan{Byte}"/>.
-    /// <para>
-    /// Span&lt;T&gt; is intrinsically int-bounded; this overload throws via a checked
-    /// cast when the reservation exceeds <see cref="int.MaxValue"/>. Callers that
-    /// must support &gt;2 GiB reservations should use <see cref="CreateReader"/>
-    /// (pointer-backed, long-bounded) instead and walk the data in int-sized chunks.
-    /// </para>
-    /// </summary>
-    public ReadOnlySpan<byte> AsSpanIntBounded()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return new ReadOnlySpan<byte>(_basePtr, checked((int)_size));
-    }
-
     public void Dispose()
     {
         if (_disposed) return;

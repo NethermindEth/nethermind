@@ -41,7 +41,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
         if (snapshots.Count == 1)
         {
             using WholeReadSession session = snapshots[0].BeginWholeReadSession();
-            return session.AsSpanIntBounded().ToArray();
+            return TestFixtureHelpers.ReadAll(session);
         }
 
         long totalSize = 0;
