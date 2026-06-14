@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -375,7 +376,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            SafeArrayPool<byte>.Shared.Return(memory);
+            EvmMemoryPool.Pool.Return(memory);
         }
     }
 
@@ -425,7 +426,7 @@ public struct EvmPooledMemory
         const int MinRentSize = 1_024;
         if (_memory is null)
         {
-            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
+            _memory = EvmMemoryPool.Pool.Rent((int)Math.Max((uint)Size, MinRentSize));
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
@@ -434,10 +435,10 @@ public struct EvmPooledMemory
             if (Size > (ulong)_memory.LongLength)
             {
                 byte[] beforeResize = _memory;
-                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
+                _memory = EvmMemoryPool.Pool.Rent(TruncateToInt32(Size));
                 Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
                 Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-                SafeArrayPool<byte>.Shared.Return(beforeResize);
+                EvmMemoryPool.Pool.Return(beforeResize);
             }
             else if (Size > _lastZeroedSize)
             {
@@ -468,6 +469,51 @@ public struct EvmPooledMemory
         Metrics.EvmExceptions++;
         throw new ArgumentOutOfRangeException("EvmWord size must be 32 bytes");
     }
+}
+
+/// <summary>
+/// Source of the byte[] buffers backing <see cref="EvmPooledMemory"/>: a per-thread array pool.
+/// <para>
+/// The process-wide <see cref="ArrayPool{T}.Shared"/> keeps only one buffer per size-bucket in its
+/// per-thread (TLS) cache. During block processing the cache pre-warmer executes transactions on
+/// many threads in parallel; every frame on every thread rents its EVM memory from that single
+/// shared pool, and with nested calls and growth spanning several buckets the rentals miss the TLS
+/// cache and fall back to the per-core locked stacks. Profiling showed this fallback
+/// (<c>EvmPooledMemory.RentSlow</c> → <c>SharedArrayPool.Rent</c>) dominating block execution,
+/// together with the GC churn it feeds.
+/// </para>
+/// <para>
+/// Each thread instead gets its own pool, so the parallel pre-warmer threads and the main execution
+/// thread no longer contend for one structure. A buffer is always rented and returned on the same
+/// thread (a frame executes synchronously), so a per-thread pool is safe; returning to a foreign
+/// thread's pool would at worst be a pool-efficiency loss, never a correctness issue, because
+/// <see cref="EvmPooledMemory.RentSlow"/> zero-initialises every rented buffer regardless of origin.
+/// </para>
+/// </summary>
+internal static class EvmMemoryPool
+{
+#if ZK_EVM
+    // Preserve zkEVM determinism: always use the zk-safe shared pool.
+    public static ArrayPool<byte> Pool
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => SafeArrayPool<byte>.Shared;
+    }
+#else
+    [ThreadStatic] private static ArrayPool<byte>? _threadLocal;
+
+    public static ArrayPool<byte> Pool
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _threadLocal ??= CreateThreadLocal();
+    }
+
+    // Per-thread, uncontended pool. Bounds retained memory at 8 buffers per size-bucket up to 2 MiB;
+    // EVM memories larger than that (rare) simply allocate, as the shared pool already does.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ArrayPool<byte> CreateThreadLocal()
+        => ArrayPool<byte>.Create(maxArrayLength: 2 * 1024 * 1024, maxArraysPerBucket: 8);
+#endif
 }
 
 public static class UInt256Extensions
