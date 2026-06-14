@@ -376,7 +376,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            EvmMemoryPool.Pool.Return(memory);
+            (_pool ?? EvmMemoryPool.Pool).Return(memory);
         }
     }
 
@@ -424,9 +424,10 @@ public struct EvmPooledMemory
     private void RentSlow()
     {
         const int MinRentSize = 1_024;
+        ArrayPool<byte> pool = _pool ??= EvmMemoryPool.Pool;
         if (_memory is null)
         {
-            _memory = EvmMemoryPool.Pool.Rent((int)Math.Max((uint)Size, MinRentSize));
+            _memory = pool.Rent((int)Math.Max((uint)Size, MinRentSize));
             Array.Clear(_memory, 0, TruncateToInt32(Size));
         }
         else
@@ -435,10 +436,10 @@ public struct EvmPooledMemory
             if (Size > (ulong)_memory.LongLength)
             {
                 byte[] beforeResize = _memory;
-                _memory = EvmMemoryPool.Pool.Rent(TruncateToInt32(Size));
+                _memory = pool.Rent(TruncateToInt32(Size));
                 Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
                 Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-                EvmMemoryPool.Pool.Return(beforeResize);
+                pool.Return(beforeResize);
             }
             else if (Size > _lastZeroedSize)
             {
