@@ -6,12 +6,13 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsReporter stats, HttpClient client)
+internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsReporter stats, HttpClient client, ReorgTracker reorgTracker)
 {
+    private static readonly TimeSpan ReorgsPeriodOnFail = TimeSpan.FromMinutes(15);
+
     private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
     private readonly TestExecutor _executor = new(stats, client);
     private readonly ErrorReporter _errorReporter = new(notifier, stats);
-    private readonly ReorgTracker _reorgTracker = new(args.ReorgTrackingWindow, args.ReorgHistorySize);
 
     public async Task RunAsync(CancellationToken ct)
     {
@@ -30,7 +31,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
                 stats.RecordHeadUpdate();
                 Console.WriteLine($"New head: {head}");
 
-                if (_reorgTracker.OnNewHead(head) is {} reorg)
+                if (reorgTracker.OnNewHead(head) is {} reorg)
                 {
                     stats.RecordReorg();
                     Console.WriteLine($"Reorg detected: {reorg}");
@@ -107,7 +108,8 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
 
             stats.RecordTestFailure();
             Console.Error.WriteLine($"Mismatch on test \"{test.Definition.FilePath}\" at block #{test.Head:#}");
-            return testFailure;
+
+            return testFailure with {RecentReorgs = reorgTracker.GetReorgs(ReorgsPeriodOnFail)};
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

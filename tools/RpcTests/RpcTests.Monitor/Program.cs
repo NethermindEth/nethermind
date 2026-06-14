@@ -73,10 +73,11 @@ rootCommand.SetAction(async (parseResult, ct) =>
     string name = parseResult.GetValue(nameOption) ?? string.Join('|', parseResult.GetRequiredValue(testsOption));
     using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(60) };
     using INotifier notifier = GetNotifier(name, parseResult.GetRequiredValue(devOption));
+    ReorgTracker reorgTracker = new();
 
     TimeSpan? reportAt = parseResult.GetValue(reportAtOption);
-    IStatsReporter stats = reportAt is { } time ? new StatsReporter(notifier, time) : NullStatsReporter.Instance;
-    MonitorRunner runner = new(args, notifier, stats, client);
+    IStatsReporter stats = reportAt is { } time ? new StatsReporter(notifier, time, reorgTracker) : NullStatsReporter.Instance;
+    MonitorRunner runner = new(args, notifier, stats, client, reorgTracker);
 
     await Task.WhenAll(
         runner.RunAsync(ct),

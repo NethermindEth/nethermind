@@ -5,8 +5,10 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class StatsReporter(INotifier notifier, TimeSpan reportAt) : IStatsReporter
+internal class StatsReporter(INotifier notifier, TimeSpan reportAt, ReorgTracker reorgTracker) : IStatsReporter
 {
+    private static readonly TimeSpan ReorgsPeriod = TimeSpan.FromDays(1);
+
     private static TimeSpan DelayUntilNext(TimeSpan timeOfDay)
     {
         DateTime now = DateTime.UtcNow;
@@ -54,7 +56,8 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt) : IStatsRepo
                 try
                 {
                     await Task.Delay(DelayUntilNext(reportAt), ct);
-                    await notifier.NotifyStatsAsync(GetAndReset(), ct);
+                    MonitorStats stats = GetAndReset() with {RecentReorgs = reorgTracker.GetReorgs(ReorgsPeriod)};
+                    await notifier.NotifyStatsAsync(stats, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

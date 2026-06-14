@@ -19,36 +19,41 @@ internal class ReorgTracker(int trackingWindow = 64, int historySize = 50)
     private int _writeIndex;
     private int _count;
 
-    public ReorgEntry? OnNewHead(BlockInfo head)
+    public ReorgEntry? OnNewHead(BlockInfo block)
     {
-        int slot = (int)(head.Number % _blocks.Length);
-        BlockInfo? previous = _blocks[slot];
-        _blocks[slot] = head;
+        int slot = (int)(block.Number % _blocks.Length);
+        BlockInfo? prevBlock = _blocks[slot];
+        _blocks[slot] = block;
 
-        if (previous?.Number != head.Number || _hashComparer.Equals(previous.Hash, head.Hash))
+        if (prevBlock is null || prevBlock.Number != block.Number || _hashComparer.Equals(prevBlock.Hash, block.Hash))
             return null;
 
-        ReorgEntry entry = new(previous, head, DateTime.UtcNow);
+        ReorgEntry entry = new(prevBlock, block, DateTime.UtcNow);
         Store(entry);
         return entry;
     }
 
-    public IReadOnlyList<ReorgEntry> GetReorgs(int? count = null)
+    public IReadOnlyList<ReorgEntry> GetReorgs(DateTime? since = null)
     {
         lock (_lock)
         {
-            int take = count is null ? _count : Math.Clamp(count.Value, 0, _count);
-            int skip = _count - take;
+            List<ReorgEntry> result = [];
+            for (int i = 0; i < _count; i++)
+            {
+                int index = (_writeIndex - 1 - i + _reorgs.Length) % _reorgs.Length;
+                ReorgEntry entry = _reorgs[index];
+                if (since is { } from && entry.At < from)
+                    break;
+                result.Add(entry);
+            }
 
-            ReorgEntry[] result = new ReorgEntry[take];
-
-            int start = _count < _reorgs.Length ? 0 : _writeIndex;
-            for (int i = 0; i < take; i++)
-                result[i] = _reorgs[(start + skip + i) % _reorgs.Length];
-
+            result.Reverse();
             return result;
         }
     }
+
+    public IReadOnlyList<ReorgEntry> GetReorgs(TimeSpan? period = null) =>
+        GetReorgs(period is not null ? DateTime.UtcNow - period.Value : null);
 
     private void Store(ReorgEntry entry)
     {

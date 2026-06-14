@@ -24,28 +24,26 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
 
     public async Task NotifyFailureAsync(TestFailure failure, CancellationToken ct)
     {
-        string header =
-            $"""
-             ❌ {_prefix} response mismatch at block `{failure.Head}`
-             - Method: `{failure.Request.MethodOrUnknown}`
-             - Test: `{failure.Test.Definition.FilePath}`
-             """;
-
         try
         {
-            (string name, string content)[] files =
+            string message =
+                $"""
+                 ❌ {_prefix} response mismatch at block `{failure.Head}`
+                 - Method: `{failure.Request.MethodOrUnknown}`
+                 - Test: `{failure.Test.Definition.FilePath}`
+                 """;
+
+            List<(string name, string content)> files =
             [
                 ("request.json", failure.Request.ToPrettyString()),
                 ("actual-response.json", failure.ActualResponse.ToPrettyString()),
                 ("expected-response.json", failure.ExpectedResponse.ToPrettyString())
             ];
 
-            IList<ExternalFileReference> fileRefs = await Task.WhenAll(
-                files.Select(f => UploadFileAsync(f.name, f.content, ct)));
+            if (BuildReorgsFile(failure.RecentReorgs) is { } reorgsFile)
+                files.Add(reorgsFile);
 
-            await _slack.Files.CompleteUploadExternal(
-                fileRefs, channelId: config.ChannelId, initialComment: header,
-                cancellationToken: ct);
+            await PostAsync(message, files, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -58,28 +56,15 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
         try
         {
             string text = $"⚠ {_prefix}\n{error}";
+            List<(string name, string content)> files = [];
 
-            if (exception is null)
-            {
-                await _slack.Chat.PostMessage(new Message
-                {
-                    Channel = config.ChannelId,
-                    Text = text
-                });
-            }
-            else
+            if (exception is not null)
             {
                 text = $"{text}\n```{exception.Message}```";
-
-                ExternalFileReference fileRef = await UploadFileAsync(
-                    "exception.txt", exception.ToString(), CancellationToken.None
-                );
-
-                await _slack.Files.CompleteUploadExternal(
-                    [fileRef], channelId: config.ChannelId, initialComment: text,
-                    cancellationToken: CancellationToken.None
-                );
+                files.Add(("exception.txt", exception.ToString()));
             }
+
+            await PostAsync(text, files, CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -91,24 +76,48 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
     {
         try
         {
-            await _slack.Chat.PostMessage(new Message
-            {
-                Channel = config.ChannelId,
-                Text = $"""
-                        ℹ {_prefix} statistic since `{stats.Since:u}`:
-                        - `{stats.HeadUpdates}` head updates, `{stats.Reorgs}` reorgs
-                        - `{stats.TestRuns}` tests executed
-                        - `{stats.RequestRuns}` requests sent
-                        - `{stats.TestFailures}` test failures
-                        - `{stats.Errors}` errors
-                        """
-            }, ct);
+            string text =
+                $"""
+                 ℹ {_prefix} statistic since `{stats.Since:u}`:
+                 - `{stats.HeadUpdates}` head updates, `{stats.Reorgs}` reorgs
+                 - `{stats.TestRuns}` tests executed
+                 - `{stats.RequestRuns}` requests sent
+                 - `{stats.TestFailures}` test failures
+                 - `{stats.Errors}` errors
+                 """;
+
+            List<(string name, string content)> files = [];
+            if (BuildReorgsFile(stats.RecentReorgs) is { } reorgsFile)
+                files.Add(reorgsFile);
+
+            await PostAsync(text, files, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.Error.WriteLine($"Slack notification error: {ex.Message}");
         }
     }
+
+    private async Task PostAsync(string comment, IReadOnlyList<(string name, string content)> files, CancellationToken ct)
+    {
+        if (files.Count == 0)
+        {
+            await _slack.Chat.PostMessage(new Message { Channel = config.ChannelId, Text = comment }, ct);
+            return;
+        }
+
+        IList<ExternalFileReference> fileRefs = await Task.WhenAll(
+            files.Select(f => UploadFileAsync(f.name, f.content, ct)));
+
+        await _slack.Files.CompleteUploadExternal(
+            fileRefs, channelId: config.ChannelId, initialComment: comment,
+            cancellationToken: ct);
+    }
+
+    private static (string name, string content)? BuildReorgsFile(IReadOnlyList<ReorgEntry> reorgs) =>
+        reorgs.Count == 0
+            ? null
+            : ("recent-reorgs.txt", string.Join('\n', reorgs.Select(r => r.ToString())));
 
     private async Task<ExternalFileReference> UploadFileAsync(string filename, string content, CancellationToken ct)
     {

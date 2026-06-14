@@ -78,6 +78,7 @@ internal record TestFailure(TestContext Test, JsonNode Request, JsonNode ActualR
 {
     public BlockInfo Head => Test.Head;
     public string MonitorName { get; init; } = "";
+    public IReadOnlyList<ReorgEntry> RecentReorgs { get; init; } = [];
 }
 
 internal class KnownTopics

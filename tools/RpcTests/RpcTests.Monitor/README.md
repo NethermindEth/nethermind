@@ -108,3 +108,8 @@ Only Slack is supported for now. Configure via environment variables:
 - `RPC_MONITOR_BOT_TOKEN` + `RPC_MONITOR_CHANNEL_ID` — post messages to a Slack channel via a bot user, uploads responses as files.
 
 Slack notifications are rate-limited to avoid spamming in case of consistent test/node/app failures.
+
+The monitor tracks chain reorgs observed on the `newHeads` stream (a previously seen block number
+reappearing with a different hash). When any have occurred recently, a `recent-reorgs.txt` file
+is attached to failure notifications and to the daily statistics report (if enabled).
+No file is attached when there are no reorgs in the window.
