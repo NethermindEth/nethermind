@@ -87,12 +87,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         _pendingCount = 0;
         _hasEmittedLeaf = false;
         _lastWriterPage = (_writer.Written - _writer.FirstOffset) / PageLayout.PageSize;
-        PrimePerAddBuffers(ref buffers, expectedKeyCount, keyLength);
-    }
-
-    /// <summary>Pre-grow CommonPrefixArr and (when keyLength is known) PrevKeyBuf capacity so the per-Add hot path avoids regrows.</summary>
-    private static void PrimePerAddBuffers(ref HsstBTreeBuilderBuffers buffers, int expectedKeyCount, int keyLength)
-    {
         int cpCap = Math.Max(expectedKeyCount, 64);
         buffers.CommonPrefixArr.EnsureCapacity(cpCap);
         if (keyLength > 0)
