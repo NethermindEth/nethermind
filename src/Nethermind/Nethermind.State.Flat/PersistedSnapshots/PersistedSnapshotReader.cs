@@ -142,9 +142,9 @@ public static class PersistedSnapshotReader
             return null;
         // length 0 = absent (DenseByteIndex gap fill). [0x00] = destructed. [0x01] = new account.
         if (b.Length == 0) return null;
-        Span<byte> oneByte = stackalloc byte[1];
-        if (!reader.TryRead(b.Offset, oneByte)) return null;
-        return oneByte[0] != PersistedSnapshotTags.SelfDestructDestructedMarkerByte;
+        byte flag = 0;
+        if (!reader.TryRead(b.Offset, new Span<byte>(ref flag))) return null;
+        return flag != PersistedSnapshotTags.SelfDestructDestructedMarkerByte;
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Hsst.TwoByteSlot;
@@ -54,9 +55,9 @@ internal static class HsstTwoByteSlotValueReader
         if (bound.Length < 5) return false;
 
         // KeyCount sits right after the leading IndexType byte.
-        Span<byte> countBuf = stackalloc byte[2];
-        if (!reader.TryRead(bound.Offset + 1, countBuf)) return false;
-        int count = BinaryPrimitives.ReadUInt16LittleEndian(countBuf) + 1;
+        ushort countLE = 0;
+        if (!reader.TryRead(bound.Offset + 1, MemoryMarshal.AsBytes(new Span<ushort>(ref countLE)))) return false;
+        int count = countLE + 1;
 
         // IndexType + KeyCount + keys + offsets; reject if it exceeds the blob.
         long overhead = 3L + (long)KeyLength * count + (long)offsetSize * (count - 1);
@@ -154,9 +155,9 @@ internal static class HsstTwoByteSlotValueReader
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        Span<byte> buf = stackalloc byte[4];
-        buf.Clear();
+        uint value = 0;
+        Span<byte> buf = MemoryMarshal.AsBytes(new Span<uint>(ref value));
         if (!reader.TryRead(offset, buf[..size])) return -1;
-        return BinaryPrimitives.ReadUInt32LittleEndian(buf);
+        return value;
     }
 }

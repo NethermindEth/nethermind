@@ -258,9 +258,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         if (meta.TrySeek(PersistedSnapshotTags.MetadataBlobRangeKey, out Bound b) &&
             b.Length == BlobRange.SerializedSize)
         {
-            Span<byte> buf = stackalloc byte[BlobRange.SerializedSize];
-            if (reader.TryRead(b.Offset, buf))
-                return BlobRange.Read(buf);
+            BlobRange range = default;
+            if (reader.TryRead(b.Offset, MemoryMarshal.AsBytes(new Span<BlobRange>(ref range))))
+                return range;
         }
         return BlobRange.None;
     }
@@ -298,9 +298,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         public bool MoveNext()
         {
             if (_cursor >= _end) return false;
-            Span<byte> buf = stackalloc byte[2];
-            if (!_reader.TryRead(_cursor, buf)) return false;
-            _current = BinaryPrimitives.ReadUInt16LittleEndian(buf);
+            if (!_reader.TryRead(_cursor, MemoryMarshal.AsBytes(new Span<ushort>(ref _current)))) return false;
             _cursor += 2;
             return true;
         }
@@ -314,11 +312,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// </summary>
     internal byte[] ResolveTrieRlp(Bound localBound)
     {
-        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
-        Span<byte> nr = nrBuf[..checked((int)localBound.Length)];
+        NodeRef nodeRef = default;
+        Span<byte> nr = MemoryMarshal.AsBytes(new Span<NodeRef>(ref nodeRef))[..checked((int)localBound.Length)];
         ArenaByteReader reader = _reservation.CreateReader();
         reader.TryRead(localBound.Offset, nr);
-        NodeRef nodeRef = NodeRef.Read(nr);
         return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
     }
 

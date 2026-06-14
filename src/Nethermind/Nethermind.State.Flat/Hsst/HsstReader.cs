@@ -75,9 +75,9 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         if (_bound.Length < 2) { matched = default; return false; }
 
         // IndexType byte is the last byte of the HSST.
-        Span<byte> idxType = stackalloc byte[1];
-        if (!_reader.TryRead(_bound.Offset + _bound.Length - 1, idxType)) { matched = default; return false; }
-        switch ((IndexType)idxType[0])
+        byte idxType = 0;
+        if (!_reader.TryRead(_bound.Offset + _bound.Length - 1, new Span<byte>(ref idxType))) { matched = default; return false; }
+        switch ((IndexType)idxType)
         {
             case IndexType.BTree:
                 if (HsstBTreeReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, keyFirst: false, out Bound btreeBound))
@@ -145,9 +145,9 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         if (_bound.Length < 2) { matched = default; return false; }
 
         // IndexType byte leads the blob — read byte 0 forward, no tail seek.
-        Span<byte> idxType = stackalloc byte[1];
-        if (!_reader.TryRead(_bound.Offset, idxType)) { matched = default; return false; }
-        switch ((IndexType)idxType[0])
+        byte idxType = 0;
+        if (!_reader.TryRead(_bound.Offset, new Span<byte>(ref idxType))) { matched = default; return false; }
+        switch ((IndexType)idxType)
         {
             case IndexType.TwoByteSlotValue:
                 if (HsstTwoByteSlotValueReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, offsetSize: 2, out Bound tbsvBound))

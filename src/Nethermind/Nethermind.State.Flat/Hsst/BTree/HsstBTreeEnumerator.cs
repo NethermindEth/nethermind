@@ -140,15 +140,15 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
         entryPos = 0;
         long currentStart = absStart;
         int depth = depthHint;
-        Span<byte> flagBuf = stackalloc byte[1];
+        byte flag = 0;
         while (depth < MaxDepth)
         {
             // Peek the flag byte to detect Entry-kind children (an entry record sitting
             // directly under an intermediate, via the direct-flush path in the builder).
             // Entries have no header, so we can't pass them to TryLoadNode — treat the
             // record as a single-entry virtual leaf at this depth.
-            if (!reader.TryRead(currentStart, flagBuf)) return false;
-            if ((BTreeNodeKind)(flagBuf[0] & 0x03) == BTreeNodeKind.Entry)
+            if (!reader.TryRead(currentStart, new Span<byte>(ref flag))) return false;
+            if ((BTreeNodeKind)(flag & 0x03) == BTreeNodeKind.Entry)
             {
                 _depth = depth;
                 entryPos = currentStart;
