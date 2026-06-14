@@ -27,14 +27,17 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public ArrayPoolList(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
 
-    public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
+    public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0, bool clearFirst = true)
     {
         _arrayPool = arrayPool;
 
         if (capacity != 0)
         {
             _array = arrayPool.Rent(capacity);
-            _array.AsSpan(0, startingCount).Clear();
+            if (clearFirst)
+            {
+                _array.AsSpan(0, startingCount).Clear();
+            }
         }
         else
         {
