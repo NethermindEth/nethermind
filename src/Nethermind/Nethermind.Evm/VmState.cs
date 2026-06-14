@@ -109,7 +109,7 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     private static VmState<TGasPolicy> Rent()
-        => StatePool.TryPop(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
+        => StatePool.TryPop(out VmState<TGasPolicy>? state) ? state! : new VmState<TGasPolicy>();
 
     [SkipLocalsInit]
     private void Initialize(
