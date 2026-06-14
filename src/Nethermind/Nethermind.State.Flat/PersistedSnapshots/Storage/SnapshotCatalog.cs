@@ -65,29 +65,9 @@ public sealed class SnapshotCatalog(IDb db)
     private static readonly byte[] MetadataKey = new byte[4];
 
     private readonly IDb _db = db;
-    // In-memory index over the DB-persisted entries, (re)built by Load. The live snapshot count
-    // is small and bounded (in-memory base tier + persisted tiers), so caching every entry keeps
-    // Entries / Add (dedup by key) O(1) without a DB round-trip; the DB remains the source of
-    // truth that survives restart.
-    private readonly Dictionary<(StateId To, long Depth), CatalogEntry> _entries = [];
-
-    /// <summary>
-    /// All catalog entries, sorted by <c>To.BlockNumber</c> ascending so callers that
-    /// depend on block order (e.g. the registration-tip rebuild after a load) keep working.
-    /// </summary>
-    public IReadOnlyList<CatalogEntry> Entries
-    {
-        get
-        {
-            List<CatalogEntry> entries = [.. _entries.Values];
-            entries.Sort(static (a, b) => a.To.BlockNumber.CompareTo(b.To.BlockNumber));
-            return entries;
-        }
-    }
 
     public void Add(CatalogEntry entry)
     {
-        _entries[(entry.To, Depth(entry))] = entry;
         Span<byte> key = stackalloc byte[KeySize];
         WriteKey(key, entry.To, Depth(entry));
         byte[] value = new byte[EntrySize];
@@ -97,9 +77,9 @@ public sealed class SnapshotCatalog(IDb db)
 
     public bool Remove(in StateId to, long depth)
     {
-        if (!_entries.Remove((to, depth))) return false;
         Span<byte> key = stackalloc byte[KeySize];
         WriteKey(key, to, depth);
+        if (!_db.KeyExists(key)) return false;
         _db.Remove(key);
         return true;
     }
@@ -107,12 +87,12 @@ public sealed class SnapshotCatalog(IDb db)
     private static long Depth(CatalogEntry entry) => entry.To.BlockNumber - entry.From.BlockNumber;
 
     /// <summary>
-    /// Load all entries from the underlying DB into the in-memory list.
+    /// Read every catalog entry from the underlying DB, sorted by <c>To.BlockNumber</c> ascending
+    /// (callers depend on block order, e.g. the registration-tip rebuild after a load). The DB is
+    /// the source of truth; no entries are cached in memory.
     /// </summary>
-    public void Load()
+    public IReadOnlyList<CatalogEntry> Load()
     {
-        _entries.Clear();
-
         byte[]? meta = _db.Get(MetadataKey);
         if (meta is not null)
         {
@@ -128,18 +108,21 @@ public sealed class SnapshotCatalog(IDb db)
                     "The persisted_snapshot/ directory has an incompatible layout — wipe and resync.");
         }
 
+        List<CatalogEntry> entries = [];
         foreach (KeyValuePair<byte[], byte[]?> kv in _db.GetAll(ordered: false))
         {
             // Entry keys are exactly KeySize; the metadata key is 4 bytes.
             if (kv.Key.Length != KeySize) continue;
             if (kv.Value is null || kv.Value.Length != EntrySize) continue;
-            CatalogEntry entry = ReadEntry(kv.Value);
-            _entries[(entry.To, Depth(entry))] = entry;
+            entries.Add(ReadEntry(kv.Value));
         }
 
         // Persist the version word if the catalog has never been written before.
         if (meta is null)
             WriteMetadata();
+
+        entries.Sort(static (a, b) => a.To.BlockNumber.CompareTo(b.To.BlockNumber));
+        return entries;
     }
 
     private void WriteMetadata()

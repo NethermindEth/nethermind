@@ -118,8 +118,7 @@ public sealed class PersistedSnapshotRepository(
             // resolve the ids. Whole-file reservations are created lazily on first lease.
             _blobs.Initialize();
 
-            _catalog.Load();
-            List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Entries];
+            List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Load()];
             _arena.Initialize(entries);
 
             LoadSnapshotsParallel(entries);

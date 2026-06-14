@@ -16,10 +16,10 @@ public class StorageLayerTests
 {
     private string _testDir = null!;
 
-    // Look up a catalog entry by (To, depth) over the public Entries list — the catalog itself
-    // no longer exposes a Find method (production reads the whole Entries list).
+    // Look up a catalog entry by (To, depth) over the loaded list — the catalog has no Find method
+    // and no in-memory index; Load() reads the current state from the DB each call.
     private static SnapshotCatalog.CatalogEntry? FindEntry(SnapshotCatalog catalog, StateId to, long depth) =>
-        catalog.Entries.FirstOrDefault(e => e.To.Equals(to) && e.To.BlockNumber - e.From.BlockNumber == depth);
+        catalog.Load().FirstOrDefault(e => e.To.Equals(to) && e.To.BlockNumber - e.From.BlockNumber == depth);
 
     [SetUp]
     public void SetUp()
@@ -81,9 +81,8 @@ public class StorageLayerTests
 
         // Load in new instance
         SnapshotCatalog loaded = new(catalogDb);
-        loaded.Load();
 
-        Assert.That(loaded.Entries.Count, Is.EqualTo(4));
+        Assert.That(loaded.Load().Count, Is.EqualTo(4));
 
         // All three entries at sharedTo must survive distinct.
         SnapshotCatalog.CatalogEntry? loadedBase = FindEntry(loaded, sharedTo, depth: 1);
@@ -127,7 +126,7 @@ public class StorageLayerTests
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Not.Null);
         Assert.That(catalog.Remove(s1, depth: 1), Is.True);
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Null);
-        Assert.That(catalog.Entries.Count, Is.EqualTo(2));
+        Assert.That(catalog.Load().Count, Is.EqualTo(2));
         Assert.That(catalog.Remove(missing, depth: 1), Is.False);
 
         // Removing one (To, depth) leaves the sibling at the same To intact.
@@ -143,9 +142,8 @@ public class StorageLayerTests
     public void SnapshotCatalog_Load_EmptyOrMissing_ReturnsEmpty()
     {
         SnapshotCatalog catalog = new(new MemDb());
-        catalog.Load();
 
-        Assert.That(catalog.Entries, Is.Empty);
+        Assert.That(catalog.Load(), Is.Empty);
     }
 
     [Test]
