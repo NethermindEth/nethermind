@@ -11,6 +11,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
     private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
     private readonly TestExecutor _executor = new(stats, client);
     private readonly ErrorReporter _errorReporter = new(notifier, stats);
+    private readonly ReorgTracker _reorgTracker = new(args.ReorgTrackingWindow, args.ReorgHistorySize);
 
     public async Task RunAsync(CancellationToken ct)
     {
@@ -28,6 +29,12 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
             {
                 stats.RecordHeadUpdate();
                 Console.WriteLine($"New head: {head}");
+
+                if (_reorgTracker.OnNewHead(head) is {} reorg)
+                {
+                    stats.RecordReorg();
+                    Console.WriteLine($"Reorg detected: {reorg}");
+                }
 
                 if (!startBlock.Post(head))
                     Console.Error.WriteLine($"Head #{head:#} skipped — pipeline busy");

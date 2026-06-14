@@ -21,6 +21,7 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt) : IStatsRepo
 
     private ulong _since = UnixNow();
     private long _headUpdates;
+    private long _reorgs;
     private long _testRuns;
     private long _requestRuns;
     private long _testFailures;
@@ -31,15 +32,18 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt) : IStatsRepo
     public void RecordRequestRun() => Interlocked.Increment(ref _requestRuns);
     public void RecordTestFailure() => Interlocked.Increment(ref _testFailures);
     public void RecordError() => Interlocked.Increment(ref _errors);
+    public void RecordReorg() => Interlocked.Increment(ref _reorgs);
 
-    private MonitorStats GetAndReset() => new(
-        FromUnix(Interlocked.Exchange(ref _since, UnixNow())),
-        Interlocked.Exchange(ref _headUpdates, 0),
-        Interlocked.Exchange(ref _testRuns, 0),
-        Interlocked.Exchange(ref _requestRuns, 0),
-        Interlocked.Exchange(ref _testFailures, 0),
-        Interlocked.Exchange(ref _errors, 0)
-    );
+    private MonitorStats GetAndReset() => new()
+    {
+        Since = FromUnix(Interlocked.Exchange(ref _since, UnixNow())),
+        HeadUpdates = Interlocked.Exchange(ref _headUpdates, 0),
+        Reorgs = Interlocked.Exchange(ref _reorgs, 0),
+        TestRuns = Interlocked.Exchange(ref _testRuns, 0),
+        RequestRuns = Interlocked.Exchange(ref _requestRuns, 0),
+        TestFailures = Interlocked.Exchange(ref _testFailures, 0),
+        Errors = Interlocked.Exchange(ref _errors, 0)
+    };
 
     public async Task RunAsync(CancellationToken ct)
     {
