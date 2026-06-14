@@ -420,9 +420,9 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
         // was converted before the reorg pruned it — in the persisted tier.
         if (!HasForkAt(canonicalBlock) && !HasPersistedForkAt(canonicalStateId)) return;
 
-        long maxBlock = Math.Max(
-            GetLastSnapshotId()?.BlockNumber ?? long.MinValue,
-            _persisted.LastRegisteredState?.BlockNumber ?? long.MinValue);
+        // The in-memory tier always sits at or above the persisted tier, so its highest block
+        // bounds the orphan walk across both.
+        long maxBlock = GetLastSnapshotId()?.BlockNumber ?? long.MinValue;
         if (maxBlock <= canonicalBlock) return;
 
         long batchStart = canonicalBlock + 1;

@@ -12,12 +12,6 @@ public interface IPersistedSnapshotRepository : IDisposable
 {
     int SnapshotCount { get; }
 
-    /// <summary>
-    /// Most-recently-registered <see cref="StateId"/> tracked under this repository's
-    /// catalog lock. Used as a self-seed for backward walks.
-    /// </summary>
-    StateId? LastRegisteredState { get; }
-
     // Two-layer storage. Returned PersistedSnapshot is pre-leased — the caller owns the
     // lease and MUST dispose it (the repository's own dict entry holds an independent
     // lease, so disposing the returned reference does not remove the snapshot from the

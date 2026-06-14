@@ -252,35 +252,6 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.SnapshotCount, Is.EqualTo(2));
     }
 
-    [Test]
-    public void LastRegisteredState_TracksRegistrationsAcrossConvertAndPrune()
-    {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
-
-        Assert.That(repo.LastRegisteredState, Is.Null);
-
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
-        StateId s2 = new(2, Keccak.Compute("2"));
-        repo.ConvertSnapshotToPersistedSnapshot(CreateTestSnapshot(s0, s1, TestItem.AddressA));
-        Assert.That(repo.LastRegisteredState, Is.EqualTo(s1));
-
-        repo.ConvertSnapshotToPersistedSnapshot(CreateTestSnapshot(s1, s2, TestItem.AddressB));
-        Assert.That(repo.LastRegisteredState, Is.EqualTo(s2));
-
-        // Pruning the tip rolls back to the next-highest remaining (s1).
-        repo.RemoveStatesUntil(s2.BlockNumber);
-        Assert.That(repo.SnapshotCount, Is.EqualTo(1));
-        Assert.That(repo.LastRegisteredState, Is.EqualTo(s2),
-            "RemoveStatesUntil(2) only removes entries with To.BlockNumber < 2, so s2 itself survives");
-
-        repo.RemoveStatesUntil(99);
-        Assert.That(repo.SnapshotCount, Is.EqualTo(0));
-        Assert.That(repo.LastRegisteredState, Is.Null);
-    }
-
     [TestCase(100)]
     [TestCase(1000)]
     public void ManyBaseSnapshots_ShareUnderlyingFiles(int count)

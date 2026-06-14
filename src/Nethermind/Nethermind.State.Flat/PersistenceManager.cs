@@ -101,9 +101,8 @@ public class PersistenceManager(
         // Single seed. Two sources, in priority order: the canonical state at the next
         // boundary block (normal — anchors the canonical chain at a locally-synced block,
         // robust to catch-up sync where the CL-reported finalized tip is beyond chain head),
-        // or the latest persisted-snapshot tier state (backstop, only when in-memory has
-        // grown past LongFinalityReorgDepth). The backstop seed is always on disk, so the
-        // BFS is rooted on an in-graph node by construction.
+        // or the in-memory tier's latest registered state (backstop, only when in-memory has
+        // grown past LongFinalityReorgDepth).
         StateId? seed = null;
         long finalizedBlockNumber = _finalizedStateProvider.FinalizedBlockNumber;
         long nextBoundary = _schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
@@ -121,7 +120,7 @@ public class PersistenceManager(
         }
         else if (snapshotsDepth > _longFinalityReorgDepth)
         {
-            seed = _repo.LastRegisteredState;
+            seed = _snapshotRepository.LastRegisteredState;
         }
 
         if (seed is not null)

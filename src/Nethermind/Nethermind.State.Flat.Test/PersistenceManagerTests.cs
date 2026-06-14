@@ -219,20 +219,18 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void DetermineSnapshotAction_BackstopExceeded_SeedsFromPersistedTier()
+    public void DetermineSnapshotAction_BackstopExceeded_SeedsFromInMemoryTier()
     {
         // Backstop: snapshotsDepth (95000) > LongFinalityReorgDepth (90000), finalized not in range.
-        // Phase 1 must seed from the latest persisted-snapshot tier state, not the in-memory tip.
+        // Phase 1 must seed from the in-memory tier's latest registered state.
         StateId latest = CreateStateId(95000);
         StateId tierTip = CreateStateId(80000);
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
 
-        // Mock the small repo to expose a tier tip; large repo returns null.
-        _persistedSnapshotRepository.LastRegisteredState.Returns(tierTip);
-
         // Seed the in-memory base chain that the BFS will walk from tierTip back to Block0.
-        // CreateSnapshot's helper only registers one StateId at a time; emulate a one-hop graph
-        // by registering a base at the tier-tip block with From = Block0.
+        // CreateSnapshot registers the snapshot's To as the in-memory tier's LastRegisteredState,
+        // so the backstop seeds on tierTip; emulate a one-hop graph by registering a base at the
+        // tier-tip block with From = Block0.
         using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);

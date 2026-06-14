@@ -47,17 +47,16 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     private readonly StringLabel _tierLabel = new("persisted");
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
-    // Each bucket groups its To-keyed ConcurrentDictionary, its block-ordered StateId set, and
-    // its running memory/count totals (see SnapshotBucket). Do NOT iterate on hot or metric
-    // paths — entry counts can reach hundreds of thousands in production; use TryGet for point
-    // lookups and the O(1) MemoryBytes/Count aggregates. The ordered set and totals are mutated
-    // under _catalogLock; the dictionary and the totals' reads are lock-free. A `To` can live in
-    // more than one bucket (a base and a compacted snapshot can share it), so each keeps its own.
-    private readonly SnapshotBucket _base = new();
-    private readonly SnapshotBucket _compacted = new();
-    private readonly SnapshotBucket _persistable = new();
-    private readonly Lock _catalogLock = new();
-    private StateId? _lastRegisteredState;
+    // Each bucket is a self-contained, individually-locked store: its To-keyed
+    // ConcurrentDictionary (lock-free point lookups), its block-ordered StateId set + running
+    // memory/count totals (guarded by the bucket's own lock), and its share of the catalog and
+    // global metrics. Do NOT iterate on hot or metric paths — entry counts can reach hundreds of
+    // thousands in production; use TryGet for point lookups and the O(1) MemoryBytes/Count
+    // aggregates. A `To` can live in more than one bucket (a base and a compacted snapshot can
+    // share it), so each keeps its own entry.
+    private readonly SnapshotBucket _base;
+    private readonly SnapshotBucket _compacted;
+    private readonly SnapshotBucket _persistable;
 
     public PersistedSnapshotRepository(
         IArenaManager arenaManager,
@@ -69,6 +68,9 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         _arena = arenaManager;
         _blobs = blobArenaManager;
         _catalog = new(catalogDb);
+        _base = new SnapshotBucket(_catalog, SnapshotKind.Base);
+        _compacted = new SnapshotBucket(_catalog, SnapshotKind.Compacted);
+        _persistable = new SnapshotBucket(_catalog, SnapshotKind.Persistable);
         _compactSize = config.CompactSize;
         _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
         _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
@@ -82,38 +84,6 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     public int SnapshotCount => (int)(_base.Count + _compacted.Count + _persistable.Count);
     // Persistable snapshots are compacted (linked) snapshots — count their bytes here too.
 
-    /// <inheritdoc/>
-    public StateId? LastRegisteredState
-    {
-        get
-        {
-            lock (_catalogLock)
-            {
-                return _lastRegisteredState;
-            }
-        }
-    }
-
-    private void RegisterStateIdLocked(SnapshotBucket bucket, in StateId stateId)
-    {
-        bucket.RegisterOrdered(stateId);
-        _lastRegisteredState = stateId;
-    }
-
-    /// <summary>Highest <see cref="StateId"/> still registered across the three buckets,
-    /// or <c>null</c> when all are empty. Caller holds <see cref="_catalogLock"/>.</summary>
-    private StateId? ComputeLastRegisteredLocked()
-    {
-        StateId? max = null;
-        foreach (SnapshotBucket bucket in (ReadOnlySpan<SnapshotBucket>)[_base, _compacted, _persistable])
-        {
-            SortedSet<StateId> set = bucket.Ordered;
-            if (set.Count > 0 && (max is null || set.Max.CompareTo(max.Value) > 0))
-                max = set.Max;
-        }
-        return max;
-    }
-
     /// <summary>
     /// Load the persisted snapshots from the catalog at construction, routing each into its bucket
     /// by the stored <see cref="SnapshotKind"/> (range alone cannot tell a base from a
@@ -124,43 +94,38 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     /// </summary>
     private void LoadFromCatalog()
     {
-        lock (_catalogLock)
+        // Runs once at construction, before the repository is published — no concurrency.
+        // Blob arena pool first — rehydrates file lengths so the PersistedSnapshot ctor's
+        // TryLeaseFile calls (driven by each snapshot's ref_ids metadata) can resolve the ids.
+        // Whole-file reservations are created lazily on first lease.
+        _blobs.Initialize();
+
+        List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Load()];
+        _arena.Initialize(entries);
+
+        LoadSnapshotsParallel(entries);
+
+        // Serial post-pass: build the ordered sets from the now-populated dicts.
+        foreach (SnapshotCatalog.CatalogEntry entry in entries)
         {
-            // Blob arena pool first — rehydrates file lengths so the PersistedSnapshot
-            // ctor's TryLeaseFile calls (driven by each snapshot's ref_ids metadata) can
-            // resolve the ids. Whole-file reservations are created lazily on first lease.
-            _blobs.Initialize();
-
-            List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Load()];
-            _arena.Initialize(entries);
-
-            LoadSnapshotsParallel(entries);
-
-            // Serial post-pass: build the SortedSets and the registration tip from the now-
-            // populated dicts. The catalog returns entries already sorted by To.BlockNumber
-            // ascending, so _lastRegisteredState ends on the highest registered StateId
-            // without a separate ComputeLastRegisteredLocked() call.
-            foreach (SnapshotCatalog.CatalogEntry entry in entries)
+            SnapshotBucket bucket = entry.Kind switch
             {
-                SnapshotBucket bucket = entry.Kind switch
-                {
-                    SnapshotKind.Compacted => _compacted,
-                    SnapshotKind.Persistable => _persistable,
-                    _ => _base,
-                };
-                RegisterStateIdLocked(bucket, entry.To);
-            }
-
-            // Delete any blob arena file no loaded snapshot referenced — recoverable
-            // orphans from a mid-write crash.
-            _blobs.SweepUnreferenced();
-
-            // Build blooms only for the maximal-covering snapshot in each contiguous
-            // range. The catalog-load itself stays cheap; this pass produces the same
-            // end-state as the runtime would after all of its compactions, while
-            // building only one bloom per uncovered slot instead of one per snapshot.
-            ReconstructBloom();
+                SnapshotKind.Compacted => _compacted,
+                SnapshotKind.Persistable => _persistable,
+                _ => _base,
+            };
+            bucket.RegisterOrdered(entry.To);
         }
+
+        // Delete any blob arena file no loaded snapshot referenced — recoverable
+        // orphans from a mid-write crash.
+        _blobs.SweepUnreferenced();
+
+        // Build blooms only for the maximal-covering snapshot in each contiguous
+        // range. The catalog-load itself stays cheap; this pass produces the same
+        // end-state as the runtime would after all of its compactions, while
+        // building only one bloom per uncovered slot instead of one per snapshot.
+        ReconstructBloom();
     }
 
     private void LoadSnapshotsParallel(List<SnapshotCatalog.CatalogEntry> entries)
@@ -193,12 +158,11 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     }
 
     /// <summary>
-    /// Routes a single catalog entry into its bucket dictionary and bumps the matching
-    /// metric counters. Safe to call concurrently — only mutates the
-    /// <see cref="ConcurrentDictionary{TKey, TValue}"/> buckets and <see cref="Interlocked"/>
-    /// counters. The non-concurrent <see cref="SortedSet{T}"/> ordered ids and the
-    /// <see cref="_lastRegisteredState"/> tip are populated by the serial post-pass in
-    /// <see cref="LoadFromCatalog"/>.
+    /// Routes a single catalog entry into its bucket dictionary (which bumps the bucket and
+    /// global memory/count metrics). Safe to call concurrently — <see cref="SnapshotBucket.Set"/>
+    /// only mutates the <see cref="ConcurrentDictionary{TKey, TValue}"/> and <see cref="Interlocked"/>
+    /// counters. The non-concurrent <see cref="SortedSet{T}"/> ordered ids are populated by the
+    /// serial post-pass in <see cref="LoadFromCatalog"/>.
     /// </summary>
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
@@ -217,22 +181,13 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         // Route by the stored Kind, not by the To-From distance: a base and a sub-CompactSize
         // compacted snapshot can span the same number of blocks, so range alone cannot tell
         // them apart.
-        switch (entry.Kind)
+        SnapshotBucket bucket = entry.Kind switch
         {
-            case SnapshotKind.Compacted:
-                _compacted.Set(entry.To, snapshot);
-                Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
-                break;
-            case SnapshotKind.Persistable:
-                _persistable.Set(entry.To, snapshot);
-                Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
-                break;
-            default:
-                _base.Set(entry.To, snapshot);
-                Interlocked.Add(ref Metrics._persistedSnapshotMemory, snapshot.Size);
-                break;
-        }
-        Interlocked.Increment(ref Metrics._persistedSnapshotCount);
+            SnapshotKind.Compacted => _compacted,
+            SnapshotKind.Persistable => _persistable,
+            _ => _base,
+        };
+        bucket.Set(entry.To, snapshot);
     }
 
 
@@ -285,22 +240,13 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         // arena file, and reads its contiguous blob run from the blob_range metadata key the
         // builder wrote. The single id written above (blobWriter.BlobArenaId) is the only
         // entry the new metadata carries, so the ctor's iterator yields exactly that id.
-        PersistedSnapshot persisted;
-        lock (_catalogLock)
-        {
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, SnapshotKind.Base));
-
-            persisted = new PersistedSnapshot(snapshot.From, snapshot.To, reservation, _blobs, bloom);
-            if (_validatePersistedSnapshot)
-                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
-            _base.Set(snapshot.To, persisted);
-            Interlocked.Add(ref Metrics._persistedSnapshotMemory, persisted.Size);
-            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
-            RegisterStateIdLocked(_base, snapshot.To);
-            // Pre-acquire the caller's lease inside the lock so a racing RemoveStatesUntil can't
-            // dispose the dict entry between the unlock and the caller seeing the return.
-            persisted.AcquireLease();
-        }
+        PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs, bloom);
+        if (_validatePersistedSnapshot)
+            PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+        // Add records the catalog entry, indexes the snapshot, and pre-acquires the caller's
+        // lease under the bucket's lock so a racing RemoveStatesUntil can't dispose the entry
+        // between insert and the caller seeing the return.
+        _base.Add(snapshot.From, snapshot.To, location, persisted);
 
         // Release the metadata writer's creation lease (PersistedSnapshot took its own in
         // the ctor). The blob writer's creation lease is dropped automatically when its
@@ -319,31 +265,12 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     /// </summary>
     public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false)
     {
-        PersistedSnapshot snapshot;
-        lock (_catalogLock)
-        {
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location,
-                isPersistable ? SnapshotKind.Persistable : SnapshotKind.Compacted));
-
-            snapshot = new PersistedSnapshot(from, to, reservation, _blobs, bloom: bloom);
-
-            if (isPersistable)
-            {
-                _persistable.Set(to, snapshot);
-                RegisterStateIdLocked(_persistable, to);
-            }
-            else
-            {
-                _compacted.Set(to, snapshot);
-                RegisterStateIdLocked(_compacted, to);
-            }
-            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, snapshot.Size);
-            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
-            // Pre-acquire the caller's lease inside the lock so a racing RemoveStatesUntil on a
-            // background compactor thread can't dispose the dict entry between unlock and
-            // the caller seeing the return.
-            snapshot.AcquireLease();
-        }
+        PersistedSnapshot snapshot = new(from, to, reservation, _blobs, bloom: bloom);
+        // Add records the catalog entry (with the bucket's own SnapshotKind), indexes the
+        // snapshot, and pre-acquires the caller's lease under the bucket's lock so a racing
+        // RemoveStatesUntil on a background compactor thread can't dispose it between insert
+        // and the caller seeing the return.
+        (isPersistable ? _persistable : _compacted).Add(from, to, location, snapshot);
 
         // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.
         reservation.Dispose();
@@ -475,69 +402,9 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     /// </summary>
     public void RemoveStatesUntil(long blockNumber)
     {
-        lock (_catalogLock)
-        {
-            int pruned =
-                PruneBucketBeforeLocked(_base, ref Metrics._persistedSnapshotMemory, blockNumber)
-              + PruneBucketBeforeLocked(_compacted, ref Metrics._compactedPersistedSnapshotMemory, blockNumber)
-              + PruneBucketBeforeLocked(_persistable, ref Metrics._compactedPersistedSnapshotMemory, blockNumber);
-
-            if (pruned > 0)
-            {
-                // The registration tip may have been one of the pruned entries.
-                if (_lastRegisteredState is { } tip
-                    && !_base.Ordered.Contains(tip)
-                    && !_compacted.Ordered.Contains(tip)
-                    && !_persistable.Ordered.Contains(tip))
-                    _lastRegisteredState = ComputeLastRegisteredLocked();
-            }
-        }
-    }
-
-    /// <summary>
-    /// Drop one bucket's snapshots whose <c>To.BlockNumber &lt; beforeBlock</c>, then settle the
-    /// repository-level side effects (global metrics, catalog, lease disposal) for each. Caller
-    /// holds <see cref="_catalogLock"/>; returns the count removed.
-    /// </summary>
-    private int PruneBucketBeforeLocked(SnapshotBucket bucket, ref long globalMemory, long beforeBlock)
-    {
-        using ArrayPoolList<PersistedSnapshot> removed = new(0);
-        bucket.PruneBefore(beforeBlock, removed);
-        foreach (PersistedSnapshot snapshot in removed)
-            SettleRemovalLocked(snapshot, ref globalMemory);
-        return removed.Count;
-    }
-
-    /// <summary>
-    /// Remove one bucket's entry at <paramref name="to"/> (bucket state via
-    /// <see cref="SnapshotBucket.Remove"/>) and settle its repository-level side effects. Caller
-    /// holds <see cref="_catalogLock"/>; returns <c>true</c> when an entry was present.
-    /// </summary>
-    private bool RemoveEntryLocked(SnapshotBucket bucket, in StateId to, ref long globalMemory)
-    {
-        PersistedSnapshot? snapshot = bucket.Remove(to);
-        if (snapshot is null) return false;
-        SettleRemovalLocked(snapshot, ref globalMemory);
-        return true;
-    }
-
-    /// <summary>
-    /// Settle the repository-level side effects for a snapshot already dropped from its bucket:
-    /// roll back the global memory aggregate, bump the count/prune metrics, delete the catalog
-    /// entry, and release the snapshot's leases. Caller holds <see cref="_catalogLock"/>.
-    /// </summary>
-    private void SettleRemovalLocked(PersistedSnapshot snapshot, ref long globalMemory)
-    {
-        // Capture depth before Dispose — From/To stay valid on the still-alive object, but the
-        // underlying reservation/file leases are released by Dispose. The catalog key scopes the
-        // removal to this bucket's entry (the other buckets' entries at the same To carry a
-        // different depth and stay put).
-        long depth = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
-        Interlocked.Add(ref globalMemory, -snapshot.Size);
-        Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
-        Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-        _catalog.Remove(snapshot.To, depth);
-        snapshot.Dispose();
+        _base.PruneBefore(blockNumber);
+        _compacted.PruneBefore(blockNumber);
+        _persistable.PruneBefore(blockNumber);
     }
 
     /// <inheritdoc/>
@@ -551,14 +418,9 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         // A `To` can live in more than one bucket (a base and a compacted snapshot can share it),
         // so dedupe across the three block-ordered sets.
         HashSet<StateId> union = [];
-        lock (_catalogLock)
-        {
-            foreach (SnapshotBucket bucket in (ReadOnlySpan<SnapshotBucket>)[_base, _compacted, _persistable])
-            {
-                foreach (StateId to in bucket.Ordered.GetViewBetween(min, max))
-                    union.Add(to);
-            }
-        }
+        _base.CollectRange(min, max, union);
+        _compacted.CollectRange(min, max, union);
+        _persistable.CollectRange(min, max, union);
 
         ArrayPoolList<StateId> result = new(union.Count);
         foreach (StateId to in union) result.Add(to);
@@ -566,26 +428,9 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     }
 
     /// <inheritdoc/>
-    public bool RemovePersistedStateExact(in StateId toState)
-    {
-        lock (_catalogLock)
-        {
-            // `|` (not `||`): every bucket must be attempted — a `To` can appear in more than one.
-            bool removed =
-                RemoveEntryLocked(_base, toState, ref Metrics._persistedSnapshotMemory)
-              | RemoveEntryLocked(_compacted, toState, ref Metrics._compactedPersistedSnapshotMemory)
-              | RemoveEntryLocked(_persistable, toState, ref Metrics._compactedPersistedSnapshotMemory);
-
-            if (removed
-                && _lastRegisteredState is { } tip
-                && !_base.Ordered.Contains(tip)
-                && !_compacted.Ordered.Contains(tip)
-                && !_persistable.Ordered.Contains(tip))
-                _lastRegisteredState = ComputeLastRegisteredLocked();
-
-            return removed;
-        }
-    }
+    // `|` (not `||`): every bucket must be attempted — a `To` can appear in more than one.
+    public bool RemovePersistedStateExact(in StateId toState) =>
+        _base.RemoveExact(toState) | _compacted.RemoveExact(toState) | _persistable.RemoveExact(toState);
 
     public bool HasBaseSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 
@@ -602,7 +447,7 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
     /// wallclock when work sizes vary. The build is read-only and independent per snapshot,
     /// so it parallelises freely; <see cref="PersistedSnapshot.SetBloom"/> is the only mutation
     /// and touches just the snapshot it is called on.
-    /// Invoked from <see cref="LoadFromCatalog"/>; caller holds <c>_catalogLock</c>.
+    /// Invoked from <see cref="LoadFromCatalog"/> at construction.
     /// </remarks>
     private void ReconstructBloom()
     {
@@ -655,57 +500,58 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
 
     public void Dispose()
     {
-        lock (_catalogLock)
-        {
-            // Mark every loaded snapshot's files as shutdown-preserved before any teardown
-            // runs. Snapshots already pruned during this session aren't in these dicts, so
-            // their files won't get the flag and will be deleted by the managers' final
-            // Dispose below.
-            ReadOnlySpan<SnapshotBucket> buckets = [_base, _compacted, _persistable];
-            foreach (SnapshotBucket bucket in buckets)
-                foreach (PersistedSnapshot snapshot in bucket.Snapshots)
-                    snapshot.PersistOnShutdown();
-            // Dispose snapshots: drops their reservation + blob leases. Files self-clean
-            // as their refcount hits zero; the preserve flag set above keeps the on-disk
-            // file in place for any snapshot that opted in.
-            foreach (SnapshotBucket bucket in buckets)
-                foreach (PersistedSnapshot snapshot in bucket.Snapshots)
-                    snapshot.Dispose();
+        // Mark every loaded snapshot's files as shutdown-preserved before any teardown runs.
+        // Snapshots already pruned during this session aren't in the buckets, so their files
+        // won't get the flag and will be deleted by the managers' final Dispose below. This
+        // pass must complete for every bucket before any disposal — a file shared between a base
+        // and a compacted snapshot must be flagged before either of them is torn down.
+        _base.PersistAllOnShutdown();
+        _compacted.PersistAllOnShutdown();
+        _persistable.PersistAllOnShutdown();
 
-            (long baseMem, long baseCount) = _base.Clear();
-            (long compactedMem, long compactedCount) = _compacted.Clear();
-            (long persistableMem, long persistableCount) = _persistable.Clear();
-            Interlocked.Add(ref Metrics._persistedSnapshotMemory, -baseMem);
-            Interlocked.Add(ref Metrics._compactedPersistedSnapshotMemory, -(compactedMem + persistableMem));
-            Interlocked.Add(ref Metrics._persistedSnapshotCount, -(baseCount + compactedCount + persistableCount));
-            _lastRegisteredState = null;
-            // Drop the managers' dictionary refs; any file still alive cleans up here.
-            // Orphans / unreferenced files (no PersistOnShutdown caller) get deleted.
-            _arena.Dispose();
-            _blobs.Dispose();
-        }
+        // Dispose snapshots (drops their reservation + blob leases) and roll back each bucket's
+        // share of the global metrics. Files self-clean as their refcount hits zero; the preserve
+        // flag set above keeps the on-disk file in place for any snapshot that opted in.
+        _base.DisposeAndClear();
+        _compacted.DisposeAndClear();
+        _persistable.DisposeAndClear();
+
+        // Drop the managers' dictionary refs; any file still alive cleans up here.
+        // Orphans / unreferenced files (no PersistOnShutdown caller) get deleted.
+        _arena.Dispose();
+        _blobs.Dispose();
     }
 
     /// <summary>
-    /// One snapshot bucket: a <c>To</c>-keyed <see cref="ConcurrentDictionary{TKey,TValue}"/>
-    /// for lock-free point lookups, a block-ordered <see cref="SortedSet{T}"/> of its <c>To</c>s
-    /// (guarded by the repository's <c>_catalogLock</c>), and running memory/count totals
-    /// (mutated under the lock, read lock-free via <see cref="Interlocked.Read(ref long)"/>).
+    /// One self-contained snapshot bucket for a single <see cref="SnapshotKind"/>: a <c>To</c>-keyed
+    /// <see cref="ConcurrentDictionary{TKey,TValue}"/> for lock-free point lookups, a block-ordered
+    /// <see cref="SortedSet{T}"/> of its <c>To</c>s, and running memory/count totals — all guarded by
+    /// the bucket's own <see cref="Lock"/>. The bucket owns its share of the shared catalog and the
+    /// process-wide memory/count metrics, so insert/prune/remove are end-to-end here.
     /// </summary>
-    private sealed class SnapshotBucket
+    /// <remarks>
+    /// Totals are read lock-free via <see cref="Interlocked.Read(ref long)"/>; the dictionary serves
+    /// point lookups lock-free. The lock only serialises ordered-set mutation, catalog writes, and
+    /// the lease/dispose handoff so a racing prune cannot dispose an entry between insert and return.
+    /// </remarks>
+    private sealed class SnapshotBucket(SnapshotCatalog catalog, SnapshotKind kind)
     {
         private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _byTo = new();
         private readonly SortedSet<StateId> _ordered = [];
+        private readonly Lock _lock = new();
         private long _memoryBytes;
         private long _count;
 
         public long MemoryBytes => Interlocked.Read(ref _memoryBytes);
         public long Count => Interlocked.Read(ref _count);
 
-        /// <summary>Block-ordered <c>To</c> set. All access must hold the repository's catalog lock.</summary>
-        public SortedSet<StateId> Ordered => _ordered;
+        // The process-wide memory gauge for this bucket's tier: base snapshots and the
+        // compacted/persistable tiers are tracked under separate aggregates.
+        private ref long GlobalMemory => ref (kind == SnapshotKind.Base
+            ? ref Metrics._persistedSnapshotMemory
+            : ref Metrics._compactedPersistedSnapshotMemory);
 
-        /// <summary>Live snapshots, for one-off lifecycle iteration (bloom rebuild, dispose).
+        /// <summary>Live snapshots, for one-off lifecycle iteration (bloom rebuild) at construction.
         /// Enumerates the dictionary directly — does not allocate a Values snapshot.</summary>
         public IEnumerable<PersistedSnapshot> Snapshots
         {
@@ -722,66 +568,123 @@ public sealed class PersistedSnapshotRepository : IPersistedSnapshotRepository
         public bool ContainsKey(in StateId to) => _byTo.ContainsKey(to);
 
         /// <summary>
-        /// Insert/replace the dictionary entry and bump the bucket totals. Lock-free; the ordered
-        /// set is populated separately via <see cref="RegisterOrdered"/> under the catalog lock.
+        /// Insert the dictionary entry and bump this bucket's + the global memory/count totals.
+        /// Lock-free (used by the parallel catalog load); the ordered set is populated separately
+        /// via <see cref="RegisterOrdered"/>.
         /// </summary>
         public void Set(in StateId to, PersistedSnapshot snapshot)
         {
             _byTo[to] = snapshot;
             Interlocked.Add(ref _memoryBytes, snapshot.Size);
             Interlocked.Increment(ref _count);
+            Interlocked.Add(ref GlobalMemory, snapshot.Size);
+            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
         }
 
-        /// <summary>Record <paramref name="to"/> in the block-ordered set. Caller holds the catalog lock.</summary>
-        public void RegisterOrdered(in StateId to) => _ordered.Add(to);
+        /// <summary>Record <paramref name="to"/> in the block-ordered set, under this bucket's lock.
+        /// Used by the serial post-pass of the catalog load.</summary>
+        public void RegisterOrdered(in StateId to)
+        {
+            lock (_lock) _ordered.Add(to);
+        }
 
         /// <summary>
-        /// Remove the entry at <paramref name="to"/> from the ordered set and dictionary and
-        /// decrement the bucket totals. Caller holds the catalog lock. Returns the removed
-        /// snapshot (still alive — caller disposes) or <c>null</c> when absent.
+        /// Runtime insert of a freshly persisted snapshot: write its catalog entry (tagged with this
+        /// bucket's <see cref="SnapshotKind"/>), index it (dictionary + ordered set + totals), and
+        /// pre-acquire the caller's lease — all under this bucket's lock so a racing prune cannot
+        /// dispose the entry between insert and the caller seeing the return.
         /// </summary>
-        public PersistedSnapshot? Remove(in StateId to)
+        public void Add(in StateId from, in StateId to, in SnapshotLocation location, PersistedSnapshot snapshot)
+        {
+            lock (_lock)
+            {
+                catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, kind));
+                Set(to, snapshot);
+                _ordered.Add(to);
+                snapshot.AcquireLease();
+            }
+        }
+
+        /// <summary>Remove the entry at <paramref name="to"/> (catalog + index + leases) under this
+        /// bucket's lock. Returns <c>true</c> when an entry was present.</summary>
+        public bool RemoveExact(in StateId to)
+        {
+            lock (_lock) return RemoveLocked(to);
+        }
+
+        /// <summary>
+        /// Prune the block-ordered prefix whose <c>To.BlockNumber &lt; beforeBlock</c>, removing each
+        /// entry (catalog + index + leases) under this bucket's lock.
+        /// </summary>
+        public void PruneBefore(long beforeBlock)
+        {
+            lock (_lock)
+            {
+                // Materialise the prefix first — the removal loop mutates the ordered set.
+                using ArrayPoolList<StateId> toRemove = new(0);
+                foreach (StateId to in _ordered)
+                {
+                    if (to.BlockNumber >= beforeBlock) break;
+                    toRemove.Add(to);
+                }
+                foreach (StateId to in toRemove) RemoveLocked(to);
+            }
+        }
+
+        /// <summary>Copy this bucket's <c>To</c>s in the inclusive [<paramref name="min"/>,
+        /// <paramref name="max"/>] range into <paramref name="into"/>, under this bucket's lock.</summary>
+        public void CollectRange(in StateId min, in StateId max, ISet<StateId> into)
+        {
+            lock (_lock)
+                foreach (StateId to in _ordered.GetViewBetween(min, max))
+                    into.Add(to);
+        }
+
+        /// <summary>Mark every live snapshot's files shutdown-preserved, under this bucket's lock.
+        /// Must complete across all buckets before any <see cref="DisposeAndClear"/>.</summary>
+        public void PersistAllOnShutdown()
+        {
+            lock (_lock)
+                foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
+                    kv.Value.PersistOnShutdown();
+        }
+
+        /// <summary>Dispose every live snapshot, clear the index, and roll back this bucket's
+        /// contribution to the global memory/count gauges. Under this bucket's lock.</summary>
+        public void DisposeAndClear()
+        {
+            lock (_lock)
+            {
+                foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
+                    kv.Value.Dispose();
+                _byTo.Clear();
+                _ordered.Clear();
+                Interlocked.Add(ref GlobalMemory, -Interlocked.Exchange(ref _memoryBytes, 0));
+                Interlocked.Add(ref Metrics._persistedSnapshotCount, -Interlocked.Exchange(ref _count, 0));
+            }
+        }
+
+        /// <summary>
+        /// Remove <paramref name="to"/> from the index + catalog, dispose its leases, and roll back
+        /// the bucket and global totals (bumping the prune metric). This bucket's lock must be held.
+        /// </summary>
+        private bool RemoveLocked(in StateId to)
         {
             _ordered.Remove(to);
-            if (!_byTo.TryRemove(to, out PersistedSnapshot? snapshot)) return null;
+            if (!_byTo.TryRemove(to, out PersistedSnapshot? snapshot)) return false;
+            // Capture depth before Dispose — From/To stay valid on the still-alive object, but the
+            // underlying reservation/file leases are released by Dispose. The catalog key scopes the
+            // removal to this bucket's entry (the other buckets' entries at the same To carry a
+            // different depth and stay put).
+            long depth = to.BlockNumber - snapshot.From.BlockNumber;
             Interlocked.Add(ref _memoryBytes, -snapshot.Size);
             Interlocked.Decrement(ref _count);
-            return snapshot;
-        }
-
-        /// <summary>
-        /// Remove every entry whose <c>To.BlockNumber &lt; beforeBlock</c> (a block-ordered prefix
-        /// of <see cref="Ordered"/>) from the ordered set and dictionary, decrementing the bucket
-        /// totals, and append each removed snapshot to <paramref name="removed"/> (still alive — the
-        /// caller disposes). Caller holds the catalog lock.
-        /// </summary>
-        public void PruneBefore(long beforeBlock, ICollection<PersistedSnapshot> removed)
-        {
-            // Materialise the prefix first — the removal loop mutates the ordered set.
-            using ArrayPoolList<StateId> toRemove = new(0);
-            foreach (StateId to in _ordered)
-            {
-                if (to.BlockNumber >= beforeBlock) break;
-                toRemove.Add(to);
-            }
-
-            foreach (StateId to in toRemove)
-            {
-                PersistedSnapshot? snapshot = Remove(to);
-                if (snapshot is not null) removed.Add(snapshot);
-            }
-        }
-
-        /// <summary>
-        /// Clear the dictionary + ordered set and zero the totals, returning the pre-clear
-        /// (memory, count) so the caller can roll back the global metric aggregates. Caller holds
-        /// the catalog lock.
-        /// </summary>
-        public (long Memory, long Count) Clear()
-        {
-            _byTo.Clear();
-            _ordered.Clear();
-            return (Interlocked.Exchange(ref _memoryBytes, 0), Interlocked.Exchange(ref _count, 0));
+            Interlocked.Add(ref GlobalMemory, -snapshot.Size);
+            Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
+            Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
+            catalog.Remove(to, depth);
+            snapshot.Dispose();
+            return true;
         }
     }
 }
