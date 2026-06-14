@@ -59,7 +59,7 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
     {
         stats.RecordRequestRun();
 
-        using HttpRequestMessage request = new(HttpMethod.Post, url) {Content = JsonContent.Create(requestData)};
+        using HttpRequestMessage request = new(HttpMethod.Post, url) { Content = JsonContent.Create(requestData) };
 
         HttpResponseMessage response;
         try
@@ -78,7 +78,7 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
         {
             content = await response.Content.ReadAsStringAsync(ct);
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             throw new HttpRequestException(GetErrorMessage(request, response, null), ex);
         }
@@ -93,7 +93,7 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
         {
             json = JsonNode.Parse(content);
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             throw new JsonException(GetErrorMessage(request, response, content), ex);
         }
@@ -105,7 +105,7 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
             string message =
                 $"""
                  Failed to {request.Method} {request.RequestUri}
-                 Got {(response is null ? "no response" : $"{(int) response.StatusCode} {response.StatusCode}")}
+                 Got {(response is null ? "no response" : $"{(int)response.StatusCode} {response.StatusCode}")}
                  """;
 
             if (response is null)

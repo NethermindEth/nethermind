@@ -56,7 +56,7 @@ internal class StatsReporter(INotifier notifier, TimeSpan reportAt, ReorgTracker
                 try
                 {
                     await Task.Delay(DelayUntilNext(reportAt), ct);
-                    MonitorStats stats = GetAndReset() with {RecentReorgs = reorgTracker.GetReorgs(ReorgsPeriod)};
+                    MonitorStats stats = GetAndReset() with { RecentReorgs = reorgTracker.GetReorgs(ReorgsPeriod) };
                     await notifier.NotifyStatsAsync(stats, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

@@ -31,7 +31,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
                 stats.RecordHeadUpdate();
                 Console.WriteLine($"New head: {head}");
 
-                if (reorgTracker.OnNewHead(head) is {} reorg)
+                if (reorgTracker.OnNewHead(head) is { } reorg)
                 {
                     stats.RecordReorg();
                     Console.WriteLine($"Reorg detected: {reorg}");
@@ -109,7 +109,7 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
             stats.RecordTestFailure();
             Console.Error.WriteLine($"Mismatch on test \"{test.Definition.FilePath}\" at block #{test.Head:#}");
 
-            return testFailure with {RecentReorgs = reorgTracker.GetReorgs(ReorgsPeriodOnFail)};
+            return testFailure with { RecentReorgs = reorgTracker.GetReorgs(ReorgsPeriodOnFail) };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
