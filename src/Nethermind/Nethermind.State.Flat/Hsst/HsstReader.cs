@@ -123,7 +123,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         TrySeekTwoByteSlotCore(key, exactMatch: true, out matched);
 
     /// <summary>Floor variant of <see cref="TrySeekTwoByteSlot"/> (largest stored key ≤ <paramref name="key"/>).</summary>
-    public bool TrySeekTwoByteSlotFloor(scoped ReadOnlySpan<byte> key, out Bound matched) =>
+    internal bool TrySeekTwoByteSlotFloor(scoped ReadOnlySpan<byte> key, out Bound matched) =>
         TrySeekTwoByteSlotCore(key, exactMatch: false, out matched);
 
     [SkipLocalsInit]

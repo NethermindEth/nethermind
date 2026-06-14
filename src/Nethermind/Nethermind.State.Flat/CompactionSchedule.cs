@@ -28,7 +28,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
         _offset = ResolveOffset(metadataDb, config, logger);
     }
 
-    public long Offset => _offset;
+    internal long Offset => _offset;
 
     public int GetCompactSize(long blockNumber)
     {

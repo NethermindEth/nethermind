@@ -36,7 +36,7 @@ public class StorageLayerTests
     }
 
     [Test]
-    public void ArenaFile_WriteViaStreamAndRead_RoundTrips()
+    public unsafe void ArenaFile_WriteViaStreamAndRead_RoundTrips()
     {
         string path = Path.Combine(_testDir, "arena.bin");
         byte[] data1 = [1, 2, 3, 4, 5];
@@ -53,8 +53,9 @@ public class StorageLayerTests
             fs.Flush();
         }
 
-        Assert.That(arena.GetSpan(0, data1.Length).ToArray(), Is.EqualTo(data1));
-        Assert.That(arena.GetSpan(data1.Length, data2.Length).ToArray(), Is.EqualTo(data2));
+        // Read back through the mmap base pointer (the same primitive ArenaByteReader uses).
+        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr, data1.Length).ToArray(), Is.EqualTo(data1));
+        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr + data1.Length, data2.Length).ToArray(), Is.EqualTo(data2));
         Assert.That(arena.MappedSize, Is.EqualTo(1024 * 1024));
     }
 

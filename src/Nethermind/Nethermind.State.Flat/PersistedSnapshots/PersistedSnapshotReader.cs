@@ -24,27 +24,6 @@ public static class PersistedSnapshotReader
     private const int SlotPrefixLength = 30;
 
     /// <summary>
-    /// Seek the per-address inner-HSST bound under <see cref="PersistedSnapshotTags.AccountColumnTag"/>:
-    /// AccountColumnTag → raw 20-byte Address. On success outs the inner-HSST bound that
-    /// <see cref="HsstReader{TReader,TPin}"/> can be re-entered with to do sub-tag lookups
-    /// (slots, account, self-destruct) without re-walking the outer column.
-    /// </summary>
-    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, Address address, out Bound addressBound)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        using HsstReader<TReader, TPin> r = new(in reader);
-        if (!r.TrySeek(PersistedSnapshotTags.AccountColumnTag, out _) ||
-            !r.TrySeek(address.Bytes, out _))
-        {
-            addressBound = default;
-            return false;
-        }
-        addressBound = r.GetBound();
-        return true;
-    }
-
-    /// <summary>
     /// Seek the bound of the outer address column under
     /// <see cref="PersistedSnapshotTags.AccountColumnTag"/> — the BTree HSST keyed by
     /// 20-byte address that all per-address inner HSSTs index into. Used by post-write

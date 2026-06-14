@@ -10,6 +10,15 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
+/// <summary>
+/// Test-only eviction-notification hook. Production <see cref="PageResidencyTracker"/> does not
+/// surface eviction callbacks; the test stubs below drive this to assert eviction outcomes.
+/// </summary>
+internal interface IPageEvictionHandler
+{
+    void OnPageEvicted(int arenaId, int pageIdx);
+}
+
 public class PageResidencyTrackerTests
 {
     // The tracker is 8-way set-associative; tests that need a known eviction outcome use a
@@ -33,13 +42,13 @@ public class PageResidencyTrackerTests
         try { Directory.Delete(_tempDir, recursive: true); } catch { /* best-effort */ }
     }
 
-    private sealed class RecordingHandler : PageResidencyTracker.IPageEvictionHandler
+    private sealed class RecordingHandler : IPageEvictionHandler
     {
         public readonly List<(int arena, int page)> Evictions = [];
         public void OnPageEvicted(int arenaId, int pageIdx) => Evictions.Add((arenaId, pageIdx));
     }
 
-    private sealed class NoopHandler : PageResidencyTracker.IPageEvictionHandler
+    private sealed class NoopHandler : IPageEvictionHandler
     {
         public static readonly NoopHandler Instance = new();
         public void OnPageEvicted(int arenaId, int pageIdx) { }
@@ -54,7 +63,7 @@ public class PageResidencyTrackerTests
     /// small file-backed <see cref="ArenaFile"/> in <paramref name="tempDir"/> so the
     /// non-nullable contract on <see cref="ArenaReservation"/> is satisfied.
     /// </summary>
-    private sealed class StubArenaManager(PageResidencyTracker tracker, PageResidencyTracker.IPageEvictionHandler handler, string tempDir) : IArenaManager, IDisposable
+    private sealed class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler, string tempDir) : IArenaManager, IDisposable
     {
         private readonly Dictionary<int, ArenaFile> _files = [];
 
@@ -66,7 +75,6 @@ public class PageResidencyTrackerTests
         // No-op so reservation disposal doesn't blow up in tests.
         public bool MarkDead(ArenaFile file, long deadSize) => false;
         public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) { }
-        public bool FadviseOnEviction => false;
         public bool TryPunchHole(ArenaFile file, long offset, long size) => false;
 
         public ArenaFile GetOrCreateFile(int arenaId)
@@ -92,7 +100,7 @@ public class PageResidencyTrackerTests
     /// key into <paramref name="handler"/>, mirroring what <see cref="ArenaByteReader"/>
     /// does in production now that eviction dispatch lives at the call site.
     /// </summary>
-    private static void Touch(PageResidencyTracker tracker, int arenaId, int pageIdx, PageResidencyTracker.IPageEvictionHandler? handler = null)
+    private static void Touch(PageResidencyTracker tracker, int arenaId, int pageIdx, IPageEvictionHandler? handler = null)
     {
         if (tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx) == PageResidencyTracker.TouchOutcome.Evicted)
             handler?.OnPageEvicted(evictedArenaId, evictedPageIdx);

@@ -68,7 +68,6 @@ public sealed class PersistedSnapshotRepository(
 
     public int SnapshotCount => (int)(_base.Count + _compacted.Count + _persistable.Count);
     // Persistable snapshots are compacted (linked) snapshots — count their bytes here too.
-    public long CompactedSnapshotMemory => _compacted.MemoryBytes + _persistable.MemoryBytes;
 
     /// <inheritdoc/>
     public StateId? LastRegisteredState

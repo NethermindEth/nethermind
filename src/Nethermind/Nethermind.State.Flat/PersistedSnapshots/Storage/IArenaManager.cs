@@ -46,14 +46,6 @@ public unsafe interface IArenaManager : IDisposable
     void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize);
 
     /// <summary>
-    /// Whether the per-page eviction drain should issue a
-    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> after the <c>madvise(MADV_DONTNEED)</c>.
-    /// Whole-reservation cleanup and snapshot demote fadvise unconditionally, independent
-    /// of this flag.
-    /// </summary>
-    bool FadviseOnEviction { get; }
-
-    /// <summary>
     /// Enqueue a page eviction for asynchronous dispatch. The implementation pushes
     /// <c>(arenaId, pageIdx)</c> onto a bounded MPSC ring drained by a background worker that
     /// performs the <c>madvise(MADV_DONTNEED)</c> (and optional <c>posix_fadvise</c>) syscall

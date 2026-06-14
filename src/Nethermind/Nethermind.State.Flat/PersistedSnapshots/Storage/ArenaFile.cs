@@ -93,12 +93,6 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     internal new bool TryAcquireLease() => base.TryAcquireLease();
 
-    public ReadOnlySpan<byte> GetSpan(long offset, long size) =>
-        // Span<T> is intrinsically int-bounded; a single GetSpan can't materialise a
-        // >2 GiB region. Use OpenWholeView for chunk-aware whole-reservation access
-        // once that path is widened to long.
-        new(_basePtr + offset, checked((int)size));
-
     /// <summary>
     /// Create a write stream backed by a <see cref="FileStream"/> seeked to <paramref name="startOffset"/>.
     /// The caller is responsible for disposing the returned stream.

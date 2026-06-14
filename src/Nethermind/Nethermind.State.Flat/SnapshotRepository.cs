@@ -34,7 +34,8 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
     private StateId? _lastRegisteredState;
 
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
-    public int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
+    // Test-only observability; not part of ISnapshotRepository.
+    internal int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
 
     private SnapshotGraphWalker Walker => new(this, _persisted);
 

@@ -23,7 +23,7 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
 
     public unsafe struct Writer : IByteBufferWriter
     {
-        internal byte* _buffer;
+        private byte* _buffer;
         private int _capacity;
         private int _written;
         private readonly long _firstOffset;

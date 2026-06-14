@@ -38,15 +38,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 public sealed unsafe class PageResidencyTracker : IDisposable
 {
     /// <summary>
-    /// Receives eviction notifications surfaced by <see cref="TryTouch"/>. Implementations
-    /// typically issue <c>madvise(MADV_DONTNEED)</c> on the evicted page so the kernel can drop it.
-    /// </summary>
-    public interface IPageEvictionHandler
-    {
-        void OnPageEvicted(int arenaId, int pageIdx);
-    }
-
-    /// <summary>
     /// Outcome of a <see cref="TryTouch"/> call. Lets the caller distinguish "page is already
     /// cached residency-wise" (do nothing) from "page is newly tracked" (e.g. pre-fault it) and
     /// "page displaced an unrelated occupant" (drop the displaced page).
@@ -102,7 +93,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     /// <summary>Estimated kernel-resident bytes currently bounded by this tracker (Inserted pages × OS page size).</summary>
     public long ResidentBytes => Volatile.Read(ref _residentPages) * _pageBytes;
 
-    public int Count
+    internal int Count
     {
         get
         {

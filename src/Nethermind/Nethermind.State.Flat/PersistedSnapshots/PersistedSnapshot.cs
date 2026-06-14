@@ -122,7 +122,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
         _reservation.BeginWholeReadSession(adviseDontNeedOnDispose);
 
-    internal ArenaByteReader CreateReader() => _reservation.CreateReader();
+    private ArenaByteReader CreateReader() => _reservation.CreateReader();
 
     /// <summary>
     /// Construct a snapshot over a pre-leased metadata reservation. The caller (typically
@@ -678,7 +678,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return result;
     }
 
-    public void AdviseDontNeed() => _reservation.AdviseDontNeed();
+    internal void AdviseDontNeed() => _reservation.AdviseDontNeed();
 
     /// <summary>
     /// Issue <c>posix_fadvise(WILLNEED)</c> over this base snapshot's contiguous trie-RLP

@@ -36,9 +36,4 @@ public readonly record struct BlobRange(ushort BlobArenaId, long Offset, long Le
         BinaryPrimitives.WriteInt64LittleEndian(span[10..], Length);
     }
 
-    /// <summary>Deserialize a range from <paramref name="span"/> (≥ <see cref="SerializedSize"/> bytes).</summary>
-    internal static BlobRange Read(ReadOnlySpan<byte> span) =>
-        new(BinaryPrimitives.ReadUInt16LittleEndian(span),
-            BinaryPrimitives.ReadInt64LittleEndian(span[2..]),
-            BinaryPrimitives.ReadInt64LittleEndian(span[10..]));
 }

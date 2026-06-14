@@ -29,7 +29,8 @@ public class Snapshot(
 ) : RefCountingDisposable
 {
     public long EstimateMemory() => content.EstimateMemory();
-    public ResourcePool.Usage Usage => usage;
+    // Test-only observability (SnapshotCompactorTests); not consumed by production.
+    internal ResourcePool.Usage Usage => usage;
 
     public StateId From => from;
     public StateId To => to;

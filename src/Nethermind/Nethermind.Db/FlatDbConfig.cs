@@ -17,7 +17,6 @@ public class FlatDbConfig : IFlatDbConfig
     public int CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
     public int MaxInMemoryBaseSnapshotCount { get; set; } = 128;
-    public int MaxReorgDepth { get; set; } = 256;
     public int MinReorgDepth { get; set; } = 128;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public int WarmReadConcurrency { get; set; } = -1;

@@ -47,7 +47,6 @@ public sealed class TempDirArenaManager : IArenaManager
     public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) =>
         _inner.ForgetTrackerRange(arenaId, byteOffset, byteSize);
 
-    public bool FadviseOnEviction => _inner.FadviseOnEviction;
 
     public void Dispose()
     {

@@ -42,9 +42,6 @@ public sealed unsafe class WholeReadSession : IDisposable, IHsstReaderSource<Who
         _size = _view.Size;
     }
 
-    /// <summary>Total reservation size in bytes (long-typed, may exceed 2 GiB).</summary>
-    public long Size => _size;
-
     /// <summary>
     /// Materialise a fresh <see cref="IHsstByteReader{TPin}"/> over the session's view, addressed
     /// in the reservation's own offset space (offset 0 = first byte). Pointer-backed so &gt;2 GiB

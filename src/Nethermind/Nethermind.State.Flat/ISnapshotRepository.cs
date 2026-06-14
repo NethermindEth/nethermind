@@ -9,7 +9,6 @@ namespace Nethermind.State.Flat;
 public interface ISnapshotRepository
 {
     int SnapshotCount { get; }
-    int CompactedSnapshotCount { get; }
 
     void AddStateId(in StateId stateId);
     StateId? LastRegisteredState { get; }

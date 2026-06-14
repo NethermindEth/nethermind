@@ -15,7 +15,6 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     private NullPersistedSnapshotRepository() { }
 
     public int SnapshotCount => 0;
-    public long CompactedSnapshotMemory => 0;
     public StateId? LastRegisteredState => null;
     public void LoadFromCatalog() { }
     public PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)

@@ -110,11 +110,9 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
             }
         }
 
-        public bool HasSlots => _slotBound.Length > 0;
-
         /// <summary>
-        /// Nested enumerable over the slot HSST (sub-tag 0x02). Empty when <see cref="HasSlots"/>
-        /// is false. The yielded <see cref="SlotEntry"/> values carry only <c>Slot</c> and
+        /// Nested enumerable over the slot HSST (sub-tag 0x02). Empty when the slot sub-tag
+        /// is absent. The yielded <see cref="SlotEntry"/> values carry only <c>Slot</c> and
         /// <c>Value</c>; the address is on this entry and lives one foreach scope up.
         /// </summary>
         public SlotEnumerable Slots => new(_reader, _slotBound);

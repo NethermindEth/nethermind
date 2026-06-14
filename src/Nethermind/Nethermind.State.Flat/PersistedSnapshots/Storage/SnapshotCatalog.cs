@@ -33,11 +33,11 @@ public sealed class SnapshotCatalog(IDb db)
 
     // Binary layout per entry: fromBlock(8) + fromRoot(32) + toBlock(8) + toRoot(32) +
     // arenaId(4) + offset(8) + size(8) + kind(1) = 101
-    internal const int EntrySize = 101;
+    private const int EntrySize = 101;
 
     // 8-byte block number + 32-byte state root + 8-byte depth, matching the runtime
     // tuple that disambiguates same-To entries across the three buckets.
-    internal const int KeySize = 48;
+    private const int KeySize = 48;
 
     // Catalog version: bumped when the on-disk binary layout changes incompatibly. Old
     // directories will fail to load with a clear "wipe and resync" message. v2 was the
@@ -58,7 +58,7 @@ public sealed class SnapshotCatalog(IDb db)
     // v8: the per-base blob-RLP BlobRange is no longer stored in the catalog — it moved into
     // the snapshot's own metadata HSST under the blob_range key; entries shrink to 101 bytes;
     // wipe-and-resync.
-    internal const int CurrentVersion = 8;
+    private const int CurrentVersion = 8;
 
     // Length-4 sentinel key holding the version word. Entry keys are 48 bytes, so the
     // length disambiguation is unambiguous when iterating GetAll().

@@ -32,13 +32,13 @@ public sealed unsafe class BloomFilter : IDisposable
 
     public long Capacity { get; }
     public double BitsPerKey { get; }
-    public int K { get; }
+    private int K { get; }
 
     public long Count => Volatile.Read(ref _count);
 
     // Total bloom data bytes (no header), always multiple of 64 bytes
     public long DataBytes { get; }
-    public long NumBlocks { get; } // number of 64B cache lines
+    private long NumBlocks { get; } // number of 64B cache lines
 
     private long _count;
 
@@ -215,8 +215,6 @@ public sealed unsafe class BloomFilter : IDisposable
         }
         Volatile.Write(ref _count, 0);
     }
-
-    internal byte* DangerousGetDataPointer() => _data;
 
     public void Dispose()
     {

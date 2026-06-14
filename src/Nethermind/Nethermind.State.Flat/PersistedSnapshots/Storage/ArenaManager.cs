@@ -286,14 +286,6 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     internal bool PunchHoleSupported => Volatile.Read(ref _punchHoleSupported) == 1;
 
-    /// <summary>
-    /// Whether the per-page eviction drain (<see cref="EvictionDispatcher.DispatchInline"/>) should issue
-    /// a <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> after the <c>madvise(MADV_DONTNEED)</c>.
-    /// Mirrors the <c>fadviseOnEviction</c> ctor argument. Whole-reservation cleanup and snapshot
-    /// demote fadvise unconditionally, independent of this flag.
-    /// </summary>
-    public bool FadviseOnEviction => _fadviseOnEviction;
-
     // Drop tracker entries for every fully-covered OS page in [byteOffset, byteOffset+byteSize).
     // Mirrors ArenaFile.AdviseDontNeed's page-rounding (offset rounded up, end rounded down).
     // Runs outside the manager lock — the tracker is independent of arena lifecycle.

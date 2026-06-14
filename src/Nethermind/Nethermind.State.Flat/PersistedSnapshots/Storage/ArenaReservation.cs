@@ -18,7 +18,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     private readonly ArenaFile _arenaFile;
     private readonly long _initialSize;
 
-    internal int ArenaId { get; }
+    private int ArenaId { get; }
     internal long Offset { get; }
     public long Size { get; internal set; }
     // Set once via PersistOnShutdown; checked in CleanUp to skip the punch-hole reclaim
@@ -36,7 +36,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// <c>[Offset, Offset + Footprint)</c> cover whole pages exactly without touching a
     /// neighbour. Capped at the file so a truncated dedicated arena reduces to <see cref="Size"/>.
     /// </summary>
-    internal long Footprint => Math.Min(PageLayout.RoundUpToOsPage(Size), _arenaFile.MappedSize - Offset);
+    private long Footprint => Math.Min(PageLayout.RoundUpToOsPage(Size), _arenaFile.MappedSize - Offset);
 
     public ArenaReservation(IArenaManager arenaManager, ArenaFile arenaFile,
                             int arenaId, long offset, long size)
@@ -60,29 +60,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     }
 
     /// <summary>
-    /// Record a single OS-page access by a reader of this reservation. Records the page in the
-    /// per-manager <see cref="PageResidencyTracker"/>. On a non-<see cref="PageResidencyTracker.TouchOutcome.Hit"/>
-    /// outcome the page just entered the working set, so we pre-fault it via
-    /// <c>madvise(MADV_POPULATE_READ)</c> on the local <see cref="ArenaFile"/> — the next read
-    /// finds the page resident instead of taking a minor fault inline. On a displacement, the
-    /// evicted key is handed to <see cref="IArenaManager.QueueEviction"/>, which enqueues it
-    /// onto an MPSC ring drained by a background worker — the actual <c>madvise(MADV_DONTNEED)</c>
-    /// syscall happens off the producer thread.
-    /// </summary>
-    internal void TouchPage(int pageIdx)
-    {
-        PageResidencyTracker.TouchOutcome outcome = _arenaManager.PageTracker.TryTouch(ArenaId, pageIdx,
-            out int evictedArenaId, out int evictedPageIdx);
-        if (outcome == PageResidencyTracker.TouchOutcome.Hit) return;
-
-        _arenaFile.PopulateRead((long)pageIdx * Environment.SystemPageSize, Environment.SystemPageSize);
-
-        if (outcome == PageResidencyTracker.TouchOutcome.Evicted)
-            _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
-    }
-
-    /// <summary>
-    /// Range version of <see cref="TouchPage"/>: probe every OS page that overlaps the
+    /// Probe every OS page that overlaps the
     /// reader-relative byte range <c>[localOffset, localOffset + length)</c> against the
     /// <see cref="PageResidencyTracker"/>, queue any displaced occupants, and — if more
     /// than one probed page was a non-<see cref="PageResidencyTracker.TouchOutcome.Hit"/> — issue a <em>single</em>

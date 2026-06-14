@@ -11,7 +11,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public interface IPersistedSnapshotRepository : IDisposable
 {
     int SnapshotCount { get; }
-    long CompactedSnapshotMemory { get; }
 
     /// <summary>
     /// Most-recently-registered <see cref="StateId"/> tracked under this repository's

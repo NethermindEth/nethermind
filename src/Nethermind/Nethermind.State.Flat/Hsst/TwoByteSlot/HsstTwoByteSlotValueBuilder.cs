@@ -31,7 +31,7 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
     /// <summary>Fixed key length for this format. Single 2-byte slot suffix.</summary>
     public const int KeyLength = 2;
     /// <summary>Maximum number of entries (<c>KeyCount</c> stores <c>N − 1</c> in a u16).</summary>
-    public const int MaxEntries = 65536;
+    private const int MaxEntries = 65536;
 
     private const int InitialCapacity = 16;
     private const int InitialValueCapacity = 256;

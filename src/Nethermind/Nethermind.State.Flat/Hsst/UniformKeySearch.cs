@@ -39,14 +39,14 @@ public static class UniformKeySearch
     /// Runtime toggle for the AVX-512 floor-scan fast path. Default <c>true</c>. The
     /// benchmark uses [Params] to flip this for A/B comparison; tests sweep it as well.
     /// </summary>
-    public static bool Enabled = true;
+    internal static bool Enabled = true;
 
     /// <summary>
     /// Cap: scan up to this many keys with the linear SIMD path. Beyond this, scalar
     /// binary search wins despite mispredict cost. Tunable at runtime alongside
     /// <see cref="Enabled"/> so benchmarks can sweep it via <c>[Params]</c>.
     /// </summary>
-    public static int LinearScanMaxCount = 1024;
+    private static int LinearScanMaxCount = 1024;
 
     // Per-lane index vectors. Combined with Vector512.LessThan(idx, broadcast(remaining))
     // they produce the lane mask consumed by Avx512{BW,F}.MaskLoad for the trailing

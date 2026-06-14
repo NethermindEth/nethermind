@@ -37,9 +37,6 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth.", DefaultValue = "128")]
     int MaxInMemoryBaseSnapshotCount { get; set; }
 
-    [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]
-    int MaxReorgDepth { get; set; }
-
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
 

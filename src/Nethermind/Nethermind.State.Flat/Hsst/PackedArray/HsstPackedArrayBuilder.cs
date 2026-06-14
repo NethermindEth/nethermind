@@ -22,7 +22,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
     /// <summary>Default checkpoint stride: emit a binary-index entry every ~2 KiB of (key+value).</summary>
-    public const int DefaultBinaryIndexStrideBytes = 2048;
+    internal const int DefaultBinaryIndexStrideBytes = 2048;
 
     private ref TWriter _writer;
     private readonly long _baseOffset;

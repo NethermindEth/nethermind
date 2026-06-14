@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// view spanning more than 2 GiB) without losing precision. Internal offsets are
 /// stored as <see cref="long"/> absolute positions; public <see cref="Bound"/>s
 /// returned by <see cref="CurrentValue"/> are reader-absolute. The current key is
-/// only exposed via <see cref="CurrentKeyLength"/> + <see cref="CopyCurrentLogicalKey"/>
+/// only exposed via <see cref="CopyCurrentLogicalKey"/>
 /// so callers cannot accidentally consume the on-disk LE-stored layout (see PackedArray
 /// LE-stored note on <see cref="HsstPackedArrayBuilder{TWriter}"/>).
 ///
@@ -34,9 +34,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// <see cref="CreateTwoByteSlot"/>, which dispatches forward with no tail read.
 ///
 /// <see cref="MoveNext"/> consumes the reader (variants need it for LEB128 / Ends-array
-/// reads) and caches the current key/value bounds. Subsequent <see cref="CurrentKeyLength"/>
-/// access is a property read; <see cref="GetCurrentValue"/> takes the reader only to
-/// materialise a pinned span (no decode). The enumerator stores only integer offsets,
+/// reads) and caches the current key/value bounds. The enumerator stores only integer offsets,
 /// never key/value bytes.
 /// </summary>
 public struct HsstEnumerator<TReader, TPin> : IDisposable
@@ -145,15 +143,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         return new HsstEnumerator<TReader, TPin>(in reader, scope, tag);
     }
 
-    public long Count => _kind switch
-    {
-        VariantKind.PackedArray => _packed!.Count,
-        VariantKind.BTree => _btree!.Count,
-        VariantKind.BTreeKeyFirst => _btree!.Count,
-        VariantKind.TwoByteSlot => _tbsv!.Count,
-        _ => 0,
-    };
-
     public bool MoveNext(scoped in TReader reader) => _kind switch
     {
         VariantKind.PackedArray => _packed!.MoveNext(),
@@ -177,9 +166,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         _ => default,
     };
 
-    /// <summary>Length of the current key in bytes. Use to size the <c>dst</c> buffer for <see cref="CopyCurrentLogicalKey"/>.</summary>
-    public long CurrentKeyLength => CurrentKey.Length;
-
     /// <summary>
     /// Copy the current key in its LOGICAL (lex/BE) form into <paramref name="dst"/> and
     /// return that slice. For BTree and BE-stored PackedArray the stored
@@ -187,7 +173,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     /// PackedArray (auto-enabled at <c>keySize ∈ {2,4,8}</c>) the on-disk bytes are
     /// byte-reversed and this method un-reverses them — callers see the same lex/BE
     /// bytes that were originally <c>Add</c>ed to the builder, regardless of layout.
-    /// <paramref name="dst"/> must be at least <see cref="CurrentKeyLength"/> long.
+    /// <paramref name="dst"/> must be at least the current key length long.
     /// </summary>
     public ReadOnlySpan<byte> CopyCurrentLogicalKey(scoped in TReader reader, Span<byte> dst)
     {
@@ -210,13 +196,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             stored.CopyTo(outSpan);
         }
         return outSpan;
-    }
-
-    /// <summary>Pin the current value bytes via <paramref name="reader"/>; empty pin when length is 0.</summary>
-    public TPin GetCurrentValue(scoped in TReader reader)
-    {
-        Bound b = CurrentValue;
-        return reader.PinBuffer(b);
     }
 
     public Bound CurrentValue => _kind switch

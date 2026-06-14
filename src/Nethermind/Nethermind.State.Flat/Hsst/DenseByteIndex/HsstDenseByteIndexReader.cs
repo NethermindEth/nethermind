@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
 internal static class HsstDenseByteIndexReader
 {
     /// <summary>Parsed footer of a DenseByteIndex HSST.</summary>
-    internal struct Layout
+    private struct Layout
     {
         /// <summary>Absolute offset of byte 0 of the HSST (= start of the value region).</summary>
         public long DataStart;
@@ -34,7 +34,7 @@ internal static class HsstDenseByteIndexReader
     /// Caller must have already verified the trailing <see cref="IndexType"/> byte equals
     /// <see cref="IndexType.DenseByteIndex"/>.
     /// </summary>
-    public static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, out Layout layout)
+    private static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, out Layout layout)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {

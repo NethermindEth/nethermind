@@ -25,8 +25,7 @@ public readonly ref struct BTreeNodeReader(
     NodeMetadata metadata,
     ReadOnlySpan<byte> values,
     ReadOnlySpan<byte> keys,
-    ReadOnlySpan<byte> commonKeyPrefix,
-    int totalSize)
+    ReadOnlySpan<byte> commonKeyPrefix)
 {
     // Ref-like primary-ctor params can't be used in instance members of a ref struct;
     // forward them into fields.
@@ -35,17 +34,14 @@ public readonly ref struct BTreeNodeReader(
     private readonly ReadOnlySpan<byte> commonKeyPrefix = commonKeyPrefix;
 
     public int EntryCount => metadata.KeyCount;
-    public BTreeNodeKind NodeKind => metadata.NodeKind;
-    public NodeMetadata Metadata => metadata;
-    /// <summary>Total bytes occupied by this index node, including header.</summary>
-    public int TotalSize => totalSize;
+    internal NodeMetadata Metadata => metadata;
 
     /// <summary>
     /// Bytes shared by every stored key. Empty when the node was written without the
     /// common-prefix optimization. The full lex-order key for entry i is reconstructed via
     /// <see cref="GetSeparatorBytes"/>.
     /// </summary>
-    public ReadOnlySpan<byte> CommonKeyPrefix => commonKeyPrefix;
+    internal ReadOnlySpan<byte> CommonKeyPrefix => commonKeyPrefix;
 
     /// <summary>
     /// Read an index block forward from <paramref name="nodeStart"/> (inclusive start position).
@@ -101,14 +97,12 @@ public readonly ref struct BTreeNodeReader(
         int keySectionSize = metadata.KeySectionSize;
         int valuesStart = keysStart + keySectionSize;
         int valueSectionSize = metadata.ValueSectionSize;
-        int totalSize = (valuesStart + valueSectionSize) - nodeStart;
 
         return new BTreeNodeReader(
             metadata,
             data.Slice(valuesStart, valueSectionSize),
             data.Slice(keysStart, keySectionSize),
-            commonKeyPrefix,
-            totalSize);
+            commonKeyPrefix);
     }
 
     /// <summary>
@@ -130,7 +124,7 @@ public readonly ref struct BTreeNodeReader(
     /// Values are always Uniform: fixed-width <see cref="NodeMetadata.ValueSize"/> bytes per entry.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ReadOnlySpan<byte> GetValue(int index) =>
+    private ReadOnlySpan<byte> GetValue(int index) =>
         values.Slice(index * metadata.ValueSize, metadata.ValueSize);
 
     /// <summary>
@@ -228,7 +222,7 @@ public readonly ref struct BTreeNodeReader(
     /// the per-entry suffix; the full stored key is <see cref="CommonKeyPrefix"/> followed
     /// by <paramref name="floorKey"/>.
     /// </summary>
-    public bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue)
+    internal bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue)
     {
         // FindFloorIndex handles both the empty-node early-return and the
         // CommonKeyPrefix strip + KeyType dispatch.

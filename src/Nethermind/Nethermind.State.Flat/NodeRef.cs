@@ -40,8 +40,6 @@ public readonly struct NodeRef(ushort blobArenaId, int rlpDataOffset)
     /// </summary>
     public int RlpDataOffset { get; } = rlpDataOffset;
 
-    public bool IsEmpty => BlobArenaId == 0 && RlpDataOffset == 0;
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static NodeRef Read(ReadOnlySpan<byte> data)
     {
