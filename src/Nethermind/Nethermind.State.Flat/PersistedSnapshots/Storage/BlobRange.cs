@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -15,6 +16,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// Only base snapshots carry a non-empty range. Compacted / persistable snapshots reference
 /// scattered blob arenas via <c>ref_ids</c> and store <see cref="None"/>.
 /// </remarks>
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly record struct BlobRange(ushort BlobArenaId, long Offset, long Length)
 {
     /// <summary>Sentinel for snapshots with no contiguous blob region.</summary>

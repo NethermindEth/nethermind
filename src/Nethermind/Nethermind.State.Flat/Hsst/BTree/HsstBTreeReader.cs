@@ -114,11 +114,11 @@ internal static class HsstBTreeReader
         scoped ReadOnlySpan<byte> parentSeparator = rootPrefix;
         long currentAbsStart = rootStart;
 
-        Span<byte> flagBuf = stackalloc byte[1];
+        byte flag = 0;
         while (true)
         {
-            if (!reader.TryRead(currentAbsStart, flagBuf)) return false;
-            BTreeNodeKind kind = (BTreeNodeKind)(flagBuf[0] & 0x03);
+            if (!reader.TryRead(currentAbsStart, new Span<byte>(ref flag))) return false;
+            BTreeNodeKind kind = (BTreeNodeKind)(flag & 0x03);
 
             if (kind == BTreeNodeKind.Entry)
             {
