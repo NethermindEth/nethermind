@@ -28,9 +28,10 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
         {
             string message =
                 $"""
-                 ❌ {_prefix} response mismatch at block `{failure.Head}`
+                 ❌ {_prefix} response mismatch
                  - Method: `{failure.Request.MethodOrUnknown}`
                  - Test: `{failure.Test.Definition.FilePath}`
+                 - Head: `{failure.Head}`
                  """;
 
             List<(string name, string content)> files =
