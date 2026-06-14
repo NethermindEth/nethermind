@@ -118,7 +118,7 @@ public static class PersistedSnapshotMerger
     /// <c>StorageTrieSubTagCount</c> sub-tags). Caller allocates the output spans sized
     /// <c>matchCount</c> and <c>matchCount * subTagCount</c> respectively.</summary>
     private static void ResolvePerAddrAndSubTagBounds<TView, TReader, TPin>(
-        scoped ref NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>> cursor,
+        scoped in NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>> cursor,
         scoped Span<Bound> perAddrBounds, scoped Span<Bound> subTagBounds, int subTagCount)
         where TView : IHsstReaderSource<TReader, TPin>
         where TReader : IHsstByteReader<TPin>, allows ref struct
@@ -161,8 +161,8 @@ public static class PersistedSnapshotMerger
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
-        public void MergeValues(ref TWriter writer, scoped ReadOnlySpan<byte> key,
-            scoped ref NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>> cursor)
+        public void MergeValues(scoped ref HsstBTreeBuilder<TWriter> builder, scoped ReadOnlySpan<byte> key,
+            scoped in NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>> cursor)
         {
             ulong addrKey = MemoryMarshal.Read<ulong>(key);
             bloom.Add(addrKey);
@@ -172,8 +172,11 @@ public static class PersistedSnapshotMerger
 
             Span<Bound> perAddrBounds = stackalloc Bound[matchCount];
             Span<Bound> subTagBounds = stackalloc Bound[matchCount * SubTagCount];
-            ResolvePerAddrAndSubTagBounds(ref cursor, perAddrBounds, subTagBounds, SubTagCount);
+            ResolvePerAddrAndSubTagBounds(in cursor, perAddrBounds, subTagBounds, SubTagCount);
 
+            // Open the outer BTree entry's value write; the per-address DenseByteIndex streams into it.
+            ref TWriter writer = ref builder.BeginValueWrite();
+            long valueStart = writer.Written;
             // perAddrBuilder is passed to several helpers by ref, so it can't be a `using`
             // declaration (the compiler refuses ref to using-variables). Manage its disposal
             // with a try/finally instead.
@@ -191,13 +194,14 @@ public static class PersistedSnapshotMerger
             {
                 perAddrBuilder.Dispose();
             }
+            builder.FinishValueWrite(key, writer.Written - valueStart);
         }
 
         /// <summary>Sub-tag 0x02: emit the merged slot HSST. Finds the newest destruct
         /// barrier (newest source where SelfDestructSubTag is destructed-marked), then
         /// drives an outer 30-byte slot-prefix keyFirst BTree merge over slot-bearing
         /// sources from <c>max(0, destructBarrier)..matchCount-1</c> via
-        /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> with
+        /// <see cref="HsstBTreeMerger.NWayMerge"/> (<c>keyFirst: true</c>) with
         /// <see cref="SlotPrefixValueMerger"/> handling the inner 2-byte suffix merge.
         /// We do not byte-copy a single-source slot blob through perAddrBuilder here:
         /// the dense byte index does not page-align its values, so re-emitting through
@@ -259,13 +263,13 @@ public static class PersistedSnapshotMerger
                         default(TailDispatchEnumeratorFactory<TReader, TPin>));
 
                 ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
-                HsstBTreeMerger.NWayMergeKeyFirst<
+                HsstBTreeMerger.NWayMerge<
                     TWriter,
                     TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>,
                     SlotPrefixValueMerger>(
                         ref slotWriter, OuterKeyLen, ref outerCursor,
                         new SlotPrefixValueMerger(bloom, addrKey, scratch),
-                        ref slotPrefixBuffers.Buffers);
+                        ref slotPrefixBuffers.Buffers, keyFirst: true);
                 perAddrBuilder.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
             }
         }
@@ -355,6 +359,9 @@ public static class PersistedSnapshotMerger
             public readonly NativeMemoryList<byte> ScratchValues;
             public readonly NativeMemoryList<byte> ScratchKeys;
             public readonly NativeMemoryList<int> ScratchLens;
+            /// <summary>Staging buffer for the inner slot HSST, reused across outer keys; the
+            /// keyFirst outer builder needs the full value before <c>Add</c>.</summary>
+            public readonly PooledByteBufferWriter Staging;
 
             public SlotPrefixValueMergerScratch(int n)
             {
@@ -366,6 +373,7 @@ public static class PersistedSnapshotMerger
                 ScratchValues = new NativeMemoryList<byte>(512);
                 ScratchKeys = new NativeMemoryList<byte>(Math.Max(1, n) * InnerKeyLen);
                 ScratchLens = new NativeMemoryList<int>(Math.Max(1, n));
+                Staging = new PooledByteBufferWriter(4096);
             }
 
             public void Dispose()
@@ -375,6 +383,7 @@ public static class PersistedSnapshotMerger
                 ScratchValues.Dispose();
                 ScratchKeys.Dispose();
                 ScratchLens.Dispose();
+                Staging.Dispose();
             }
         }
 
@@ -384,27 +393,25 @@ public static class PersistedSnapshotMerger
         /// TwoByteSlotValue / TwoByteSlotValueLarge HSST of the remaining 2-byte slot
         /// suffixes. Drives the inner 2-byte merge from the matched outer sources,
         /// buffers merged keys/values into the scratch, picks the inner format by total
-        /// payload size, and emits the chosen blob into the staging writer that
-        /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> hands in.
+        /// payload size, stages the chosen blob, and adds it to the keyFirst outer builder.
         /// </summary>
         /// <remarks>
-        /// TWriter is fixed to <see cref="PooledByteBufferWriter.Writer"/> because the
-        /// keyFirst BTree builder needs the value length up front, so
-        /// <see cref="HsstBTreeMerger.NWayMergeKeyFirst"/> stages each value through an
-        /// internal <see cref="PooledByteBufferWriter"/> and then calls
-        /// <c>builder.Add(key, stagedSpan)</c>. The scratch lives on a class so this
-        /// struct can hold it by reference across the
+        /// The keyFirst BTree builder needs the value length up front, so this merger stages the
+        /// inner blob through the scratch's <see cref="PooledByteBufferWriter"/> and then calls
+        /// <c>builder.Add(key, stagedSpan)</c> rather than streaming via
+        /// <see cref="HsstBTreeBuilder{TWriter}.BeginValueWrite"/>. The scratch lives on a class so
+        /// this struct can hold it by reference across the
         /// <see cref="IHsstBTreeValueMerger{TWriter,TReader,TPin,TSource,TFactory}"/> callbacks.
         /// </remarks>
         private readonly struct SlotPrefixValueMerger(
             BloomFilter bloom, ulong addrBloomKey, SlotPrefixValueMergerScratch scratch)
-            : IHsstBTreeValueMerger<PooledByteBufferWriter.Writer, TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>>
+            : IHsstBTreeValueMerger<TWriter, TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>>
         {
             private const int OuterKeyLen = 30;
             private const int InnerKeyLen = 2;
 
-            public void MergeValues(ref PooledByteBufferWriter.Writer writer, scoped ReadOnlySpan<byte> key,
-                scoped ref NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>> cursor)
+            public void MergeValues(scoped ref HsstBTreeBuilder<TWriter> builder, scoped ReadOnlySpan<byte> key,
+                scoped in NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>> cursor)
             {
                 int matchCount = cursor.MatchCount;
                 ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
@@ -420,12 +427,18 @@ public static class PersistedSnapshotMerger
                 NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TwoByteSlotEnumeratorFactory> innerCursor =
                     BuildMergeCursor(cursor.Sources, matchingSources, innerBounds, innerSources, innerEnumerators, innerState, InnerKeyLen,
                         default(TwoByteSlotEnumeratorFactory));
+
+                // keyFirst outer needs the value length up front: stage the inner blob, then add it whole.
+                PooledByteBufferWriter staging = scratch.Staging;
+                staging.Reset();
+                ref PooledByteBufferWriter.Writer stagingWriter = ref staging.GetWriter();
                 HsstTwoByteSlotMerger.NWayMerge<
                     PooledByteBufferWriter.Writer, TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TwoByteSlotEnumeratorFactory,
                     SlotSuffixBloomCallback>(
-                        ref writer, ref innerCursor,
+                        ref stagingWriter, ref innerCursor,
                         scratch.ScratchKeys, scratch.ScratchValues, scratch.ScratchLens,
                         new SlotSuffixBloomCallback(bloom, addrBloomKey, scratch.SlotKeyBuf));
+                builder.Add(key, staging.WrittenSpan);
             }
 
             /// <summary>Per-key bloom callback for the inner 2-byte slot-suffix merge:
@@ -468,8 +481,8 @@ public static class PersistedSnapshotMerger
         where TReader : IHsstByteReader<TPin>, allows ref struct
         where TPin : struct, IBufferPin, allows ref struct
     {
-        public void MergeValues(ref TWriter writer, scoped ReadOnlySpan<byte> key,
-            scoped ref NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>> cursor)
+        public void MergeValues(scoped ref HsstBTreeBuilder<TWriter> builder, scoped ReadOnlySpan<byte> key,
+            scoped in NWayMergeCursor<TReader, TPin, ViewMergeSource<TView, TReader, TPin>, TailDispatchEnumeratorFactory<TReader, TPin>> cursor)
         {
             ulong addrKey = MemoryMarshal.Read<ulong>(key);
             ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
@@ -478,8 +491,11 @@ public static class PersistedSnapshotMerger
 
             Span<Bound> perAddrBounds = stackalloc Bound[matchCount];
             Span<Bound> subTagBounds = stackalloc Bound[matchCount * SubTagCount];
-            ResolvePerAddrAndSubTagBounds(ref cursor, perAddrBounds, subTagBounds, SubTagCount);
+            ResolvePerAddrAndSubTagBounds(in cursor, perAddrBounds, subTagBounds, SubTagCount);
 
+            // Open the outer BTree entry's value write; the per-addressHash DenseByteIndex streams into it.
+            ref TWriter writer = ref builder.BeginValueWrite();
+            long valueStart = writer.Written;
             HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref writer);
             try
             {
@@ -496,6 +512,7 @@ public static class PersistedSnapshotMerger
             {
                 perAddrBuilder.Dispose();
             }
+            builder.FinishValueWrite(key, writer.Written - valueStart);
         }
 
         /// <summary>Merges one storage-trie sub-tag (top / compact / fallback) into
