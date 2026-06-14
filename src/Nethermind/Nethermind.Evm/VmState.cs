@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -21,8 +21,11 @@ namespace Nethermind.Evm;
 public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
-    private static readonly StackPool _stackPool = new();
+    [ThreadStatic] private static Stack<VmState<TGasPolicy>>? _statePool;
+    [ThreadStatic] private static StackPool? _stackPool;
+
+    private static Stack<VmState<TGasPolicy>> StatePool => _statePool ??= new();
+    private static StackPool DataStackPool => _stackPool ??= new();
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
@@ -106,7 +109,7 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     private static VmState<TGasPolicy> Rent()
-        => _statePool.TryDequeue(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
+        => StatePool.TryPop(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
 
     [SkipLocalsInit]
     private void Initialize(
@@ -205,7 +208,7 @@ public class VmState<TGasPolicy> : IDisposable
         StateGasRefundPending = 0;
         StateGasRefundAdvanced = 0;
 
-        _statePool.Enqueue(this);
+        StatePool.Push(this);
 
 #if DEBUG
         GC.SuppressFinalize(this);
@@ -250,7 +253,7 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[] AllocateStacks() => _stackPool.RentStacks();
+    private static byte[] AllocateStacks() => DataStackPool.RentStacks();
 
     private static ref byte As32AlignedRef(byte[] array)
     {
