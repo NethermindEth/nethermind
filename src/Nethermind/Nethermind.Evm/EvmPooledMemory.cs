@@ -8,7 +8,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -23,6 +22,7 @@ public struct EvmPooledMemory
     private ulong _lastZeroedSize;
 
     private byte[]? _memory;
+    // Set once in RentSlow before _memory, then sticky: non-null whenever _memory is.
     private ArrayPool<byte>? _pool;
     public ulong Size { get; private set; }
 
@@ -377,7 +377,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            (_pool ?? EvmMemoryPool.Pool).Return(memory);
+            _pool!.Return(memory);
         }
     }
 
@@ -474,23 +474,9 @@ public struct EvmPooledMemory
 }
 
 /// <summary>
-/// Source of the byte[] buffers backing <see cref="EvmPooledMemory"/>: a per-thread array pool.
-/// <para>
-/// The process-wide <see cref="ArrayPool{T}.Shared"/> keeps only one buffer per size-bucket in its
-/// per-thread (TLS) cache. During block processing the cache pre-warmer executes transactions on
-/// many threads in parallel; every frame on every thread rents its EVM memory from that single
-/// shared pool, and with nested calls and growth spanning several buckets the rentals miss the TLS
-/// cache and fall back to the per-core locked stacks. Profiling showed this fallback
-/// (<c>EvmPooledMemory.RentSlow</c> → <c>SharedArrayPool.Rent</c>) dominating block execution,
-/// together with the GC churn it feeds.
-/// </para>
-/// <para>
-/// Each thread instead gets its own pool, so the parallel pre-warmer threads and the main execution
-/// thread no longer contend for one structure. A buffer is always rented and returned on the same
-/// thread (a frame executes synchronously), so a per-thread pool is safe; returning to a foreign
-/// thread's pool would at worst be a pool-efficiency loss, never a correctness issue, because
-/// <see cref="EvmPooledMemory.RentSlow"/> zero-initialises every rented buffer regardless of origin.
-/// </para>
+/// Per-thread pool for <see cref="EvmPooledMemory"/> buffers, avoiding contention on the shared
+/// pool between the parallel pre-warmer and the main execution thread. Safe because a frame's memory
+/// is always rented and returned on the same thread.
 /// </summary>
 internal static class EvmMemoryPool
 {
@@ -510,8 +496,6 @@ internal static class EvmMemoryPool
         get => _threadLocal ??= CreateThreadLocal();
     }
 
-    // Per-thread, uncontended pool. Bounds retained memory at 8 buffers per size-bucket up to 2 MiB;
-    // EVM memories larger than that (rare) simply allocate, as the shared pool already does.
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ArrayPool<byte> CreateThreadLocal()
         => ArrayPool<byte>.Create(maxArrayLength: 2 * 1024 * 1024, maxArraysPerBucket: 8);
