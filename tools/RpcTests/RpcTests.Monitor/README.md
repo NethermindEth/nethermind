@@ -94,6 +94,8 @@ Some of them support custom C# expressions using [DynamicExpresso](https://githu
 [TestContext](./TestContext.cs) provides helper methods and properties for common patterns
 available to be called directly (like `EveryBlocks`, `RecentBlock`, `Hex(n)`, etc.)
 
+Test files may contain comments – these are stripped on load and never sent in requests.
+
 ## Execution
 The monitor subscribes to the new block events from the target node via WebSocket (`eth_subscribe("newHeads")`).
 

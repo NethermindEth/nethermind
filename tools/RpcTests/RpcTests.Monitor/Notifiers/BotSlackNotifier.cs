@@ -117,7 +117,7 @@ internal sealed class BotSlackNotifier(string name, BotSlackConfig config) : INo
     private static (string name, string content)? BuildReorgsFile(IReadOnlyList<ReorgEntry> reorgs) =>
         reorgs.Count == 0
             ? null
-            : ("recent-reorgs.txt", string.Join('\n', reorgs.Select(r => r.ToString())));
+            : ("recent-reorgs.txt", string.Join('\n', reorgs.Select(static r => r.ToString())));
 
     private async Task<ExternalFileReference> UploadFileAsync(string filename, string content, CancellationToken ct)
     {

@@ -32,12 +32,7 @@ internal class DynamicJson<TContext>
             if (path.Length == 0)
                 return node;
 
-            JsonNode? target = path.Navigate(result);
-            switch (target?.Parent)
-            {
-                case JsonObject obj: obj[target.GetPropertyName()] = node; break;
-                case JsonArray arr: arr[target.GetElementIndex()] = node; break;
-            }
+            result.ReplaceAt(path, node);
         }
 
         return result;
