@@ -191,6 +191,80 @@ public class SszMiddlewareTests
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadV2(Arg.Any<byte[]>());
     }
 
+    // The Accept header reaches the middleware as StringValues, which carries BOTH forms a client
+    // may send: a single header line holding a comma-separated list of media ranges, and several
+    // distinct header lines (a string[]). SSZ negotiation must inspect every range across every
+    // entry, so octet-stream is honored regardless of which entry or position it appears in.
+    private static IEnumerable<TestCaseData> AcceptHeaderCases()
+    {
+        // Single StringValues entry (one header line), octet-stream in various positions.
+        yield return new TestCaseData(new[] { OctetStream }, true).SetName("single_octet_only");
+        yield return new TestCaseData(new[] { OctetStream + ", application/json" }, true).SetName("single_octet_first");
+        yield return new TestCaseData(new[] { "application/json, " + OctetStream }, true).SetName("single_octet_last");
+        yield return new TestCaseData(new[] { "text/html, " + OctetStream + ";q=0.9, */*" }, true).SetName("single_octet_middle_with_q");
+        yield return new TestCaseData(new[] { OctetStream + " , application/json" }, true).SetName("single_octet_trailing_ows");
+        yield return new TestCaseData(new[] { "application/json" }, false).SetName("single_no_octet");
+        yield return new TestCaseData(new[] { "application/json, text/html" }, false).SetName("single_csv_no_octet");
+        yield return new TestCaseData(new[] { "application/octet-streamx" }, false).SetName("single_octet_substring");
+        yield return new TestCaseData(new[] { "application/json;v=\"a, application/octet-stream, b\"" }, false).SetName("octet_inside_quoted_parameter");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0" }, false).SetName("octet_explicit_zero_quality");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0.0" }, false).SetName("octet_zero_quality_decimal");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0.000" }, false).SetName("octet_zero_quality_decimals");
+        yield return new TestCaseData(new[] { OctetStream + ";Q=0" }, false).SetName("octet_zero_quality_uppercase");
+        yield return new TestCaseData(new[] { OctetStream + ";q=1" }, true).SetName("octet_unit_quality");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0.5" }, true).SetName("octet_positive_quality");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0, application/json" }, false).SetName("multi_octet_zero_then_other");
+        yield return new TestCaseData(new[] { OctetStream + ";q=0, " + OctetStream }, true).SetName("multi_octet_zero_then_octet_default");
+
+        // Multiple StringValues entries (Accept sent as separate header lines / string[]).
+        yield return new TestCaseData(new[] { OctetStream, "application/json" }, true).SetName("multi_octet_first_entry");
+        yield return new TestCaseData(new[] { "application/json", OctetStream }, true).SetName("multi_octet_last_entry");
+        yield return new TestCaseData(new[] { "application/json", "text/html, " + OctetStream }, true).SetName("multi_octet_in_csv_entry");
+        yield return new TestCaseData(new[] { "application/json", "text/html" }, false).SetName("multi_no_octet");
+    }
+
+    [TestCaseSource(nameof(AcceptHeaderCases))]
+    public async Task Get_negotiates_ssz_across_all_accept_ranges(string[] acceptValues, bool handledAsSsz)
+    {
+        bool nextInvoked = false;
+        SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
+
+        // Use an unrouted engine resource: a recognized SSZ request resolves to 404 without invoking
+        // any handler, so the test isolates the negotiation decision and never depends on engine
+        // module return values. Recognized -> middleware answers it (404) and never delegates;
+        // not recognized -> it passes through to next().
+        DefaultHttpContext ctx = MakeBaseContext("GET", "/engine/v1/negotiation-probe", AuthenticatedPort);
+        ctx.Request.Headers.Accept = acceptValues;
+        ctx.Request.Body = Stream.Null;
+
+        await mw.InvokeAsync(ctx);
+
+        Assert.That(nextInvoked, Is.EqualTo(!handledAsSsz));
+    }
+
+    // POST negotiation uses the raw-string HasOctetMediaValue boundary check on Content-Type
+    // (single-valued, hot path). Guards both directions: a substring like "...streamx" must NOT
+    // match, while a parameterized "...; charset=utf-8" must (the ';' is a valid token boundary).
+    [TestCase(OctetStream, true)]
+    [TestCase("application/octet-stream; charset=utf-8", true)]
+    [TestCase("application/octet-streamx", false)]
+    [TestCase("application/json", false)]
+    [TestCase(" application/octet-stream", false)]
+    public async Task Post_negotiates_ssz_on_content_type_boundary(string contentType, bool handledAsSsz)
+    {
+        bool nextInvoked = false;
+        SszMiddleware mw = BuildMiddleware(_ => { nextInvoked = true; return Task.CompletedTask; });
+
+        DefaultHttpContext ctx = MakeBaseContext("POST", "/engine/v1/negotiation-probe", AuthenticatedPort);
+        ctx.Request.ContentType = contentType;
+        ctx.Request.ContentLength = 0;
+        ctx.Request.Body = Stream.Null;
+
+        await mw.InvokeAsync(ctx);
+
+        Assert.That(nextInvoked, Is.EqualTo(!handledAsSsz));
+    }
+
     [TestCase("/engine/v1/forkchoice", 1)]
     [TestCase("/engine/v2/forkchoice", 2)]
     [TestCase("/engine/v3/forkchoice", 3)]

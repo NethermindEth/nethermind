@@ -224,6 +224,52 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    [TestCase(10)]
+    [TestCase(1500)]
+    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slotCount);
+                for (int i = 1; i <= slotCount; i++)
+                {
+                    storageA.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        UInt256[] readKeys = new UInt256[slotCount];
+        for (int i = 1; i <= slotCount; i++) readKeys[i - 1] = (UInt256)i;
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(readKeys).TestObject)
+            .TestObject;
+
+        CollectingBalSink sink = new();
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            scope.HintBal(bal, sink).Wait();
+
+            Assert.That(sink.Storage, Has.Count.EqualTo(slotCount));
+            IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
+            for (int i = 1; i <= slotCount; i++)
+            {
+                StorageCell cell = new(TestItem.AddressA, (UInt256)i);
+                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get((UInt256)i)), $"slot {i}");
+            }
+        }
+    }
+
     [Test]
     public void Test_HintBal_DoesNotThrow()
     {
