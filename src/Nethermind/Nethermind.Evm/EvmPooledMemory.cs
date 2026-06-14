@@ -23,6 +23,7 @@ public struct EvmPooledMemory
     private ulong _lastZeroedSize;
 
     private byte[]? _memory;
+    private ArrayPool<byte>? _pool;
     public ulong Size { get; private set; }
 
     public bool TrySaveWord(in UInt256 location, Span<byte> word)
