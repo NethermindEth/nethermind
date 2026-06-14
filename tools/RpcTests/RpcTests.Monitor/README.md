@@ -84,6 +84,7 @@ Each test can have the following fields:
 - `run` (required): dynamic condition on whether test should be run;
 - `request` (required): parameterized request JSON;
 - `response`: to validate against a fixed expected value instead of using a reference node;
+- `ignore` (optional): a single response path or an array of paths to exclude from comparison;
 - `test` (optional): test metadata.
 
 Some of them support custom C# expressions using [DynamicExpresso](https://github.com/dynamicexpresso/DynamicExpresso/):

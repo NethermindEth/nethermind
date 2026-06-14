@@ -33,7 +33,7 @@ internal class TestExecutor(IStatsReporter stats, HttpClient httpClient)
         );
 
         JsonNode actual = requests[0], expected = requests[1];
-        return ResponseComparer.Compare(actual, expected, isStatic: expectedStatic is not null)
+        return ResponseComparer.Compare(actual, expected, test.Definition.IgnorePaths, isStatic: expectedStatic is not null)
             ? null
             : new TestFailure(test, request, actual, expected);
     }

@@ -11,7 +11,7 @@ namespace Nethermind.RpcTests.Monitor;
 // ReSharper disable MemberCanBePrivate.Global
 
 /// <summary>
-/// Contains properties and methods accessible in tests JSONs when compiling new request.
+/// Contains properties and methods accessible in tests JSONs when compiling a new request.
 /// </summary>
 internal readonly record struct TestContext(TestDefinition Definition, BlockInfo Head)
 {
@@ -70,6 +70,16 @@ internal class TestDefinition(int index, string filePath, JsonNode json, bool re
     public DynamicJson<TestContext>? Response { get; } = json["response"] is { } responseNode
         ? new(responseNode)
         : requiresResponse ? throw new Exception("Test is missing required 'response' property") : null;
+
+    // basic response paths excluded from comparison (e.g. "result.totalDifficulty")
+    public JsonPath[] IgnorePaths { get; } = ParseIgnorePaths(json["ignore"]);
+
+    private static JsonPath[] ParseIgnorePaths(JsonNode? ignore) => ignore switch
+    {
+        JsonArray paths => [.. paths.Select(static p => new JsonPath(p!.GetValue<string>()))],
+        JsonValue value => [new JsonPath(value.GetValue<string>())],
+        _ => []
+    };
 }
 
 internal record struct RequestContext(long Number) { }
