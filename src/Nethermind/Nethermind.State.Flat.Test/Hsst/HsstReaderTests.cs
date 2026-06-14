@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Text;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Hsst;
@@ -72,6 +73,41 @@ public class HsstReaderTests
     /// instead of returning a zero-copy slice. Mirrors what a paged or stream-backed reader
     /// would do when a requested range can't be served as a contiguous span.
     /// </summary>
+    /// <summary>
+    /// Pin that returns a pooled byte array on dispose — test scaffolding for the copy-fallback
+    /// reader below. No production reader needs it (all return <see cref="NoOpPin"/>).
+    /// </summary>
+    private ref struct PooledArrayPin : IBufferPin
+    {
+        private byte[]? _pooledArray;
+        private readonly int _size;
+
+        private PooledArrayPin(byte[] pooledArray, int size)
+        {
+            _pooledArray = pooledArray;
+            _size = size;
+        }
+
+        public readonly ReadOnlySpan<byte> Buffer => _pooledArray.AsSpan(0, _size);
+
+        public void Dispose()
+        {
+            byte[]? arr = _pooledArray;
+            if (arr is not null)
+            {
+                _pooledArray = null;
+                ArrayPool<byte>.Shared.Return(arr);
+            }
+        }
+
+        public static PooledArrayPin Rent(int size, out Span<byte> buffer)
+        {
+            byte[] arr = ArrayPool<byte>.Shared.Rent(size);
+            buffer = arr.AsSpan(0, size);
+            return new PooledArrayPin(arr, size);
+        }
+    }
+
     private struct CopyOnlyByteReader(byte[] data) : IHsstByteReader<PooledArrayPin>
     {
         private readonly byte[] _data = data;
@@ -114,20 +150,19 @@ public class HsstReaderTests
         });
 
         CopyOnlyByteReader reader = new(data);
-        using HsstReader<CopyOnlyByteReader, PooledArrayPin> r = new(in reader);
-        Bound root = r.GetBound();
 
         foreach ((string key, string value) in entries)
         {
-            r.SetBound(root);
-            Assert.That(r.TrySeek(Encoding.UTF8.GetBytes(key), out _), Is.True, $"Key {key} not found");
-            Span<byte> buf = new byte[r.GetBound().Length];
-            r.GetValue(buf);
+            // A fresh reader per lookup re-scopes the bound to the root (TrySeek mutates it).
+            using HsstReader<CopyOnlyByteReader, PooledArrayPin> r = new(in reader);
+            Assert.That(r.TrySeek(Encoding.UTF8.GetBytes(key), out Bound matched), Is.True, $"Key {key} not found");
+            Span<byte> buf = new byte[matched.Length];
+            reader.TryRead(matched.Offset, buf);
             Assert.That(Encoding.UTF8.GetString(buf), Is.EqualTo(value), $"Value mismatch for {key}");
         }
 
         // Floor for a key before all entries returns false even via the copy path.
-        r.SetBound(root);
-        Assert.That(r.TrySeek(""u8, out _), Is.False);
+        using HsstReader<CopyOnlyByteReader, PooledArrayPin> rEmpty = new(in reader);
+        Assert.That(rEmpty.TrySeek(""u8, out _), Is.False);
     }
 }

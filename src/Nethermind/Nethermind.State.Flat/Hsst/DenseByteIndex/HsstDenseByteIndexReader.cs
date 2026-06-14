@@ -47,7 +47,7 @@ internal static class HsstDenseByteIndexReader
         // Count byte stores N − 1; the empty map cannot be represented.
         int count = hdr[0] + 1;
         int offsetSize = hdr[1];
-        if (!HsstOffset.IsValidOffsetSize(offsetSize)) return false;
+        if (!HsstPackedArrayLayout.IsValidOffsetSize(offsetSize)) return false;
 
         long trailerLen = 3L + (long)count * offsetSize;
         if (trailerLen > bound.Length) return false;
@@ -83,8 +83,8 @@ internal static class HsstDenseByteIndexReader
         if (key.Length != 1) return false;
         int target = key[0];
 
+        // Count ≤ 256 (single-byte index) and OffsetSize ≤ 6, so endsTotal ≤ 1.5 KiB.
         long endsTotal = (long)L.Count * L.OffsetSize;
-        if (endsTotal > int.MaxValue) return false;
         using TPin endsPin = reader.PinBuffer(new Bound(L.EndsStart, endsTotal));
         ReadOnlySpan<byte> ends = endsPin.Buffer;
 
@@ -210,7 +210,7 @@ internal static class HsstDenseByteIndexReader
         if (win[winLen - 1] != (byte)IndexType.DenseByteIndex) return false;
         int count = win[winLen - 3] + 1;
         int offsetSize = win[winLen - 2];
-        if (!HsstOffset.IsValidOffsetSize(offsetSize)) return false;
+        if (!HsstPackedArrayLayout.IsValidOffsetSize(offsetSize)) return false;
 
         long endsBytes = (long)count * offsetSize;
         long trailerSize = 3L + endsBytes;

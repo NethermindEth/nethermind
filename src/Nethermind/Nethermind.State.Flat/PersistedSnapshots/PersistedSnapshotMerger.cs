@@ -352,9 +352,9 @@ public static class PersistedSnapshotMerger
             public readonly Bound[] InnerBoundsScratch;
             public readonly ArrayPoolList<ViewMergeSource<TView, TReader, TPin>> InnerSources;
             public readonly ArrayPoolList<HsstEnumerator<TReader, TPin>> InnerEnumerators;
-            public readonly ArrayPoolList<byte> ScratchValues;
-            public readonly ArrayPoolList<byte> ScratchKeys;
-            public readonly ArrayPoolList<int> ScratchLens;
+            public readonly NativeMemoryList<byte> ScratchValues;
+            public readonly NativeMemoryList<byte> ScratchKeys;
+            public readonly NativeMemoryList<int> ScratchLens;
 
             public SlotPrefixValueMergerScratch(int n)
             {
@@ -363,9 +363,9 @@ public static class PersistedSnapshotMerger
                 InnerBoundsScratch = new Bound[n];
                 InnerSources = new ArrayPoolList<ViewMergeSource<TView, TReader, TPin>>(n, n);
                 InnerEnumerators = new ArrayPoolList<HsstEnumerator<TReader, TPin>>(n, n);
-                ScratchValues = new ArrayPoolList<byte>(512);
-                ScratchKeys = new ArrayPoolList<byte>(Math.Max(1, n) * InnerKeyLen);
-                ScratchLens = new ArrayPoolList<int>(Math.Max(1, n));
+                ScratchValues = new NativeMemoryList<byte>(512);
+                ScratchKeys = new NativeMemoryList<byte>(Math.Max(1, n) * InnerKeyLen);
+                ScratchLens = new NativeMemoryList<int>(Math.Max(1, n));
             }
 
             public void Dispose()

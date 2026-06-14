@@ -308,7 +308,7 @@ public class HsstDenseByteIndexTests
     /// single value exceeded 2 GiB. The bug silently made the outer <c>TrySeek(0x01)</c> on
     /// the compacted snapshot's <c>AccountColumn</c> return false once the column crossed
     /// the 2 GiB mark, losing every account/slot/storage/self-destruct entry. <see cref="Bound"/>
-    /// is long-typed; the producer (HsstOffset.ChooseOffsetSize → 6-byte u48 ends) already
+    /// is long-typed; the producer (HsstPackedArrayLayout.ChooseOffsetSize → 6-byte u48 ends) already
     /// supports up to 256 TiB, so the reader must too.
     /// </summary>
     [Test]

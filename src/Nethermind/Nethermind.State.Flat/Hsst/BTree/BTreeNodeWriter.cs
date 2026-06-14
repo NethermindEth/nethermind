@@ -136,7 +136,7 @@ internal static class BTreeNodeWriter<TWriter>
     /// Map a <see cref="BTreeNodeMetadata.ValueSlotSize"/> to its 2-bit Flags encoding
     /// (bits 4-5): 2→00, 3→01, 4→10, 6→11. Throws if <paramref name="slot"/> is anything
     /// else — values must already be quantized by the caller (see
-    /// <c>HsstValueSlot.MinBytesFor</c>).
+    /// <c>HsstBTreeBuilder.MinBytesFor</c>).
     /// </summary>
     private static byte EncodeValueSizeCode(int slot) => slot switch
     {

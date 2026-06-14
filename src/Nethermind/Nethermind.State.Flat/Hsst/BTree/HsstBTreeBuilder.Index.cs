@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
@@ -400,7 +401,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         }
         long baseOffset = 0;
         if (count > 1 && minOff > 0 && minOff < maxOff) baseOffset = minOff;
-        int valueSlotSize = HsstValueSlot.MinBytesFor(maxOff - baseOffset);
+        int valueSlotSize = MinBytesFor(maxOff - baseOffset);
 
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
         if (prefixLen > 0)
@@ -490,7 +491,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         // candidateSize — the next committedSize is exactly the prior candidateSize, so the
         // group size is never recomputed from scratch.
         int committedSize = IntermediateNodeSizeUpperBound(
-            childCount, childCount * WidenedSlotWidth(maxSepLen, _keyLength), HsstValueSlot.MinBytesFor(0));
+            childCount, childCount * WidenedSlotWidth(maxSepLen, _keyLength), MinBytesFor(0));
         // Common-prefix length across separators observed so far. With phantom slot 0 restored
         // the first separator (firstChild) seeds commonLen so the running LCP is meaningful from
         // childCount == 1 onward.
@@ -514,7 +515,7 @@ public ref partial struct HsstBTreeBuilder<TWriter>
                 : default;
 
             long newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
-            int valueSlotSize = HsstValueSlot.MinBytesFor(newMaxOff - baseChildOffset);
+            int valueSlotSize = MinBytesFor(newMaxOff - baseChildOffset);
             int newMaxSepLen = sepLen > maxSepLen ? sepLen : maxSepLen;
 
             int boundary = Math.Min(commonLen, sepLen);
@@ -631,5 +632,23 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         Span<byte> pad = _writer.GetSpan(len);
         pad[..len].Clear();
         _writer.Advance(len);
+    }
+
+    /// <summary>
+    /// Smallest supported value-slot width that can encode <paramref name="value"/>:
+    /// returns 2 for 0/1/2-byte naturals, 3 for 3, 4 for 4, and 6 for 5/6. The BTreeNode
+    /// header packs the value-slot width into 2 bits of the Flags byte (bits 4-5), so the
+    /// format only encodes the four widths <c>{2, 3, 4, 6}</c>; this rounds an arbitrary
+    /// natural width up to the next supported value. Naturals larger than 6 bytes never occur
+    /// in practice because <c>BaseOffset</c> already caps the encodable delta range at 2⁴⁸ − 1.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int MinBytesFor(long value)
+    {
+        int natural = value == 0 ? 1 : (BitOperations.Log2((ulong)value) >> 3) + 1;
+        return natural <= 2 ? 2
+            : natural == 3 ? 3
+            : natural == 4 ? 4
+            : 6; // 5 and 6 both pad up to 6
     }
 }

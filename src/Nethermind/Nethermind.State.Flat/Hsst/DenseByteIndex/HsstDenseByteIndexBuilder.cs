@@ -32,7 +32,8 @@ namespace Nethermind.State.Flat.Hsst.DenseByteIndex;
 /// perspective (<c>TrySeek</c> returns false), so absence and gap-fill are indistinguishable
 /// on read. The per-address inner HSST exploits this: an EOA skips storage-trie sub-tags
 /// (0x07/0x06/0x05), slots (0x04) and self-destruct (0x03), so the first call is the
-/// account sub-tag (0x02) and <c>Ends[]</c> is 3 entries instead of 8.
+/// account sub-tag (0x02) and <c>Ends[]</c> is 3 entries (0x02 + 1) instead of the 8
+/// (0x07 + 1) a full contract — whose highest sub-tag is 0x07 — would need.
 /// </para>
 /// </remarks>
 public ref struct HsstDenseByteIndexBuilder<TWriter>
@@ -149,7 +150,7 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
         // With values streamed high-tag → low-tag, the largest cumulative end now sits at
         // Ends[0] (or anywhere ≤ _lastTag, all equal after the below-range fill).
         long valuesTotal = _ends![0];
-        int offsetSize = HsstOffset.ChooseOffsetSize(valuesTotal);
+        int offsetSize = HsstPackedArrayLayout.ChooseOffsetSize(valuesTotal);
 
         // Ends section, written at the chosen stride.
         Span<byte> endsSpan = _writer.GetSpan(n * offsetSize);

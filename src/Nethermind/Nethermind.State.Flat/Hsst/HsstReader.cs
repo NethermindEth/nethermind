@@ -19,8 +19,8 @@ namespace Nethermind.State.Flat.Hsst;
 /// per-layout reader (<see cref="HsstBTreeReader"/>, <see cref="HsstPackedArrayReader"/>,
 /// <see cref="HsstDenseByteIndexReader"/>) and repositions the bound to the matched entry's
 /// value region, also returning that bound via <c>out matched</c>. To save/restore
-/// scope across sibling seeks, capture <see cref="GetBound"/> beforehand and restore
-/// with <see cref="SetBound"/>.
+/// scope across sibling seeks, capture <see cref="GetBound"/> beforehand and re-enter via
+/// the <c>(reader, bound)</c> constructor.
 ///
 /// The keys-first two-byte-slot variants (<see cref="IndexType.TwoByteSlotValue"/> /
 /// <see cref="IndexType.TwoByteSlotValueLarge"/>) carry their <see cref="IndexType"/> byte
@@ -37,19 +37,6 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
     public HsstReader(scoped in TReader reader) : this(reader, new Bound(0, reader.Length)) { }
 
     public readonly Bound GetBound() => _bound;
-    public void SetBound(Bound bound) => _bound = bound;
-
-    /// <summary>
-    /// Copy the active bound's bytes into <paramref name="output"/>.
-    /// Returns the number of bytes actually written (min of bound length and output length).
-    /// </summary>
-    public readonly int GetValue(Span<byte> output)
-    {
-        int count = (int)Math.Min(_bound.Length, output.Length);
-        if (count > 0)
-            _reader.TryRead(_bound.Offset, output[..count]);
-        return count;
-    }
 
     /// <summary>
     /// Exact-match B-tree lookup within the current <see cref="Bound"/>. On success sets

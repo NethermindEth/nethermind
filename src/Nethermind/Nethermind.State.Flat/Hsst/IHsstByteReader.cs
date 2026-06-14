@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
-
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
@@ -28,45 +26,6 @@ public readonly ref struct NoOpPin(ReadOnlySpan<byte> buffer) : IBufferPin
 {
     public ReadOnlySpan<byte> Buffer { get; } = buffer;
     public void Dispose() { }
-}
-
-/// <summary>
-/// Pin that returns a pooled byte array on dispose. Used by copy-fallback readers
-/// that rent a buffer to materialise the requested window.
-/// </summary>
-public ref struct PooledArrayPin : IBufferPin
-{
-    private byte[]? _pooledArray;
-    private readonly int _size;
-
-    private PooledArrayPin(byte[] pooledArray, int size)
-    {
-        _pooledArray = pooledArray;
-        _size = size;
-    }
-
-    public readonly ReadOnlySpan<byte> Buffer => _pooledArray.AsSpan(0, _size);
-
-    public void Dispose()
-    {
-        byte[]? arr = _pooledArray;
-        if (arr is not null)
-        {
-            _pooledArray = null;
-            ArrayPool<byte>.Shared.Return(arr);
-        }
-    }
-
-    /// <summary>
-    /// Rent a pooled buffer of at least <paramref name="size"/> bytes and return a span over
-    /// the first <paramref name="size"/> bytes plus a pin that returns the array on dispose.
-    /// </summary>
-    public static PooledArrayPin Rent(int size, out Span<byte> buffer)
-    {
-        byte[] arr = ArrayPool<byte>.Shared.Rent(size);
-        buffer = arr.AsSpan(0, size);
-        return new PooledArrayPin(arr, size);
-    }
 }
 
 /// <summary>
@@ -102,34 +61,4 @@ public interface IHsstByteReader<TPin> where TPin : struct, IBufferPin, allows r
     /// without a stable base pointer; pointer-backed readers issue a real prefetch.
     /// </summary>
     void Prefetch(long offset);
-}
-
-/// <summary>
-/// Span-backed <see cref="IHsstByteReader{TPin}"/>. Stored as a ref struct so the underlying
-/// span's lifetime is tracked by the compiler — no raw pointers, no GC pinning concerns.
-/// Returns <see cref="NoOpPin"/> from every <see cref="PinBuffer"/> call (zero-copy slice).
-/// </summary>
-public readonly ref struct SpanByteReader : IHsstByteReader<NoOpPin>
-{
-    private readonly ReadOnlySpan<byte> _data;
-
-    public SpanByteReader(ReadOnlySpan<byte> data) => _data = data;
-
-    public long Length => _data.Length;
-
-    public bool TryRead(long offset, scoped Span<byte> output)
-    {
-        if ((ulong)offset > (ulong)(_data.Length - output.Length)) return false;
-        _data.Slice((int)offset, output.Length).CopyTo(output);
-        return true;
-    }
-
-    public NoOpPin PinBuffer(Bound bound)
-    {
-        if ((ulong)bound.Offset + (ulong)bound.Length > (ulong)_data.Length)
-            throw new ArgumentOutOfRangeException(nameof(bound));
-        return new NoOpPin(_data.Slice((int)bound.Offset, (int)bound.Length));
-    }
-
-    public readonly void Prefetch(long offset) { }
 }

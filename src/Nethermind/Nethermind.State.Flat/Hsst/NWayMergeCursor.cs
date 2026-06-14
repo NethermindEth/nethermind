@@ -17,8 +17,13 @@ namespace Nethermind.State.Flat.Hsst;
 /// <c>Span&lt;HsstEnumerator&gt;</c> for the per-slot iteration state. Per-source state —
 /// the reader factory plus the bound this slot is positioned over — comes via a
 /// <typeparamref name="TSource"/> per cursor slot; the cursor constructs an enumerator
-/// per slot in its ctor via <typeparamref name="TFactory"/>. Newest-source-wins tie-break
-/// is hard-coded; every live merge in <c>PersistedSnapshotMerger</c> wants this rule.
+/// per slot in its ctor via <typeparamref name="TFactory"/>. The factory is intentionally
+/// decoupled from <typeparamref name="TSource"/>: the same source type can be enumerated by
+/// different strategies at different nesting levels (e.g. <c>ViewMergeSource</c> is driven by
+/// a tail-dispatch factory at the outer level and a two-byte-slot front-dispatch factory in
+/// the inner slot merge), so the enumeration strategy can't live on the source itself.
+/// Newest-source-wins tie-break is hard-coded; every live merge in
+/// <c>PersistedSnapshotMerger</c> wants this rule.
 ///
 /// Usage:
 /// <code>

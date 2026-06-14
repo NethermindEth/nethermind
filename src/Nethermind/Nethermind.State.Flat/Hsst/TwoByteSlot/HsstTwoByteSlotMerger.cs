@@ -34,9 +34,9 @@ internal static class HsstTwoByteSlotMerger
     internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TCallback>(
         ref TWriter writer,
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,
-        ArrayPoolList<byte> scratchKeys,
-        ArrayPoolList<byte> scratchValues,
-        ArrayPoolList<int> scratchLens,
+        NativeMemoryList<byte> scratchKeys,
+        NativeMemoryList<byte> scratchValues,
+        NativeMemoryList<int> scratchLens,
         TCallback callback)
         where TWriter : IByteBufferWriter
         where TPin : struct, IBufferPin, allows ref struct
