@@ -28,7 +28,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// The merge is generic over the byte-reader source so it isn't bound to a specific reader:
 /// each input is an <see cref="IHsstReaderSource{TReader,TPin}"/> (<typeparamref name="TView"/>)
 /// that mints a fresh reader on demand. Production drives it with
-/// <see cref="WholeReadSessionView"/> / <see cref="WholeReadSessionReader"/>.
+/// <see cref="WholeReadSession"/> / <see cref="WholeReadSessionReader"/>.
 /// </remarks>
 public static class PersistedSnapshotMerger
 {

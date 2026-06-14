@@ -260,9 +260,7 @@ public class PersistedSnapshotCompactor(
         // value span — no pre-pass on this side.
         int n = snapshots.Count;
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryListRef<WholeReadSessionView> viewsList = new(n, n);
         WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
-        Span<WholeReadSessionView> views = viewsList.AsSpan();
         try
         {
             long estimatedSize = 0;
@@ -273,7 +271,6 @@ public class PersistedSnapshotCompactor(
                 // snapshot that supersedes these sources warms its own cache lazily on the
                 // first read of each address, so there's no value in keeping these pages.
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessionArr[i].GetView();
 
                 estimatedSize += snapshots[i].Size;
                 // Each source carries its own bloom; sum their key counts to size the merge.
@@ -299,8 +296,8 @@ public class PersistedSnapshotCompactor(
             using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
             {
                 long sw = Stopwatch.GetTimestamp();
-                PersistedSnapshotMerger.NWayMergeSnapshots<ArenaBufferWriter, WholeReadSessionView, WholeReadSessionReader, NoOpPin>(
-                    views, ref arenaWriter.GetWriter(), mergedBloom);
+                PersistedSnapshotMerger.NWayMergeSnapshots<ArenaBufferWriter, WholeReadSession, WholeReadSessionReader, NoOpPin>(
+                    sessionsList.AsSpan(), ref arenaWriter.GetWriter(), mergedBloom);
 
                 long len = arenaWriter.GetWriter().Written;
                 StringLabel sizeLabel = GetSizeLabel(compactSize);

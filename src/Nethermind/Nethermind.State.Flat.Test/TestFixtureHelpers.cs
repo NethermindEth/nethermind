@@ -28,7 +28,7 @@ internal static class TestFixtureHelpers
     public static void LeaseBlobIdsFromHsst(ArenaReservation reservation, BlobArenaManager blobs)
     {
         using WholeReadSession session = reservation.BeginWholeReadSession();
-        WholeReadSessionReader reader = session.GetReader();
+        WholeReadSessionReader reader = session.CreateReader();
         ushort[]? ids = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
         if (ids is null) return;
         foreach (ushort id in ids)

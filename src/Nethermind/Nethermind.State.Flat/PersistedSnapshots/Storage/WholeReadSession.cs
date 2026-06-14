@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.State.Flat.Hsst;
+
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
@@ -13,10 +15,20 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// tracker-side drops travel together so the tracker never holds ghost entries for
 /// pages the kernel has already released.
 /// </summary>
-public sealed class WholeReadSession : IDisposable
+/// <remarks>
+/// Also serves as the <see cref="IHsstReaderSource{TReader,TPin}"/> for the reservation:
+/// the mmap base pointer is captured once at construction (one interface call on the
+/// underlying <see cref="IArenaWholeView"/>) so <see cref="CreateReader"/> mints fresh
+/// pointer-backed readers on the merge/scan hot path with no per-call indirection or
+/// dispose check. Callers must keep the session alive while any reader derived from it
+/// is in use.
+/// </remarks>
+public sealed unsafe class WholeReadSession : IDisposable, IHsstReaderSource<WholeReadSessionReader, NoOpPin>
 {
     private readonly ArenaReservation _reservation;
     private readonly IArenaWholeView _view;
+    private readonly byte* _basePtr;
+    private readonly long _size;
     private readonly bool _adviseDontNeedOnDispose;
     private bool _disposed;
 
@@ -26,48 +38,34 @@ public sealed class WholeReadSession : IDisposable
         _adviseDontNeedOnDispose = adviseDontNeedOnDispose;
         _reservation.AcquireLease();
         _view = _reservation.OpenWholeView(adviseDontNeedOnDispose);
+        _basePtr = _view.DataPtr;
+        _size = _view.Size;
     }
 
     /// <summary>Total reservation size in bytes (long-typed, may exceed 2 GiB).</summary>
-    public long Size => _view.Size;
+    public long Size => _size;
 
     /// <summary>
-    /// <see cref="IHsstByteReader{TPin}"/> over the session's view, addressed in the
-    /// reservation's own offset space (offset 0 = first byte of the reservation).
-    /// Pointer-backed so &gt;2 GiB reservations are addressable.
+    /// Materialise a fresh <see cref="IHsstByteReader{TPin}"/> over the session's view, addressed
+    /// in the reservation's own offset space (offset 0 = first byte). Pointer-backed so &gt;2 GiB
+    /// reservations are addressable. No dispose check — the caller guarantees the session is alive
+    /// (see the type remarks); this is the merge/scan hot path.
     /// </summary>
-    public unsafe WholeReadSessionReader GetReader()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return new WholeReadSessionReader(_view.DataPtr, _view.Size);
-    }
-
-    /// <summary>
-    /// Cached view coordinates suitable for caching across an entire merge loop, then
-    /// constructing <see cref="WholeReadSessionReader"/> instances on demand without
-    /// re-paying the per-call dispose check. The returned pointer is owned by this
-    /// session — the caller must ensure the session is not disposed while the view is
-    /// in use.
-    /// </summary>
-    public unsafe WholeReadSessionView GetView()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return new WholeReadSessionView((IntPtr)_view.DataPtr, _view.Size);
-    }
+    public WholeReadSessionReader CreateReader() => new(_basePtr, _size);
 
     /// <summary>
     /// Materialise the entire reservation as a single <see cref="ReadOnlySpan{Byte}"/>.
     /// <para>
     /// Span&lt;T&gt; is intrinsically int-bounded; this overload throws via a checked
     /// cast when the reservation exceeds <see cref="int.MaxValue"/>. Callers that
-    /// must support &gt;2 GiB reservations should use <see cref="GetReader"/>
+    /// must support &gt;2 GiB reservations should use <see cref="CreateReader"/>
     /// (pointer-backed, long-bounded) instead and walk the data in int-sized chunks.
     /// </para>
     /// </summary>
-    public unsafe ReadOnlySpan<byte> AsSpanIntBounded()
+    public ReadOnlySpan<byte> AsSpanIntBounded()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return new ReadOnlySpan<byte>(_view.DataPtr, checked((int)_view.Size));
+        return new ReadOnlySpan<byte>(_basePtr, checked((int)_size));
     }
 
     public void Dispose()

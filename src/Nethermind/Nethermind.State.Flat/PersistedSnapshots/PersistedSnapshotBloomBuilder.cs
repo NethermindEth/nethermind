@@ -10,7 +10,7 @@ using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
-    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionView,
+    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSession,
     Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
     Nethermind.State.Flat.Hsst.NoOpPin>;
 
