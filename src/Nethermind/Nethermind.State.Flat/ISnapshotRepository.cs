@@ -47,7 +47,7 @@ public interface ISnapshotRepository : IDisposable
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
     void RemovePersistedStatesUntil(long blockNumber);
     AssembledSnapshotResult AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
-    SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, long minBlockNumber, int estimatedSize);
+    SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId toStateId, long minBlockNumber, int estimatedSize);
 
     /// <summary>
     /// Backward BFS from <paramref name="seed"/> over the two-tier snapshot graph for the first

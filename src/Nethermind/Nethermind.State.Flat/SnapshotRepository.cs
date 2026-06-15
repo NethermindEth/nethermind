@@ -218,8 +218,8 @@ public class SnapshotRepository : ISnapshotRepository
         }
     }
 
-    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
-        => AssembleSnapshotsBfs(baseBlock, minBlockNumber, exactTarget: null, estimatedSize);
+    public SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId toStateId, long minBlockNumber, int estimatedSize)
+        => AssembleSnapshotsBfs(toStateId, minBlockNumber, exactTarget: null, estimatedSize);
 
     /// <summary>
     /// BFS over the snapshot graph from <paramref name="baseBlock"/> back toward

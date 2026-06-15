@@ -76,7 +76,7 @@ public class SnapshotCompactor(
         }
 
         long startingBlockNumber = blockNumber - compactSize;
-        SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
+        SnapshotPooledList snapshots = _snapshotRepository.AssembleInMemorySnapshotsForCompaction(snapshot.To, startingBlockNumber, compactSize);
 
         bool snapshotsOk = false;
         try

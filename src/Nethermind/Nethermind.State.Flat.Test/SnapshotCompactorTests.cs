@@ -348,12 +348,12 @@ public class SnapshotCompactorTests
     }
 
     [Test]
-    public void Debug_AssembleSnapshotsUntil_Works()
+    public void Debug_AssembleInMemorySnapshotsForCompaction_Works()
     {
         BuildSnapshotChain(0, 4);
 
         StateId target = CreateStateId(4);
-        SnapshotPooledList assembled = _snapshotRepository.AssembleSnapshotsUntil(target, 0, 10);
+        SnapshotPooledList assembled = _snapshotRepository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(4));
 

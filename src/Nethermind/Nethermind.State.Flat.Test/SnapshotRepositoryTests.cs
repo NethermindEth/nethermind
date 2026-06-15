@@ -299,54 +299,54 @@ public class SnapshotRepositoryTests
 
     #endregion
 
-    #region AssembleSnapshotsUntil
+    #region AssembleInMemorySnapshotsForCompaction
 
     [Test]
-    public void AssembleSnapshotsUntil_EmptyRepository()
+    public void AssembleInMemorySnapshotsForCompaction_EmptyRepository()
     {
         StateId target = CreateStateId(10);
 
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(target, 0, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(0));
     }
 
     [Test]
-    public void AssembleSnapshotsUntil_SingleSnapshot()
+    public void AssembleInMemorySnapshotsForCompaction_SingleSnapshot()
     {
         AddSnapshotToRepository(0, 1);
 
         StateId target = CreateStateId(1);
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(target, 0, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(1));
         Assert.That(assembled[0].To, Is.EqualTo(target));
     }
 
     [Test]
-    public void AssembleSnapshotsUntil_LinearChain()
+    public void AssembleInMemorySnapshotsForCompaction_LinearChain()
     {
         BuildSnapshotChain(0, 4);
 
         StateId target = CreateStateId(4);
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(target, 0, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(4));
     }
 
     [Test]
-    public void AssembleSnapshotsUntil_StopsAtStartingBlock()
+    public void AssembleInMemorySnapshotsForCompaction_StopsAtStartingBlock()
     {
         BuildSnapshotChain(0, 5);
 
         StateId target = CreateStateId(4);
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(target, 2, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(target, 2, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(2));
     }
 
     [Test]
-    public void AssembleSnapshotsUntil_PrefersCompacted()
+    public void AssembleInMemorySnapshotsForCompaction_PrefersCompacted()
     {
         StateId from = CreateStateId(0);
         StateId to = CreateStateId(1);
@@ -354,7 +354,7 @@ public class SnapshotRepositoryTests
         Snapshot compacted = CreateSnapshot(from, to);
         _repository.TryAdd(compacted, SnapshotTier.InMemoryCompacted);
 
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(to, 0, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(to, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(1));
     }
