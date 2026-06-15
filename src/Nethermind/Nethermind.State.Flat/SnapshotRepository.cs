@@ -277,14 +277,15 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public readonly int ParentIndex = parentIndex;
     }
 
-    private enum WalkAction { Continue, Stop }
+    private enum WalkAction { Continue, Stop, Enqueue }
 
     /// <summary>
-    /// Per-edge policy for <see cref="WalkParents{TVisitor}"/>. The visitor OWNS the lease handed to it:
-    /// dispose it and return <see cref="WalkAction.Continue"/> to skip the edge; retain it (e.g. in a
-    /// visited list) and enqueue the child via <paramref name="queue"/> to expand; or retain/dispose per
-    /// its own bookkeeping and return <see cref="WalkAction.Stop"/> to end the whole walk. The driver
-    /// never disposes a lease — there is exactly one owner at all times.
+    /// Per-edge policy for <see cref="WalkParents{TVisitor}"/>, invoked once per not-yet-seen parent edge
+    /// (the driver owns cycle detection — it disposes and skips any edge whose target is already seen, so
+    /// the visitor only ever sees a fresh target). The visitor OWNS the lease handed to it: dispose it and
+    /// return <see cref="WalkAction.Continue"/> to skip the edge; retain it (e.g. in a visited list), set
+    /// <c>next</c>, and return <see cref="WalkAction.Enqueue"/> to have the driver expand the child; or
+    /// retain/dispose per its own bookkeeping and return <see cref="WalkAction.Stop"/> to end the whole walk.
     /// </summary>
     private interface IParentWalkVisitor
     {
@@ -294,7 +295,10 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         /// <see cref="WalkAction.Continue"/>.</summary>
         SnapshotTier[] EdgePriority(bool viaPersisted);
 
-        WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen);
+        /// <summary>Process one parent edge. Returns <see cref="WalkAction.Enqueue"/> with the child node
+        /// to expand in <paramref name="next"/>, <see cref="WalkAction.Stop"/> to end the walk, or
+        /// <see cref="WalkAction.Continue"/> to move on without enqueuing (<paramref name="next"/> unused).</summary>
+        WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next);
     }
 
     // Dual-tier path BFS for AssembleSnapshots: each node has up to 4 edges (compacted/base ×
@@ -309,8 +313,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public readonly SnapshotTier[] EdgePriority(bool viaPersisted) =>
             viaPersisted ? PersistedContinuationPriority : FullExpansionPriority;
 
-        public WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
+        public WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next)
         {
+            next = default;
             if (from.BlockNumber < target.BlockNumber)
             {
                 // In-memory snapshots are persistence-granular; overshoot means unusable edge. Persisted
@@ -322,8 +327,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 return WalkAction.Stop;
             }
 
-            if (!seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; } // cycle
-
             int idx = visited.Count;
             visited.Add((snapshot, parent.ParentIndex));
             if (from == target || from.BlockNumber == target.BlockNumber)
@@ -331,8 +334,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 WinnerIndex = idx;
                 return WalkAction.Stop;
             }
-            queue.Enqueue(new WalkNode(from, tier.IsPersisted(), idx));
-            return WalkAction.Continue;
+            next = new WalkNode(from, tier.IsPersisted(), idx);
+            return WalkAction.Enqueue;
         }
     }
 
@@ -347,12 +350,13 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public readonly SnapshotTier[] EdgePriority(bool viaPersisted) => InMemoryExpansionPriority;
 
-        public WalkAction Visit(IDisposable leased, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
+        public WalkAction Visit(IDisposable leased, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next)
         {
+            next = default;
             // In-memory-only expansion — the lease is always a Snapshot.
             Snapshot snapshot = (Snapshot)leased;
 
-            if (from.BlockNumber < minBlockNumber || !seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; }
+            if (from.BlockNumber < minBlockNumber) { snapshot.Dispose(); return WalkAction.Continue; }
 
             int index = Visited.Count;
             Visited.Add((snapshot, parent.ParentIndex));
@@ -361,8 +365,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 WinnerIndex = index;
                 return WalkAction.Stop;
             }
-            queue.Enqueue(new WalkNode(from, tier.IsPersisted(), index)); // in-memory only here, so never persisted
-            return WalkAction.Continue;
+            next = new WalkNode(from, tier.IsPersisted(), index); // in-memory only here, so never persisted
+            return WalkAction.Enqueue;
         }
     }
 
@@ -379,11 +383,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public readonly SnapshotTier[] EdgePriority(bool viaPersisted) => CompactionEdgePriority;
 
-        public WalkAction Visit(IDisposable leased, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
+        public WalkAction Visit(IDisposable leased, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next)
         {
+            next = default;
             // Compaction expansion is persisted-only — the lease is always a PersistedSnapshot.
             PersistedSnapshot snapshot = (PersistedSnapshot)leased;
-            if (from.BlockNumber < minBlockNumber || !seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; }
+            if (from.BlockNumber < minBlockNumber) { snapshot.Dispose(); return WalkAction.Continue; }
 
             int index = Visited.Count;
             Visited.Add((snapshot, parent.ParentIndex));
@@ -394,8 +399,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             }
 
             if (from.BlockNumber == minBlockNumber) return WalkAction.Stop; // window start — deepest possible
-            queue.Enqueue(new WalkNode(from, tier.IsPersisted(), index));
-            return WalkAction.Continue;
+            next = new WalkNode(from, tier.IsPersisted(), index);
+            return WalkAction.Enqueue;
         }
     }
 
@@ -408,27 +413,31 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public readonly SnapshotTier[] EdgePriority(bool viaPersisted) =>
             viaPersisted ? PersistedContinuationPriority : FullExpansionPriority;
 
-        public WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
+        public WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next)
         {
+            next = default;
             snapshot.Dispose();
 
             if (from == target) { Reached = true; return WalkAction.Stop; }
-            if (from.BlockNumber > target.BlockNumber && seen.Add(from))
-                queue.Enqueue(new WalkNode(from, tier.IsPersisted(), parent.ParentIndex));
+            if (from.BlockNumber > target.BlockNumber)
+            {
+                next = new WalkNode(from, tier.IsPersisted(), parent.ParentIndex);
+                return WalkAction.Enqueue;
+            }
             return WalkAction.Continue;
         }
     }
 
     /// <summary>
-    /// Generic backward BFS over parent (<c>From</c>) edges. Owns the frontier queue and the visited
-    /// set (seeded with <paramref name="start"/>) plus the edge-expansion loop; the visitor uses the
-    /// supplied <c>seen</c> for cycle detection / pruning, retains leases, and signals the win.
+    /// Generic backward BFS over parent (<c>From</c>) edges. Owns the frontier queue, the edge-expansion
+    /// loop, and cycle detection: each edge target is deduped against the visited set (seeded with
+    /// <paramref name="start"/>) before <c>Visit</c>, and an already-seen target's lease is disposed and
+    /// skipped. The visitor only sees fresh targets — it retains kept leases and signals the win.
     /// </summary>
     private void WalkParents<TVisitor>(in StateId start, bool startViaPersisted, ref TVisitor visitor)
         where TVisitor : struct, IParentWalkVisitor, allows ref struct
     {
-        // queue is passed to Visit by ref (it is a struct the visitor enqueues into), so it cannot be a
-        // using variable; dispose it in the finally instead.
+        // PooledQueue is a struct, so it cannot be a using variable; dispose it in the finally instead.
         PooledQueue<WalkNode> queue = new();
         using PooledSet<StateId> seen = new();
         try
@@ -448,8 +457,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 foreach (SnapshotTier tier in priority)
                 {
                     if (!TryLeaseParent(node.Current, tier, out IDisposable? snapshot, out StateId from)) continue;
-                    if (visitor.Visit(snapshot!, from, tier, node, ref queue, seen) == WalkAction.Stop)
-                        return;
+                    if (!seen.Add(from)) { snapshot!.Dispose(); continue; } // cycle detection
+                    switch (visitor.Visit(snapshot!, from, tier, node, out WalkNode next))
+                    {
+                        case WalkAction.Stop: return;
+                        case WalkAction.Enqueue: queue.Enqueue(next); break;
+                    }
                 }
             }
         }
