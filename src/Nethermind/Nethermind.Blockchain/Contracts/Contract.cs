@@ -9,7 +9,6 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 

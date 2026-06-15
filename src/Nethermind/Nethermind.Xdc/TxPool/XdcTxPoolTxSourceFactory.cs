@@ -8,7 +8,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Core.Specs;
-using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc.TxPool;
 

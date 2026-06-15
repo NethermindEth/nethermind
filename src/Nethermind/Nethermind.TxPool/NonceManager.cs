@@ -5,7 +5,6 @@ using NonBlocking;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 

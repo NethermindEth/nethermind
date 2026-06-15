@@ -17,7 +17,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
-using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm.State;
 using NSubstitute;

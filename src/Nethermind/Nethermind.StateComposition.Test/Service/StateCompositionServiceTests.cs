@@ -165,7 +165,7 @@ public class StateCompositionServiceTests
         Assert.That(harness.StateHolder.HasScanBaseline, Is.True,
             "complete scan must seed the baseline");
         Hash256 priorRoot = harness.StateHolder.LastProcessedStateRoot;
-        long priorBlock = harness.StateHolder.IncrementalBlock;
+        ulong priorBlock = harness.StateHolder.IncrementalBlock;
         TimeSpan priorDuration = harness.StateHolder.LastScanMetadata.Duration;
 
         Result<StateCompositionStats> partialScan = await harness.Service.AnalyzeAsync(header, CancellationToken.None);

@@ -138,7 +138,7 @@ public class TaikoChainSpecEngineParametersTests
 
         Assert.That(parameters.UnzenTimestamp, Is.EqualTo(HoodiUnzenTimestamp));
 
-        SortedSet<long> blockNumbers = [];
+        SortedSet<ulong> blockNumbers = [];
         SortedSet<ulong> timestamps = [];
         parameters.AddTransitions(blockNumbers, timestamps);
 

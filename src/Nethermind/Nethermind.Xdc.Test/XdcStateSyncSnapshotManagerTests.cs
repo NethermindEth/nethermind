@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Xdc.Contracts;
-using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Xdc.Test.Helpers;
