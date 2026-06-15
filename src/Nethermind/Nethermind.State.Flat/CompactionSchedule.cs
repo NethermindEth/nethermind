@@ -46,33 +46,19 @@ public sealed class CompactionSchedule : ICompactionSchedule
         return from + distance;
     }
 
-    // The three methods below do NOT short-circuit on `_compactSize <= 1` (the "compaction
+    // The methods below do NOT short-circuit on `_compactSize <= 1` (the "compaction
     // disabled" sentinel honoured by GetCompactSize and NextFullCompactionAfter), because
     // PersistedSnapshotCompactor runs with its own min/max caps and may legitimately
     // operate even when config.CompactSize == 1.
 
-    public bool IsFullCompactionBoundary(long blockNumber) =>
-        blockNumber != 0 && ShiftedAlignment(blockNumber) >= _compactSize;
+    public bool IsCompactSizeBoundary(long blockNumber) =>
+        GetPersistedSnapshotCompactSize(blockNumber) == _compactSize;
 
-    public long GetHierarchicalCompactSize(long blockNumber) =>
-        blockNumber == 0 ? 1 : ShiftedAlignment(blockNumber);
+    public bool IsLargeCompactionBoundary(long blockNumber) =>
+        GetPersistedSnapshotCompactSize(blockNumber) > _compactSize;
 
-    public bool IsHierarchicalBoundary(long blockNumber) =>
-        blockNumber != 0 && ShiftedAlignment(blockNumber) > _compactSize;
-
-    public CompactionWindow? GetHierarchicalCompactionWindow(long blockNumber)
-    {
-        int size = (int)Math.Min(GetHierarchicalCompactSize(blockNumber), _maxCompactSize);
-        // A size-1 window is just the base snapshot; the CompactSize-wide window is the
-        // persistable's (see GetPersistableCompactionWindow). Neither is a hierarchical merge.
-        if (size <= 1 || size == _compactSize) return null;
-        return new CompactionWindow(blockNumber - size, size);
-    }
-
-    public CompactionWindow GetPersistableCompactionWindow(long blockNumber) =>
-        new(blockNumber - _compactSize, _compactSize);
-
-    public bool IsIntermediateWindow(int windowSize) => windowSize < _compactSize;
+    public long GetPersistedSnapshotCompactSize(long blockNumber) =>
+        blockNumber == 0 ? 1 : Math.Min(ShiftedAlignment(blockNumber), _maxCompactSize);
 
     // (blockNumber + _offset) & -(blockNumber + _offset) — the lowest power of 2 that
     // divides the offset-shifted block number. Common factor of every boundary check.

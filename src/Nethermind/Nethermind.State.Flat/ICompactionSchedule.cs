@@ -3,12 +3,6 @@
 
 namespace Nethermind.State.Flat;
 
-/// <summary>
-/// A half-open block window <c>(StartBlock, StartBlock + Size]</c> selected for compaction,
-/// together with its power-of-2 <see cref="Size"/>.
-/// </summary>
-public readonly record struct CompactionWindow(long StartBlock, int Size);
-
 public interface ICompactionSchedule
 {
     /// <summary>
@@ -27,53 +21,29 @@ public interface ICompactionSchedule
     long NextFullCompactionAfter(long from);
 
     /// <summary>
-    /// True if <paramref name="blockNumber"/> sits exactly on a full <c>CompactSize</c>-wide
-    /// window — i.e. a persistence boundary — with the per-instance offset applied
-    /// transparently.
+    /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
+    /// (<see cref="GetPersistedSnapshotCompactSize"/>) is exactly <c>CompactSize</c> — a boundary
+    /// whose only window is the persistable one, with no wider (<c>&gt;CompactSize</c>) merge to
+    /// perform. Mutually exclusive with <see cref="IsLargeCompactionBoundary"/>; together they
+    /// cover every persistence boundary.
     /// </summary>
-    bool IsFullCompactionBoundary(long blockNumber);
+    bool IsCompactSizeBoundary(long blockNumber);
 
     /// <summary>
-    /// Uncapped alignment tier — the lowest power of 2 that divides
-    /// <c>blockNumber + Offset</c>. Unlike <see cref="GetCompactSize"/> this is NOT capped at
-    /// <c>CompactSize</c>, so callers can identify and act on hierarchical-merge windows
-    /// (2×, 4×, …) above the persistence boundary. Callers apply their own caps
-    /// (e.g. <c>PersistedSnapshotMaxCompactSize</c>) on top.
+    /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
+    /// (<see cref="GetPersistedSnapshotCompactSize"/>) is strictly larger than <c>CompactSize</c> —
+    /// a boundary that carries a wider (<c>&gt;CompactSize</c>) merge on top of the persistable
+    /// window. Mutually exclusive with <see cref="IsCompactSizeBoundary"/>; together they cover
+    /// every persistence boundary.
     /// </summary>
-    long GetHierarchicalCompactSize(long blockNumber);
+    bool IsLargeCompactionBoundary(long blockNumber);
 
     /// <summary>
-    /// True if <paramref name="blockNumber"/> aligns to a tier strictly larger than
-    /// <c>CompactSize</c> — i.e. the block hits a hierarchical-merge boundary above the
-    /// persistence boundary. Equivalent to
-    /// <c>GetHierarchicalCompactSize(blockNumber) &gt; CompactSize</c>.
+    /// The persisted-snapshot compaction tier for <paramref name="blockNumber"/> — the lowest
+    /// power of 2 that divides <c>blockNumber + Offset</c>, capped at
+    /// <c>PersistedSnapshotMaxCompactSize</c>. Unlike <see cref="GetCompactSize"/> the cap is
+    /// <c>PersistedSnapshotMaxCompactSize</c> rather than <c>CompactSize</c>, so callers can act
+    /// on the wider merge windows (2×, 4×, …) above the persistence boundary.
     /// </summary>
-    bool IsHierarchicalBoundary(long blockNumber);
-
-    /// <summary>
-    /// The hierarchical (non-persistable) compaction window for <paramref name="blockNumber"/>,
-    /// or <c>null</c> when there is nothing to merge — a single-snapshot window or the
-    /// <c>CompactSize</c>-wide window reserved for <see cref="GetPersistableCompactionWindow"/>.
-    /// </summary>
-    /// <remarks>
-    /// The window size is <see cref="GetHierarchicalCompactSize"/> capped at the persisted-snapshot
-    /// max compact size. The start is <c>blockNumber - Size</c>: the alignment lives in
-    /// offset-shifted space, but the window's left edge must be the raw block number, so
-    /// <c>((b-1)/size)*size</c> would only be correct when the offset is 0.
-    /// </remarks>
-    CompactionWindow? GetHierarchicalCompactionWindow(long blockNumber);
-
-    /// <summary>
-    /// The <c>CompactSize</c>-wide persistable window ending at the boundary block
-    /// <paramref name="blockNumber"/> — the window <c>PersistenceManager</c> writes to RocksDB.
-    /// Callers must first confirm the block is a boundary via <see cref="IsFullCompactionBoundary"/>.
-    /// </summary>
-    CompactionWindow GetPersistableCompactionWindow(long blockNumber);
-
-    /// <summary>
-    /// True if a produced window of <paramref name="windowSize"/> is a sub-<c>CompactSize</c>
-    /// intermediate (strictly smaller than the persistable window), as opposed to the persistable
-    /// window or a wider hierarchical merge.
-    /// </summary>
-    bool IsIntermediateWindow(int windowSize);
+    long GetPersistedSnapshotCompactSize(long blockNumber);
 }
