@@ -667,13 +667,50 @@ public class SszCodecTests
         ArrayBufferWriter<byte> w = new();
         SszCodec.EncodeGetPayloadV4Response(
             new GetPayloadV4Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: false, executionRequests: []), w);
-        ReadOnlySpan<byte> buf = w.WrittenSpan;
 
+        AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 0, version: "V4");
+    }
+
+    [Test]
+    public void EncodeGetPayloadV5Response_all_static_fields_land_at_spec_defined_offsets()
+    {
+        UInt256 blockValue = new(0xC0FFEEu);
+        ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
+        Block block = (Block)ep.TryGetBlock();
+
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV5Response(
+            new GetPayloadV5Result(block, blockValue, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: true), w);
+
+        AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 1, version: "V5");
+    }
+
+    [Test]
+    public void EncodeGetPayloadV6Response_all_static_fields_land_at_spec_defined_offsets()
+    {
+        UInt256 blockValue = new(0xFEEDFACEu);
+        // 0xc0 is the RLP encoding of an empty list — minimum valid BAL payload for TryGetBlock.
+        ExecutionPayloadV4 ep = SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL);
+        Block block = (Block)ep.TryGetBlock();
+
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV6Response(
+            new GetPayloadV6Result(block, blockValue, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false), w);
+
+        AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 0, version: "V6");
+    }
+
+    // Shared assertion for the Prague+ BuiltPayload fixed section: identical for V4/V5/V6 since
+    // BlobsBundleV{1,2} and ExecutionPayloadV{3,4} are all variable-size (4-byte offsets).
+    private static void AssertPragueBuiltPayloadOffsets(
+        ReadOnlySpan<byte> buf, UInt256 blockValue, byte expectedShouldOverrideBuilder, string version)
+    {
         AssertGetPayloadResponseHeaderOffsets(buf, fixedSectionSize: 45, blockValue,
-            shouldOverrideBuilderOffset: 44, expectedShouldOverrideBuilder: 0, version: "V4");
+            shouldOverrideBuilderOffset: 44, expectedShouldOverrideBuilder, version);
 
         uint erOffset = BitConverter.ToUInt32(buf.Slice(40, 4));
-        Assert.That(erOffset, Is.GreaterThanOrEqualTo(45u), "execution_requests offset @ 40 must point past the 45-byte fixed section");
+        Assert.That(erOffset, Is.GreaterThanOrEqualTo(45u),
+            $"{version}: execution_requests offset @ 40 must point past the 45-byte fixed section");
     }
 
     /// <summary>

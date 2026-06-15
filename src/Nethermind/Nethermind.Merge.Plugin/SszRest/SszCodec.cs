@@ -90,8 +90,8 @@ public static class SszCodec
             ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
-            ShouldOverrideBuilder = r.ShouldOverrideBuilder,
-            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
+            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+            ShouldOverrideBuilder = r.ShouldOverrideBuilder
         }, writer);
 
     public static int EncodeGetPayloadV5Response(GetPayloadV5Result? r, IBufferWriter<byte> writer)
@@ -100,8 +100,8 @@ public static class SszCodec
             ExecutionPayload = new SszExecutionPayloadV3(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
-            ShouldOverrideBuilder = r.ShouldOverrideBuilder,
-            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
+            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+            ShouldOverrideBuilder = r.ShouldOverrideBuilder
         }, writer);
 
     public static int EncodeGetPayloadV6Response(GetPayloadV6Result? r, IBufferWriter<byte> writer)
@@ -110,8 +110,8 @@ public static class SszCodec
             ExecutionPayload = new SszExecutionPayloadV4(r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
-            ShouldOverrideBuilder = r.ShouldOverrideBuilder,
-            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
+            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+            ShouldOverrideBuilder = r.ShouldOverrideBuilder
         }, writer);
 
     public static byte[][] DecodeGetBlobsRequest(ReadOnlySequence<byte> buf)
