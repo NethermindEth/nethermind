@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// The single snapshot repository owning both tiers: the in-memory snapshots (base + compacted
-/// dictionaries) and the persisted tier (three <see cref="SnapshotBucket"/>s over the
+/// dictionaries) and the persisted tier (three <see cref="PersistedSnapshotBucket"/>s over the
 /// arena/blob/catalog stores). Two-tier graph walks, persistence, and compaction-assembly all
 /// live here so they operate on the buckets directly.
 /// </summary>
@@ -86,9 +86,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // can live in more than one bucket (a base and a compacted snapshot can share it).
     private readonly SnapshotCatalog _catalog;
     private readonly int _compactSize;
-    private readonly SnapshotBucket _base;
-    private readonly SnapshotBucket _compacted;
-    private readonly SnapshotBucket _persistable;
+    private readonly PersistedSnapshotBucket _base;
+    private readonly PersistedSnapshotBucket _compacted;
+    private readonly PersistedSnapshotBucket _persistable;
     private int _disposed;
 
     // ---- In-memory tier. Holds only the recent unpersisted snapshots — a few hundred at most
@@ -113,9 +113,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         ILogManager logManager)
     {
         _catalog = catalog;
-        _base = new SnapshotBucket(_catalog, SnapshotTier.PersistedBase);
-        _compacted = new SnapshotBucket(_catalog, SnapshotTier.PersistedCompacted);
-        _persistable = new SnapshotBucket(_catalog, SnapshotTier.PersistedPersistable);
+        _base = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedBase);
+        _compacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedCompacted);
+        _persistable = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedPersistable);
         _compactSize = config.CompactSize;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
     }
@@ -294,7 +294,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         /// <see cref="WalkAction.Continue"/>.</summary>
         SnapshotTier[] EdgePriority(bool viaPersisted);
 
-        WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen);
+        WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen);
     }
 
     // Dual-tier path BFS for AssembleSnapshots: each node has up to 4 edges (compacted/base ×
@@ -309,29 +309,29 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public readonly SnapshotTier[] EdgePriority(bool viaPersisted) =>
             viaPersisted ? PersistedContinuationPriority : FullExpansionPriority;
 
-        public WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
+        public WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
         {
             if (from.BlockNumber < target.BlockNumber)
             {
                 // In-memory snapshots are persistence-granular; overshoot means unusable edge. Persisted
                 // (especially compacted) snapshots can span past the target — accept as the terminal
                 // element without enqueuing further.
-                if (!viaPersisted) { snapshot.Dispose(); return WalkAction.Continue; }
+                if (!tier.IsPersisted()) { snapshot.Dispose(); return WalkAction.Continue; }
                 WinnerIndex = visited.Count;
-                visited.Add((snapshot, parentIndex));
+                visited.Add((snapshot, parent.ParentIndex));
                 return WalkAction.Stop;
             }
 
             if (!seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; } // cycle
 
             int idx = visited.Count;
-            visited.Add((snapshot, parentIndex));
+            visited.Add((snapshot, parent.ParentIndex));
             if (from == target || from.BlockNumber == target.BlockNumber)
             {
                 WinnerIndex = idx;
                 return WalkAction.Stop;
             }
-            queue.Enqueue(new WalkNode(from, viaPersisted, idx));
+            queue.Enqueue(new WalkNode(from, tier.IsPersisted(), idx));
             return WalkAction.Continue;
         }
     }
@@ -347,7 +347,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public readonly SnapshotTier[] EdgePriority(bool viaPersisted) => InMemoryExpansionPriority;
 
-        public WalkAction Visit(IDisposable leased, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
+        public WalkAction Visit(IDisposable leased, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
         {
             // In-memory-only expansion — the lease is always a Snapshot.
             Snapshot snapshot = (Snapshot)leased;
@@ -355,13 +355,13 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             if (from.BlockNumber < minBlockNumber || !seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; }
 
             int index = Visited.Count;
-            Visited.Add((snapshot, parentIndex));
+            Visited.Add((snapshot, parent.ParentIndex));
             if (from.BlockNumber == minBlockNumber)
             {
                 WinnerIndex = index;
                 return WalkAction.Stop;
             }
-            queue.Enqueue(new WalkNode(from, viaPersisted, index)); // viaPersisted always false here
+            queue.Enqueue(new WalkNode(from, tier.IsPersisted(), index)); // in-memory only here, so never persisted
             return WalkAction.Continue;
         }
     }
@@ -379,14 +379,14 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public readonly SnapshotTier[] EdgePriority(bool viaPersisted) => CompactionEdgePriority;
 
-        public WalkAction Visit(IDisposable leased, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
+        public WalkAction Visit(IDisposable leased, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
         {
             // Compaction expansion is persisted-only — the lease is always a PersistedSnapshot.
             PersistedSnapshot snapshot = (PersistedSnapshot)leased;
             if (from.BlockNumber < minBlockNumber || !seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; }
 
             int index = Visited.Count;
-            Visited.Add((snapshot, parentIndex));
+            Visited.Add((snapshot, parent.ParentIndex));
             if (from.BlockNumber < _winnerBlock)
             {
                 _winnerBlock = from.BlockNumber;
@@ -394,7 +394,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             }
 
             if (from.BlockNumber == minBlockNumber) return WalkAction.Stop; // window start — deepest possible
-            queue.Enqueue(new WalkNode(from, viaPersisted, index));
+            queue.Enqueue(new WalkNode(from, tier.IsPersisted(), index));
             return WalkAction.Continue;
         }
     }
@@ -408,13 +408,13 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public readonly SnapshotTier[] EdgePriority(bool viaPersisted) =>
             viaPersisted ? PersistedContinuationPriority : FullExpansionPriority;
 
-        public WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
+        public WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, ref PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
         {
             snapshot.Dispose();
 
             if (from == target) { Reached = true; return WalkAction.Stop; }
             if (from.BlockNumber > target.BlockNumber && seen.Add(from))
-                queue.Enqueue(new WalkNode(from, viaPersisted, parentIndex));
+                queue.Enqueue(new WalkNode(from, tier.IsPersisted(), parent.ParentIndex));
             return WalkAction.Continue;
         }
     }
@@ -448,7 +448,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 foreach (SnapshotTier tier in priority)
                 {
                     if (!TryLeaseParent(node.Current, tier, out IDisposable? snapshot, out StateId from)) continue;
-                    if (visitor.Visit(snapshot!, from, tier.IsPersisted(), node.ParentIndex, ref queue, seen) == WalkAction.Stop)
+                    if (visitor.Visit(snapshot!, from, tier, node, ref queue, seen) == WalkAction.Stop)
                         return;
                 }
             }
@@ -857,7 +857,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
     };
 
-    private static bool TryLeaseFrom(SnapshotBucket bucket, in StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    private static bool TryLeaseFrom(PersistedSnapshotBucket bucket, in StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
     {
         if (bucket.TryGet(toState, out snapshot) && snapshot.TryAcquire())
             return true;
@@ -868,7 +868,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// <summary>The single bucket owning a persisted-tier catalog entry. Each entry carries exactly
     /// one <c>Persisted*</c> tier, so this is a 1:1 map (unlike leasing, where the compacted edge
     /// spans two buckets).</summary>
-    private SnapshotBucket BucketFor(SnapshotTier tier) => tier switch
+    private PersistedSnapshotBucket BucketFor(SnapshotTier tier) => tier switch
     {
         SnapshotTier.PersistedBase => _base,
         SnapshotTier.PersistedCompacted => _compacted,
@@ -976,171 +976,5 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _base.DisposeAndClear();
         _compacted.DisposeAndClear();
         _persistable.DisposeAndClear();
-    }
-
-    /// <summary>
-    /// One self-contained snapshot bucket for a single persisted <see cref="SnapshotTier"/>: a <c>To</c>-keyed
-    /// <see cref="ConcurrentDictionary{TKey,TValue}"/> for lock-free point lookups, a block-ordered
-    /// <see cref="SortedSet{T}"/> of its <c>To</c>s, and running memory/count totals — all guarded by
-    /// the bucket's own <see cref="Lock"/>. The bucket owns its share of the shared catalog and the
-    /// process-wide memory/count metrics, so insert/prune/remove are end-to-end here.
-    /// </summary>
-    /// <remarks>
-    /// Totals are read lock-free via <see cref="Interlocked.Read(ref long)"/>; the dictionary serves
-    /// point lookups lock-free. The lock only serialises ordered-set mutation, catalog writes, and
-    /// the lease/dispose handoff so a racing prune cannot dispose an entry between insert and return.
-    /// </remarks>
-    private sealed class SnapshotBucket(SnapshotCatalog catalog, SnapshotTier tier)
-    {
-        private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _byTo = new();
-        private readonly SortedSet<StateId> _ordered = [];
-        private readonly Lock _lock = new();
-        private long _memoryBytes;
-        private long _count;
-
-        public long MemoryBytes => Interlocked.Read(ref _memoryBytes);
-        public long Count => Interlocked.Read(ref _count);
-
-        /// <summary>The greatest <c>To</c> held by this bucket, or <c>null</c> when empty.</summary>
-        public StateId? Max
-        {
-            get { lock (_lock) return _ordered.Count == 0 ? null : _ordered.Max; }
-        }
-
-        // The process-wide memory gauge for this bucket's tier: base snapshots and the
-        // compacted/persistable tiers are tracked under separate aggregates.
-        private ref long GlobalMemory => ref (tier == SnapshotTier.PersistedBase
-            ? ref Metrics._persistedSnapshotMemory
-            : ref Metrics._compactedPersistedSnapshotMemory);
-
-        /// <summary>Live snapshots, for one-off lifecycle iteration (bloom rebuild) at construction.
-        /// Enumerates the dictionary directly — does not allocate a Values snapshot.</summary>
-        public IEnumerable<PersistedSnapshot> Snapshots
-        {
-            get
-            {
-                foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
-                    yield return kv.Value;
-            }
-        }
-
-        public bool TryGet(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
-            _byTo.TryGetValue(to, out snapshot);
-
-        public bool ContainsKey(in StateId to) => _byTo.ContainsKey(to);
-
-        /// <summary>
-        /// Index a snapshot: insert the dictionary entry, record its block-ordered id, and bump this
-        /// bucket's + the global memory/count totals — all under this bucket's lock so the dictionary
-        /// and the ordered set stay consistent against a concurrent catalog load or a racing prune.
-        /// </summary>
-        public void Set(in StateId to, PersistedSnapshot snapshot)
-        {
-            lock (_lock)
-            {
-                _byTo[to] = snapshot;
-                _ordered.Add(to);
-                Interlocked.Add(ref _memoryBytes, snapshot.Size);
-                Interlocked.Increment(ref _count);
-                Interlocked.Add(ref GlobalMemory, snapshot.Size);
-                Interlocked.Increment(ref Metrics._persistedSnapshotCount);
-            }
-        }
-
-        /// <summary>
-        /// Index a snapshot (dictionary + ordered set + totals) and pre-acquire the caller's lease —
-        /// both under this bucket's lock so a racing prune cannot dispose the entry between insert and
-        /// the caller seeing the return. The catalog entry is written by the caller, not here.
-        /// </summary>
-        public void Add(in StateId to, PersistedSnapshot snapshot)
-        {
-            lock (_lock)
-            {
-                Set(to, snapshot);
-                snapshot.AcquireLease();
-            }
-        }
-
-        /// <summary>Remove the entry at <paramref name="to"/> (catalog + index + leases) under this
-        /// bucket's lock. Returns <c>true</c> when an entry was present.</summary>
-        public bool RemoveExact(in StateId to)
-        {
-            lock (_lock) return RemoveLocked(to);
-        }
-
-        /// <summary>
-        /// Prune the block-ordered prefix whose <c>To.BlockNumber &lt; beforeBlock</c>, removing each
-        /// entry (catalog + index + leases) under this bucket's lock.
-        /// </summary>
-        public void PruneBefore(long beforeBlock)
-        {
-            lock (_lock)
-            {
-                // Materialise the prefix first — the removal loop mutates the ordered set.
-                using ArrayPoolList<StateId> toRemove = new(0);
-                foreach (StateId to in _ordered)
-                {
-                    if (to.BlockNumber >= beforeBlock) break;
-                    toRemove.Add(to);
-                }
-                foreach (StateId to in toRemove) RemoveLocked(to);
-            }
-        }
-
-        /// <summary>Copy this bucket's <c>To</c>s in the inclusive [<paramref name="min"/>,
-        /// <paramref name="max"/>] range into <paramref name="into"/>, under this bucket's lock.</summary>
-        public void CollectRange(in StateId min, in StateId max, ISet<StateId> into)
-        {
-            lock (_lock)
-                foreach (StateId to in _ordered.GetViewBetween(min, max))
-                    into.Add(to);
-        }
-
-        /// <summary>Mark every live snapshot's files shutdown-preserved, under this bucket's lock.
-        /// Must complete across all buckets before any <see cref="DisposeAndClear"/>.</summary>
-        public void PersistAllOnShutdown()
-        {
-            lock (_lock)
-                foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
-                    kv.Value.PersistOnShutdown();
-        }
-
-        /// <summary>Dispose every live snapshot, clear the index, and roll back this bucket's
-        /// contribution to the global memory/count gauges. Under this bucket's lock.</summary>
-        public void DisposeAndClear()
-        {
-            lock (_lock)
-            {
-                foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
-                    kv.Value.Dispose();
-                _byTo.Clear();
-                _ordered.Clear();
-                Interlocked.Add(ref GlobalMemory, -Interlocked.Exchange(ref _memoryBytes, 0));
-                Interlocked.Add(ref Metrics._persistedSnapshotCount, -Interlocked.Exchange(ref _count, 0));
-            }
-        }
-
-        /// <summary>
-        /// Remove <paramref name="to"/> from the index + catalog, dispose its leases, and roll back
-        /// the bucket and global totals (bumping the prune metric). This bucket's lock must be held.
-        /// </summary>
-        private bool RemoveLocked(in StateId to)
-        {
-            _ordered.Remove(to);
-            if (!_byTo.TryRemove(to, out PersistedSnapshot? snapshot)) return false;
-            // Capture depth before Dispose — From/To stay valid on the still-alive object, but the
-            // underlying reservation/file leases are released by Dispose. The catalog key scopes the
-            // removal to this bucket's entry (the other buckets' entries at the same To carry a
-            // different depth and stay put).
-            long depth = to.BlockNumber - snapshot.From.BlockNumber;
-            Interlocked.Add(ref _memoryBytes, -snapshot.Size);
-            Interlocked.Decrement(ref _count);
-            Interlocked.Add(ref GlobalMemory, -snapshot.Size);
-            Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
-            Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-            catalog.Remove(to, depth);
-            snapshot.Dispose();
-            return true;
-        }
     }
 }
