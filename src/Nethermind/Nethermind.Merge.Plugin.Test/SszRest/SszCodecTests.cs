@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -57,6 +56,45 @@ public class SszCodecTests
         byte[] withError = Encode(new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = "bad" }, SszCodec.EncodePayloadStatus);
         byte[] withoutError = Encode(new PayloadStatusV1 { Status = PayloadStatus.Invalid }, SszCodec.EncodePayloadStatus);
         Assert.That(withError.Length, Is.GreaterThan(withoutError.Length));
+    }
+
+    [Test]
+    public void EncodePayloadStatus_validation_error_wraps_in_optional_list_per_spec()
+    {
+        // Per execution-apis #793: Optional[String] = List[List[byte, 1024], 1].
+        // Spec wire layout for { Status=INVALID, LatestValidHash=[], ValidationError="bad" }:
+        //   1 byte  status (= 1)
+        //   4 bytes offset(LatestValidHash) (= 9)
+        //   4 bytes offset(ValidationError) (= 9, since LatestValidHash is empty)
+        //   0 bytes LatestValidHash content
+        //   4 bytes inner-list offset within ValidationError (= 4)
+        //   3 bytes "bad"
+        // Total = 16 bytes.
+        byte[] encoded = Encode(
+            new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = "bad" },
+            SszCodec.EncodePayloadStatus);
+        PayloadStatusWire.Decode(Seq(encoded), out PayloadStatusWire decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Has.Length.EqualTo(16));
+            Assert.That(decoded.Status, Is.EqualTo((byte)1));
+            Assert.That(decoded.ValidationError, Has.Length.EqualTo(1));
+            Assert.That(decoded.ValidationError![0].Bytes, Is.EqualTo("bad"u8.ToArray()));
+        }
+    }
+
+    [Test]
+    public void EncodePayloadStatus_no_validation_error_is_empty_outer_list()
+    {
+        byte[] encoded = Encode(new PayloadStatusV1 { Status = PayloadStatus.Valid }, SszCodec.EncodePayloadStatus);
+        PayloadStatusWire.Decode(Seq(encoded), out PayloadStatusWire decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Status, Is.EqualTo((byte)0));
+            Assert.That(decoded.ValidationError, Is.Empty);
+        }
     }
 
     [Test]
@@ -156,6 +194,41 @@ public class SszCodecTests
         Assert.That(withPresent.Length, Is.GreaterThan(withNull.Length));
     }
 
+    [Test]
+    public void EncodeGetBlobsV4Response_with_pool_rented_cells_and_proofs_round_trips()
+    {
+        // Reproduces what GetBlobsHandlerV4 builds: pool-rented byte[] arrays sized
+        // by Ckzg.BytesPerCell (2048) and Ckzg.BytesPerProof (48). ArrayPool.Rent(48)
+        // hands back a 64-byte array — the encoder must slice to spec-exact length
+        // or SszKzgCommitment.FromSpan throws. Likewise for SszBlobCell.
+        const int cellsPerExtBlob = 128;
+        byte[]?[] cells = new byte[]?[cellsPerExtBlob];
+        byte[]?[] proofs = new byte[]?[cellsPerExtBlob];
+        cells[0] = ArrayPool<byte>.Shared.Rent(SszBlobCell.BlobCellLength);
+        proofs[0] = ArrayPool<byte>.Shared.Rent(SszKzgCommitment.KzgCommitmentLength);
+        try
+        {
+            BlobCellsAndProofs entry = new() { Available = true, BlobCells = cells, Proofs = proofs };
+            byte[] encoded = Encode<IReadOnlyList<BlobCellsAndProofs?>>([entry], SszCodec.EncodeGetBlobsV4Response);
+            GetBlobsV4ResponseWire.Decode(Seq(encoded), out GetBlobsV4ResponseWire decoded);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded, Is.Not.Empty);
+                Assert.That(decoded.Entries, Has.Length.EqualTo(1));
+                Assert.That(decoded.Entries![0].Available, Is.True);
+                Assert.That(decoded.Entries[0].Contents.BlobCells, Has.Length.EqualTo(cellsPerExtBlob));
+                Assert.That(decoded.Entries[0].Contents.BlobCells![0].Cell, Has.Length.EqualTo(1));
+                Assert.That(decoded.Entries[0].Contents.BlobCells![1].Cell, Is.Empty);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(cells[0]!);
+            ArrayPool<byte>.Shared.Return(proofs[0]!);
+        }
+    }
+
     private static IEnumerable<TestCaseData> NonEmptyEncodings()
     {
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
@@ -179,14 +252,11 @@ public class SszCodecTests
     }
 
     private static void AssertCommonNewPayloadFields(
-        byte[]?[] hashes, Hash256[] expectedHashes,
         Hash256? parentBeaconBlockRoot, Hash256 expectedParentRoot,
         byte[][]? requests, byte[] expectedRequest)
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(hashes, Is.EqualTo(expectedHashes.Select(static hash => hash.Bytes.ToArray()).ToArray()));
-
             Assert.That(parentBeaconBlockRoot, Is.Not.Null);
             Assert.That(parentBeaconBlockRoot, Is.EqualTo(expectedParentRoot));
 
@@ -203,7 +273,6 @@ public class SszCodecTests
         NewPayloadV4RequestWire wire = new()
         {
             ExecutionPayload = new SszExecutionPayloadV3(SszTestData.MakeV3Payload()),
-            ExpectedBlobVersionedHashes = [TestItem.KeccakA, TestItem.KeccakB],
             ParentBeaconBlockRoot = TestItem.KeccakC,
             ExecutionRequests = [new SszTransaction { Bytes = executionRequest }]
         };
@@ -212,7 +281,6 @@ public class SszCodecTests
 
         NewPayloadV4RequestWire.Decode(encoded, out NewPayloadV4RequestWire decoded);
         ExecutionPayloadV3 payload = decoded.ExecutionPayload.AsExecutionPayload();
-        byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
         using (Assert.EnterMultipleScope())
@@ -226,7 +294,6 @@ public class SszCodecTests
         }
 
         AssertCommonNewPayloadFields(
-            hashes, [TestItem.KeccakA, TestItem.KeccakB],
             decoded.ParentBeaconBlockRoot, TestItem.KeccakC,
             requests, executionRequest);
     }
@@ -241,7 +308,6 @@ public class SszCodecTests
         NewPayloadV5RequestWire wire = new()
         {
             ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList, slotNumber)),
-            ExpectedBlobVersionedHashes = [TestItem.KeccakA],
             ParentBeaconBlockRoot = TestItem.KeccakD,
             ExecutionRequests = [new SszTransaction { Bytes = executionRequest }]
         };
@@ -250,7 +316,6 @@ public class SszCodecTests
 
         NewPayloadV5RequestWire.Decode(encoded, out NewPayloadV5RequestWire decoded);
         ExecutionPayloadV4 payload = decoded.ExecutionPayload.AsExecutionPayload();
-        byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
         Span<byte> blockAccessListSpan = payload.BlockAccessList;
@@ -267,7 +332,6 @@ public class SszCodecTests
         }
 
         AssertCommonNewPayloadFields(
-            hashes, [TestItem.KeccakA],
             decoded.ParentBeaconBlockRoot, TestItem.KeccakD,
             requests, executionRequest);
     }

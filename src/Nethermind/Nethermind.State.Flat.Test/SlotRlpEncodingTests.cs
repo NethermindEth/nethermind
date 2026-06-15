@@ -27,9 +27,8 @@ public class SlotRlpEncodingTests
 
     private static RocksDbPersistence CreatePersistence(IColumnsDb<FlatDbColumns> db, bool rlpWrap = true)
     {
-        // Wrapping is always on for fresh DBs; raw mode only exists for DBs synced before the feature, detected
-        // via a recorded Layout with no SlotEncoding key. Seed that marker to exercise the legacy raw path.
-        if (!rlpWrap) db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
+        // Raw mode only exists for DBs synced before the feature; pin it to exercise the legacy path.
+        if (!rlpWrap) BasePersistence.SetSlotEncoding(db.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
         return new RocksDbPersistence(db, LimboLogs.Instance);
     }
 
@@ -138,15 +137,17 @@ public class SlotRlpEncodingTests
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("820102")));
     }
 
-    [Test]
-    public void Pre_feature_db_falls_back_to_raw_and_reads_legacy_values()
+    // Regression: a pre-feature DB holds raw slots but may lack BOTH metadata markers, so detection must key
+    // on slot presence — otherwise the raw values are misread as RLP and crash on the first SLOAD.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Pre_feature_db_with_raw_slots_falls_back_to_raw(bool seedLayoutMarker)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        // Simulate a DB synced before this feature: Layout recorded, SlotEncoding absent, raw slot bytes.
-        db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
+        if (seedLayoutMarker) db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
         WriteRawSlotToDb(db, Bytes.FromHexString("0102"));
 
-        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: true); // config asks for RLP, DB wins
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance); // no recorded SlotEncoding; raw slots win
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
             SlotValue read = default;
@@ -154,18 +155,31 @@ public class SlotRlpEncodingTests
             Assert.That(read.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("0102")));
         }
 
-        // A write batch on the legacy DB stays raw and pins SlotEncoding = 0.
+        // Writes on the legacy DB stay raw and never stamp the metadata markers.
         WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("abcd")));
-        Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),
-            Is.EqualTo(new[] { BasePersistence.SlotEncodingRaw }));
+        Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey), Is.Null);
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd"))); // raw, not RLP(0x82abcd)
 
-        // Re-opening resolves via the recorded SlotEncoding = 0 (not the Layout heuristic) and still reads raw.
-        RocksDbPersistence reopened = CreatePersistence(db, rlpWrap: true);
+        RocksDbPersistence reopened = new(db, LimboLogs.Instance);
         using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();
         SlotValue read2 = default;
         Assert.That(reader2.TryGetSlot(Addr, Slot, ref read2), Is.True);
         Assert.That(read2.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("abcd")));
+    }
+
+    // A Layout marker without slots (e.g. accounts synced but no storage yet) is still a brand-new DB — it wraps.
+    [Test]
+    public void Empty_db_with_layout_marker_defaults_to_rlp()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
+
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+        WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0102")));
+
+        Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),
+            Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
+        Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("820102")));
     }
 
     [Test]
