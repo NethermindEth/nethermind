@@ -43,8 +43,8 @@ public class WitnessCapturingTrieStore(ITrieStore baseStore, WitnessCaptureSessi
         return node;
     }
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>                                                      
-        TryLoadRlp(address, in path, hash, flags)                                                                                                                      
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryLoadRlp(address, in path, hash, flags)
         ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
