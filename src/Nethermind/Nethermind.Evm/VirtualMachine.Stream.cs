@@ -64,17 +64,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Int256.UInt256[] constants = stream.Constants;
         byte[] constantBytes = stream.ConstantBytes;
         ushort[] pcToEntry = stream.PcToEntry;
-        ref byte code = ref stack.Code;
-        uint codeLength = (uint)stack.CodeLength;
         int callDepth = VmState.Env.CallDepth;
         int opCodeCount = 0;
-        // Set when a block's precharge would not fit the remaining gas (or execution landed
-        // past the charging entry); the block then runs the metered micro-loop so the exact
-        // failing op and failure type are preserved.
+        // Set when a block's precharge exceeds remaining gas; the block then runs metered.
         bool metered = false;
 
-        // Resume pcs (after a CALL-family suspension) are instruction starts at most one past
-        // the end of code; the bound guards a truncated trailing PUSH having overshot it.
+        // Resume pcs land one past code end at most; the bound guards a truncated trailing PUSH.
         int entryIndex = programCounter == 0
             ? 0
             : (uint)programCounter < (uint)pcToEntry.Length ? pcToEntry[programCounter] : ops.Length;
@@ -294,11 +289,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         default:
-                            // The analyzer's in-block set diverged from this switch; the
-                            // table handler is metered, so charge-free dispatch here would
-                            // corrupt gas — fail loudly instead.
+                            // Unreachable: every TryGetInBlockCost opcode has a case above, and
+                            // ExecutorCoversInBlockOps asserts it. A miss would precharge then
+                            // mis-dispatch, so fail closed rather than corrupt gas.
                             exceptionType = EvmExceptionType.BadInstruction;
-                            System.Diagnostics.Debug.Fail($"stream in-block op {instruction} has no gas-free core");
                             break;
                     }
 

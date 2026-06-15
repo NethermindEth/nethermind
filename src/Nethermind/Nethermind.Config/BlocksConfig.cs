@@ -109,9 +109,5 @@ namespace Nethermind.Config
         public long SlowBlockPerTxThresholdMs { get; set; } = -1;
 
         public long MaxGasLimit { get; set; } = 1_000_000_000;
-
-        public bool SpeculativeCoverageDiag { get; set; }
-
-        public bool SpeculativeSurvivalDiag { get; set; }
     }
 }

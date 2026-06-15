@@ -57,13 +57,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private int _streamBuildScheduled;
 
     /// <summary>
-    /// Returns the instruction stream if it has already been built, else <c>null</c>. Once this
-    /// code has executed <see cref="StreamInterpreter.BuildThreshold"/> times, the build is
-    /// scheduled once on the thread pool and this keeps returning <c>null</c> (the caller runs the
-    /// raw interpreter) until the background build publishes the stream — no call ever blocks on a
-    /// build. <c>null</c> forever for unstreamable code (empty, precompile, oversized).
-    /// Benign races: the hit counter is unsynchronized; a CAS guards single scheduling and another
-    /// guards single publication.
+    /// Returns the built stream, or <c>null</c> until it is ready. After
+    /// <see cref="StreamInterpreter.BuildThreshold"/> executions the build is scheduled once on the
+    /// thread pool; callers keep getting <c>null</c> (and run the raw interpreter) until it
+    /// publishes, so no call ever blocks. Always <c>null</c> for unstreamable code (empty,
+    /// precompile, oversized). Lock-free: a CAS guards single scheduling, another single publication.
     /// </summary>
     public InstructionStream? GetOrBuildStream()
     {
@@ -72,7 +70,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
             return stream;
         if (IsEmpty || IsPrecompile)
             return null;
-        if (++_streamHits < StreamInterpreter.BuildThreshold)
+        if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;
 
         if (Interlocked.CompareExchange(ref _streamBuildScheduled, 1, 0) == 0)

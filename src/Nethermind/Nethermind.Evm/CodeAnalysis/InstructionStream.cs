@@ -106,21 +106,10 @@ public readonly struct StreamOp(byte opcode, StreamOpKind kind, ushort pc, ushor
 /// every execution of that code.
 /// </summary>
 /// <remarks>
-/// Consensus invariants the analyzer maintains:
-/// <list type="bullet">
-/// <item>Only ops whose gas is a spec-independent constant at Shanghai+ are precharged;
-/// callers must gate stream execution on a tip-fork dispatch fingerprint.</item>
-/// <item>A JUMPDEST is always a solo block, so a fused PUSH2+JUMP landing one past it never
-/// skips an uncharged block prefix.</item>
-/// <item>PUSH immediates are pre-decoded only when fully present in code; a truncated
-/// trailing PUSH stays a boundary op so the table handler keeps its exact padding semantics.</item>
-/// <item>No landing pc can point inside a fused pair: jumps land on JUMPDESTs, table-fused
-/// handlers land on the instruction after the ones they consumed, and resumes land after a
-/// CALL-family boundary — all entry starts.</item>
-/// <item>The executor recomputes the entry index from the landing pc after every table call
-/// (fused table handlers consume multiple instructions) and re-meters any block entered past
-/// its charging entry; metered dispatch reads raw code, so it is exact regardless of merges.</item>
-/// </list>
+/// Consensus invariants: only static-gas (Shanghai+) ops are precharged (callers gate on a tip-fork
+/// fingerprint); a JUMPDEST is a solo block; a truncated trailing PUSH stays a boundary op; nothing
+/// lands inside a fused pair; the executor recomputes the entry from the landing pc and re-meters any
+/// block entered past its charging entry (metered dispatch reads raw code, so gas stays exact).
 /// </remarks>
 public sealed class InstructionStream
 {

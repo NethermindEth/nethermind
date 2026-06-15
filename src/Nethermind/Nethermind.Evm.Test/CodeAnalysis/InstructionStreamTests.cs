@@ -29,7 +29,7 @@ public class InstructionStreamTests
             (byte)Instruction.STOP,
         ];
 
-        InstructionStream stream = BuildWithFusion(code);
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
 
         Assert.That(stream, Is.Not.Null);
         Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
@@ -84,35 +84,19 @@ public class InstructionStreamTests
         Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
     }
 
-    [Test]
-    public void TryBuild_Push2JumpWithInvalidDest_StaysBoundary()
+    [TestCaseSource(nameof(BoundaryFallbackCases))]
+    public void TryBuild_OpThatCannotBePrecharged_StaysBoundary(byte[] code)
+        => Assert.That(InstructionStream.TryBuild(code)!.Ops[0].Kind, Is.EqualTo(StreamOpKind.Boundary),
+            "an op that can't be precharged keeps the table handler and its exact semantics");
+
+    private static IEnumerable<TestCaseData> BoundaryFallbackCases()
     {
-        byte[] code =
-        [
-            (byte)Instruction.PUSH2, 0x00, 0x04,
-            (byte)Instruction.JUMP,
-            (byte)Instruction.STOP,
-        ];
-
-        InstructionStream stream = InstructionStream.TryBuild(code)!;
-
-        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.Boundary),
-            "a destination that is not a JUMPDEST keeps the table pair and fails at runtime exactly like a dynamic jump");
-        Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "the JUMP itself stays a table op");
-    }
-
-    [Test]
-    public void TryBuild_TruncatedTrailingPush_StaysBoundary()
-    {
-        byte[] code =
-        [
-            (byte)Instruction.PUSH4, 0x01, 0x02,
-        ];
-
-        InstructionStream stream = InstructionStream.TryBuild(code)!;
-
-        Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.Boundary),
-            "partial immediates keep the table handler's exact padding semantics");
+        // PUSH2+JUMP to a non-JUMPDEST: stays a dynamic-jump table pair.
+        yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH2, 0x00, 0x04, (byte)Instruction.JUMP, (byte)Instruction.STOP })
+        { TestName = "Push2JumpToNonJumpdest" };
+        // Truncated trailing PUSH: keeps the table handler's padding semantics.
+        yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH4, 0x01, 0x02 })
+        { TestName = "TruncatedTrailingPush" };
     }
 
     [Test]
@@ -124,7 +108,7 @@ public class InstructionStreamTests
             (byte)Instruction.ADD,
         ];
 
-        InstructionStream stream = BuildWithFusion(code);
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
 
         Assert.That(stream.PcToEntry[0], Is.EqualTo(0), "PUSH3 opens the block as its first entry");
         Assert.That(stream.Constants[(int)stream.Ops[0].Operand], Is.EqualTo((Nethermind.Int256.UInt256)0x010203),
@@ -168,15 +152,13 @@ public class InstructionStreamTests
     [TestCase(Instruction.EXP, TestName = "Exp_DynamicGas")]
     public void TryGetInBlockCost_ForExcludedOp_ReturnsFalse(Instruction instruction)
         => Assert.That(InstructionStream.TryGetInBlockCost(instruction, out _), Is.False);
-
-    private static InstructionStream BuildWithFusion(byte[] code) => InstructionStream.TryBuild(code)!;
 }
 
-[TestFixture]
+// Mutates process-wide StreamInterpreter statics, so it must not run alongside other EVM tests.
+[TestFixture, NonParallelizable]
 public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
 {
-    // The stream only engages on tip-fork dispatch fingerprints; the base default (Byzantium)
-    // would silently compare the bytecode loop against itself.
+    // The stream only engages on tip-fork fingerprints; the base default would compare the loop to itself.
     protected override ForkActivation Activation => MainnetSpecProvider.OsakaActivation;
 
     private static readonly byte[] s_arithmeticChain = Prepare.EvmCode
@@ -323,21 +305,48 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     public void StreamInterpreter_ComparedToByteCodeLoop_IsObservablyIdentical(byte[] code)
     {
         ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
-
-        // Both runs commit state (storage writes, deployed contracts), so the stream run
-        // gets a freshly built world or it would see the baseline's writes (SSET vs SRESET).
+        // The baseline run commits state; reset so the stream run sees the same starting world.
         Setup();
 
         long framesBefore = StreamInterpreter.FramesExecuted;
         ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
-
 
         Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore),
             "the stream interpreter did not engage — this differential proved nothing");
         Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "success/failure must match");
         Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas must match to the unit");
         Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
+    }
 
+    // Guards the consensus invariant that the executor's in-block switch covers exactly the
+    // TryGetInBlockCost set: a precharged op with no case returns BadInstruction, diverging here.
+    [TestCaseSource(nameof(InBlockOpcodes))]
+    public void StreamExecutor_DispatchesEveryInBlockOpcode_IdenticallyToBytecodeLoop(Instruction op)
+    {
+        List<byte> code = [];
+        for (int i = 0; i < 9; i++) { code.Add((byte)Instruction.PUSH1); code.Add(0x01); }
+        code.Add((byte)op);
+        if (op is >= Instruction.PUSH1 and <= Instruction.PUSH32)
+            for (int i = 0; i <= op - Instruction.PUSH1; i++) code.Add(0x01);
+        code.Add((byte)Instruction.STOP);
+        byte[] bytecode = code.ToArray();
+
+        ReceiptCaptureTracer baseline = RunWithInterpreter(bytecode, useStream: false);
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(bytecode, useStream: true);
+
+        Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), $"{op}: stream did not engage");
+        Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), $"{op}: status must match (no BadInstruction)");
+        Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), $"{op}: gas must match");
+        Assert.That(streamed.Output, Is.EqualTo(baseline.Output), $"{op}: output must match");
+    }
+
+    private static IEnumerable<Instruction> InBlockOpcodes()
+    {
+        for (int op = 0; op <= byte.MaxValue; op++)
+            if (InstructionStream.TryGetInBlockCost((Instruction)op, out _))
+                yield return (Instruction)op;
     }
 
     private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream)

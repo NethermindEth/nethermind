@@ -17,10 +17,6 @@ using Nethermind.Evm.State;
 
 using static Nethermind.Evm.VirtualMachineStatics;
 
-#if DEBUG
-using Nethermind.Evm.Tracing.Debugger;
-#endif
-
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
