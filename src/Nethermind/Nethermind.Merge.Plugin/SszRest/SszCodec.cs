@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -290,7 +291,44 @@ public static class SszCodec
             withdrawals: pa.Withdrawals.ToDomain(),
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
             slotNumber: pa.SlotNumber,
-            targetGasLimit: (long)pa.TargetGasLimit);
+            targetGasLimit: SszNumericChecks.CheckedLong(pa.TargetGasLimit));
+
+    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV4WithoutTargetGasLimitWire pa) =>
+        BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
+            withdrawals: pa.Withdrawals.ToDomain(),
+            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
+            slotNumber: pa.SlotNumber);
+
+    internal static void DecodeForkchoiceUpdatedV4Request(
+        ReadOnlySequence<byte> body,
+        out ForkchoiceStateV1 forkchoiceState,
+        out PayloadAttributes? payloadAttributes)
+    {
+        if (TryDecodeForkchoiceUpdatedV4Request(body, out ForkchoiceUpdatedRequestWire wire))
+        {
+            forkchoiceState = ForkchoiceStateV1FromWire(wire.ForkchoiceState);
+            payloadAttributes = wire.PayloadAttributes is { Length: > 0 } attrs ? PayloadAttributesFromWire(attrs[0]) : null;
+            return;
+        }
+
+        ForkchoiceUpdatedV4WithoutTargetGasLimitRequestWire.Decode(body, out ForkchoiceUpdatedV4WithoutTargetGasLimitRequestWire oldWire);
+        forkchoiceState = ForkchoiceStateV1FromWire(oldWire.ForkchoiceState);
+        payloadAttributes = oldWire.PayloadAttributes is { Length: > 0 } oldAttrs ? PayloadAttributesFromWire(oldAttrs[0]) : null;
+    }
+
+    private static bool TryDecodeForkchoiceUpdatedV4Request(ReadOnlySequence<byte> body, out ForkchoiceUpdatedRequestWire wire)
+    {
+        try
+        {
+            ForkchoiceUpdatedRequestWire.Decode(body, out wire);
+            return true;
+        }
+        catch (Exception e) when (e is InvalidDataException or ArgumentException or IndexOutOfRangeException)
+        {
+            wire = default;
+            return false;
+        }
+    }
 
     private static PayloadAttributes BuildPayloadAttributes(
         ulong timestamp,

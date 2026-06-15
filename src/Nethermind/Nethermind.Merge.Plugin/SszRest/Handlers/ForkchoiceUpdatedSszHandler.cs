@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Ssz;
@@ -28,6 +30,20 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     {
         TWire.Decode(body, out TWire wire);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await TVersion.Call(engineModule, wire);
+        await WriteSszResultAsync(ctx, result, SszCodec.EncodeForkchoiceUpdatedResponse);
+    }
+}
+
+public sealed class ForkchoiceUpdatedV4SszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
+{
+    public override string HttpMethod => "POST";
+    public override string Resource => SszRestPaths.Forkchoice;
+    public override int? Version => EngineApiVersions.Fcu.V4;
+
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
+    {
+        SszCodec.DecodeForkchoiceUpdatedV4Request(body, out ForkchoiceStateV1 state, out PayloadAttributes? attrs);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await engineModule.engine_forkchoiceUpdatedV4(state, attrs);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeForkchoiceUpdatedResponse);
     }
 }

@@ -229,7 +229,6 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V2 when Withdrawals is null => $"{nameof(Withdrawals)} must be provided",
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
-            >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
             _ => null
         };
     }

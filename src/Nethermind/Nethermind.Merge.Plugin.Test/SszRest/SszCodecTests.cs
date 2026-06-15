@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -521,10 +522,7 @@ public class SszCodecTests
 
         byte[] encoded = ForkchoiceUpdatedRequestWire.Encode(wire);
 
-        ForkchoiceUpdatedRequestWire.Decode(encoded, out ForkchoiceUpdatedRequestWire decoded);
-        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(decoded.ForkchoiceState);
-        PayloadAttributes? attrs = decoded.PayloadAttributes is { Length: > 0 } a
-            ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
+        SszCodec.DecodeForkchoiceUpdatedV4Request(Seq(encoded), out ForkchoiceStateV1 state, out PayloadAttributes? attrs);
 
         Assert.That(state.HeadBlockHash, Is.EqualTo(TestItem.KeccakA));
         Assert.That(attrs, Is.Not.Null);
@@ -532,6 +530,78 @@ public class SszCodecTests
         Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot), "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
         Assert.That(attrs.TargetGasLimit, Is.EqualTo((long)expectedTargetGasLimit), "target_gas_limit must be decoded from the fixed uint64 that follows slot_number");
         Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
+    }
+
+    [Test]
+    public void DecodeFcuV4Request_without_target_gas_limit_preserves_null()
+    {
+        ulong expectedSlot = 0xAABBCCDD_11223344UL;
+
+        ForkchoiceUpdatedV4WithoutTargetGasLimitRequestWire wire = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = TestItem.KeccakC,
+            },
+            PayloadAttributes =
+            [
+                new PayloadAttributesV4WithoutTargetGasLimitWire
+                {
+                    Timestamp = 0x0102030405060708UL,
+                    PrevRandao = TestItem.KeccakD,
+                    SuggestedFeeRecipient = TestItem.AddressB,
+                    Withdrawals = [],
+                    ParentBeaconBlockRoot = TestItem.KeccakE,
+                    SlotNumber = expectedSlot,
+                }
+            ]
+        };
+
+        byte[] encoded = ForkchoiceUpdatedV4WithoutTargetGasLimitRequestWire.Encode(wire);
+
+        SszCodec.DecodeForkchoiceUpdatedV4Request(Seq(encoded), out ForkchoiceStateV1 state, out PayloadAttributes? attrs);
+
+        Assert.That(state.HeadBlockHash, Is.EqualTo(TestItem.KeccakA));
+        Assert.That(attrs, Is.Not.Null);
+        Assert.That(attrs!.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakE));
+        Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot));
+        Assert.That(attrs.TargetGasLimit, Is.Null);
+        Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
+    }
+
+    [Test]
+    public void DecodeFcuV4Request_rejects_target_gas_limit_above_long_max_value()
+    {
+        ForkchoiceUpdatedRequestWire wire = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = TestItem.KeccakC,
+            },
+            PayloadAttributes =
+            [
+                new PayloadAttributesWire
+                {
+                    Timestamp = 1,
+                    PrevRandao = TestItem.KeccakD,
+                    SuggestedFeeRecipient = TestItem.AddressB,
+                    Withdrawals = [],
+                    ParentBeaconBlockRoot = TestItem.KeccakE,
+                    SlotNumber = 1,
+                    TargetGasLimit = (ulong)long.MaxValue + 1,
+                }
+            ]
+        };
+
+        byte[] encoded = ForkchoiceUpdatedRequestWire.Encode(wire);
+
+        Assert.That(
+            () => SszCodec.DecodeForkchoiceUpdatedV4Request(Seq(encoded), out _, out _),
+            Throws.TypeOf<InvalidDataException>());
     }
 
     [Test]

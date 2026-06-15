@@ -2124,6 +2124,13 @@ public partial class EngineModuleTests
                     ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
                 };
 
+            static TestCaseData ValidFieldCase(IReleaseSpec spec, string method, PayloadAttributes attrs, string testName) =>
+                new(spec, method, attrs)
+                {
+                    TestName = testName,
+                    ExpectedResult = ErrorCodes.None,
+                };
+
             yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.Timestamp = 0), "FCUv1 Timestamp zero");
             yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.PrevRandao = null), "FCUv1 PrevRandao null");
             yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.SuggestedFeeRecipient = null), "FCUv1 SuggestedFeeRecipient null");
@@ -2132,7 +2139,7 @@ public partial class EngineModuleTests
             yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(parentBeaconBlockRoot: Keccak.Zero, slotNumber: 1, targetGasLimit: 30_000_000), "FCUv4 Withdrawals null");
             yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], slotNumber: 1, targetGasLimit: 30_000_000), "FCUv4 ParentBeaconBlockRoot null");
             yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], parentBeaconBlockRoot: Keccak.Zero, targetGasLimit: 30_000_000), "FCUv4 SlotNumber null");
-            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], parentBeaconBlockRoot: Keccak.Zero, slotNumber: 1), "FCUv4 TargetGasLimit null");
+            yield return ValidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], parentBeaconBlockRoot: Keccak.Zero, slotNumber: 1), "FCUv4 TargetGasLimit null");
         }
     }
 
