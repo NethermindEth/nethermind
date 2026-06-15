@@ -315,7 +315,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 programCounter++;
                 opCodeCount++;
 
-                exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
+                // Stack temp by ref keeps programCounter register-resident across the loop (the
+                // boundary calli is the only ref site); mirrors the dispatch loops.
+                int pc = programCounter;
+                exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
+                programCounter = pc;
 
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
                 {
