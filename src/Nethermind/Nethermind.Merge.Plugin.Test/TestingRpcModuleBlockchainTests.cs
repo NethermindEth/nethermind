@@ -31,7 +31,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
     [Test]
     public async Task Testing_commitBlockV1_sequential_commits_advance_head()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
 
         for (int i = 0; i < CommitCount; i++)
@@ -42,15 +42,18 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
 
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
                 $"commit #{i + 1} failed: {result.Result.Error}");
-            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(result.Data));
-            Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(head.Number + 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(result.Data));
+                Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(head.Number + 1));
+            }
         }
     }
 
     [Test]
     public async Task Testing_commitBlockV1_sequential_commits_build_on_previous_post_state()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
 
         UInt256 transferValue = 1.Ether;
@@ -87,7 +90,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
     [Test]
     public async Task Testing_commitBlockV1_stores_receipts_for_committed_block()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
 
         BlockHeader head = chain.BlockTree.Head!.Header;
