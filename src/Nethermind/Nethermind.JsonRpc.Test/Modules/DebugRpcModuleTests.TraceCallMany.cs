@@ -26,9 +26,9 @@ public partial class DebugRpcModuleTests
 {
     private static TransactionBundle CreateBundle(params TransactionForRpc[] transactions) => new() { Transactions = transactions };
 
-    private static TransactionBundle CreateGasProbeBundle() => new()
+    private static TransactionBundle CreateGasProbeBundle(long? gas = null) => new()
     {
-        Transactions = [new LegacyTransactionForRpc { To = EthRpcSimulateTestsBase.GasProbeContractAddress }],
+        Transactions = [new LegacyTransactionForRpc { To = EthRpcSimulateTestsBase.GasProbeContractAddress, Gas = gas }],
         StateOverrides = new Dictionary<Address, AccountOverride>
         {
             [EthRpcSimulateTestsBase.GasProbeContractAddress] = new()
@@ -40,8 +40,10 @@ public partial class DebugRpcModuleTests
 
     private static IEnumerable<TestCaseData> DebugTraceCallManyMissingGasCases()
     {
-        yield return new TestCaseData((long?)null, false).SetName("defaults_to_gas_cap_not_block_gas_limit");
-        yield return new TestCaseData(0L, true).SetName("zero_gas_cap_uncapped");
+        yield return new TestCaseData((long?)null, (long?)null, false).SetName("omitted_gas_defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData((long?)0L, (long?)null, false).SetName("zero_gas_defaults_to_gas_cap_not_block_gas_limit");
+        yield return new TestCaseData((long?)null, (long?)0L, true).SetName("omitted_gas_with_zero_gas_cap_uncapped");
+        yield return new TestCaseData((long?)0L, (long?)0L, true).SetName("zero_gas_with_zero_gas_cap_uncapped");
     }
 
     private static LegacyTransactionForRpc CreateTransaction(
@@ -266,7 +268,7 @@ public partial class DebugRpcModuleTests
     }
 
     [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]
-    public async Task Debug_traceCallMany_without_gas_respects_gas_cap(long? configuredGasCap, bool uncapped)
+    public async Task Debug_traceCallMany_missing_or_zero_gas_respects_gas_cap(long? requestGas, long? configuredGasCap, bool uncapped)
     {
         using Context ctx = await CreateContext();
 
@@ -275,7 +277,7 @@ public partial class DebugRpcModuleTests
         ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(
-            [CreateGasProbeBundle()],
+            [CreateGasProbeBundle(requestGas)],
             BlockParameter.Latest);
 
         GethLikeTxTrace trace = result.Data.First().First();
