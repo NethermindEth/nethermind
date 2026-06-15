@@ -195,7 +195,10 @@ jobs:
                   fi
                   emit "$type" flat_parallel amsterdam 1 true false 1 3
                   emit "$type" flat_batchread amsterdam 1 false true 4 1
-                  emit "$type" flat_parallelfull amsterdam 1 true true 1 4
+                  # flat_parallelfull (parallel + batch-read prewarm + flat in-memory DB) is
+                  # the heaviest combo and the only config to OOM: clean at 7 chunks (~3.1k
+                  # tests), OOM at 4 (~5.5k). 6 chunks (~3.7k) keeps a safe margin.
+                  emit "$type" flat_parallelfull amsterdam 1 true true 1 6
                 fi
                 ;;
               stateTest)
