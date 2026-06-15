@@ -338,7 +338,6 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
     private void Cancel() => InternalTokenSource.Cancel();
 
-    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<FlushResult> FlushAsyncInternal(bool writeToStream, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
         // Write all completed segments and whatever remains in the current segment
