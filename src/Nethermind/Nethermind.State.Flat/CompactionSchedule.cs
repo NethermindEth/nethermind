@@ -51,20 +51,14 @@ public sealed class CompactionSchedule : ICompactionSchedule
     // PersistedSnapshotCompactor runs with its own min/max caps and may legitimately
     // operate even when config.CompactSize == 1.
 
-    public bool IsFullCompactionBoundary(long blockNumber) =>
-        blockNumber != 0 && ShiftedAlignment(blockNumber) >= _compactSize;
+    public bool IsCompactSizeBoundary(long blockNumber) =>
+        GetPersistedSnapshotCompactSize(blockNumber) == _compactSize;
+
+    public bool IsLargeCompactionBoundary(long blockNumber) =>
+        GetPersistedSnapshotCompactSize(blockNumber) > _compactSize;
 
     public long GetPersistedSnapshotCompactSize(long blockNumber) =>
         blockNumber == 0 ? 1 : Math.Min(ShiftedAlignment(blockNumber), _maxCompactSize);
-
-    public CompactionWindow? GetPersistedSnapshotCompactionWindow(long blockNumber)
-    {
-        int size = (int)GetPersistedSnapshotCompactSize(blockNumber);
-        // A size-1 window is just the base snapshot; the CompactSize-wide window is the
-        // persistable's (see GetPersistableCompactionWindow). Neither is a persisted-snapshot merge.
-        if (size <= 1 || size == _compactSize) return null;
-        return new CompactionWindow(blockNumber - size, size);
-    }
 
     public CompactionWindow GetPersistableCompactionWindow(long blockNumber) =>
         new(blockNumber - _compactSize, _compactSize);

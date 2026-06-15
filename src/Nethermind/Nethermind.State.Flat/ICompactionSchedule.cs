@@ -27,11 +27,22 @@ public interface ICompactionSchedule
     long NextFullCompactionAfter(long from);
 
     /// <summary>
-    /// True if <paramref name="blockNumber"/> sits exactly on a full <c>CompactSize</c>-wide
-    /// window — i.e. a persistence boundary — with the per-instance offset applied
-    /// transparently.
+    /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
+    /// (<see cref="GetPersistedSnapshotCompactSize"/>) is exactly <c>CompactSize</c> — a boundary
+    /// whose only window is the persistable one, with no wider (<c>&gt;CompactSize</c>) merge to
+    /// perform. Mutually exclusive with <see cref="IsLargeCompactionBoundary"/>; together they
+    /// cover every persistence boundary.
     /// </summary>
-    bool IsFullCompactionBoundary(long blockNumber);
+    bool IsCompactSizeBoundary(long blockNumber);
+
+    /// <summary>
+    /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
+    /// (<see cref="GetPersistedSnapshotCompactSize"/>) is strictly larger than <c>CompactSize</c> —
+    /// a boundary that carries a wider (<c>&gt;CompactSize</c>) merge on top of the persistable
+    /// window. Mutually exclusive with <see cref="IsCompactSizeBoundary"/>; together they cover
+    /// every persistence boundary.
+    /// </summary>
+    bool IsLargeCompactionBoundary(long blockNumber);
 
     /// <summary>
     /// The persisted-snapshot compaction tier for <paramref name="blockNumber"/> — the lowest
@@ -43,29 +54,17 @@ public interface ICompactionSchedule
     long GetPersistedSnapshotCompactSize(long blockNumber);
 
     /// <summary>
-    /// The persisted-snapshot (non-persistable) compaction window for <paramref name="blockNumber"/>,
-    /// or <c>null</c> when there is nothing to merge — a single-snapshot window or the
-    /// <c>CompactSize</c>-wide window reserved for <see cref="GetPersistableCompactionWindow"/>.
-    /// </summary>
-    /// <remarks>
-    /// The window size is <see cref="GetPersistedSnapshotCompactSize"/> (already capped at the
-    /// persisted-snapshot max compact size). The start is <c>blockNumber - Size</c>: the alignment
-    /// lives in offset-shifted space, but the window's left edge must be the raw block number, so
-    /// <c>((b-1)/size)*size</c> would only be correct when the offset is 0.
-    /// </remarks>
-    CompactionWindow? GetPersistedSnapshotCompactionWindow(long blockNumber);
-
-    /// <summary>
     /// The <c>CompactSize</c>-wide persistable window ending at the boundary block
     /// <paramref name="blockNumber"/> — the window <c>PersistenceManager</c> writes to RocksDB.
-    /// Callers must first confirm the block is a boundary via <see cref="IsFullCompactionBoundary"/>.
+    /// Callers must first confirm the block is a persistence boundary via
+    /// <see cref="IsCompactSizeBoundary"/> or <see cref="IsLargeCompactionBoundary"/>.
     /// </summary>
     CompactionWindow GetPersistableCompactionWindow(long blockNumber);
 
     /// <summary>
     /// True if a produced window of <paramref name="windowSize"/> is a sub-<c>CompactSize</c>
     /// intermediate (strictly smaller than the persistable window), as opposed to the persistable
-    /// window or a wider hierarchical merge.
+    /// window or a wider persisted-snapshot merge.
     /// </summary>
     bool IsIntermediateWindow(int windowSize);
 }
