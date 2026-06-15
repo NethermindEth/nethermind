@@ -42,10 +42,9 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _logManager = LimboLogs.Instance;
 
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        // These tests seed the Storage column with raw (un-wrapped) bytes via WriteStorageDirectToDb, so the
-        // persistence must read in raw mode. Raw mode is only reached for a pre-feature DB, detected via a
-        // recorded Layout with no SlotEncoding key — seed that marker for the fixture's layout.
-        BasePersistence.SetLayout(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), layout);
+        // These tests seed the Storage column with raw (un-wrapped) bytes after the persistence is built,
+        // so slot-presence detection can't kick in — pin the raw encoding up front.
+        BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
         _persistence = layout == FlatLayout.PreimageFlat
             ? new PreimageRocksdbPersistence(_columnsDb, _logManager)
             : new RocksDbPersistence(_columnsDb, _logManager);

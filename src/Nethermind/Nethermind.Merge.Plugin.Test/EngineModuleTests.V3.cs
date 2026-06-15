@@ -401,9 +401,10 @@ public partial class EngineModuleTests
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                 Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-                Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
+                Substitute.For<IHandler<HashSet<string>, IReadOnlyList<string>>>(),
                 Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
                 Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
+                Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(),
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
                 Substitute.For<IEngineRequestsTracker>(),
@@ -855,7 +856,7 @@ public partial class EngineModuleTests
             yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
             {
                 TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Zero Beacon Root",
-                ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
+                ExpectedResult = MergeErrorCodes.UnsupportedFork,
             };
             yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
             {

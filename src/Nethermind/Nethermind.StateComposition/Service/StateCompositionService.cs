@@ -137,9 +137,9 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
 
             PublishScanResults(stats, dist, header, sw, scanComplete);
 
-            if (_logger.IsInfo)
-                _logger.Info($"StateComposition: scan {(scanComplete ? "completed" : "finished with MISSING NODES")} " +
-                             $"in {sw.Elapsed}. Accounts={stats.AccountsTotal}, Contracts={stats.ContractsTotal}, " +
+            if (scanComplete && _logger.IsInfo)
+                _logger.Info($"StateComposition: scan completed in {sw.Elapsed}. " +
+                             $"Accounts={stats.AccountsTotal}, Contracts={stats.ContractsTotal}, " +
                              $"StorageSlots={stats.StorageSlotsTotal}");
 
             return Result<StateCompositionStats>.Success(stats);
@@ -258,6 +258,19 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
 
     private void PublishScanResults(StateCompositionStats stats, TrieDepthDistribution dist, BlockHeader header, Stopwatch sw, bool isComplete)
     {
+        // A scan that hit MissingNodesObserved walked only the reachable subset of
+        // the trie. Publishing it would clobber a complete prior baseline with a
+        // strict subset and let the next snapshot flush persist the loss. Keep
+        // the existing in-memory state and let the next head retrigger the scan.
+        if (!isComplete)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"StateComposition: scan at block {header.Number} finished with missing nodes " +
+                             $"(partial accounts={stats.AccountsTotal:N0}). Refusing to publish a partial baseline; " +
+                             $"prior incremental state retained, next head will retrigger the scan.");
+            return;
+        }
+
         CumulativeTrieStats cumulativeBaseline = CumulativeTrieStats.FromScanStats(stats);
 
         // Seed and publish under _diffLock so a concurrent incremental diff cannot
@@ -267,7 +280,7 @@ internal sealed partial class StateCompositionService : IStoppableService, IDisp
         lock (_diffLock)
         {
             _stateHolder.PublishScanBaseline(
-                stats, dist, header.Number, header.StateRoot!, sw.Elapsed, isComplete,
+                stats, dist, header.Number, header.StateRoot!, sw.Elapsed, isComplete: true,
                 cumulativeBaseline,
                 slotCountByAddress: stats.SlotCountByAddress,
                 codeHashRefcounts: stats.CodeHashRefcounts,
