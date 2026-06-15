@@ -23,14 +23,16 @@ internal sealed class PersistedTierTestHarness : IDisposable
 {
     public SnapshotRepository Repository { get; }
 
-    private readonly IPersistedSnapshotLoader _loader;
+    /// <summary>The loader paired with <see cref="Repository"/> — also exposes <c>Convert</c> for tests
+    /// that drive persistence through a real loader rather than the <c>ConvertToPersistedBase</c> helper.</summary>
+    public IPersistedSnapshotLoader Loader { get; }
 
     public PersistedTierTestHarness(IArenaManager arena, BlobArenaManager blobs, IDb catalogDb, IFlatDbConfig config)
     {
         Repository = new SnapshotRepository(arena, blobs, catalogDb, config, LimboLogs.Instance);
-        _loader = new PersistedSnapshotLoader(Repository, arena, blobs, catalogDb, config, LimboLogs.Instance);
-        _loader.Load();
+        Loader = new PersistedSnapshotLoader(Repository, arena, blobs, catalogDb, config, LimboLogs.Instance);
+        Loader.Load();
     }
 
-    public void Dispose() => _loader.Dispose();
+    public void Dispose() => Loader.Dispose();
 }

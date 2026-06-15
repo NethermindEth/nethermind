@@ -2,19 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 
 namespace Nethermind.State.Flat.Test;
 
 /// <summary>
 /// Test convenience for the many fixtures that used to call the repository's removed
-/// <c>ConvertSnapshotToPersistedSnapshot</c>: builds a <see cref="PersistedSnapshotConverter"/> over
-/// the repository's own (shared) arena/blob managers and converts. A fresh default
-/// <see cref="FlatDbConfig"/> is used — no convert-using test customizes bloom-bits or validation, so
-/// it is behavior-equivalent.
+/// <c>ConvertSnapshotToPersistedSnapshot</c>: builds a <see cref="PersistedSnapshotLoader"/> over the
+/// repository's own (shared) arena/blob managers and converts. A fresh default <see cref="FlatDbConfig"/>
+/// is used — no convert-using test customizes bloom-bits or validation, so it is behavior-equivalent.
 /// </summary>
+/// <remarks>
+/// The loader is convert-only here: it is not <see cref="System.IDisposable.Dispose"/>d (that would tear
+/// down the repository's shared arena/blobs), and the throwaway catalog db is unused by
+/// <see cref="PersistedSnapshotLoader.Convert"/> — it routes through
+/// <see cref="ISnapshotRepository.AddPersistedSnapshot"/>, which writes the repository's own catalog.
+/// </remarks>
 internal static class PersistedSnapshotConverterTestExtensions
 {
     internal static PersistedSnapshot ConvertToPersistedBase(this SnapshotRepository repo, Snapshot snapshot)
-        => new PersistedSnapshotConverter(repo.ArenaManager, repo.BlobArenaManager, new FlatDbConfig(), repo).Convert(snapshot);
+        => new PersistedSnapshotLoader(repo, repo.ArenaManager, repo.BlobArenaManager, new MemDb(), new FlatDbConfig(), LimboLogs.Instance)
+            .Convert(snapshot);
 }

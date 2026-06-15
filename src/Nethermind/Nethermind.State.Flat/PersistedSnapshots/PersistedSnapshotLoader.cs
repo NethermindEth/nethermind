@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence.BloomFilter;
@@ -25,6 +26,14 @@ public interface IPersistedSnapshotLoader : IDisposable
     /// into the repository's tier buckets, and rebuild their blooms. Drives the repository's persisted
     /// tier from empty to fully populated; called once at startup.</summary>
     void Load();
+
+    /// <summary>
+    /// Persist an in-memory <see cref="Snapshot"/> as a base entry in the persisted tier: build its
+    /// HSST metadata + contiguous trie-RLP region into the shared arena/blob pools, fsync for
+    /// durability, then store it in the repository's base bucket. The returned snapshot is pre-leased —
+    /// the caller owns the lease and MUST dispose it.
+    /// </summary>
+    PersistedSnapshot Convert(Snapshot snapshot);
 }
 
 /// <inheritdoc cref="IPersistedSnapshotLoader"/>
@@ -50,8 +59,11 @@ public sealed class PersistedSnapshotLoader(
     // itself dedups via state-change comparison, so sub-second ticks are cheap.
     private const int ProgressLogIntervalMs = 1000;
 
+    private static readonly StringLabel _tierLabel = new("persisted");
+
     private readonly SnapshotCatalog _catalog = new(catalogDb);
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
+    private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotLoader>();
     private int _disposed;
 
@@ -206,6 +218,58 @@ public sealed class PersistedSnapshotLoader(
     {
         using WholeReadSession session = snap.BeginWholeReadSession();
         return PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey);
+    }
+
+    /// <inheritdoc/>
+    public PersistedSnapshot Convert(Snapshot snapshot)
+    {
+        // One unified bloom covering account/slot/SD keys + state-trie + storage-trie paths.
+        // Sized as the union of both expected key counts at the configured bits-per-key.
+        BloomFilter bloom;
+        if (BloomEnabled)
+        {
+            long capacity = (long)snapshot.AccountsCount
+                          + snapshot.Content.SelfDestructedStorageAddresses.Count
+                          + 2L * snapshot.StoragesCount
+                          + snapshot.StateNodesCount
+                          + snapshot.StorageNodesCount;
+            bloom = new BloomFilter(Math.Max(capacity, 1), _bloomBitsPerKey);
+        }
+        else
+        {
+            bloom = BloomFilter.AlwaysTrue();
+        }
+
+        long estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
+
+        SnapshotLocation location;
+        ArenaReservation reservation;
+        using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
+        using (ArenaWriter arenaWriter = arena.CreateWriter(estimatedSize))
+        {
+            PersistedSnapshotBuilder.Build<ArenaBufferWriter>(
+                snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
+            Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written, _tierLabel);
+            (location, reservation) = arenaWriter.Complete();
+        }
+        blobWriter.Complete();
+
+        // Durability barrier — fsync both the metadata arena and the blob arena before the
+        // catalog records the new entry. A crash between this point and the next persistence
+        // checkpoint would otherwise leave the catalog pointing at unsynced pages whose
+        // contents are not yet guaranteed to be on disk.
+        reservation.Fsync();
+        blobWriter.Fsync();
+
+        // Store records the catalog entry into the base bucket, indexes the snapshot, and
+        // pre-acquires the caller's lease under the bucket's lock; it also disposes the reservation.
+        PersistedSnapshot persisted = repository.AddPersistedSnapshot(
+            snapshot.From, snapshot.To, location, reservation, bloom, SnapshotTier.PersistedBase);
+
+        if (_validatePersistedSnapshot)
+            PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+
+        return persisted;
     }
 
     /// <summary>

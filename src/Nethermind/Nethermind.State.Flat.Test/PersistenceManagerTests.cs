@@ -32,7 +32,6 @@ public class PersistenceManagerTests
     private SnapshotRepository _snapshotRepository = null!;
     private IPersistence _persistence = null!;
     private IPersistedSnapshotCompactor _persistedSnapshotCompactor = null!;
-    private IPersistedSnapshotConverter _converter = null!;
     private ResourcePool _resourcePool = null!;
     private StateId Block0 = new(0, Keccak.EmptyTreeHash);
 
@@ -54,8 +53,6 @@ public class PersistenceManagerTests
         // pairs it with its loader (load on construct, teardown on dispose).
         _harness = SnapshotRepositoryTestFactory.Create();
         _snapshotRepository = _harness.Repository;
-        _converter = new PersistedSnapshotConverter(
-            _snapshotRepository.ArenaManager, _snapshotRepository.BlobArenaManager, _config, _snapshotRepository);
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -72,7 +69,7 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
-            _converter);
+            _harness.Loader);
     }
 
     [TearDown]
@@ -199,7 +196,7 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
-            _converter);
+            _harness.Loader);
 
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);
