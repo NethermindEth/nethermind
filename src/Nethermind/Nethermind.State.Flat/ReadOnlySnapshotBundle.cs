@@ -39,9 +39,10 @@ public sealed class ReadOnlySnapshotBundle(
     public static int PersistenceMemoMaxEntries = 1 << 17;
 
     // Stored values are shared across every caller on this block: the byte[] slot values and
-    // Account instances must never be mutated after insertion.
-    private readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, byte[]?> _slotPersistenceMemo = new();
-    private readonly ConcurrentDictionary<HashedKey<Address>, Account?> _accountPersistenceMemo = new();
+    // Account instances must never be mutated after insertion. Allocated only when there is no
+    // carry-forward cache — otherwise every read goes through it and these would be dead weight.
+    private readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, byte[]?>? _slotPersistenceMemo = carryForward is null ? new() : null;
+    private readonly ConcurrentDictionary<HashedKey<Address>, Account?>? _accountPersistenceMemo = carryForward is null ? new() : null;
     private int _slotMemoCount;
     private int _accountMemoCount;
 
@@ -83,7 +84,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return carriedAccount;
             }
         }
-        else if (_accountPersistenceMemo.TryGetValue(key, out Account? memoizedAccount))
+        else if (_accountPersistenceMemo!.TryGetValue(key, out Account? memoizedAccount))
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountMemoLabel);
             return memoizedAccount;
@@ -103,7 +104,7 @@ public sealed class ReadOnlySnapshotBundle(
         {
             carryForward.AddAccount(key, account);
         }
-        else if (Volatile.Read(ref _accountMemoCount) < PersistenceMemoMaxEntries && _accountPersistenceMemo.TryAdd(key, account))
+        else if (Volatile.Read(ref _accountMemoCount) < PersistenceMemoMaxEntries && _accountPersistenceMemo!.TryAdd(key, account))
         {
             Interlocked.Increment(ref _accountMemoCount);
         }
@@ -157,7 +158,7 @@ public sealed class ReadOnlySnapshotBundle(
                 return carriedValue;
             }
         }
-        else if (_slotPersistenceMemo.TryGetValue(key, out byte[]? memoizedValue))
+        else if (_slotPersistenceMemo!.TryGetValue(key, out byte[]? memoizedValue))
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageMemoLabel);
             return memoizedValue;
@@ -184,7 +185,7 @@ public sealed class ReadOnlySnapshotBundle(
         {
             carryForward.AddSlot(key, value);
         }
-        else if (Volatile.Read(ref _slotMemoCount) < PersistenceMemoMaxEntries && _slotPersistenceMemo.TryAdd(key, value))
+        else if (Volatile.Read(ref _slotMemoCount) < PersistenceMemoMaxEntries && _slotPersistenceMemo!.TryAdd(key, value))
         {
             Interlocked.Increment(ref _slotMemoCount);
         }
