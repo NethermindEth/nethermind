@@ -453,13 +453,15 @@ public struct EvmPooledMemory
 
     private static void ReturnClean(byte[] array, int dirtyLength)
     {
-        Array.Clear(array, 0, dirtyLength);
         if (array.Length > MaxCachedArrayLength)
             return;
 
         byte[]?[] cache = t_cleanArrays ??= new byte[CleanCacheSlots][];
         if (t_cleanArrayCount < CleanCacheSlots)
+        {
+            Array.Clear(array, 0, dirtyLength);
             cache[t_cleanArrayCount++] = array;
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
