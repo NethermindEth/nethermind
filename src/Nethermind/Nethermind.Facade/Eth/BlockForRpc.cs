@@ -70,11 +70,6 @@ public class BlockForRpc
                 SlotNumber = block.SlotNumber;
             }
 
-            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
-            if (specProvider.MergeBlockNumber is null)
-            {
-                TotalDifficulty = block.TotalDifficulty;
-            }
         }
 
         Number = block.Number;
