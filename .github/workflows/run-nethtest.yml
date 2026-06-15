@@ -121,6 +121,28 @@ jobs:
       eest_version: ${{ steps.resolve.outputs.eest_version }}
       zkevm_version: ${{ steps.resolve.outputs.zkevm_version }}
     steps:
+      # EXPERIMENT: build the runner once here and share it as an artifact, instead of
+      # rebuilding the identical binary in every matrix job (~79s/job of pure redundancy).
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Nethermind.Test.Runner
+        working-directory: src/Nethermind
+        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false
+
+      - name: Upload runner artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethtest-runner
+          path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
+          retention-days: 1
+          include-hidden-files: true
+
       - name: Generate matrix
         id: generate
         env:
@@ -149,73 +171,60 @@ jobs:
             type="$(echo "$raw_type" | tr -d '[:space:]')"
             case "$type" in
               engineTest|blockTest)
-                # Mirrors the pyspec fixture classes: sequential merkle baseline over the
-                # full set, plus the flat layout and its Amsterdam BAL parallel/batch-read
-                # variants (the toggles are EIP-7928-gated, hence the amsterdam scope).
-                # Parallel-execution variants run single-worker in small chunks: process
-                # memory grows with the number of parallel-executed tests (~14 GB after
-                # ~5k tests even at 2 workers), so larger jobs trip the 16 GB runner limit.
+                # EXPERIMENT — explicit {layout}_{mode} setup names so a job name never
+                # hides what it runs (the old "Sequential" NUnit label silently ran every
+                # BAL mode). Chunk counts are minimised now that the runner is prebuilt and
+                # downloaded (no ~79s/job build), except the flat parallel-execution fleets
+                # which stay at their memory floor (~22k Amsterdam tests / ~1.3k per
+                # single-worker process). The patricia parallel/batch-read variants are
+                # dropped: patricia execution is covered by patricia_seq, and the BAL
+                # parallel/batch-read code paths are covered by the flat variants below.
                 if run_sequential; then
-                  emit "$type" sequential full '' false false 4 8
-                  # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
-                  # unfiltered, so the Amsterdam parallel/batch-read variant classes also
-                  # ran under the default (patricia) layout — including parallel-full,
-                  # which is the production configuration. Mirror that coverage here.
-                  emit "$type" parallel amsterdam '' true false 1 8
-                  emit "$type" batchread amsterdam '' false true 4 4
-                  emit "$type" parallelfull amsterdam '' true true 1 8
+                  emit "$type" patricia_seq full '' false false 4 6
                 fi
                 if run_flat; then
-                  # Engine tests under the flat in-memory backend are the heaviest
-                  # combination: some full-set chunks exceeded the 16 GB runner limit at
-                  # 4 workers / 8 chunks, so they get smaller single-purpose jobs.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" flat_sequential full 1 false false 2 16
+                    emit "$type" flat_seq full 1 false false 2 16
                   else
-                    emit "$type" flat_sequential full 1 false false 4 8
+                    emit "$type" flat_seq full 1 false false 4 6
                   fi
-                  # 16 chunks matches the NUnit variant shards' ~1.3k tests/process, the
-                  # empirically safe size for the parallel-execution memory growth
-                  # (a v7.2.0 chunk died at ~1.8k tests even single-worker).
                   emit "$type" flat_parallel amsterdam 1 true false 1 16
-                  emit "$type" flat_batchread amsterdam 1 false true 4 4
-                  # parallelfull (parallel + batch-read prewarm) retains the most memory per
-                  # test; chunk 10of16 was deterministically over the limit on v7.3.1.
-                  emit "$type" flat_parallelfull amsterdam 1 true true 1 24
+                  emit "$type" flat_batchread amsterdam 1 false true 4 2
+                  emit "$type" flat_parallelfull amsterdam 1 true true 1 22
                 fi
                 ;;
               stateTest)
                 # State tests execute a single tx via the tx processor - the block-level
                 # parallel/batch-read toggles do not apply, only the state layout does.
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 4
+                  emit "$type" patricia_seq full '' '' '' 4 2
                 fi
                 if run_flat; then
-                  emit "$type" flat_sequential full 1 '' '' 4 4
+                  emit "$type" flat_seq full 1 '' '' 4 2
                 fi
                 ;;
               syncTest)
                 # Sync fixtures share the engine-payload format; the sync-specific payload
                 # is not exercised yet (same coverage the NUnit sync fixtures provided).
                 if run_sequential; then
-                  emit "$type" sequential full '' false false 4 2
+                  emit "$type" patricia_seq full '' false false 4 1
                 fi
                 if run_flat; then
-                  emit "$type" flat_sequential full 1 false false 4 2
+                  emit "$type" flat_seq full 1 false false 4 1
                 fi
                 ;;
               txTest)
                 # Raw-tx validation touches neither the state layout nor block execution,
                 # so it only runs in the sequential group (flat would be a duplicate).
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 1
+                  emit "$type" patricia_seq full '' '' '' 4 1
                 fi
                 ;;
               zkevmTest)
                 # Stateless witness execution builds its own in-memory state, so the
                 # layout and BAL toggles are irrelevant - sequential group only.
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 4
+                  emit "$type" patricia_seq full '' '' '' 4 2
                 fi
                 ;;
               *)
@@ -299,9 +308,12 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Build Nethermind.Test.Runner
-        working-directory: src/Nethermind
-        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false
+      # EXPERIMENT: download the runner built once in prepare-matrix instead of rebuilding.
+      - name: Download runner artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: nethtest-runner
+          path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
 
       - name: Select fixture release
         id: eest_release
@@ -657,8 +669,9 @@ jobs:
           }
 
           set +e
-          dotnet run --no-build --no-launch-profile -c Release \
-            --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
+          # EXPERIMENT: run the prebuilt DLL directly (no build/restore — the runner was
+          # built once in prepare-matrix and downloaded above).
+          dotnet artifacts/bin/Nethermind.Test.Runner/release/nethtest.dll \
             $RUNNER_FLAG \
             --input "${{ steps.fixtures.outputs.fixture_dir }}" \
             --jsonout \
