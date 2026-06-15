@@ -22,7 +22,6 @@ public class NetworkStorageTests
     [SetUp]
     public void SetUp()
     {
-        NetworkNodeDecoder.Init();
         ILogManager logManager = LimboLogs.Instance;
         _ = new ConfigProvider();
         _tempDir = TempPath.GetTempDirectory();

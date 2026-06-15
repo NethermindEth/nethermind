@@ -12,9 +12,9 @@ namespace Nethermind.Network
 {
     public sealed class NetworkNodeDecoder : RlpDecoder<NetworkNode>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
+        public static NetworkNodeDecoder Instance { get; } = new();
 
-        static NetworkNodeDecoder() => Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
 
         protected override NetworkNode DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -97,9 +97,5 @@ namespace Nethermind.Network
             value.Length != PublicKey.LengthInBytes &&
             value is [(byte)'e', (byte)'n', (byte)'r', (byte)':', ..];
 
-        public static void Init()
-        {
-            // here to register with RLP in static constructor
-        }
     }
 }

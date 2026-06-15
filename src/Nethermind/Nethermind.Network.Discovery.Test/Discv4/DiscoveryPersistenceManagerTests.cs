@@ -40,8 +40,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [SetUp]
         public void Setup()
         {
-            NetworkNodeDecoder.Init();
-
             _discoveryDb = new MemDb();
             _networkStorage = new NetworkStorage(_discoveryDb, LimboLogs.Instance);
             _nodeStatsManager = Substitute.For<INodeStatsManager>();

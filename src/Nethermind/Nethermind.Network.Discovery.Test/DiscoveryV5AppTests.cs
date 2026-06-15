@@ -37,8 +37,6 @@ public class DiscoveryV5AppTests
     [SetUp]
     public void Setup()
     {
-        NetworkNodeDecoder.Init();
-
         _discoveryDb = new MemDb();
         _discoveryV5App = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"));
     }

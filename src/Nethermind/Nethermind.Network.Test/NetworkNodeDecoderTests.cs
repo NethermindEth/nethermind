@@ -45,7 +45,7 @@ namespace Nethermind.Network.Test
         private static void AssertRoundtripPreservesFields(NetworkNode node)
         {
             NetworkNodeDecoder networkNodeDecoder = new();
-            Rlp encoded = Rlp.Encode(node);
+            Rlp encoded = networkNodeDecoder.Encode(node);
             Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
             using (Assert.EnterMultipleScope())
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Test
                 Reputation = 100L
             };
 
-            Rlp encoded = Rlp.Encode(node);
+            Rlp encoded = networkNodeDecoder.Encode(node);
             Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
 
