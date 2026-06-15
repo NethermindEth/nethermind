@@ -32,7 +32,7 @@ internal static class TestFixtureHelpers
     /// <summary>
     /// Read the <c>ref_ids</c> list from the metadata HSST inside <paramref name="reservation"/>
     /// and acquire a lease per id on <paramref name="blobs"/>. Mirrors what
-    /// <c>PersistedSnapshotRepository</c> does at load time — the resulting
+    /// <c>SnapshotRepository</c> does at load time — the resulting
     /// <see cref="PersistedSnapshot"/>'s <c>CleanUp</c> drops one lease per id, keeping
     /// refcounts balanced. No-op when the HSST has no ref_ids (raw test bytes that aren't
     /// a real HSST).

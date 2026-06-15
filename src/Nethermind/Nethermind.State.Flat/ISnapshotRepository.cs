@@ -3,13 +3,18 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat;
 
-public interface ISnapshotRepository
+public interface ISnapshotRepository : IDisposable
 {
     int SnapshotCount { get; }
+
+    /// <summary>Total persisted snapshots across the base/compacted/persistable buckets.</summary>
+    int PersistedSnapshotCount { get; }
 
     void AddStateId(in StateId stateId);
     StateId? LastRegisteredState { get; }
@@ -19,6 +24,23 @@ public interface ISnapshotRepository
     bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
     bool RemoveAndReleaseCompactedKnownState(in StateId stateId);
     bool HasState(in StateId stateId);
+
+    /// <summary>Persist an in-memory snapshot as a base entry in the persisted tier. The returned
+    /// snapshot is pre-leased — the caller owns the lease and MUST dispose it.</summary>
+    PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
+
+    /// <summary>Store a compacted (or, when <paramref name="isPersistable"/>, the CompactSize-wide
+    /// persistable) snapshot with a pre-computed location/reservation. Returns it pre-leased.</summary>
+    PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false);
+
+    /// <summary>Lease every persisted base snapshot tiling <c>(from, to]</c>. Caller disposes the list.</summary>
+    PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);
+
+    /// <summary>Whether the persisted base bucket holds a snapshot at <paramref name="stateId"/>.</summary>
+    bool HasBaseSnapshot(in StateId stateId);
+
+    /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
+    void RemovePersistedStatesUntil(long blockNumber);
     AssembledSnapshotResult AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
     SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, long minBlockNumber, int estimatedSize);
 

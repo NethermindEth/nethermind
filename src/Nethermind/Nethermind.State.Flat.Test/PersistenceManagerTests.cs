@@ -31,12 +31,8 @@ public class PersistenceManagerTests
     private SnapshotRepository _snapshotRepository = null!;
     private IPersistence _persistence = null!;
     private IPersistedSnapshotCompactor _persistedSnapshotCompactor = null!;
-    private IPersistedSnapshotRepository _persistedSnapshotRepository = null!;
     private ResourcePool _resourcePool = null!;
     private StateId Block0 = new(0, Keccak.EmptyTreeHash);
-    private TempDirArenaManager _memArena = null!;
-    private BlobArenaManager _blobs = null!;
-    private string _blobsDir = null!;
 
     [SetUp]
     public void SetUp()
@@ -52,14 +48,8 @@ public class PersistenceManagerTests
 
         _resourcePool = new ResourcePool(_config);
         _finalizedStateProvider = new TestFinalizedStateProvider();
-        // SnapshotRepository owns the two-tier persist-finding walk, so it must hold the same
-        // persisted repo PersistenceManager uses (a single DI singleton in production).
-        _persistedSnapshotRepository = Substitute.For<IPersistedSnapshotRepository>();
-        // SnapshotRepository's orphan-prune walk queries the persisted tier; keep the unconfigured
-        // mock from returning null (tests that need real entries override this).
-        _persistedSnapshotRepository.GetPersistedStatesInRange(Arg.Any<long>(), Arg.Any<long>())
-            .Returns(_ => ArrayPoolList<StateId>.Empty());
-        _snapshotRepository = new SnapshotRepository(_persistedSnapshotRepository, LimboLogs.Instance);
+        // SnapshotRepository now owns both tiers over a real temp-dir-backed persisted store.
+        _snapshotRepository = SnapshotRepositoryTestFactory.Create();
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -67,9 +57,6 @@ public class PersistenceManagerTests
         _persistence.CreateReader().Returns(persistenceReader);
 
         _persistedSnapshotCompactor = Substitute.For<IPersistedSnapshotCompactor>();
-        _memArena = new TempDirArenaManager();
-        _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-pmtest-blobs-{Guid.NewGuid():N}");
-        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);
 
         _persistenceManager = new PersistenceManager(
             _config,
@@ -78,8 +65,7 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _persistedSnapshotRepository);
+            _persistedSnapshotCompactor);
     }
 
     [TearDown]
@@ -87,10 +73,7 @@ public class PersistenceManagerTests
     {
         await _persistenceManager.DisposeAsync();
         await _persistedSnapshotCompactor.DisposeAsync();
-        _blobs.Dispose();
-        _memArena.Dispose();
-        try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
-        _persistedSnapshotRepository.Dispose();
+        _snapshotRepository.Dispose();
     }
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)
@@ -118,6 +101,14 @@ public class PersistenceManagerTests
         _snapshotRepository.AddStateId(to);
 
         return snapshot;
+    }
+
+    // Persist a base directly into the (real) persisted tier, bypassing the in-memory tier.
+    private void PersistBase(StateId from, StateId to)
+    {
+        Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
+        snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
+        _snapshotRepository.ConvertSnapshotToPersistedSnapshot(snapshot).Dispose();
     }
 
     private Snapshot CreateSnapshotWithSelfDestruct(StateId from, StateId to)
@@ -200,8 +191,7 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _persistedSnapshotRepository);
+            _persistedSnapshotCompactor);
 
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);
@@ -219,10 +209,9 @@ public class PersistenceManagerTests
         Assert.That(persistedToPersist, Is.Null);
         Assert.That(toConvert, Is.Null, "Conversion path must be gated when EnableLongFinality is false");
 
-        // Sanity: even after invoking the production AddToPersistence path, no conversion
-        // call should reach the persisted-snapshot repo mock when the flag is false.
+        // Sanity: with the flag off no snapshot was converted into the persisted tier.
         toPersist?.Dispose();
-        _persistedSnapshotRepository.DidNotReceive().ConvertSnapshotToPersistedSnapshot(Arg.Any<Snapshot>());
+        Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.EqualTo(0));
     }
 
     [Test]
@@ -320,16 +309,7 @@ public class PersistenceManagerTests
         StateId baseB = CreateStateId(10);
         StateId outsider = CreateStateId(1); // below start (= compactedFrom.BlockNumber + 1)
 
-        // Conversion adds a persisted snapshot via the (substituted) persisted repo; hand back a
-        // disposable throwaway so DoConvert's pre-leased `.Dispose()` is safe.
-        _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(Arg.Any<Snapshot>())
-            .Returns(_ =>
-            {
-                using ArenaWriter writer = _memArena.CreateWriter(0);
-                (SnapshotLocation _, ArenaReservation res) = writer.Complete();
-                return new PersistedSnapshot(Block0, Block0, res, _blobs);
-            });
-
+        // DoConvert persists the gathered snapshot into the real persisted tier.
         // The converted/boundary snapshots are disposed by DoConvert (via RemoveAndRelease + the
         // pre-leased candidate), so they are NOT wrapped in `using`. Only the survivor is.
         CreateSnapshot(compactedFrom, compactedTo, compacted: true);
@@ -345,8 +325,10 @@ public class PersistenceManagerTests
         Assert.Multiple(() =>
         {
             Assert.That(_snapshotRepository.HasState(outsider), Is.True, "state below `start` must survive");
-            Assert.That(_snapshotRepository.HasState(baseA), Is.False);
-            Assert.That(_snapshotRepository.HasState(baseB), Is.False);
+            // Gathered states are converted into the persisted tier (so HasState still sees them) but
+            // must be dropped from the in-memory tier — check in-memory presence via TryLeaseState.
+            Assert.That(_snapshotRepository.TryLeaseState(baseA, out _), Is.False, "baseA removed from the in-memory tier");
+            Assert.That(_snapshotRepository.TryLeaseState(baseB, out _), Is.False, "baseB removed from the in-memory tier");
             Assert.That(_snapshotRepository.TryLeaseCompactedState(compactedTo, out _), Is.False, "boundary compacted removed");
         });
     }
@@ -363,6 +345,11 @@ public class PersistenceManagerTests
 
         using Snapshot snapshot = CreateSnapshot(from, to, compacted: true);
 
+        // A persisted entry below the new persisted block must be pruned by the persist.
+        StateId stale = CreateStateId(8);
+        PersistBase(Block0, stale);
+        Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.True);
+
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
 
@@ -371,9 +358,8 @@ public class PersistenceManagerTests
 
         _persistenceManager.AddToPersistence(latest);
 
-        // Both tier mocks (shared substitute) should have received a RemoveStatesUntil call with
-        // the new persisted state — once for each repo (small + large).
-        _persistedSnapshotRepository.Received().RemoveStatesUntil(to.BlockNumber);
+        // Persisting the in-memory snapshot at `to` must prune the persisted tier below `to`.
+        Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
     }
 
     [Test]
@@ -388,22 +374,19 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
 
-        // No in-memory snapshot — DetermineSnapshotAction takes the tier-fallback path
-        // and returns persistedToPersist via the stubbed TryLeaseSnapshotTo below.
-        using ArenaWriter emptyWriter = _memArena.CreateWriter(0);
-        (_, ArenaReservation emptyRes) = emptyWriter.Complete();
-        PersistedSnapshot persisted = new(Block0, target, emptyRes, _blobs);
-        _persistedSnapshotRepository.TryLeaseSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
-            .Returns(x => { x[1] = persisted; return true; });
-        _persistedSnapshotRepository.LeaseBaseSnapshotsInRange(Arg.Any<StateId>(), Arg.Any<StateId>())
-            .Returns(_ => PersistedSnapshotList.Empty());
+        // No in-memory snapshot — DetermineSnapshotAction takes the tier-fallback path and persists
+        // the base in the persisted tier whose From == the current persisted state (Block0).
+        PersistBase(Block0, target);
+        // A persisted entry below `target` must be pruned by the persist.
+        StateId stale = CreateStateId(8);
+        PersistBase(Block0, stale);
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
         _persistenceManager.AddToPersistence(latest);
 
-        _persistedSnapshotRepository.Received().RemoveStatesUntil(target.BlockNumber);
+        Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
     }
 
     [Test]
@@ -453,12 +436,8 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
 
-        // Don't create any in-memory snapshots — configure persisted snapshot fallback
-        using ArenaWriter emptyWriter = _memArena.CreateWriter(0);
-        (_, ArenaReservation emptyRes) = emptyWriter.Complete();
-        PersistedSnapshot persisted = new(Block0, target, emptyRes, _blobs);
-        _persistedSnapshotRepository.TryLeaseSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
-            .Returns(x => { x[1] = persisted; return true; });
+        // Don't create any in-memory snapshots — persist a base into the tier so the fallback finds it.
+        PersistBase(Block0, target);
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
 

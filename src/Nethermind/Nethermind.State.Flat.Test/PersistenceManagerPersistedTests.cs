@@ -39,7 +39,7 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
         IFlatDbConfig config = new FlatDbConfig();
         config.PersistedSnapshotMaxCompactSize = config.CompactSize / 2;
@@ -53,7 +53,7 @@ public class PersistenceManagerPersistedTests
 
         repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
 
-        Assert.That(repo.SnapshotCount, Is.EqualTo(1));
+        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snapshot), Is.True);
         snapshot!.Dispose();
     }
@@ -63,7 +63,7 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
         IFlatDbConfig config = new FlatDbConfig();
         config.PersistedSnapshotMaxCompactSize = config.CompactSize / 2;
@@ -87,12 +87,12 @@ public class PersistenceManagerPersistedTests
         c3.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(3).TestObject;
         repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s3, s6, c3, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
-        Assert.That(repo.SnapshotCount, Is.EqualTo(3));
+        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(3));
 
         // Remove states until block 5 (removes snapshots with To < 5, i.e., s1 and s3)
-        repo.RemoveStatesUntil(5);
+        repo.RemovePersistedStatesUntil(5);
 
-        Assert.That(repo.SnapshotCount, Is.EqualTo(1)); // Only s6 remains
+        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1)); // Only s6 remains
     }
 
     [Test]
@@ -100,9 +100,7 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
-
-        SnapshotRepository snapRepo = new(repo, LimboLogs.Instance);
+        using SnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -124,15 +122,15 @@ public class PersistenceManagerPersistedTests
 
         // In-memory canonical C5 whose parent C4 lives only in the persisted tier — reachability
         // to C3 therefore has to cross from the in-memory tier into the persisted tier.
-        AddInMemory(snapRepo, c4, c5);
+        AddInMemory(repo, c4, c5);
 
-        snapRepo.RemoveSiblingAndDescendents(c3);
+        repo.RemoveSiblingAndDescendents(c3);
 
         Assert.That(LeasePresent(repo, nc4), Is.False, "orphan NC4 above the persisted block should be pruned from the persisted tier");
         Assert.That(LeasePresent(repo, c4), Is.True, "canonical C4 should be kept");
         Assert.That(repo.HasBaseSnapshot(c3), Is.True, "canonical target C3 should be kept");
         Assert.That(repo.HasBaseSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
-        Assert.That(snapRepo.HasState(c5), Is.True, "canonical in-memory C5 reachable through persisted C4 must be kept");
+        Assert.That(repo.HasState(c5), Is.True, "canonical in-memory C5 reachable through persisted C4 must be kept");
     }
 
     [Test]
@@ -140,9 +138,7 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedSnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
-
-        SnapshotRepository snapRepo = new(repo, LimboLogs.Instance);
+        using SnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -152,30 +148,30 @@ public class PersistenceManagerPersistedTests
         PersistToTier(repo, s1, s2);
         PersistToTier(repo, s2, s3);
 
-        int before = repo.SnapshotCount;
-        snapRepo.RemoveSiblingAndDescendents(s1);
+        int before = repo.PersistedSnapshotCount;
+        repo.RemoveSiblingAndDescendents(s1);
 
-        Assert.That(repo.SnapshotCount, Is.EqualTo(before), "a linear persisted chain has no fork; nothing should be pruned");
+        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(before), "a linear persisted chain has no fork; nothing should be pruned");
         Assert.That(repo.HasBaseSnapshot(s2), Is.True);
         Assert.That(repo.HasBaseSnapshot(s3), Is.True);
     }
 
-    private void PersistToTier(PersistedSnapshotRepository repo, StateId from, StateId to)
+    private void PersistToTier(SnapshotRepository repo, StateId from, StateId to)
     {
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
         repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
     }
 
-    private void AddInMemory(SnapshotRepository snapRepo, StateId from, StateId to)
+    private void AddInMemory(SnapshotRepository repo, StateId from, StateId to)
     {
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(1).TestObject;
-        snapRepo.TryAddSnapshot(new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing));
-        snapRepo.AddStateId(to);
+        repo.TryAddSnapshot(new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+        repo.AddStateId(to);
     }
 
-    private static bool LeasePresent(PersistedSnapshotRepository repo, StateId to)
+    private static bool LeasePresent(SnapshotRepository repo, StateId to)
     {
         if (!repo.TryLeaseSnapshotTo(to, out PersistedSnapshot? snapshot)) return false;
         snapshot!.Dispose();

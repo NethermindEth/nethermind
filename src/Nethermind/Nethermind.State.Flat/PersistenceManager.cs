@@ -32,8 +32,7 @@ public class PersistenceManager(
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
     ILogManager logManager,
-    IPersistedSnapshotCompactor persistedSnapshotCompactor,
-    IPersistedSnapshotRepository persistedSnapshotRepository) : IPersistenceManager
+    IPersistedSnapshotCompactor persistedSnapshotCompactor) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
@@ -45,7 +44,6 @@ public class PersistenceManager(
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
     private readonly IPersistedSnapshotCompactor _compactor = persistedSnapshotCompactor;
-    private readonly IPersistedSnapshotRepository _repo = persistedSnapshotRepository;
     private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // reused to presort trie-node keys before write
     private readonly Lock _persistenceLock = new();
@@ -186,7 +184,7 @@ public class PersistenceManager(
     }
 
     private bool IsOnDisk(in StateId state, in StateId currentPersistedState) =>
-        state == currentPersistedState || _repo.HasBaseSnapshot(state);
+        state == currentPersistedState || _snapshotRepository.HasBaseSnapshot(state);
 
     internal sealed record ConversionCandidate(Snapshot? Compacted, Snapshot? Base);
 
@@ -238,7 +236,7 @@ public class PersistenceManager(
     /// The per-removal metric updates (count / memory / prunes) happen delta-wise inside the
     /// repo's <c>RemoveStatesUntil</c>, so no metric recompute is needed here.
     /// </remarks>
-    private void PrunePersistedTierBefore(StateId newPersisted) => _repo.RemoveStatesUntil(newPersisted.BlockNumber);
+    private void PrunePersistedTierBefore(StateId newPersisted) => _snapshotRepository.RemovePersistedStatesUntil(newPersisted.BlockNumber);
 
     private void DoConvert(ConversionCandidate candidate)
     {
@@ -271,7 +269,7 @@ public class PersistenceManager(
                             long sw = Stopwatch.GetTimestamp();
                             // Pre-leased return — dispose the caller's lease immediately;
                             // the repository's dict entry holds its own lease.
-                            _repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+                            _snapshotRepository.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
                             Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
                             snap.Dispose();
                         }
@@ -304,7 +302,7 @@ public class PersistenceManager(
                 long sw = Stopwatch.GetTimestamp();
                 // Pre-leased return — dispose the caller's lease immediately;
                 // the repository's dict entry holds its own lease.
-                _repo.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
+                _snapshotRepository.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
                 Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
 
                 ArrayPoolList<StateId> single = new(1) { baseSnap.To };
@@ -492,7 +490,7 @@ public class PersistenceManager(
         // region up front so the kernel can stream them in as bulk read-ahead; once the
         // persistable is written the same regions are dropped from the page cache (below) —
         // they won't be read again. The leases are held for the whole method.
-        using PersistedSnapshotList bases = _repo.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To);
+        using PersistedSnapshotList bases = _snapshotRepository.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To);
         long warmedBlobBytes = 0;
         foreach (PersistedSnapshot baseSnapshot in bases)
         {

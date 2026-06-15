@@ -56,7 +56,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             // CompactSize=4. n is a power of 2 in {8, 16, 32}, so n & -n == n: block n's natural
             // window covers the whole (0, n] range and DoCompactSnapshot triggers a single merge.
@@ -139,7 +139,7 @@ public class PersistedSnapshotCompactorTests
             // stay below the 512 MiB dedicated-arena threshold, so each must fit a shared file.
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
@@ -201,7 +201,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 };
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
@@ -281,7 +281,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 };
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
@@ -364,7 +364,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
@@ -664,7 +664,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             // maxCompactSize == 2 — only a size-2 compaction is attempted, so
             // exactly two consecutive base snapshots are merged into one compacted snapshot.
@@ -738,7 +738,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             // CompactSize=1 makes every block a boundary; block 8 → window [0, 8].
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 8 };
@@ -796,7 +796,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
@@ -888,7 +888,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             // Every 7th address gets storage (so the streaming path also fires) and the
             // routing decision flips per-address; every 5th address gets a self-destruct
@@ -962,7 +962,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 };
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
@@ -1043,7 +1043,7 @@ public class PersistedSnapshotCompactorTests
         {
             using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
             using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+            using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 64, PersistedSnapshotMaxCompactSize = 32 };
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config, scheduleOffset: 3);

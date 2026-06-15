@@ -26,7 +26,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// populated.
 /// </summary>
 public class PersistedSnapshotCompactor(
-    IPersistedSnapshotRepository persistedSnapshotRepository,
     ISnapshotRepository snapshotRepository,
     IArenaManager arenaManager,
     IFlatDbConfig config,
@@ -201,7 +200,7 @@ public class PersistedSnapshotCompactor(
         // The CompactSize-wide window is the persistable's — see DoCompactPersistable.
         if (alignment == _compactSize) return;
 
-        if (persistedSnapshotRepository.SnapshotCount < 2) return;
+        if (snapshotRepository.PersistedSnapshotCount < 2) return;
 
         // The schedule alignment lives in offset-shifted space, but startingBlockNumber must
         // be the raw block number at the left edge of the window the alignment trigger
@@ -223,7 +222,7 @@ public class PersistedSnapshotCompactor(
         long blockNumber = snapshotTo.BlockNumber;
         if (!_schedule.IsFullCompactionBoundary(blockNumber)) return;
 
-        if (persistedSnapshotRepository.SnapshotCount < 2) return;
+        if (snapshotRepository.PersistedSnapshotCount < 2) return;
 
         // The window is exactly (blockNumber - CompactSize, blockNumber].
         CompactRange(snapshotTo, blockNumber - _compactSize, _compactSize, isPersistable: true);
@@ -318,7 +317,7 @@ public class PersistedSnapshotCompactor(
             // file via a ref-struct iterator — no ushort[] materialisation here. The
             // returned snapshot is pre-leased; dispose it via `using` once we're done
             // with the post-write step.
-            using (PersistedSnapshot compacted = persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom, isPersistable))
+            using (PersistedSnapshot compacted = snapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom, isPersistable))
             {
                 if (compactSize < _compactSize)
                 {

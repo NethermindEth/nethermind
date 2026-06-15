@@ -10,16 +10,15 @@ namespace Nethermind.State.Flat.Test;
 
 /// <summary>
 /// Builds a <see cref="PersistedSnapshotCompactor"/> for tests over the given
-/// <see cref="PersistedSnapshotRepository"/>, wrapping it in a thin <see cref="SnapshotRepository"/>
-/// (which owns the compaction-assembly walk) so call sites stay terse.
+/// <see cref="SnapshotRepository"/> (which owns the compaction-assembly walk) so call sites
+/// stay terse.
 /// </summary>
 internal static class CompactorTestFactory
 {
     internal static PersistedSnapshotCompactor Create(
-        PersistedSnapshotRepository repo, IArenaManager arena, IFlatDbConfig config, int scheduleOffset = 0)
+        SnapshotRepository repo, IArenaManager arena, IFlatDbConfig config, int scheduleOffset = 0)
         => new(
             repo,
-            new SnapshotRepository(repo, LimboLogs.Instance),
             arena,
             config,
             ScheduleHelper.CreateWithOffset(config, scheduleOffset),

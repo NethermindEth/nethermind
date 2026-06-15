@@ -23,28 +23,17 @@ public class SnapshotRepositoryTests
     private SnapshotRepository _repository = null!;
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
-    private TempDirArenaManager _memArena = null!;
-    private BlobArenaManager _blobs = null!;
-    private string _blobsDir = null!;
 
     [SetUp]
     public void SetUp()
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _repository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
-        _memArena = new TempDirArenaManager();
-        _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-sreptest-blobs-{Guid.NewGuid():N}");
-        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);
+        _repository = SnapshotRepositoryTestFactory.Create();
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _blobs.Dispose();
-        _memArena.Dispose();
-        try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
-    }
+    public void TearDown() => _repository.Dispose();
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {
@@ -313,30 +302,6 @@ public class SnapshotRepositoryTests
 
     #endregion
 
-    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to)
-    {
-        Snapshot snap = CreateSnapshot(from, to);
-        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
-        snap.Dispose();
-        return TestFixtureHelpers.CreatePersistedSnapshot(_memArena, _blobs, from, to, data);
-    }
-
-    private static void SetupSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
-        mockRepo.TryLeaseSnapshotTo(toState, out PersistedSnapshot? _).Returns(callInfo =>
-        {
-            snapshot.AcquireLease();
-            callInfo[1] = snapshot;
-            return true;
-        });
-
-    private static void SetupCompactedSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
-        mockRepo.TryLeaseCompactedSnapshotTo(toState, out PersistedSnapshot? _).Returns(callInfo =>
-        {
-            snapshot.AcquireLease();
-            callInfo[1] = snapshot;
-            return true;
-        });
-
     #region AssembleSnapshotsUntil
 
     [Test]
@@ -401,24 +366,17 @@ public class SnapshotRepositoryTests
 
     #region AssembleSnapshots
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void AssembleSnapshots_PersistedSpanning_BelowTarget_AcceptedAsTerminal(bool asCompacted)
+    [Test]
+    public void AssembleSnapshots_PersistedSpanning_BelowTarget_AcceptedAsTerminal()
     {
         StateId s0 = CreateStateId(0);
         StateId s2 = CreateStateId(2);
         StateId s5 = CreateStateId(5);
 
-        IPersistedSnapshotRepository mockRepo = Substitute.For<IPersistedSnapshotRepository>();
-        using PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s5);
+        // A persisted base spanning (s0, s5] — its From is below the target s2.
+        _repository.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s5)).Dispose();
 
-        if (asCompacted)
-            SetupCompactedSnapshotTo(mockRepo, s5, persisted);
-        else
-            SetupSnapshotTo(mockRepo, s5, persisted);
-
-        SnapshotRepository repo = new(mockRepo, LimboLogs.Instance);
-        using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
+        using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
 
         Assert.That(result.Persisted.Count, Is.EqualTo(1));
         Assert.That(result.InMemory.Count, Is.EqualTo(0));
@@ -444,12 +402,10 @@ public class SnapshotRepositoryTests
         StateId s2 = CreateStateId(2);
         StateId s5 = CreateStateId(5);
 
-        IPersistedSnapshotRepository mockRepo = Substitute.For<IPersistedSnapshotRepository>();
-        using PersistedSnapshot persisted = CreatePersistedSnapshot(s2, s5);
-        SetupSnapshotTo(mockRepo, s5, persisted);
+        // A persisted base whose From is exactly the target s2.
+        _repository.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s2, s5)).Dispose();
 
-        SnapshotRepository repo = new(mockRepo, LimboLogs.Instance);
-        using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
+        using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
 
         Assert.That(result.Persisted.Count, Is.EqualTo(1));
         Assert.That(result.InMemory.Count, Is.EqualTo(0));

@@ -48,6 +48,7 @@ public class FlatDbManagerTests
     public async Task TearDown()
     {
         await _persistenceManager.DisposeAsync();
+        _snapshotRepository.Dispose();
         _cts.Cancel();
         _cts.Dispose();
     }
@@ -62,8 +63,7 @@ public class FlatDbManagerTests
         _config,
         _blocksConfig,
         LimboLogs.Instance,
-        enableDetailedMetrics: false,
-        Substitute.For<IPersistedSnapshotRepository>());
+        enableDetailedMetrics: false);
 
     private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {
