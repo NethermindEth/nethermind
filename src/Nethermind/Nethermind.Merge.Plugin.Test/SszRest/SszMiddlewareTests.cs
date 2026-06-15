@@ -939,6 +939,19 @@ public class SszMiddlewareTests
     }
 
     [Test]
+    public async Task Trailing_slash_on_fork_scoped_path_with_id_does_not_leak_into_extra()
+    {
+        _engineModule.engine_getPayloadV2(Arg.Any<byte[]>())
+            .Returns(ResultWrapper<GetPayloadV2Result?>.Success(new GetPayloadV2Result(MakeMinimalBlock(), UInt256.One)));
+
+        DefaultHttpContext ctx = MakeGetContext($"/engine/v2/{ParisUrl}/payloads/0x0102030405060708/");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+    }
+
+    [Test]
     public async Task Unknown_fork_in_path_returns_400_unsupported_fork()
     {
         DefaultHttpContext ctx = MakePostContext("/engine/v2/atlantis/payloads", []);
