@@ -118,7 +118,7 @@ public class PersistedSnapshotCompactor(
             }
 
             // Non-boundary: bucket by power-of-2 alignment (always < CompactSize).
-            int compactSize = (int)_schedule.GetHierarchicalCompactSize(b);
+            int compactSize = (int)_schedule.GetPersistedSnapshotCompactSize(b);
             if (!buckets.TryGetValue(compactSize, out List<StateId>? bucket))
                 buckets[compactSize] = bucket = [];
             bucket.Add(s);
@@ -150,7 +150,7 @@ public class PersistedSnapshotCompactor(
                 {
                     // The persistable for this boundary was already produced in
                     // ProcessCompactBatch; DoCompactSnapshot here only does the
-                    // >CompactSize hierarchical merges.
+                    // >CompactSize merges.
                     DoCompactSnapshot(state);
                 }
                 catch (Exception ex)
@@ -178,7 +178,7 @@ public class PersistedSnapshotCompactor(
     /// <summary>
     /// Compact the persisted snapshots ending at <paramref name="snapshotTo"/> over the block's
     /// natural power-of-2 window. Produces sub-<c>CompactSize</c> intermediates and the
-    /// <c>&gt;CompactSize</c> hierarchical merges; the <c>CompactSize</c>-wide window is
+    /// <c>&gt;CompactSize</c> merges; the <c>CompactSize</c>-wide window is
     /// reserved for <see cref="DoCompactPersistable"/>. Invoked by the background batch worker
     /// (see <see cref="Enqueue"/>); not part of <see cref="IPersistedSnapshotCompactor"/>.
     /// </summary>
@@ -189,7 +189,7 @@ public class PersistedSnapshotCompactor(
     /// </remarks>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
-        if (_schedule.GetHierarchicalCompactionWindow(snapshotTo.BlockNumber) is not { } window) return;
+        if (_schedule.GetPersistedSnapshotCompactionWindow(snapshotTo.BlockNumber) is not { } window) return;
         if (snapshotRepository.PersistedSnapshotCount < 2) return;
 
         CompactRange(snapshotTo, window.StartBlock, window.Size, isPersistable: false);

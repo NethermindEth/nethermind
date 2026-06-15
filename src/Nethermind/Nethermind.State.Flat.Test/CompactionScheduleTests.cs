@@ -217,33 +217,20 @@ public class CompactionScheduleTests
         Assert.That(schedule.IsFullCompactionBoundary(blockNumber), Is.EqualTo(expected));
     }
 
-    [TestCase(0, 0, 1L)]      // block 0 → 1
-    [TestCase(0, 16, 16L)]    // natural CompactSize boundary
-    [TestCase(0, 32, 32L)]    // hierarchical: uncapped tier above CompactSize
-    [TestCase(0, 48, 16L)]    // 48 & -48 = 16
-    [TestCase(0, 64, 64L)]    // hierarchical 4×
-    [TestCase(3, 13, 16L)]    // shifted: (13+3) & -(13+3) = 16
-    [TestCase(3, 29, 32L)]    // shifted hierarchical: 32 (above CompactSize=16)
-    public void GetHierarchicalCompactSize_UncappedAndOffsetAware(int offset, long blockNumber, long expected)
+    [TestCase(0, 0, 8192, 1L)]      // block 0 → 1
+    [TestCase(0, 16, 8192, 16L)]    // natural CompactSize boundary
+    [TestCase(0, 32, 8192, 32L)]    // tier above CompactSize, below cap
+    [TestCase(0, 48, 8192, 16L)]    // 48 & -48 = 16
+    [TestCase(0, 64, 8192, 64L)]    // 4×, below cap
+    [TestCase(3, 13, 8192, 16L)]    // shifted: (13+3) & -(13+3) = 16
+    [TestCase(3, 29, 8192, 32L)]    // shifted: 32 (above CompactSize=16)
+    [TestCase(0, 64, 32, 32L)]      // raw alignment 64 capped at PersistedSnapshotMaxCompactSize=32
+    [TestCase(0, 128, 32, 32L)]     // raw alignment 128 capped at 32
+    public void GetPersistedSnapshotCompactSize_CappedAndOffsetAware(int offset, long blockNumber, int maxCompactSize, long expected)
     {
-        FlatDbConfig config = new() { CompactSize = 16 };
+        FlatDbConfig config = new() { CompactSize = 16, PersistedSnapshotMaxCompactSize = maxCompactSize };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
 
-        Assert.That(schedule.GetHierarchicalCompactSize(blockNumber), Is.EqualTo(expected));
-    }
-
-    [TestCase(0, 0, false)]
-    [TestCase(0, 16, false)]  // exactly CompactSize, not strictly greater
-    [TestCase(0, 32, true)]   // 2× CompactSize
-    [TestCase(0, 64, true)]   // 4×
-    [TestCase(0, 48, false)]  // 48 & -48 = 16
-    [TestCase(3, 29, true)]   // shifted: 32 > 16
-    [TestCase(3, 13, false)]  // shifted: exactly 16
-    public void IsHierarchicalBoundary_ShiftsWithOffset(int offset, long blockNumber, bool expected)
-    {
-        FlatDbConfig config = new() { CompactSize = 16 };
-        CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
-
-        Assert.That(schedule.IsHierarchicalBoundary(blockNumber), Is.EqualTo(expected));
+        Assert.That(schedule.GetPersistedSnapshotCompactSize(blockNumber), Is.EqualTo(expected));
     }
 }

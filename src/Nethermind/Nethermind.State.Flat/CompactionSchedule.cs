@@ -46,7 +46,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
         return from + distance;
     }
 
-    // The three methods below do NOT short-circuit on `_compactSize <= 1` (the "compaction
+    // The methods below do NOT short-circuit on `_compactSize <= 1` (the "compaction
     // disabled" sentinel honoured by GetCompactSize and NextFullCompactionAfter), because
     // PersistedSnapshotCompactor runs with its own min/max caps and may legitimately
     // operate even when config.CompactSize == 1.
@@ -54,17 +54,14 @@ public sealed class CompactionSchedule : ICompactionSchedule
     public bool IsFullCompactionBoundary(long blockNumber) =>
         blockNumber != 0 && ShiftedAlignment(blockNumber) >= _compactSize;
 
-    public long GetHierarchicalCompactSize(long blockNumber) =>
-        blockNumber == 0 ? 1 : ShiftedAlignment(blockNumber);
+    public long GetPersistedSnapshotCompactSize(long blockNumber) =>
+        blockNumber == 0 ? 1 : Math.Min(ShiftedAlignment(blockNumber), _maxCompactSize);
 
-    public bool IsHierarchicalBoundary(long blockNumber) =>
-        blockNumber != 0 && ShiftedAlignment(blockNumber) > _compactSize;
-
-    public CompactionWindow? GetHierarchicalCompactionWindow(long blockNumber)
+    public CompactionWindow? GetPersistedSnapshotCompactionWindow(long blockNumber)
     {
-        int size = (int)Math.Min(GetHierarchicalCompactSize(blockNumber), _maxCompactSize);
+        int size = (int)GetPersistedSnapshotCompactSize(blockNumber);
         // A size-1 window is just the base snapshot; the CompactSize-wide window is the
-        // persistable's (see GetPersistableCompactionWindow). Neither is a hierarchical merge.
+        // persistable's (see GetPersistableCompactionWindow). Neither is a persisted-snapshot merge.
         if (size <= 1 || size == _compactSize) return null;
         return new CompactionWindow(blockNumber - size, size);
     }

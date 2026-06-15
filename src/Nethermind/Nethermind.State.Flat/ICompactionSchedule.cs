@@ -34,34 +34,26 @@ public interface ICompactionSchedule
     bool IsFullCompactionBoundary(long blockNumber);
 
     /// <summary>
-    /// Uncapped alignment tier — the lowest power of 2 that divides
-    /// <c>blockNumber + Offset</c>. Unlike <see cref="GetCompactSize"/> this is NOT capped at
-    /// <c>CompactSize</c>, so callers can identify and act on hierarchical-merge windows
-    /// (2×, 4×, …) above the persistence boundary. Callers apply their own caps
-    /// (e.g. <c>PersistedSnapshotMaxCompactSize</c>) on top.
+    /// The persisted-snapshot compaction tier for <paramref name="blockNumber"/> — the lowest
+    /// power of 2 that divides <c>blockNumber + Offset</c>, capped at
+    /// <c>PersistedSnapshotMaxCompactSize</c>. Unlike <see cref="GetCompactSize"/> the cap is
+    /// <c>PersistedSnapshotMaxCompactSize</c> rather than <c>CompactSize</c>, so callers can act
+    /// on the wider merge windows (2×, 4×, …) above the persistence boundary.
     /// </summary>
-    long GetHierarchicalCompactSize(long blockNumber);
+    long GetPersistedSnapshotCompactSize(long blockNumber);
 
     /// <summary>
-    /// True if <paramref name="blockNumber"/> aligns to a tier strictly larger than
-    /// <c>CompactSize</c> — i.e. the block hits a hierarchical-merge boundary above the
-    /// persistence boundary. Equivalent to
-    /// <c>GetHierarchicalCompactSize(blockNumber) &gt; CompactSize</c>.
-    /// </summary>
-    bool IsHierarchicalBoundary(long blockNumber);
-
-    /// <summary>
-    /// The hierarchical (non-persistable) compaction window for <paramref name="blockNumber"/>,
+    /// The persisted-snapshot (non-persistable) compaction window for <paramref name="blockNumber"/>,
     /// or <c>null</c> when there is nothing to merge — a single-snapshot window or the
     /// <c>CompactSize</c>-wide window reserved for <see cref="GetPersistableCompactionWindow"/>.
     /// </summary>
     /// <remarks>
-    /// The window size is <see cref="GetHierarchicalCompactSize"/> capped at the persisted-snapshot
-    /// max compact size. The start is <c>blockNumber - Size</c>: the alignment lives in
-    /// offset-shifted space, but the window's left edge must be the raw block number, so
+    /// The window size is <see cref="GetPersistedSnapshotCompactSize"/> (already capped at the
+    /// persisted-snapshot max compact size). The start is <c>blockNumber - Size</c>: the alignment
+    /// lives in offset-shifted space, but the window's left edge must be the raw block number, so
     /// <c>((b-1)/size)*size</c> would only be correct when the offset is 0.
     /// </remarks>
-    CompactionWindow? GetHierarchicalCompactionWindow(long blockNumber);
+    CompactionWindow? GetPersistedSnapshotCompactionWindow(long blockNumber);
 
     /// <summary>
     /// The <c>CompactSize</c>-wide persistable window ending at the boundary block
