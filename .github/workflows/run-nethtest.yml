@@ -720,8 +720,6 @@ jobs:
 
           if [ $rc -ne 0 ]; then
             echo "::warning::nethtest exited with code $rc"
-            echo "--- stderr (last 50 lines) ---"
-            tail -50 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g'
             exit $rc
           fi
 
