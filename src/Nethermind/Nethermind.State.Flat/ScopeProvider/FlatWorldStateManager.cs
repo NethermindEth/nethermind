@@ -9,6 +9,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.SnapServer;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -23,9 +24,12 @@ public class FlatWorldStateManager(
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
-    ILogManager logManager)
+    ILogManager logManager,
+    ITrieNodeReadObserver? mainTrieReadObserver = null)
     : IWorldStateManager
 {
+    // The read observer is threaded into the main world state only: read-only/resettable scopes
+    // (RPC envs, prewarming) never feed witness capture and stay observer-free.
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
         flatDbManager,
@@ -33,7 +37,8 @@ public class FlatWorldStateManager(
         trieWarmer,
         ResourcePool.Usage.MainBlockProcessing,
         logManager,
-        isReadOnly: false);
+        isReadOnly: false,
+        trieReadObserver: mainTrieReadObserver);
 
     private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
 

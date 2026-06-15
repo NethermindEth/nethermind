@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -16,7 +17,8 @@ public class FlatScopeProvider(
     ITrieWarmer trieWarmer,
     ResourcePool.Usage usage,
     ILogManager logManager,
-    bool isReadOnly)
+    bool isReadOnly,
+    ITrieNodeReadObserver? trieReadObserver = null)
     : IWorldStateScopeProvider
 {
     // Write paths (block processing) wrap the durable production codeDb directly and benefit
@@ -39,6 +41,7 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             logManager,
-            isReadOnly: isReadOnly);
+            isReadOnly: isReadOnly,
+            trieReadObserver: trieReadObserver);
     }
 }
