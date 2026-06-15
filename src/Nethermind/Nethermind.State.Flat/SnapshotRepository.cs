@@ -83,9 +83,9 @@ public class SnapshotRepository : ISnapshotRepository
         _arena = arenaManager;
         _blobs = blobArenaManager;
         _catalog = new(catalogDb);
-        _base = new SnapshotBucket(_catalog, SnapshotKind.Base);
-        _compacted = new SnapshotBucket(_catalog, SnapshotKind.Compacted);
-        _persistable = new SnapshotBucket(_catalog, SnapshotKind.Persistable);
+        _base = new SnapshotBucket(_catalog, SnapshotTier.PersistedBase);
+        _compacted = new SnapshotBucket(_catalog, SnapshotTier.PersistedCompacted);
+        _persistable = new SnapshotBucket(_catalog, SnapshotTier.PersistedPersistable);
         _compactSize = config.CompactSize;
         _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
         _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
@@ -317,63 +317,56 @@ public class SnapshotRepository : ISnapshotRepository
         }
     }
 
-    /// <summary>
-    /// Parent-edge kinds of the two-tier snapshot DAG. The first four values are ordered by
-    /// <see cref="ParentCursor"/>'s expansion priority (in-RAM-tier-first / widest-first).
-    /// </summary>
-    private enum SnapshotEdge
+    /// <summary>Whether <paramref name="tier"/> is one of the persisted tiers (vs in-memory).</summary>
+    private static bool IsPersisted(SnapshotTier tier) => tier >= SnapshotTier.PersistedBase;
+
+    /// <summary>Guards the in-memory-only public methods: throws when <paramref name="tier"/> is persisted.</summary>
+    private static void EnsureInMemory(SnapshotTier tier)
     {
-        /// <summary>In-memory compacted — widest in-RAM hop, no disk read.</summary>
-        InMemoryCompacted,
-        /// <summary>In-memory base — narrow in-RAM hop, no disk read.</summary>
-        InMemoryBase,
-        /// <summary>Persisted compacted — &gt;CompactSize merges and the CompactSize persistable.</summary>
-        PersistedCompacted,
-        /// <summary>Persisted base — sub-CompactSize, narrowest persisted hop.</summary>
-        PersistedBase,
-        /// <summary>The CompactSize-wide persistable. Never expanded by <see cref="ParentCursor"/>;
-        /// only leased through explicit <see cref="TryLeaseParent"/> calls (see
-        /// <see cref="FindSnapshotToPersist"/>).</summary>
-        PersistedPersistable,
+        if (IsPersisted(tier))
+            throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only in-memory tiers are valid here.");
     }
 
     /// <summary>
     /// Edge seam over the two-tier snapshot DAG: given a node, leases the snapshot backing one of
-    /// its parent (<c>From</c>) edges. Callers own every lease and must dispose it on all paths.
+    /// its parent (<c>From</c>) edges in the given <paramref name="tier"/>. Callers own every lease
+    /// and must dispose it on all paths.
     /// </summary>
-    private bool TryLeaseParent(in StateId to, SnapshotEdge edge, [NotNullWhen(true)] out IDisposable? snapshot, out StateId from)
+    /// <remarks>The persisted-tier mapping is not 1:1 with the buckets: <see cref="SnapshotTier.PersistedCompacted"/>
+    /// leases from the compacted then the persistable bucket, so it doubles as the skip-pointer edge.</remarks>
+    private bool TryLeaseParent(in StateId to, SnapshotTier tier, [NotNullWhen(true)] out IDisposable? snapshot, out StateId from)
     {
-        switch (edge)
+        switch (tier)
         {
-            case SnapshotEdge.InMemoryCompacted:
-                if (TryLeaseCompactedState(to, out Snapshot? inMemoryCompacted))
+            case SnapshotTier.InMemoryCompacted:
+                if (TryLeaseInMemoryState(to, SnapshotTier.InMemoryCompacted, out Snapshot? inMemoryCompacted))
                 {
                     (snapshot, from) = (inMemoryCompacted, inMemoryCompacted.From);
                     return true;
                 }
                 break;
-            case SnapshotEdge.InMemoryBase:
-                if (TryLeaseState(to, out Snapshot? inMemoryBase))
+            case SnapshotTier.InMemoryBase:
+                if (TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? inMemoryBase))
                 {
                     (snapshot, from) = (inMemoryBase, inMemoryBase.From);
                     return true;
                 }
                 break;
-            case SnapshotEdge.PersistedCompacted:
+            case SnapshotTier.PersistedCompacted:
                 if (TryLeaseCompactedSnapshotTo(to, out PersistedSnapshot? persistedCompacted))
                 {
                     (snapshot, from) = (persistedCompacted, persistedCompacted.From);
                     return true;
                 }
                 break;
-            case SnapshotEdge.PersistedBase:
+            case SnapshotTier.PersistedBase:
                 if (TryLeaseSnapshotTo(to, out PersistedSnapshot? persistedBase))
                 {
                     (snapshot, from) = (persistedBase, persistedBase.From);
                     return true;
                 }
                 break;
-            case SnapshotEdge.PersistedPersistable:
+            case SnapshotTier.PersistedPersistable:
                 if (TryLeasePersistableCompactedSnapshotTo(to, out PersistedSnapshot? persistable))
                 {
                     (snapshot, from) = (persistable, persistable.From);
@@ -386,10 +379,35 @@ public class SnapshotRepository : ISnapshotRepository
         return false;
     }
 
+    // Parent-edge expansion order for ParentCursor: in-RAM-tier-first, widest-first within a tier.
+    // PersistedPersistable is never expanded here (only leased explicitly via FindSnapshotToPersist).
+    // The order is explicit — it does NOT track SnapshotTier's numeric order.
+    private static readonly SnapshotTier[] FullExpansionPriority =
+    [
+        SnapshotTier.InMemoryCompacted,
+        SnapshotTier.InMemoryBase,
+        SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedBase,
+    ];
+
+    // includePersisted == false: only the in-memory edges.
+    private static readonly SnapshotTier[] InMemoryExpansionPriority =
+    [
+        SnapshotTier.InMemoryCompacted,
+        SnapshotTier.InMemoryBase,
+    ];
+
+    // fromPersistedEdge == true: `to` was reached over a persisted edge, so persisted snapshots only
+    // chain back to other persisted snapshots — the in-memory edges are guaranteed misses and skipped.
+    private static readonly SnapshotTier[] PersistedContinuationPriority =
+    [
+        SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedBase,
+    ];
+
     /// <summary>
-    /// Starts a priority-ordered expansion of <paramref name="to"/>'s parent edges:
-    /// <see cref="SnapshotEdge.InMemoryCompacted"/>, <see cref="SnapshotEdge.InMemoryBase"/>,
-    /// <see cref="SnapshotEdge.PersistedCompacted"/>, <see cref="SnapshotEdge.PersistedBase"/>.
+    /// Starts a priority-ordered expansion of <paramref name="to"/>'s parent edges
+    /// (see <see cref="FullExpansionPriority"/>).
     /// </summary>
     /// <param name="fromPersistedEdge">Whether <paramref name="to"/> was itself reached over a
     /// persisted edge. Persisted snapshots only chain back to other persisted snapshots, so the
@@ -402,26 +420,30 @@ public class SnapshotRepository : ISnapshotRepository
     {
         private readonly SnapshotRepository _repo;
         private readonly StateId _to;
-        private readonly SnapshotEdge _end; // Exclusive.
-        private SnapshotEdge _next;
+        private readonly SnapshotTier[] _priority;
+        private int _next;
 
         internal ParentCursor(SnapshotRepository repo, in StateId to, bool fromPersistedEdge, bool includePersisted)
         {
             _repo = repo;
             _to = to;
-            _next = fromPersistedEdge ? SnapshotEdge.PersistedCompacted : SnapshotEdge.InMemoryCompacted;
-            _end = includePersisted ? SnapshotEdge.PersistedPersistable : SnapshotEdge.PersistedCompacted;
+            // fromPersistedEdge is only ever passed together with includePersisted: true, so the
+            // persisted continuation always reaches the full persisted depth.
+            _priority = fromPersistedEdge ? PersistedContinuationPriority
+                : includePersisted ? FullExpansionPriority
+                : InMemoryExpansionPriority;
+            _next = 0;
         }
 
         /// <summary>Leases the next available parent edge in priority order. The caller owns the lease.</summary>
         public bool TryLeaseNext([NotNullWhen(true)] out IDisposable? snapshot, out StateId from, out bool viaPersistedEdge)
         {
-            while (_next < _end)
+            while (_next < _priority.Length)
             {
-                SnapshotEdge edge = _next++;
-                if (_repo.TryLeaseParent(_to, edge, out snapshot, out from))
+                SnapshotTier tier = _priority[_next++];
+                if (_repo.TryLeaseParent(_to, tier, out snapshot, out from))
                 {
-                    viaPersistedEdge = edge >= SnapshotEdge.PersistedCompacted;
+                    viaPersistedEdge = IsPersisted(tier);
                     return true;
                 }
             }
@@ -437,17 +459,17 @@ public class SnapshotRepository : ISnapshotRepository
     /// <paramref name="currentPersistedState"/>. At each visited <c>StateId</c> the candidate
     /// sources are tried in the fixed <see cref="PersistEdgePriority"/> order:
     /// <list type="number">
-    ///   <item><see cref="SnapshotEdge.PersistedPersistable"/> — the CompactSize-wide
+    ///   <item><see cref="SnapshotTier.PersistedPersistable"/> — the CompactSize-wide
     ///   persistable (one persist covers the whole window)</item>
-    ///   <item><see cref="SnapshotEdge.PersistedBase"/> — a persisted base (fallback when the
+    ///   <item><see cref="SnapshotTier.PersistedBase"/> — a persisted base (fallback when the
     ///   persistable for this window has not been compacted yet)</item>
-    ///   <item><see cref="SnapshotEdge.InMemoryCompacted"/> filtered to depth == <paramref name="compactSize"/> —
+    ///   <item><see cref="SnapshotTier.InMemoryCompacted"/> filtered to depth == <paramref name="compactSize"/> —
     ///   in-memory boundary compacted</item>
-    ///   <item><see cref="SnapshotEdge.InMemoryBase"/> — in-memory base, depth == 1</item>
+    ///   <item><see cref="SnapshotTier.InMemoryBase"/> — in-memory base, depth == 1</item>
     /// </list>
     /// </summary>
     /// <remarks>
-    /// &gt;CompactSize compacted persisted entries (<see cref="SnapshotEdge.PersistedCompacted"/>,
+    /// &gt;CompactSize compacted persisted entries (<see cref="SnapshotTier.PersistedCompacted"/>,
     /// last in <see cref="PersistEdgePriority"/>) and non-boundary in-memory compacted entries
     /// are not returnable candidates; they are still traversed for navigation, acting as skip
     /// pointers that jump multiple blocks per hop and shorten the path to a candidate.
@@ -463,11 +485,11 @@ public class SnapshotRepository : ISnapshotRepository
 
         while (queue.TryDequeue(out StateId current))
         {
-            foreach (SnapshotEdge edge in PersistEdgePriority)
+            foreach (SnapshotTier tier in PersistEdgePriority)
             {
-                if (!TryLeaseParent(current, edge, out IDisposable? snapshot, out StateId from)) continue;
+                if (!TryLeaseParent(current, tier, out IDisposable? snapshot, out StateId from)) continue;
 
-                if (from == currentPersistedState && IsPersistCandidate(edge, current, from, compactSize))
+                if (from == currentPersistedState && IsPersistCandidate(tier, current, from, compactSize))
                 {
                     return snapshot is PersistedSnapshot persistedSnapshot
                         ? (persistedSnapshot, null)
@@ -482,19 +504,19 @@ public class SnapshotRepository : ISnapshotRepository
         return (null, null);
     }
 
-    private static readonly SnapshotEdge[] PersistEdgePriority =
+    private static readonly SnapshotTier[] PersistEdgePriority =
     [
-        SnapshotEdge.PersistedPersistable,
-        SnapshotEdge.PersistedBase,
-        SnapshotEdge.InMemoryCompacted,
-        SnapshotEdge.InMemoryBase,
-        SnapshotEdge.PersistedCompacted,
+        SnapshotTier.PersistedPersistable,
+        SnapshotTier.PersistedBase,
+        SnapshotTier.InMemoryCompacted,
+        SnapshotTier.InMemoryBase,
+        SnapshotTier.PersistedCompacted,
     ];
 
-    private static bool IsPersistCandidate(SnapshotEdge edge, in StateId to, in StateId from, int compactSize) => edge switch
+    private static bool IsPersistCandidate(SnapshotTier tier, in StateId to, in StateId from, int compactSize) => tier switch
     {
-        SnapshotEdge.PersistedCompacted => false,
-        SnapshotEdge.InMemoryCompacted => to.BlockNumber - from.BlockNumber == compactSize,
+        SnapshotTier.PersistedCompacted => false,
+        SnapshotTier.InMemoryCompacted => to.BlockNumber - from.BlockNumber == compactSize,
         _ => true,
     };
 
@@ -545,18 +567,18 @@ public class SnapshotRepository : ISnapshotRepository
     // Widest-first persisted edge whose From does not span past minBlockNumber: compacted, then
     // the CompactSize-wide persistable (the only source >CompactSize boundary compaction has),
     // then base.
-    private static readonly SnapshotEdge[] CompactionEdgePriority =
+    private static readonly SnapshotTier[] CompactionEdgePriority =
     [
-        SnapshotEdge.PersistedCompacted,
-        SnapshotEdge.PersistedPersistable,
-        SnapshotEdge.PersistedBase,
+        SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedPersistable,
+        SnapshotTier.PersistedBase,
     ];
 
     private PersistedSnapshot? SelectPersistedForCompaction(in StateId current, long minBlockNumber)
     {
-        foreach (SnapshotEdge edge in CompactionEdgePriority)
+        foreach (SnapshotTier tier in CompactionEdgePriority)
         {
-            if (!TryLeaseParent(current, edge, out IDisposable? leased, out StateId from)) continue;
+            if (!TryLeaseParent(current, tier, out IDisposable? leased, out StateId from)) continue;
             PersistedSnapshot persisted = (PersistedSnapshot)leased;
             if (from.BlockNumber >= minBlockNumber) return persisted;
             persisted.Dispose(); // overshoots the window — release and try a narrower edge
@@ -564,10 +586,12 @@ public class SnapshotRepository : ISnapshotRepository
         return null;
     }
 
-    public bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
+    public bool TryLeaseInMemoryState(in StateId stateId, SnapshotTier tier, [NotNullWhen(true)] out Snapshot? entry)
     {
+        EnsureInMemory(tier);
+        ConcurrentDictionary<StateId, Snapshot> snapshots = tier == SnapshotTier.InMemoryBase ? _snapshots : _compactedSnapshots;
         SpinWait sw = new();
-        while (_compactedSnapshots.TryGetValue(stateId, out entry))
+        while (snapshots.TryGetValue(stateId, out entry))
         {
             if (entry.TryAcquire()) return true;
 
@@ -576,20 +600,26 @@ public class SnapshotRepository : ISnapshotRepository
         return false;
     }
 
-    public bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
+    public bool TryAdd(Snapshot snapshot, SnapshotTier tier)
     {
-        SpinWait sw = new();
-        while (_snapshots.TryGetValue(stateId, out entry))
+        EnsureInMemory(tier);
+        if (tier == SnapshotTier.InMemoryBase)
         {
-            if (entry.TryAcquire()) return true;
+            if (_snapshots.TryAdd(snapshot.To, snapshot))
+            {
+                Interlocked.Increment(ref _snapshotCount);
+                Metrics.SnapshotCount++;
 
-            sw.SpinOnce();
+                long totalBytes = snapshot.EstimateMemory();
+                Metrics.SnapshotMemory += totalBytes;
+                Metrics.TotalSnapshotMemory += totalBytes;
+
+                return true;
+            }
+
+            return false;
         }
-        return false;
-    }
 
-    public bool TryAddCompactedSnapshot(Snapshot snapshot)
-    {
         if (_compactedSnapshots.TryAdd(snapshot.To, snapshot))
         {
             Interlocked.Increment(ref _compactedSnapshotCount);
@@ -598,23 +628,6 @@ public class SnapshotRepository : ISnapshotRepository
             long compactedBytes = snapshot.Content.EstimateCompactedMemory();
             Metrics.CompactedSnapshotMemory += compactedBytes;
             Metrics.TotalSnapshotMemory += compactedBytes;
-
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool TryAddSnapshot(Snapshot snapshot)
-    {
-        if (_snapshots.TryAdd(snapshot.To, snapshot))
-        {
-            Interlocked.Increment(ref _snapshotCount);
-            Metrics.SnapshotCount++;
-
-            long totalBytes = snapshot.EstimateMemory();
-            Metrics.SnapshotMemory += totalBytes;
-            Metrics.TotalSnapshotMemory += totalBytes;
 
             return true;
         }
@@ -648,28 +661,29 @@ public class SnapshotRepository : ISnapshotRepository
         return sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
     }
 
-    public bool RemoveAndReleaseCompactedKnownState(in StateId stateId)
+    public bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier)
     {
-        if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
+        EnsureInMemory(tier);
+        if (tier == SnapshotTier.InMemoryCompacted)
         {
-            Interlocked.Decrement(ref _compactedSnapshotCount);
-            Metrics.CompactedSnapshotCount--;
+            if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
+            {
+                Interlocked.Decrement(ref _compactedSnapshotCount);
+                Metrics.CompactedSnapshotCount--;
 
-            long compactedBytes = existingState.Content.EstimateCompactedMemory();
-            Metrics.CompactedSnapshotMemory -= compactedBytes;
-            Metrics.TotalSnapshotMemory -= compactedBytes;
+                long compactedBytes = existingState.Content.EstimateCompactedMemory();
+                Metrics.CompactedSnapshotMemory -= compactedBytes;
+                Metrics.TotalSnapshotMemory -= compactedBytes;
 
-            existingState.Dispose();
+                existingState.Dispose();
 
-            return true;
+                return true;
+            }
+
+            return false;
         }
 
-        return false;
-    }
-
-    public void RemoveAndReleaseKnownState(in StateId stateId)
-    {
-        if (_snapshots.TryRemove(stateId, out Snapshot? existingState))
+        if (_snapshots.TryRemove(stateId, out Snapshot? existing))
         {
             Interlocked.Decrement(ref _snapshotCount);
             Metrics.SnapshotCount--;
@@ -681,12 +695,16 @@ public class SnapshotRepository : ISnapshotRepository
                     _lastRegisteredState = sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
             }
 
-            long totalBytes = existingState.EstimateMemory();
+            long totalBytes = existing.EstimateMemory();
             Metrics.SnapshotMemory -= totalBytes;
             Metrics.TotalSnapshotMemory -= totalBytes;
 
-            existingState.Dispose(); // After memory
+            existing.Dispose(); // After memory
+
+            return true;
         }
+
+        return false;
     }
 
     public bool HasState(in StateId stateId)
@@ -713,8 +731,9 @@ public class SnapshotRepository : ISnapshotRepository
         using ArrayPoolList<StateId> statesUpToBlock = GetStatesUpToBlock(blockNumber);
         foreach (StateId stateToRemove in statesUpToBlock)
         {
-            RemoveAndReleaseCompactedKnownState(stateToRemove);
-            RemoveAndReleaseKnownState(stateToRemove);
+            // A To can exist in both in-memory tiers — remove from each.
+            RemoveAndReleaseInMemoryKnownState(stateToRemove, SnapshotTier.InMemoryCompacted);
+            RemoveAndReleaseInMemoryKnownState(stateToRemove, SnapshotTier.InMemoryBase);
         }
     }
 
@@ -752,8 +771,9 @@ public class SnapshotRepository : ISnapshotRepository
                 {
                     if (!CanReachState(stateId, canonicalStateId, stack, seen))
                     {
-                        RemoveAndReleaseCompactedKnownState(stateId);
-                        RemoveAndReleaseKnownState(stateId);
+                        // A To can exist in both in-memory tiers — remove from each.
+                        RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryCompacted);
+                        RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryBase);
                         totalPruned++;
                     }
                 }
@@ -847,7 +867,7 @@ public class SnapshotRepository : ISnapshotRepository
 
     /// <summary>
     /// Load the persisted snapshots from the catalog at construction, routing each into its bucket
-    /// by the stored <see cref="SnapshotKind"/> (range alone cannot tell a base from a
+    /// by the stored <see cref="SnapshotTier"/> (range alone cannot tell a base from a
     /// sub-<c>CompactSize</c> compacted snapshot apart). For catalogs above
     /// <see cref="ParallelLoadThreshold"/> entries, the per-entry arena/blob lease work
     /// runs on <see cref="Parallel.ForEach"/> with a heartbeat <see cref="ProgressLogger"/>;
@@ -869,10 +889,10 @@ public class SnapshotRepository : ISnapshotRepository
         // Serial post-pass: build the ordered sets from the now-populated dicts.
         foreach (SnapshotCatalog.CatalogEntry entry in entries)
         {
-            SnapshotBucket bucket = entry.Kind switch
+            SnapshotBucket bucket = entry.Tier switch
             {
-                SnapshotKind.Compacted => _compacted,
-                SnapshotKind.Persistable => _persistable,
+                SnapshotTier.PersistedCompacted => _compacted,
+                SnapshotTier.PersistedPersistable => _persistable,
                 _ => _base,
             };
             bucket.RegisterOrdered(entry.To);
@@ -939,13 +959,13 @@ public class SnapshotRepository : ISnapshotRepository
         // AlwaysTrue placeholder (correct, but unfiltered). LoadFromCatalog's ReconstructBloom
         // pass replaces it with the snapshot's real bloom once every snapshot is in place.
 
-        // Route by the stored Kind, not by the To-From distance: a base and a sub-CompactSize
+        // Route by the stored tier, not by the To-From distance: a base and a sub-CompactSize
         // compacted snapshot can span the same number of blocks, so range alone cannot tell
         // them apart.
-        SnapshotBucket bucket = entry.Kind switch
+        SnapshotBucket bucket = entry.Tier switch
         {
-            SnapshotKind.Compacted => _compacted,
-            SnapshotKind.Persistable => _persistable,
+            SnapshotTier.PersistedCompacted => _compacted,
+            SnapshotTier.PersistedPersistable => _persistable,
             _ => _base,
         };
         bucket.Set(entry.To, snapshot);
@@ -1026,7 +1046,7 @@ public class SnapshotRepository : ISnapshotRepository
     public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false)
     {
         PersistedSnapshot snapshot = new(from, to, reservation, _blobs, bloom: bloom);
-        // Add records the catalog entry (with the bucket's own SnapshotKind), indexes the
+        // Add records the catalog entry (with the bucket's own SnapshotTier), indexes the
         // snapshot, and pre-acquires the caller's lease under the bucket's lock so a racing
         // RemovePersistedStatesUntil on a background compactor thread can't dispose it between
         // insert and the caller seeing the return.
@@ -1226,7 +1246,7 @@ public class SnapshotRepository : ISnapshotRepository
     }
 
     /// <summary>
-    /// One self-contained snapshot bucket for a single <see cref="SnapshotKind"/>: a <c>To</c>-keyed
+    /// One self-contained snapshot bucket for a single persisted <see cref="SnapshotTier"/>: a <c>To</c>-keyed
     /// <see cref="ConcurrentDictionary{TKey,TValue}"/> for lock-free point lookups, a block-ordered
     /// <see cref="SortedSet{T}"/> of its <c>To</c>s, and running memory/count totals — all guarded by
     /// the bucket's own <see cref="Lock"/>. The bucket owns its share of the shared catalog and the
@@ -1237,7 +1257,7 @@ public class SnapshotRepository : ISnapshotRepository
     /// point lookups lock-free. The lock only serialises ordered-set mutation, catalog writes, and
     /// the lease/dispose handoff so a racing prune cannot dispose an entry between insert and return.
     /// </remarks>
-    private sealed class SnapshotBucket(SnapshotCatalog catalog, SnapshotKind kind)
+    private sealed class SnapshotBucket(SnapshotCatalog catalog, SnapshotTier tier)
     {
         private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _byTo = new();
         private readonly SortedSet<StateId> _ordered = [];
@@ -1250,7 +1270,7 @@ public class SnapshotRepository : ISnapshotRepository
 
         // The process-wide memory gauge for this bucket's tier: base snapshots and the
         // compacted/persistable tiers are tracked under separate aggregates.
-        private ref long GlobalMemory => ref (kind == SnapshotKind.Base
+        private ref long GlobalMemory => ref (tier == SnapshotTier.PersistedBase
             ? ref Metrics._persistedSnapshotMemory
             : ref Metrics._compactedPersistedSnapshotMemory);
 
@@ -1293,7 +1313,7 @@ public class SnapshotRepository : ISnapshotRepository
 
         /// <summary>
         /// Runtime insert of a freshly persisted snapshot: write its catalog entry (tagged with this
-        /// bucket's <see cref="SnapshotKind"/>), index it (dictionary + ordered set + totals), and
+        /// bucket's <see cref="SnapshotTier"/>), index it (dictionary + ordered set + totals), and
         /// pre-acquire the caller's lease — all under this bucket's lock so a racing prune cannot
         /// dispose the entry between insert and the caller seeing the return.
         /// </summary>
@@ -1301,7 +1321,7 @@ public class SnapshotRepository : ISnapshotRepository
         {
             lock (_lock)
             {
-                catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, kind));
+                catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
                 Set(to, snapshot);
                 _ordered.Add(to);
                 snapshot.AcquireLease();

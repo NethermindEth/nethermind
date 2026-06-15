@@ -18,11 +18,19 @@ public interface ISnapshotRepository : IDisposable
 
     void AddStateId(in StateId stateId);
     StateId? LastRegisteredState { get; }
-    bool TryAddSnapshot(Snapshot snapshot);
-    bool TryAddCompactedSnapshot(Snapshot snapshot);
-    bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
-    bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
-    bool RemoveAndReleaseCompactedKnownState(in StateId stateId);
+
+    /// <summary>Add an in-memory snapshot to the <paramref name="tier"/> store. <paramref name="tier"/>
+    /// must be <see cref="SnapshotTier.InMemoryBase"/> or <see cref="SnapshotTier.InMemoryCompacted"/>.</summary>
+    bool TryAdd(Snapshot snapshot, SnapshotTier tier);
+
+    /// <summary>Lease the in-memory snapshot at <paramref name="stateId"/> from the <paramref name="tier"/>
+    /// store. <paramref name="tier"/> must be an <c>InMemory*</c> value.</summary>
+    bool TryLeaseInMemoryState(in StateId stateId, SnapshotTier tier, [NotNullWhen(true)] out Snapshot? entry);
+
+    /// <summary>Remove and release the in-memory snapshot at <paramref name="stateId"/> from the
+    /// <paramref name="tier"/> store. <paramref name="tier"/> must be an <c>InMemory*</c> value.</summary>
+    bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier);
+
     bool HasState(in StateId stateId);
 
     /// <summary>Persist an in-memory snapshot as a base entry in the persisted tier. The returned
@@ -62,7 +70,6 @@ public interface ISnapshotRepository : IDisposable
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
     ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber);
     void RemoveStatesUntil(long blockNumber);
-    void RemoveAndReleaseKnownState(in StateId stateId);
 
     /// <summary>
     /// Removes in-memory snapshots belonging to non-canonical forks that persisting

@@ -29,7 +29,7 @@ public class SnapshotCompactor(
 
     public bool DoCompactSnapshot(in StateId stateId)
     {
-        if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
+        if (_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
         {
             using Snapshot _ = snapshot;
 
@@ -39,7 +39,7 @@ public class SnapshotCompactor(
             if (snapshots.Count != 0)
             {
                 Snapshot compactedSnapshot = CompactSnapshotBundle(snapshots);
-                if (_snapshotRepository.TryAddCompactedSnapshot(compactedSnapshot))
+                if (_snapshotRepository.TryAdd(compactedSnapshot, SnapshotTier.InMemoryCompacted))
                 {
                     Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
 
@@ -69,7 +69,7 @@ public class SnapshotCompactor(
             // Save memory by removing the compacted state from previous compaction
             foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize))
             {
-                if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
+                if (_snapshotRepository.RemoveAndReleaseInMemoryKnownState(id, SnapshotTier.InMemoryCompacted))
                 {
                 }
             }

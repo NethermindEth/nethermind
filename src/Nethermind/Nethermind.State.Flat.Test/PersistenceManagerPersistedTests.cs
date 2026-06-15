@@ -167,7 +167,7 @@ public class PersistenceManagerPersistedTests
     {
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(1).TestObject;
-        repo.TryAddSnapshot(new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+        repo.TryAdd(new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing), SnapshotTier.InMemoryBase);
         repo.AddStateId(to);
     }
 

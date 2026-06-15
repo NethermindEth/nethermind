@@ -59,9 +59,7 @@ public class SnapshotRepositoryTests
     {
         Snapshot snapshot = CreateSnapshot(from, to, withData);
 
-        bool added = compacted
-            ? _repository.TryAddCompactedSnapshot(snapshot)
-            : _repository.TryAddSnapshot(snapshot);
+        bool added = _repository.TryAdd(snapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
 
         Assert.That(added, Is.True, $"Failed to add snapshot {from}->{to}");
 
@@ -74,9 +72,7 @@ public class SnapshotRepositoryTests
     }
 
     private bool TryLease(StateId state, bool compacted, out Snapshot? snapshot)
-        => compacted
-            ? _repository.TryLeaseCompactedState(state, out snapshot)
-            : _repository.TryLeaseState(state, out snapshot);
+        => _repository.TryLeaseInMemoryState(state, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase, out snapshot);
 
     private List<Snapshot> BuildSnapshotChain(long startBlock, long endBlock)
     {
@@ -109,8 +105,9 @@ public class SnapshotRepositoryTests
         Snapshot snapshot1 = CreateSnapshot(from, to);
         Snapshot snapshot2 = CreateSnapshot(from, to);
 
-        bool added1 = compacted ? _repository.TryAddCompactedSnapshot(snapshot1) : _repository.TryAddSnapshot(snapshot1);
-        bool added2 = compacted ? _repository.TryAddCompactedSnapshot(snapshot2) : _repository.TryAddSnapshot(snapshot2);
+        SnapshotTier tier = compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase;
+        bool added1 = _repository.TryAdd(snapshot1, tier);
+        bool added2 = _repository.TryAdd(snapshot2, tier);
 
         Assert.That(added1, Is.True);
         Assert.That(added2, Is.False);
@@ -126,12 +123,12 @@ public class SnapshotRepositoryTests
         Snapshot snapshot = CreateSnapshot(from, to);
         _repository.AddStateId(to);
 
-        _repository.TryAddSnapshot(snapshot);
-        bool leasedBefore = _repository.TryLeaseState(to, out Snapshot? leasedSnapshot);
+        _repository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
+        bool leasedBefore = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? leasedSnapshot);
         leasedSnapshot?.Dispose();
 
-        _repository.RemoveAndReleaseKnownState(to);
-        bool leasedAfter = _repository.TryLeaseState(to, out _);
+        _repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase);
+        bool leasedAfter = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out _);
 
         Assert.That(leasedBefore, Is.True);
         Assert.That(leasedAfter, Is.False);
@@ -143,18 +140,18 @@ public class SnapshotRepositoryTests
         AddSnapshotToRepository(0, 1);
         StateId to = CreateStateId(1);
 
-        bool leased1 = _repository.TryLeaseState(to, out Snapshot? snapshot1);
-        bool leased2 = _repository.TryLeaseState(to, out Snapshot? snapshot2);
+        bool leased1 = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? snapshot1);
+        bool leased2 = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? snapshot2);
 
         Assert.That(leased1, Is.True);
         Assert.That(leased2, Is.True);
 
-        _repository.RemoveAndReleaseKnownState(to);
+        _repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase);
 
         snapshot1!.Dispose();
         snapshot2!.Dispose();
 
-        bool leasedAfter = _repository.TryLeaseState(to, out _);
+        bool leasedAfter = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out _);
         Assert.That(leasedAfter, Is.False);
     }
 
@@ -288,15 +285,15 @@ public class SnapshotRepositoryTests
         Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(2)));
 
         // Removing a non-tip state leaves the tip alone.
-        _repository.RemoveAndReleaseKnownState(CreateStateId(1));
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(1), SnapshotTier.InMemoryBase);
         Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(2)));
 
         // Removing the tip falls back to the next-highest (3).
-        _repository.RemoveAndReleaseKnownState(CreateStateId(2));
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(2), SnapshotTier.InMemoryBase);
         Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(3)));
 
         // Removing every remaining state clears the tip.
-        _repository.RemoveAndReleaseKnownState(CreateStateId(3));
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(3), SnapshotTier.InMemoryBase);
         Assert.That(_repository.LastRegisteredState, Is.Null);
     }
 
@@ -355,7 +352,7 @@ public class SnapshotRepositoryTests
         StateId to = CreateStateId(1);
 
         Snapshot compacted = CreateSnapshot(from, to);
-        _repository.TryAddCompactedSnapshot(compacted);
+        _repository.TryAdd(compacted, SnapshotTier.InMemoryCompacted);
 
         using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(to, 0, 10);
 

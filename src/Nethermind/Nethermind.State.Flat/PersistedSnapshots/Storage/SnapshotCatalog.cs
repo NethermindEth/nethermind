@@ -21,7 +21,7 @@ public sealed class SnapshotCatalog(IDb db)
 {
     /// <summary>
     /// A single catalog entry describing a persisted snapshot's identity, metadata-arena
-    /// location and bucket <see cref="SnapshotKind"/>. The contiguous blob-RLP region (base
+    /// location and persisted <see cref="SnapshotTier"/>. The contiguous blob-RLP region (base
     /// snapshots only) lives in the snapshot's own metadata HSST under the <c>blob_range</c>
     /// key, not here.
     /// </summary>
@@ -29,10 +29,10 @@ public sealed class SnapshotCatalog(IDb db)
         StateId From,
         StateId To,
         SnapshotLocation Location,
-        SnapshotKind Kind);
+        SnapshotTier Tier);
 
     // Binary layout per entry: fromBlock(8) + fromRoot(32) + toBlock(8) + toRoot(32) +
-    // arenaId(4) + offset(8) + size(8) + kind(1) = 101
+    // arenaId(4) + offset(8) + size(8) + tier(1) = 101
     private const int EntrySize = 101;
 
     // 8-byte block number + 32-byte state root + 8-byte depth, matching the runtime
@@ -58,7 +58,10 @@ public sealed class SnapshotCatalog(IDb db)
     // v8: the per-base blob-RLP BlobRange is no longer stored in the catalog — it moved into
     // the snapshot's own metadata HSST under the blob_range key; entries shrink to 101 bytes;
     // wipe-and-resync.
-    private const int CurrentVersion = 8;
+    // v9: the bucket discriminator byte is now a SnapshotTier (replacing SnapshotKind); the
+    // persisted values shifted (Base/Compacted/Persistable 0/1/2 -> PersistedBase/
+    // PersistedCompacted/PersistedPersistable 2/3/4); wipe-and-resync.
+    private const int CurrentVersion = 9;
 
     // Length-4 sentinel key holding the version word. Entry keys are 48 bytes, so the
     // length disambiguation is unambiguous when iterating GetAll().
@@ -151,7 +154,7 @@ public sealed class SnapshotCatalog(IDb db)
         BinaryPrimitives.WriteInt32LittleEndian(span[80..], entry.Location.ArenaId);
         BinaryPrimitives.WriteInt64LittleEndian(span[84..], entry.Location.Offset);
         BinaryPrimitives.WriteInt64LittleEndian(span[92..], entry.Location.Size);
-        span[100] = (byte)entry.Kind;
+        span[100] = (byte)entry.Tier;
     }
 
     private static CatalogEntry ReadEntry(ReadOnlySpan<byte> span)
@@ -167,8 +170,8 @@ public sealed class SnapshotCatalog(IDb db)
         int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[80..]);
         long offset = BinaryPrimitives.ReadInt64LittleEndian(span[84..]);
         long size = BinaryPrimitives.ReadInt64LittleEndian(span[92..]);
-        SnapshotKind kind = (SnapshotKind)span[100];
+        SnapshotTier tier = (SnapshotTier)span[100];
 
-        return new CatalogEntry(from, to, new SnapshotLocation(arenaId, offset, size), kind);
+        return new CatalogEntry(from, to, new SnapshotLocation(arenaId, offset, size), tier);
     }
 }

@@ -90,11 +90,11 @@ public class PersistenceManagerTests
 
         if (compacted)
         {
-            _snapshotRepository.TryAddCompactedSnapshot(snapshot);
+            _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryCompacted);
         }
         else
         {
-            _snapshotRepository.TryAddSnapshot(snapshot);
+            _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
         }
 
         // AddStateId is needed for GetStatesAtBlockNumber to work
@@ -319,17 +319,17 @@ public class PersistenceManagerTests
 
         Assert.That(_snapshotRepository.HasState(outsider), Is.True);
 
-        _snapshotRepository.TryLeaseCompactedState(compactedTo, out Snapshot? compactedForConvert);
+        _snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out Snapshot? compactedForConvert);
         InvokeDoConvert(new PersistenceManager.ConversionCandidate(compactedForConvert!, Base: null));
 
         Assert.Multiple(() =>
         {
             Assert.That(_snapshotRepository.HasState(outsider), Is.True, "state below `start` must survive");
             // Gathered states are converted into the persisted tier (so HasState still sees them) but
-            // must be dropped from the in-memory tier — check in-memory presence via TryLeaseState.
-            Assert.That(_snapshotRepository.TryLeaseState(baseA, out _), Is.False, "baseA removed from the in-memory tier");
-            Assert.That(_snapshotRepository.TryLeaseState(baseB, out _), Is.False, "baseB removed from the in-memory tier");
-            Assert.That(_snapshotRepository.TryLeaseCompactedState(compactedTo, out _), Is.False, "boundary compacted removed");
+            // must be dropped from the in-memory tier — check in-memory presence via TryLeaseInMemoryState.
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseA, SnapshotTier.InMemoryBase, out _), Is.False, "baseA removed from the in-memory tier");
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseB, SnapshotTier.InMemoryBase, out _), Is.False, "baseB removed from the in-memory tier");
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out _), Is.False, "boundary compacted removed");
         });
     }
 

@@ -359,7 +359,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
-        if (!_snapshotRepository.TryAddSnapshot(snapshot))
+        if (!_snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase))
         {
             if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
             _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);

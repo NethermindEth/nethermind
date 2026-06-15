@@ -126,7 +126,7 @@ public class FlatDbManagerTests
         await using FlatDbManager manager = CreateManager();
         manager.AddSnapshot(snapshot, transientResource);
 
-        _snapshotRepository.DidNotReceive().TryAddSnapshot(Arg.Any<Snapshot>());
+        _snapshotRepository.DidNotReceive().TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase);
     }
 
     [Test]
@@ -134,7 +134,7 @@ public class FlatDbManagerTests
     {
         StateId persistedStateId = CreateStateId(5);
         _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
-        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
 
         ResourcePool realResourcePool = new(_config);
         StateId snapshotFrom = CreateStateId(10);
@@ -145,7 +145,7 @@ public class FlatDbManagerTests
         await using FlatDbManager manager = CreateManager();
         manager.AddSnapshot(snapshot, transientResource);
 
-        _snapshotRepository.Received(1).TryAddSnapshot(snapshot);
+        _snapshotRepository.Received(1).TryAdd(snapshot, SnapshotTier.InMemoryBase);
     }
 
     [Test]
@@ -184,7 +184,7 @@ public class FlatDbManagerTests
     {
         StateId persistedStateId = CreateStateId(5);
         _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
-        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(false);
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(false);
 
         ResourcePool realResourcePool = new(_config);
         StateId snapshotFrom = CreateStateId(10);

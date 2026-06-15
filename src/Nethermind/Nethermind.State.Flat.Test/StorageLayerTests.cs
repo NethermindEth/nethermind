@@ -74,10 +74,10 @@ public class StorageLayerTests
         StateId s2 = new(200, Keccak.Compute("block200"));
 
         SnapshotCatalog catalog = new(catalogDb);
-        catalog.Add(new(s_base_from, sharedTo, new(0, 0, 1024), SnapshotKind.Base));
-        catalog.Add(new(s_compacted_from, sharedTo, new(0, 1024, 2048), SnapshotKind.Compacted));
-        catalog.Add(new(s_persistable_from, sharedTo, new(0, 3072, 4096), SnapshotKind.Persistable));
-        catalog.Add(new(sharedTo, s2, new(0, 7168, 2048), SnapshotKind.Persistable));
+        catalog.Add(new(s_base_from, sharedTo, new(0, 0, 1024), SnapshotTier.PersistedBase));
+        catalog.Add(new(s_compacted_from, sharedTo, new(0, 1024, 2048), SnapshotTier.PersistedCompacted));
+        catalog.Add(new(s_persistable_from, sharedTo, new(0, 3072, 4096), SnapshotTier.PersistedPersistable));
+        catalog.Add(new(sharedTo, s2, new(0, 7168, 2048), SnapshotTier.PersistedPersistable));
 
         // Load in new instance
         SnapshotCatalog loaded = new(catalogDb);
@@ -91,21 +91,21 @@ public class StorageLayerTests
         Assert.That(loadedBase, Is.Not.Null);
         Assert.That(loadedBase!.From, Is.EqualTo(s_base_from));
         Assert.That(loadedBase.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
-        Assert.That(loadedBase.Kind, Is.EqualTo(SnapshotKind.Base));
+        Assert.That(loadedBase.Tier, Is.EqualTo(SnapshotTier.PersistedBase));
         Assert.That(loadedCompacted, Is.Not.Null);
         Assert.That(loadedCompacted!.From, Is.EqualTo(s_compacted_from));
         Assert.That(loadedCompacted.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
-        Assert.That(loadedCompacted.Kind, Is.EqualTo(SnapshotKind.Compacted));
+        Assert.That(loadedCompacted.Tier, Is.EqualTo(SnapshotTier.PersistedCompacted));
         Assert.That(loadedPersistable, Is.Not.Null);
         Assert.That(loadedPersistable!.From, Is.EqualTo(s_persistable_from));
         Assert.That(loadedPersistable.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
-        Assert.That(loadedPersistable.Kind, Is.EqualTo(SnapshotKind.Persistable));
+        Assert.That(loadedPersistable.Tier, Is.EqualTo(SnapshotTier.PersistedPersistable));
 
         SnapshotCatalog.CatalogEntry? loadedTail = FindEntry(loaded, s2, depth: 100);
         Assert.That(loadedTail, Is.Not.Null);
         Assert.That(loadedTail!.From, Is.EqualTo(sharedTo));
         Assert.That(loadedTail.Location, Is.EqualTo(new SnapshotLocation(0, 7168, 2048)));
-        Assert.That(loadedTail.Kind, Is.EqualTo(SnapshotKind.Persistable));
+        Assert.That(loadedTail.Tier, Is.EqualTo(SnapshotTier.PersistedPersistable));
     }
 
     [Test]
@@ -118,10 +118,10 @@ public class StorageLayerTests
         StateId missing = new(999, Keccak.Compute("missing"));
 
         SnapshotCatalog catalog = new(new MemDb());
-        catalog.Add(new(s0, s1, new(0, 0, 100), SnapshotKind.Base));
-        catalog.Add(new(s1, s2, new(0, 100, 200), SnapshotKind.Base));
+        catalog.Add(new(s0, s1, new(0, 0, 100), SnapshotTier.PersistedBase));
+        catalog.Add(new(s1, s2, new(0, 100, 200), SnapshotTier.PersistedBase));
         // Same To (s2), different depth (s_compactedFrom→s2 has depth=2 vs s1→s2 depth=1).
-        catalog.Add(new(s_compactedFrom, s2, new(0, 200, 100), SnapshotKind.Compacted));
+        catalog.Add(new(s_compactedFrom, s2, new(0, 200, 100), SnapshotTier.PersistedCompacted));
 
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Not.Null);
         Assert.That(catalog.Remove(s1, depth: 1), Is.True);
