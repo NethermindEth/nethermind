@@ -31,8 +31,11 @@ public class WaitForEventTests
             });
 
         await Task.Delay(100);
-        Assert.That(awaitingEvent.IsCompleted, Is.False);
-        Assert.That(condCalled, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(awaitingEvent.IsCompleted, Is.False);
+            Assert.That(condCalled, Is.False);
+        }
 
         stubObj.TestEvent += Raise.Event<EventHandler<bool>>(this, false);
 

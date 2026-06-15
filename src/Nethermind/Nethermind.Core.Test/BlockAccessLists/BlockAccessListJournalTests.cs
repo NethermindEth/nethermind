@@ -55,12 +55,15 @@ public class BlockAccessListJournalTests
         slice.Restore(snapshot);
 
         AccountChangesAtIndex accountChanges = slice.GetAccountChanges(TestItem.AddressA)!;
-        Assert.That(accountChanges.BalanceChange!.Value.Value, Is.EqualTo((UInt256)10));
-        Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(1u));
-        Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(codeBeforeSnapshot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges.BalanceChange!.Value.Value, Is.EqualTo((UInt256)10));
+            Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(1u));
+            Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(codeBeforeSnapshot));
 
-        Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
-        Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)11).ToBigEndianWord()));
+            Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
+            Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)11).ToBigEndianWord()));
+        }
     }
 
     [Test]
@@ -79,12 +82,15 @@ public class BlockAccessListJournalTests
         slice.Restore(snapshot);
 
         AccountChangesAtIndex accountChanges = slice.GetAccountChanges(TestItem.AddressA)!;
-        Assert.That(accountChanges.BalanceChange!.Value.Value, Is.EqualTo((UInt256)50));
-        Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(3u));
-        Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(new byte[] { 0x60, 0x01 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges.BalanceChange!.Value.Value, Is.EqualTo((UInt256)50));
+            Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(3u));
+            Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(new byte[] { 0x60, 0x01 }));
 
-        Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
-        Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)77).ToBigEndianWord()));
+            Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
+            Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)77).ToBigEndianWord()));
+        }
     }
 
     [Test]
@@ -104,8 +110,11 @@ public class BlockAccessListJournalTests
 
         AccountChangesAtIndex? accountChanges = slice.GetAccountChanges(TestItem.AddressA);
         Assert.That(accountChanges, Is.Not.Null, "the AccountChangesAtIndex entry persists; only the change fields revert");
-        Assert.That(accountChanges!.BalanceChange, Is.Null);
-        Assert.That(accountChanges.NonceChange, Is.Null);
-        Assert.That(accountChanges.TryGetStorageChange(slot, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges!.BalanceChange, Is.Null);
+            Assert.That(accountChanges.NonceChange, Is.Null);
+            Assert.That(accountChanges.TryGetStorageChange(slot, out _), Is.False);
+        }
     }
 }
