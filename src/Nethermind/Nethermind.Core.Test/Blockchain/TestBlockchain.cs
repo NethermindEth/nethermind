@@ -205,6 +205,7 @@ public class TestBlockchain : IDisposable
         configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
+        ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
 
         Container = builder.Build();
