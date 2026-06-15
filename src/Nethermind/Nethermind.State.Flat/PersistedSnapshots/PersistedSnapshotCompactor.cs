@@ -34,8 +34,6 @@ public class PersistedSnapshotCompactor(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly ICompactionSchedule _schedule = schedule;
-    private readonly int _maxCompactSize = config.PersistedSnapshotMaxCompactSize;
-    private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
@@ -188,24 +186,10 @@ public class PersistedSnapshotCompactor(
     /// </remarks>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
-        long blockNumber = snapshotTo.BlockNumber;
-        if (blockNumber == 0) return;
-
-        int alignment = (int)Math.Min(_schedule.GetHierarchicalCompactSize(blockNumber), _maxCompactSize);
-        // A size-1 window is just the base snapshot — nothing to merge.
-        if (alignment <= 1) return;
-        // The CompactSize-wide window is the persistable's — see DoCompactPersistable.
-        if (alignment == _compactSize) return;
-
+        if (_schedule.GetHierarchicalCompactionWindow(snapshotTo.BlockNumber) is not { } window) return;
         if (snapshotRepository.PersistedSnapshotCount < 2) return;
 
-        // The schedule alignment lives in offset-shifted space, but startingBlockNumber must
-        // be the raw block number at the left edge of the window the alignment trigger
-        // selects: (snapshotTo - alignment, snapshotTo]. Using ((b-1)/alignment)*alignment
-        // here only works when offset == 0; with a non-zero offset it produces a shorter,
-        // non-power-of-2 output span equal to (b mod alignment).
-        long startingBlockNumber = blockNumber - alignment;
-        CompactRange(snapshotTo, startingBlockNumber, alignment, isPersistable: false);
+        CompactRange(snapshotTo, window.StartBlock, window.Size, isPersistable: false);
     }
 
     /// <summary>
@@ -221,8 +205,8 @@ public class PersistedSnapshotCompactor(
 
         if (snapshotRepository.PersistedSnapshotCount < 2) return;
 
-        // The window is exactly (blockNumber - CompactSize, blockNumber].
-        CompactRange(snapshotTo, blockNumber - _compactSize, _compactSize, isPersistable: true);
+        CompactionWindow window = _schedule.GetPersistableCompactionWindow(blockNumber);
+        CompactRange(snapshotTo, window.StartBlock, window.Size, isPersistable: true);
     }
 
     // Compact sizes are powers of 2; cache one StringLabel per sizeLabel so the
@@ -316,7 +300,7 @@ public class PersistedSnapshotCompactor(
             // with the post-write step.
             using (PersistedSnapshot compacted = snapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom, isPersistable))
             {
-                if (compactSize < _compactSize)
+                if (_schedule.IsIntermediateWindow(compactSize))
                 {
                     // Sub-CompactSize intermediate. Drop its freshly-written pages from the
                     // cache + tracker; they would otherwise sit hot until the snapshot is

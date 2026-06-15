@@ -3,6 +3,12 @@
 
 namespace Nethermind.State.Flat;
 
+/// <summary>
+/// A half-open block window <c>(StartBlock, StartBlock + Size]</c> selected for compaction,
+/// together with its power-of-2 <see cref="Size"/>.
+/// </summary>
+public readonly record struct CompactionWindow(long StartBlock, int Size);
+
 public interface ICompactionSchedule
 {
     /// <summary>
@@ -43,4 +49,31 @@ public interface ICompactionSchedule
     /// <c>GetHierarchicalCompactSize(blockNumber) &gt; CompactSize</c>.
     /// </summary>
     bool IsHierarchicalBoundary(long blockNumber);
+
+    /// <summary>
+    /// The hierarchical (non-persistable) compaction window for <paramref name="blockNumber"/>,
+    /// or <c>null</c> when there is nothing to merge — a single-snapshot window or the
+    /// <c>CompactSize</c>-wide window reserved for <see cref="GetPersistableCompactionWindow"/>.
+    /// </summary>
+    /// <remarks>
+    /// The window size is <see cref="GetHierarchicalCompactSize"/> capped at the persisted-snapshot
+    /// max compact size. The start is <c>blockNumber - Size</c>: the alignment lives in
+    /// offset-shifted space, but the window's left edge must be the raw block number, so
+    /// <c>((b-1)/size)*size</c> would only be correct when the offset is 0.
+    /// </remarks>
+    CompactionWindow? GetHierarchicalCompactionWindow(long blockNumber);
+
+    /// <summary>
+    /// The <c>CompactSize</c>-wide persistable window ending at the boundary block
+    /// <paramref name="blockNumber"/> — the window <c>PersistenceManager</c> writes to RocksDB.
+    /// Callers must first confirm the block is a boundary via <see cref="IsFullCompactionBoundary"/>.
+    /// </summary>
+    CompactionWindow GetPersistableCompactionWindow(long blockNumber);
+
+    /// <summary>
+    /// True if a produced window of <paramref name="windowSize"/> is a sub-<c>CompactSize</c>
+    /// intermediate (strictly smaller than the persistable window), as opposed to the persistable
+    /// window or a wider hierarchical merge.
+    /// </summary>
+    bool IsIntermediateWindow(int windowSize);
 }

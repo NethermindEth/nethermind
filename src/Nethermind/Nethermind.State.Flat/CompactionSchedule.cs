@@ -12,6 +12,7 @@ namespace Nethermind.State.Flat;
 public sealed class CompactionSchedule : ICompactionSchedule
 {
     private readonly int _compactSize;
+    private readonly int _maxCompactSize;
     private readonly long _offset;
 
     public CompactionSchedule(
@@ -23,6 +24,7 @@ public sealed class CompactionSchedule : ICompactionSchedule
             throw new ArgumentException("Compact size must be a power of 2");
 
         _compactSize = config.CompactSize;
+        _maxCompactSize = config.PersistedSnapshotMaxCompactSize;
 
         ILogger logger = logManager.GetClassLogger<CompactionSchedule>();
         _offset = ResolveOffset(metadataDb, config, logger);
@@ -57,6 +59,20 @@ public sealed class CompactionSchedule : ICompactionSchedule
 
     public bool IsHierarchicalBoundary(long blockNumber) =>
         blockNumber != 0 && ShiftedAlignment(blockNumber) > _compactSize;
+
+    public CompactionWindow? GetHierarchicalCompactionWindow(long blockNumber)
+    {
+        int size = (int)Math.Min(GetHierarchicalCompactSize(blockNumber), _maxCompactSize);
+        // A size-1 window is just the base snapshot; the CompactSize-wide window is the
+        // persistable's (see GetPersistableCompactionWindow). Neither is a hierarchical merge.
+        if (size <= 1 || size == _compactSize) return null;
+        return new CompactionWindow(blockNumber - size, size);
+    }
+
+    public CompactionWindow GetPersistableCompactionWindow(long blockNumber) =>
+        new(blockNumber - _compactSize, _compactSize);
+
+    public bool IsIntermediateWindow(int windowSize) => windowSize < _compactSize;
 
     // (blockNumber + _offset) & -(blockNumber + _offset) — the lowest power of 2 that
     // divides the offset-shifted block number. Common factor of every boundary check.
