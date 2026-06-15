@@ -78,7 +78,7 @@ internal static class PersistedSnapshotBloomBuilder
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong AddressKey(Address address) =>
-        MemoryMarshal.Read<ulong>(address.Bytes);
+        AddressKey(address.Bytes);
 
     /// <summary>
     /// Span overload of <see cref="AddressKey(Address)"/> — used by the builder loop,

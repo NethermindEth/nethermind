@@ -98,16 +98,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-            // Persisted snapshot catalog: dedicated columned RocksDB co-located with the
-            // arena/blob files it indexes under <BaseDbPath>/persisted_snapshot/catalog/.
-            // Wiping persisted_snapshot/ therefore wipes the catalog alongside the data.
-            .AddSingleton<IColumnsDb<PersistedSnapshotCatalogColumns>>((ctx) => ctx
+            // Persisted snapshot catalog: dedicated RocksDB co-located with the arena/blob files it
+            // indexes under <BaseDbPath>/persisted_snapshot/catalog/. Wiping persisted_snapshot/
+            // therefore wipes the catalog alongside the data.
+            .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx => ctx
                 .Resolve<IDbFactory>()
-                .CreateColumnsDb<PersistedSnapshotCatalogColumns>(new DbSettings(
+                .CreateDb(new DbSettings(
                     nameof(DbNames.PersistedSnapshotCatalog),
                     Path.Combine("persisted_snapshot", "catalog"))))
-            .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx =>
-                ctx.Resolve<IColumnsDb<PersistedSnapshotCatalogColumns>>().GetColumnDb(PersistedSnapshotCatalogColumns.Catalog))
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()

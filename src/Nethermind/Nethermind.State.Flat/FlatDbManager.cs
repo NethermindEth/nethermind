@@ -167,7 +167,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        // AddToPersistence now prunes the in-memory tier for the advanced persisted state.
         ClearReadOnlyBundleCache();
         ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
