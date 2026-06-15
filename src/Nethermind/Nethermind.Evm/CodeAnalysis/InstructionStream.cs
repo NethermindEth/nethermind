@@ -297,7 +297,6 @@ public sealed class InstructionStream
             case Instruction.NOT:
             case Instruction.SHL:
             case Instruction.SHR:
-            case Instruction.SAR:
             case Instruction.PUSH1:
             case >= Instruction.PUSH3 and <= Instruction.PUSH32:
             case >= Instruction.DUP1 and <= Instruction.DUP8:

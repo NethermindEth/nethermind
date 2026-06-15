@@ -108,21 +108,11 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
-        return SarCore<TTracingInst>(ref stack);
-    }
 
-    /// <summary>
-    /// Gas-free body of <see cref="InstructionSar{TGasPolicy, TTracingInst}"/>;
-    /// also run directly by the stream executor inside precharged basic blocks.
-    /// </summary>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType SarCore<TTracingInst>(ref EvmStack stack)
-        where TTracingInst : struct, IFlag
-    {
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
 
-        // Shifts of 256+ collapse to the sign bit. Direct limb access avoids the 256-bit vector compare.
+        // If the shift amount is 256 or more, the result depends solely on the sign of the value.
+        // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
         if (!a.IsUint64 || a.u0 >= 256)
         {
             return As<UInt256, Int256>(ref b).Sign >= 0
