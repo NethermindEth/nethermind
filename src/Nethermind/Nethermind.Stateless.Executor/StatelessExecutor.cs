@@ -19,11 +19,14 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
+    /// <summary>
+    /// Gets the output of the last execution. Intended for zkVM guests.
+    /// </summary>
     /// <remarks>
-    /// As there's no exception unwinding in zkVM runtimes, an exception thrown during execution
-    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>
-    /// — the runtime invokes the guest's <c>ZkvmThrow</c> callback instead.
-    /// Therefore, the execution output is stored here for the error handler to access.
+    /// As there's no exception unwinding in zkVM runtime, an exception thrown during execution
+    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
+    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
+    /// Therefore, the execution output is stored here for the exception handler to access.
     /// </remarks>
     public static ReadOnlyMemory<byte> Output { get; private set; }
 
