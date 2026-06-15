@@ -28,6 +28,7 @@ public class PersistenceManagerTests
     private PersistenceManager _persistenceManager = null!;
     private FlatDbConfig _config = null!;
     private TestFinalizedStateProvider _finalizedStateProvider = null!;
+    private PersistedTierTestHarness _harness = null!;
     private SnapshotRepository _snapshotRepository = null!;
     private IPersistence _persistence = null!;
     private IPersistedSnapshotCompactor _persistedSnapshotCompactor = null!;
@@ -49,8 +50,10 @@ public class PersistenceManagerTests
 
         _resourcePool = new ResourcePool(_config);
         _finalizedStateProvider = new TestFinalizedStateProvider();
-        // SnapshotRepository now owns both tiers over a real temp-dir-backed persisted store.
-        _snapshotRepository = SnapshotRepositoryTestFactory.Create();
+        // SnapshotRepository owns both tiers over a real temp-dir-backed persisted store; the harness
+        // pairs it with its loader (load on construct, teardown on dispose).
+        _harness = SnapshotRepositoryTestFactory.Create();
+        _snapshotRepository = _harness.Repository;
         _converter = new PersistedSnapshotConverter(
             _snapshotRepository.ArenaManager, _snapshotRepository.BlobArenaManager, _config, _snapshotRepository);
         _persistence = Substitute.For<IPersistence>();
@@ -77,7 +80,7 @@ public class PersistenceManagerTests
     {
         await _persistenceManager.DisposeAsync();
         await _persistedSnapshotCompactor.DisposeAsync();
-        _snapshotRepository.Dispose();
+        _harness.Dispose();
     }
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)

@@ -21,6 +21,7 @@ public class SnapshotCompactorTests
     private SnapshotCompactor _compactor = null!;
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
+    private PersistedTierTestHarness _harness;
     private SnapshotRepository _snapshotRepository;
 
     [SetUp]
@@ -28,12 +29,13 @@ public class SnapshotCompactorTests
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _snapshotRepository = SnapshotRepositoryTestFactory.Create();
+        _harness = SnapshotRepositoryTestFactory.Create();
+        _snapshotRepository = _harness.Repository;
         _compactor = new SnapshotCompactor(_config, ScheduleHelper.CreateWithOffset(_config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
     }
 
     [TearDown]
-    public void TearDown() => _snapshotRepository.Dispose();
+    public void TearDown() => _harness.Dispose();
 
     private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {
@@ -500,7 +502,8 @@ public class SnapshotCompactorTests
     public void GetSnapshotsToCompact_Size2Compaction_AllowedByDefault()
     {
         FlatDbConfig config = new() { CompactSize = 16 };
-        using SnapshotRepository repo = SnapshotRepositoryTestFactory.Create();
+        using PersistedTierTestHarness repoH = SnapshotRepositoryTestFactory.Create();
+        SnapshotRepository repo = repoH.Repository;
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
 
         for (long i = 0; i < 2; i++)
@@ -559,7 +562,8 @@ public class SnapshotCompactorTests
         // CompactSize=16, offset=3 -> full compaction triggers when (block+3) % 16 == 0,
         // i.e. at blocks 13, 29, 45, ... Build a chain to block 29 (second full boundary).
         FlatDbConfig config = new() { CompactSize = 16 };
-        using SnapshotRepository repo = SnapshotRepositoryTestFactory.Create();
+        using PersistedTierTestHarness repoH = SnapshotRepositoryTestFactory.Create();
+        SnapshotRepository repo = repoH.Repository;
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
 
         for (long i = 0; i < 29; i++)
@@ -591,7 +595,8 @@ public class SnapshotCompactorTests
     {
         // CompactSize=16, offset=3. At block 13 the bit trick yields 16 -> Compact16 tier.
         FlatDbConfig config = new() { CompactSize = 16 };
-        using SnapshotRepository repo = SnapshotRepositoryTestFactory.Create();
+        using PersistedTierTestHarness repoH = SnapshotRepositoryTestFactory.Create();
+        SnapshotRepository repo = repoH.Repository;
         SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
 
         StateId from = new(0, Keccak.Zero);

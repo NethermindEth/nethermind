@@ -50,6 +50,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
+                ctx.Resolve<IPersistedSnapshotLoader>(),
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
@@ -77,6 +78,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
+            // Loads the persisted tier from the catalog at startup (driven by FlatDbManager) and owns
+            // its teardown; depends on ISnapshotRepository so DI disposes it before the repository.
+            .AddSingleton<IPersistedSnapshotLoader, PersistedSnapshotLoader>()
             // Owns the build half of in-memory -> persisted base conversion; resolves the same shared
             // arena/blob singletons the repository reads through.
             .AddSingleton<IPersistedSnapshotConverter, PersistedSnapshotConverter>()

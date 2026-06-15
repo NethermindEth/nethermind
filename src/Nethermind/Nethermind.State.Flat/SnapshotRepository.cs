@@ -92,7 +92,6 @@ public class SnapshotRepository : ISnapshotRepository
     private readonly SnapshotBucket _base;
     private readonly SnapshotBucket _compacted;
     private readonly SnapshotBucket _persistable;
-    private int _disposed;
 
     // ---- In-memory tier.
     // Do NOT iterate these dictionaries: entry counts can reach hundreds of thousands
@@ -124,9 +123,6 @@ public class SnapshotRepository : ISnapshotRepository
         _persistable = new SnapshotBucket(_catalog, SnapshotTier.PersistedPersistable);
         _compactSize = config.CompactSize;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
-
-        new PersistedSnapshotLoader(_arena, _blobs, _catalog, _base, _compacted, _persistable,
-            config.PersistedSnapshotBloomBitsPerKey, logManager).Load();
     }
 
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
@@ -973,13 +969,27 @@ public class SnapshotRepository : ISnapshotRepository
 
     public bool HasBaseSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+    public void LoadPersistedSnapshot(SnapshotTier tier, in StateId to, PersistedSnapshot snapshot) =>
+        BucketFor(tier).Set(to, snapshot);
 
+    public void RegisterPersistedOrdered(SnapshotTier tier, in StateId to) =>
+        BucketFor(tier).RegisterOrdered(to);
+
+    public IEnumerable<PersistedSnapshot> PersistedSnapshots
+    {
+        get
+        {
+            foreach (PersistedSnapshot snap in _base.Snapshots) yield return snap;
+            foreach (PersistedSnapshot snap in _compacted.Snapshots) yield return snap;
+            foreach (PersistedSnapshot snap in _persistable.Snapshots) yield return snap;
+        }
+    }
+
+    public void DisposePersistedTier()
+    {
         // Mark every loaded snapshot's files as shutdown-preserved before any teardown runs.
         // Snapshots already pruned during this session aren't in the buckets, so their files
-        // won't get the flag and will be deleted by the managers' final Dispose below. This
+        // won't get the flag and will be deleted when the arena/blob managers are disposed. This
         // pass must complete for every bucket before any disposal — a file shared between a base
         // and a compacted snapshot must be flagged before either of them is torn down.
         _base.PersistAllOnShutdown();
@@ -992,11 +1002,6 @@ public class SnapshotRepository : ISnapshotRepository
         _base.DisposeAndClear();
         _compacted.DisposeAndClear();
         _persistable.DisposeAndClear();
-
-        // Drop the managers' dictionary refs; any file still alive cleans up here.
-        // Orphans / unreferenced files (no PersistOnShutdown caller) get deleted.
-        _arena.Dispose();
-        _blobs.Dispose();
     }
 
     /// <summary>
@@ -1011,7 +1016,7 @@ public class SnapshotRepository : ISnapshotRepository
     /// point lookups lock-free. The lock only serialises ordered-set mutation, catalog writes, and
     /// the lease/dispose handoff so a racing prune cannot dispose an entry between insert and return.
     /// </remarks>
-    internal sealed class SnapshotBucket(SnapshotCatalog catalog, SnapshotTier tier)
+    private sealed class SnapshotBucket(SnapshotCatalog catalog, SnapshotTier tier)
     {
         private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _byTo = new();
         private readonly SortedSet<StateId> _ordered = [];

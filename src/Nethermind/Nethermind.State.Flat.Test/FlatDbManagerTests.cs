@@ -24,6 +24,7 @@ public class FlatDbManagerTests
     private ISnapshotCompactor _snapshotCompactor = null!;
     private ISnapshotRepository _snapshotRepository = null!;
     private IPersistenceManager _persistenceManager = null!;
+    private IPersistedSnapshotLoader _persistedSnapshotLoader = null!;
     private IFlatDbConfig _config = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
@@ -39,6 +40,7 @@ public class FlatDbManagerTests
         _snapshotCompactor = Substitute.For<ISnapshotCompactor>();
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
+        _persistedSnapshotLoader = Substitute.For<IPersistedSnapshotLoader>();
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
         _blocksConfig = Substitute.For<IBlocksConfig>();
         _blocksConfig.SecondsPerSlot.Returns(12UL);
@@ -48,7 +50,7 @@ public class FlatDbManagerTests
     public async Task TearDown()
     {
         await _persistenceManager.DisposeAsync();
-        _snapshotRepository.Dispose();
+        _persistedSnapshotLoader.Dispose();
         _cts.Cancel();
         _cts.Dispose();
     }
@@ -60,6 +62,7 @@ public class FlatDbManagerTests
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,
+        _persistedSnapshotLoader,
         _config,
         _blocksConfig,
         LimboLogs.Instance,

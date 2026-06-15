@@ -74,7 +74,8 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
+        SnapshotRepository repo = repoH.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -144,8 +145,9 @@ public class LongFinalityIntegrationTests
         // Session 1: persist two snapshots
         using (ArenaManager smallArena1 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: maxArenaSize))
         using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (SnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
+        using (PersistedTierTestHarness repoH = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig()))
         {
+            SnapshotRepository repo = repoH.Repository;
 
             repo.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
             {
@@ -187,8 +189,9 @@ public class LongFinalityIntegrationTests
         // Session 2: reload and verify
         using (ArenaManager smallArena2 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (SnapshotRepository repo = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
+        using (PersistedTierTestHarness repoH = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig()))
         {
+            SnapshotRepository repo = repoH.Repository;
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(2));
 
             // s0→s1 carries paths1[] + AddressA; s1→s2 carries paths2[] + AddressB. Every
@@ -277,7 +280,8 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
+        SnapshotRepository repo = repoH.Repository;
 
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= snapshotCount; i++)
@@ -298,7 +302,8 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
+        SnapshotRepository repo = repoH.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -323,6 +328,7 @@ public class LongFinalityIntegrationTests
             Substitute.For<ISnapshotCompactor>(),
             repo,
             persistenceManager,
+            Substitute.For<IPersistedSnapshotLoader>(),
             _config,
             new BlocksConfig(),
             LimboLogs.Instance,
@@ -348,8 +354,9 @@ public class LongFinalityIntegrationTests
         // Session 1: persist snapshots
         using (ArenaManager smallArena1 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (SnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
+        using (PersistedTierTestHarness repoH = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig()))
         {
+            SnapshotRepository repo = repoH.Repository;
             repo.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject)).Dispose();
             repo.ConvertToPersistedBase(CreateSnapshot(s1, s2, c =>
@@ -361,8 +368,9 @@ public class LongFinalityIntegrationTests
         // Session 2: reload and prune
         using (ArenaManager smallArena2 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (SnapshotRepository repo = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
+        using (PersistedTierTestHarness repoH = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig()))
         {
+            SnapshotRepository repo = repoH.Repository;
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(3));
 
             repo.RemovePersistedStatesUntil(3); // s1 and s2 removed
@@ -372,8 +380,9 @@ public class LongFinalityIntegrationTests
         // Session 3: verify pruned state persists
         using (ArenaManager smallArena3 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
         using (BlobArenaManager smallBlobs3 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (SnapshotRepository repo = new(smallArena3, smallBlobs3, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
+        using (PersistedTierTestHarness repoH = new(smallArena3, smallBlobs3, catalogDb, new FlatDbConfig()))
         {
+            SnapshotRepository repo = repoH.Repository;
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
         }
     }
@@ -383,7 +392,8 @@ public class LongFinalityIntegrationTests
     {
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
+        SnapshotRepository repo = repoH.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));

@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -14,23 +16,31 @@ using Timer = System.Timers.Timer;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Loads the persisted snapshot tier from the catalog into <see cref="SnapshotRepository"/>'s
-/// buckets at construction: rehydrates the arena/blob stores, constructs each
-/// <see cref="PersistedSnapshot"/> into its tier bucket, then rebuilds the per-snapshot blooms.
+/// Owns the lifecycle of the <see cref="ISnapshotRepository"/>'s persisted tier: loads it from the
+/// catalog at startup (<see cref="Load"/>) and tears it down at shutdown (<see cref="IDisposable.Dispose"/>).
 /// </summary>
+public interface IPersistedSnapshotLoader : IDisposable
+{
+    /// <summary>Rehydrate the arena/blob stores, construct every persisted snapshot from the catalog
+    /// into the repository's tier buckets, and rebuild their blooms. Drives the repository's persisted
+    /// tier from empty to fully populated; called once at startup.</summary>
+    void Load();
+}
+
+/// <inheritdoc cref="IPersistedSnapshotLoader"/>
 /// <remarks>
-/// Runs once, before the repository is published, so the only concurrency is the parallel fan-out
-/// it drives explicitly. The buckets it fills are owned by the repository and outlive the loader.
+/// A registered singleton that depends on <see cref="ISnapshotRepository"/> and the arena/blob/catalog
+/// stores. Because it depends on the repository, DI disposes it before the repository, and the manager
+/// (which depends on this loader and awaits its background workers on shutdown) is disposed before it —
+/// so <see cref="Dispose"/> tears the persisted tier down only after all bucket-touching work has stopped.
 /// </remarks>
-internal sealed class PersistedSnapshotLoader(
+public sealed class PersistedSnapshotLoader(
+    ISnapshotRepository repository,
     IArenaManager arena,
     BlobArenaManager blobs,
-    SnapshotCatalog catalog,
-    SnapshotRepository.SnapshotBucket @base,
-    SnapshotRepository.SnapshotBucket compacted,
-    SnapshotRepository.SnapshotBucket persistable,
-    double bloomBitsPerKey,
-    ILogManager logManager)
+    [KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb catalogDb,
+    IFlatDbConfig config,
+    ILogManager logManager) : IPersistedSnapshotLoader
 {
     // Below this many catalog entries / bloom picks we skip the progress logger and
     // the heartbeat timer — the cost of one Parallel.ForEach over a tiny input is in
@@ -40,27 +50,30 @@ internal sealed class PersistedSnapshotLoader(
     // itself dedups via state-change comparison, so sub-second ticks are cheap.
     private const int ProgressLogIntervalMs = 1000;
 
+    private readonly SnapshotCatalog _catalog = new(catalogDb);
+    private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotLoader>();
+    private int _disposed;
 
-    private bool BloomEnabled => bloomBitsPerKey > 0;
+    private bool BloomEnabled => _bloomBitsPerKey > 0;
 
-    /// <summary>
-    /// Load the persisted snapshots from the catalog, routing each into its bucket by the stored
-    /// <see cref="SnapshotTier"/> (range alone cannot tell a base from a sub-<c>CompactSize</c>
-    /// compacted snapshot apart). For catalogs above <see cref="ParallelLoadThreshold"/> entries,
-    /// the per-entry arena/blob lease work runs on <see cref="Parallel.ForEach"/> with a heartbeat
-    /// <see cref="ProgressLogger"/>; the non-concurrent <c>SortedSet</c> tip and ordered-id rebuild
-    /// runs serially after.
-    /// </summary>
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Routes each catalog entry into its bucket by the stored <see cref="SnapshotTier"/> (range alone
+    /// cannot tell a base from a sub-<c>CompactSize</c> compacted snapshot apart). For catalogs above
+    /// <see cref="ParallelLoadThreshold"/> entries, the per-entry arena/blob lease work runs on
+    /// <see cref="Parallel.ForEach"/> with a heartbeat <see cref="ProgressLogger"/>; the non-concurrent
+    /// ordered-id rebuild runs serially after.
+    /// </remarks>
     public void Load()
     {
-        // Runs once at construction, before the repository is published — no concurrency.
-        // Blob arena pool first — rehydrates file lengths so the PersistedSnapshot ctor's
-        // TryLeaseFile calls (driven by each snapshot's ref_ids metadata) can resolve the ids.
-        // Whole-file reservations are created lazily on first lease.
+        // Runs once at startup, before the repository serves any read — no concurrency beyond the
+        // parallel fan-out below. Blob arena pool first — rehydrates file lengths so the
+        // PersistedSnapshot ctor's TryLeaseFile calls (driven by each snapshot's ref_ids metadata)
+        // can resolve the ids. Whole-file reservations are created lazily on first lease.
         blobs.Initialize();
 
-        List<SnapshotCatalog.CatalogEntry> entries = [.. catalog.Load()];
+        List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Load()];
         arena.Initialize(entries);
 
         LoadSnapshotsParallel(entries);
@@ -68,7 +81,7 @@ internal sealed class PersistedSnapshotLoader(
         // Serial post-pass: build the ordered sets from the now-populated dicts.
         foreach (SnapshotCatalog.CatalogEntry entry in entries)
         {
-            BucketFor(entry.Tier).RegisterOrdered(entry.To);
+            repository.RegisterPersistedOrdered(entry.Tier, entry.To);
         }
 
         // Delete any blob arena file no loaded snapshot referenced — recoverable
@@ -112,11 +125,9 @@ internal sealed class PersistedSnapshotLoader(
     }
 
     /// <summary>
-    /// Routes a single catalog entry into its bucket dictionary (which bumps the bucket and
-    /// global memory/count metrics). Safe to call concurrently — <see cref="SnapshotRepository.SnapshotBucket.Set"/>
-    /// only mutates the <see cref="System.Collections.Concurrent.ConcurrentDictionary{TKey, TValue}"/>
-    /// and <see cref="Interlocked"/> counters. The non-concurrent <see cref="System.Collections.Generic.SortedSet{T}"/>
-    /// ordered ids are populated by the serial post-pass in <see cref="Load"/>.
+    /// Constructs a single catalog entry's snapshot and routes it into its bucket via
+    /// <see cref="ISnapshotRepository.LoadPersistedSnapshot"/> (lock-free — safe under the parallel
+    /// load). The block-ordered set is populated by the serial post-pass in <see cref="Load"/>.
     /// </summary>
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
@@ -135,15 +146,14 @@ internal sealed class PersistedSnapshotLoader(
         // Route by the stored tier, not by the To-From distance: a base and a sub-CompactSize
         // compacted snapshot can span the same number of blocks, so range alone cannot tell
         // them apart.
-        BucketFor(entry.Tier).Set(entry.To, snapshot);
+        repository.LoadPersistedSnapshot(entry.Tier, entry.To, snapshot);
     }
 
     /// <summary>
-    /// Build and attach the unified bloom for every loaded snapshot across all three buckets,
-    /// replacing the AlwaysTrue placeholder each was constructed with. After this pass every
-    /// snapshot that can be assembled into a bundle — base, compacted, or persistable —
-    /// carries the precise bloom built from its own on-disk image, so reads through it are
-    /// filtered. Each bloom is sized exactly to its source's key count.
+    /// Build and attach the unified bloom for every loaded snapshot, replacing the AlwaysTrue
+    /// placeholder each was constructed with. After this pass every snapshot that can be assembled
+    /// into a bundle — base, compacted, or persistable — carries the precise bloom built from its own
+    /// on-disk image, so reads through it are filtered. Each bloom is sized exactly to its source's key count.
     /// </summary>
     /// <remarks>
     /// Snapshots are built widest-first (largest <c>To - From</c> range) so the heaviest
@@ -159,10 +169,7 @@ internal sealed class PersistedSnapshotLoader(
         // The catalog is keyed by (To, depth), so a base, a compacted, and a persistable can
         // all coexist at the same To across the three buckets — each is an independently
         // assemblable snapshot and gets its own bloom.
-        List<PersistedSnapshot> snapshots = [];
-        foreach (SnapshotRepository.SnapshotBucket bucket in (ReadOnlySpan<SnapshotRepository.SnapshotBucket>)[@base, compacted, persistable])
-            foreach (PersistedSnapshot snap in bucket.Snapshots)
-                snapshots.Add(snap);
+        List<PersistedSnapshot> snapshots = [.. repository.PersistedSnapshots];
 
         // Widest-first so the big merges (slowest to scan) lead the parallel queue.
         snapshots.Sort(static (a, b) =>
@@ -198,14 +205,24 @@ internal sealed class PersistedSnapshotLoader(
     private BloomFilter BuildBloomFor(PersistedSnapshot snap)
     {
         using WholeReadSession session = snap.BeginWholeReadSession();
-        return PersistedSnapshotBloomBuilder.Build(session, snap, bloomBitsPerKey);
+        return PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey);
     }
 
-    private SnapshotRepository.SnapshotBucket BucketFor(SnapshotTier tier) => tier switch
+    /// <summary>
+    /// Tear down the persisted tier: flush + dispose the repository's buckets, then dispose the arena
+    /// and blob managers. Ordered after the manager's workers stop (manager → loader → repository
+    /// disposal chain) so no background work touches the buckets during teardown.
+    /// </summary>
+    public void Dispose()
     {
-        SnapshotTier.PersistedBase => @base,
-        SnapshotTier.PersistedCompacted => compacted,
-        SnapshotTier.PersistedPersistable => persistable,
-        _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
-    };
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        repository.DisposePersistedTier();
+
+        // Drop the managers' dictionary refs; any file still alive cleans up here. Orphans /
+        // unreferenced files (no PersistOnShutdown caller) get deleted. Dispose is idempotent —
+        // DI also owns these singletons, so it disposes them again as a no-op.
+        arena.Dispose();
+        blobs.Dispose();
+    }
 }

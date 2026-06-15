@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Persistence.BloomFilter;
@@ -9,7 +10,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat;
 
-public interface ISnapshotRepository : IDisposable
+public interface ISnapshotRepository
 {
     int SnapshotCount { get; }
 
@@ -43,6 +44,25 @@ public interface ISnapshotRepository : IDisposable
 
     /// <summary>Whether the persisted base bucket holds a snapshot at <paramref name="stateId"/>.</summary>
     bool HasBaseSnapshot(in StateId stateId);
+
+    /// <summary>Insert a reloaded persisted snapshot into the <paramref name="tier"/> bucket's dictionary
+    /// without writing the catalog (the entry is already there). Lock-free — safe to call concurrently
+    /// during the parallel catalog load. The block-ordered set is populated separately via
+    /// <see cref="RegisterPersistedOrdered"/>. <paramref name="tier"/> must be a <c>Persisted*</c> value.</summary>
+    void LoadPersistedSnapshot(SnapshotTier tier, in StateId to, PersistedSnapshot snapshot);
+
+    /// <summary>Record <paramref name="to"/> in the <paramref name="tier"/> bucket's block-ordered set.
+    /// The serial post-pass of the catalog load, run after <see cref="LoadPersistedSnapshot"/> for every
+    /// entry. <paramref name="tier"/> must be a <c>Persisted*</c> value.</summary>
+    void RegisterPersistedOrdered(SnapshotTier tier, in StateId to);
+
+    /// <summary>Every loaded persisted snapshot across the three buckets, for one-off lifecycle iteration
+    /// (bloom rebuild) at load time.</summary>
+    IEnumerable<PersistedSnapshot> PersistedSnapshots { get; }
+
+    /// <summary>Tear down the persisted tier: flag each snapshot's files shutdown-preserved, then dispose
+    /// every snapshot and clear the buckets. Does not dispose the arena/blob managers — the caller owns those.</summary>
+    void DisposePersistedTier();
 
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
     void RemovePersistedStatesUntil(long blockNumber);

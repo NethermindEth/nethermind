@@ -67,6 +67,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
+        IPersistedSnapshotLoader persistedSnapshotLoader,
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
@@ -79,6 +80,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+
+        // Populate the persisted tier from the catalog before any worker (or read) can touch it.
+        persistedSnapshotLoader.Load();
 
         _compactSize = config.CompactSize;
 

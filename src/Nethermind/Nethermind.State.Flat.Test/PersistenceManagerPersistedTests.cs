@@ -39,7 +39,8 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
+        SnapshotRepository repo = repoH.Repository;
 
         IFlatDbConfig config = new FlatDbConfig();
         config.PersistedSnapshotMaxCompactSize = config.CompactSize / 2;
@@ -63,7 +64,8 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using SnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
+        SnapshotRepository repo = repoH.Repository;
 
         IFlatDbConfig config = new FlatDbConfig();
         config.PersistedSnapshotMaxCompactSize = config.CompactSize / 2;
@@ -100,7 +102,8 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using SnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using PersistedTierTestHarness repoH = new(arena, blobs, new MemDb(), new FlatDbConfig());
+        SnapshotRepository repo = repoH.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -138,7 +141,8 @@ public class PersistenceManagerPersistedTests
     {
         using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using SnapshotRepository repo = new(arena, blobs, new MemDb(), new FlatDbConfig(), LimboLogs.Instance);
+        using PersistedTierTestHarness repoH = new(arena, blobs, new MemDb(), new FlatDbConfig());
+        SnapshotRepository repo = repoH.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
