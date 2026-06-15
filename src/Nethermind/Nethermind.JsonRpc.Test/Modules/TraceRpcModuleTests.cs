@@ -1570,6 +1570,30 @@ public class TraceRpcModuleTests
         Assert.That(output, Is.EqualTo("0x" + new string('0', 64)));
     }
 
+    // regression test ensuring asynchronous streaming pipe doesn't crash tracing
+    // was caused by synchronously waiting non-completed IValueTaskSource-backed ValueTask
+    [Test]
+    public async Task trace_block_with_async_stream()
+    {
+        Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        Block block = context.Blockchain.BlockTree.Head!;
+        Assert.That(block.Transactions, Is.Not.Empty, "block must contain transactions so AddTrace is exercised");
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_block(new BlockParameter(block.Number));
+        Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
+        IStreamableResult streaming = (IStreamableResult)result.Data;
+
+        await using AsyncCompletingStream stream = new();
+        System.IO.Pipelines.PipeWriter writer = System.IO.Pipelines.PipeWriter.Create(stream);
+
+        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+
+        await writer.CompleteAsync();
+    }
+
     private static void AssertBalanceChange(ParityAccountStateChange? stateChanges, UInt256 before, UInt256 after)
     {
         Assert.That(stateChanges?.Balance, Is.Not.Null);
