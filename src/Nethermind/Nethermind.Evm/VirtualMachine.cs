@@ -1216,6 +1216,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TCancelable : struct, IFlag
     {
         int fingerprint = EvmSpecFingerprint.Compute(Spec);
+        bool specialized = fingerprint == _osakaFingerprint || fingerprint == _cancunPragueFingerprint;
+        if (specialized && StreamInterpreter.Enabled && !TTracingInst.IsActive
+            && VmState.Env.CodeInfo.GetOrBuildStream() is { } stream)
+        {
+            // The stream executor is fork-agnostic within the specialized fingerprints (its
+            // in-block op set assumes Shanghai+ semantics, which both share).
+            return RunStream<TCancelable>(stream, ref stack, ref gas);
+        }
+
         if (fingerprint == _osakaFingerprint)
             return RunByteCodeCore<TTracingInst, TCancelable, OsakaEvmSpec>(ref stack, ref gas);
         if (fingerprint == _cancunPragueFingerprint)

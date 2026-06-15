@@ -52,6 +52,41 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
+    private InstructionStream? _stream;
+    private int _streamHits;
+    private int _streamBuildScheduled;
+
+    /// <summary>
+    /// Returns the instruction stream if it has already been built, else <c>null</c>. Once this
+    /// code has executed <see cref="StreamInterpreter.BuildThreshold"/> times, the build is
+    /// scheduled once on the thread pool and this keeps returning <c>null</c> (the caller runs the
+    /// raw interpreter) until the background build publishes the stream — no call ever blocks on a
+    /// build. <c>null</c> forever for unstreamable code (empty, precompile, oversized).
+    /// Benign races: the hit counter is unsynchronized; a CAS guards single scheduling and another
+    /// guards single publication.
+    /// </summary>
+    public InstructionStream? GetOrBuildStream()
+    {
+        InstructionStream? stream = Volatile.Read(ref _stream);
+        if (stream is not null)
+            return stream;
+        if (IsEmpty || IsPrecompile)
+            return null;
+        if (++_streamHits < StreamInterpreter.BuildThreshold)
+            return null;
+
+        if (Interlocked.CompareExchange(ref _streamBuildScheduled, 1, 0) == 0)
+            ThreadPool.UnsafeQueueUserWorkItem(static codeInfo => codeInfo.BuildStream(), this, preferLocal: false);
+
+        return null;
+    }
+
+    private void BuildStream()
+    {
+        InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
+        if (stream is not null)
+            Interlocked.CompareExchange(ref _stream, stream, null);
+    }
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
