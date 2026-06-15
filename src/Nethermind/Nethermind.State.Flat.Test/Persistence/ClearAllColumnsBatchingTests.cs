@@ -13,9 +13,8 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class ClearAllColumnsBatchingTests
 {
-    // Regression for #11442: the wipe deletes in bounded batches rather than collecting every key into one
-    // write batch. Seed more keys than a single batch so the commit boundary is crossed, then confirm the
-    // whole column is cleared while the Metadata format markers survive (only CurrentState resets, cf. #11996).
+    // #11442/#11996: seed more keys than one batch, then confirm the column is fully wiped across batch
+    // boundaries while the Metadata format markers survive and only CurrentState resets.
     [Test]
     public void ClearAllColumns_clears_data_across_batch_boundaries_and_preserves_format_markers()
     {

@@ -176,9 +176,8 @@ public static class BasePersistence
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
-        // Stream keys and delete them in bounded batches, committing the write batch periodically. Collecting
-        // every key into a single write batch (the previous approach) holds them all in memory at once, which
-        // exhausts memory when wiping a large, partially-synced DB on restart. See #11442.
+        // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
+        // partially-synced DB on restart. #11442
         const int batchSize = 10_000;
 
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
@@ -189,9 +188,7 @@ public static class BasePersistence
             {
                 if (column == FlatDbColumns.Metadata)
                 {
-                    // Reset only the state metadata. The on-disk format markers (layout, slot encoding) and
-                    // any other metadata are preserved, otherwise a re-synced DB would be read back with the
-                    // wrong slot encoding (e.g. RLP-wrapped slots misread as legacy raw). See #11996.
+                    // Preserve the format markers; wiping them makes a re-synced RLP DB read back as raw. #11996
                     batch.GetColumnBatch(column).Remove(CurrentStateKey);
                     continue;
                 }
@@ -201,8 +198,9 @@ public static class BasePersistence
                     batch.GetColumnBatch(column).Remove(key);
                     if (++count == batchSize)
                     {
-                        batch.Dispose(); // commit and release before accumulating the next chunk
-                        batch = db.StartWriteBatch();
+                        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
+                        batch.Dispose(); // commit the chunk
+                        batch = next;
                         count = 0;
                     }
                 }

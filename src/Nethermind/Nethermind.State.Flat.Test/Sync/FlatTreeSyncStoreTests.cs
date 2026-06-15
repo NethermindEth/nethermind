@@ -85,10 +85,7 @@ public class FlatTreeSyncStoreTests
     [Test]
     public void FinalizeSync_flushes_data_before_advancing_the_state_pointer()
     {
-        // Regression for #11457: snap/heal data is written with DisableWAL, so it is only crash-durable once
-        // flushed. The persisted state pointer must therefore advance to the pivot only AFTER a flush, otherwise
-        // an unclean shutdown leaves CurrentState ahead of its (still unflushed) data and that holed state is
-        // later served as complete.
+        // #11457: the state pointer must advance only after the (DisableWAL) data is flushed.
         List<string> log = [];
         OrderRecordingPersistence spy = new(_persistence, log);
         FlatTreeSyncStore store = new(spy, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
@@ -105,7 +102,6 @@ public class FlatTreeSyncStoreTests
         Assert.That(reader.CurrentState.BlockNumber, Is.EqualTo(123), "state pointer should end at the pivot block");
     }
 
-    /// <summary>Wraps a real persistence and records the order of flushes vs state-advancing write batches.</summary>
     private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log) : IPersistence
     {
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
