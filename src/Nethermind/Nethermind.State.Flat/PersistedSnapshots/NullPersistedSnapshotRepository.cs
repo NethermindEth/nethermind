@@ -19,7 +19,6 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
         => throw new NotSupportedException($"{nameof(NullPersistedSnapshotRepository)} cannot host persisted snapshots.");
     public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false)
         => throw new NotSupportedException($"{nameof(NullPersistedSnapshotRepository)} cannot host compacted snapshots.");
-    public PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber) => PersistedSnapshotList.Empty();
     public PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to) => PersistedSnapshotList.Empty();
     public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }

@@ -29,6 +29,13 @@ public interface ISnapshotRepository
     /// <c>(null, null)</c> when none is reachable.
     /// </summary>
     (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(in StateId seed, in StateId currentPersistedState, int compactSize);
+
+    /// <summary>
+    /// Assemble the backward chain of persisted snapshots for compaction from <paramref name="toStateId"/>
+    /// down to <paramref name="minBlockNumber"/> (widest persisted edge first). Oldest-first; empty when
+    /// fewer than two are found. Caller disposes the returned list.
+    /// </summary>
+    PersistedSnapshotList AssembleSnapshotsForCompaction(in StateId toStateId, long minBlockNumber);
     StateId? GetLastSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
     ArrayPoolList<StateId> GetSnapshotBeforeStateId(long blockNumber);

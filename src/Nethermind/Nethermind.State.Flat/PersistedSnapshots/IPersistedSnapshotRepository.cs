@@ -20,9 +20,6 @@ public interface IPersistedSnapshotRepository : IDisposable
     PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
     PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false);
 
-    // Compaction assembly (mirrors SnapshotRepository.AssembleSnapshotsUntil)
-    PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber);
-
     /// <summary>
     /// Lease every base snapshot tiling <c>(from, to]</c> — used to bulk-prefetch their blob
     /// RLP regions before a linked persistable is persisted. Caller disposes the list.

@@ -439,6 +439,66 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
             queue.Enqueue(from);
     }
 
+    /// <summary>
+    /// Assemble persisted snapshots for compaction, walking backward from <paramref name="toStateId"/>.
+    /// At each hop the widest persisted snapshot whose <c>From</c> does not span past
+    /// <paramref name="minBlockNumber"/> is chosen — compacted, then the CompactSize-wide
+    /// persistable, then base. Returns oldest-first, or empty if fewer than two are found.
+    /// </summary>
+    /// <remarks>
+    /// Per-edge selection reuses <see cref="TryLeaseParent"/> (persisted edges only), so each
+    /// candidate inspected is leased — overshooting ones are leased then disposed rather than
+    /// peeked. That trades a little work for sharing the single edge-lease path with the other walks.
+    /// </remarks>
+    public PersistedSnapshotList AssembleSnapshotsForCompaction(in StateId toStateId, long minBlockNumber)
+    {
+        PersistedSnapshotList result = new(0);
+        StateId current = toStateId;
+
+        while (true)
+        {
+            PersistedSnapshot? snapshot = SelectPersistedForCompaction(current, minBlockNumber);
+            if (snapshot is null) break;
+
+            result.Add(snapshot); // already leased by TryLeaseParent
+
+            if (snapshot.From == current) break;            // guard against a self-edge
+            if (snapshot.From.BlockNumber == minBlockNumber) break;
+            current = snapshot.From;
+        }
+
+        if (result.Count < 2)
+        {
+            result.Dispose();
+            return PersistedSnapshotList.Empty();
+        }
+
+        result.Reverse(); // oldest-first
+        return result;
+    }
+
+    // Widest-first persisted edge whose From does not span past minBlockNumber: compacted, then
+    // the CompactSize-wide persistable (the only source >CompactSize boundary compaction has),
+    // then base.
+    private static readonly SnapshotEdge[] CompactionEdgePriority =
+    [
+        SnapshotEdge.PersistedCompacted,
+        SnapshotEdge.PersistedPersistable,
+        SnapshotEdge.PersistedBase,
+    ];
+
+    private PersistedSnapshot? SelectPersistedForCompaction(in StateId current, long minBlockNumber)
+    {
+        foreach (SnapshotEdge edge in CompactionEdgePriority)
+        {
+            if (!TryLeaseParent(current, edge, out IDisposable? leased, out StateId from)) continue;
+            PersistedSnapshot persisted = (PersistedSnapshot)leased;
+            if (from.BlockNumber >= minBlockNumber) return persisted;
+            persisted.Dispose(); // overshoots the window — release and try a narrower edge
+        }
+        return null;
+    }
+
     public bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
     {
         SpinWait sw = new();

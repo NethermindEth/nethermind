@@ -43,9 +43,7 @@ public class PersistenceManagerPersistedTests
 
         IFlatDbConfig config = new FlatDbConfig();
         config.PersistedSnapshotMaxCompactSize = config.CompactSize / 2;
-        _ = new PersistedSnapshotCompactor(
-            repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
-            LimboLogs.Instance);
+        _ = CompactorTestFactory.Create(repo, smallArena, config);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -69,9 +67,7 @@ public class PersistenceManagerPersistedTests
 
         IFlatDbConfig config = new FlatDbConfig();
         config.PersistedSnapshotMaxCompactSize = config.CompactSize / 2;
-        _ = new PersistedSnapshotCompactor(
-            repo, smallArena, config, ScheduleHelper.CreateWithOffset(config, 0),
-            LimboLogs.Instance);
+        _ = CompactorTestFactory.Create(repo, smallArena, config);
 
         // Persist snapshots at various block heights
         StateId s0 = new(0, Keccak.EmptyTreeHash);

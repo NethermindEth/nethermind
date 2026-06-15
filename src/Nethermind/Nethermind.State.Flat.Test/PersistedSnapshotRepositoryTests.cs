@@ -394,10 +394,7 @@ public class PersistedSnapshotRepositoryTests
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
-            PersistedSnapshotCompactor compactor = new(
-                repo, arena1, config,
-                ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, arena1, config);
             compactor.DoCompactPersistable(ids[4]);  // persistable at To=4 covering (0, 4]
         }
 
@@ -468,10 +465,7 @@ public class PersistedSnapshotRepositoryTests
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
-            PersistedSnapshotCompactor compactor = new(
-                repo, arena1, config,
-                ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, arena1, config);
             compactor.DoCompactPersistable(ids[4]);
 
             Assert.That(repo.SnapshotCount, Is.EqualTo(5), "session 1 must hold 4 bases + 1 persistable");
@@ -527,10 +521,7 @@ public class PersistedSnapshotRepositoryTests
             // catalog has multi-bucket entries that exercise the bucket-routing branch
             // in the parallel LoadSnapshot.
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 8 };
-            PersistedSnapshotCompactor compactor = new(
-                repo, arena1, config,
-                ScheduleHelper.CreateWithOffset(config, 0),
-                Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, arena1, config);
             compactor.DoCompactPersistable(ids[8]);
             compactor.DoCompactPersistable(ids[16]);
         }

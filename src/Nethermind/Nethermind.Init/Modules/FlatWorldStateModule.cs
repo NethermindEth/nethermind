@@ -92,6 +92,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 return new PersistedSnapshotCompactor(
                     ctx.Resolve<IPersistedSnapshotRepository>(),
+                    ctx.Resolve<ISnapshotRepository>(),
                     ctx.Resolve<ArenaManager>(),
                     cfg,
                     ctx.Resolve<ICompactionSchedule>(),
