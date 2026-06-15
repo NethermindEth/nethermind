@@ -91,12 +91,7 @@ public sealed class CarryForwardReadCache(int maxEntriesPerKind, StateId initial
     /// </summary>
     public void OnSnapshotPersisted(Snapshot snapshot)
     {
-        bool selfDestructed = false;
-        foreach (KeyValuePair<HashedKey<Address>, bool> _ in snapshot.SelfDestructedStorageAddresses)
-        {
-            selfDestructed = true;
-            break;
-        }
+        bool selfDestructed = snapshot.SelfDestructedStorageAddresses.Any();
 
         if (selfDestructed)
         {
