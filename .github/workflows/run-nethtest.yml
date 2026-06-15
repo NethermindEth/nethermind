@@ -191,26 +191,28 @@ jobs:
                   emit "$type" patricia_parallelfull amsterdam '' true true 1 2
                 fi
                 if run_flat; then
+                  # Flat configs OOM/GC-thrash non-deterministically at large chunks (the
+                  # neverPrune in-memory column DB accumulates state across the chunk), so
+                  # they keep the conservative sizes that ran clean; only patricia is trimmed.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" flat_seq full 1 false false 2 8
+                    emit "$type" flat_seq full 1 false false 2 10
                   else
                     emit "$type" flat_seq full 1 false false 4 4
                   fi
-                  # flat_parallel OOM'd once at 3 chunks (~7.3k) → 5 for margin.
-                  emit "$type" flat_parallel amsterdam 1 true false 1 5
+                  emit "$type" flat_parallel amsterdam 1 true false 1 10
                   emit "$type" flat_batchread amsterdam 1 false true 4 2
-                  # flat_parallelfull OOM'd at 4 (~5.5k), clean at 6/7 → 6.
-                  emit "$type" flat_parallelfull amsterdam 1 true true 1 6
+                  emit "$type" flat_parallelfull amsterdam 1 true true 1 14
                 fi
                 ;;
               stateTest)
                 # State tests execute a single tx via the tx processor - the block-level
                 # parallel/batch-read toggles do not apply, only the state layout does.
+                # The full ~15k state set in one chunk OOM'd on both layouts, so it is split.
                 if run_sequential; then
-                  emit "$type" patricia_seq full '' '' '' 4 1
+                  emit "$type" patricia_seq full '' '' '' 4 2
                 fi
                 if run_flat; then
-                  emit "$type" flat_seq full 1 '' '' 4 1
+                  emit "$type" flat_seq full 1 '' '' 4 3
                 fi
                 ;;
               syncTest)
