@@ -47,7 +47,7 @@ public class PersistenceManager(
     private readonly IPersistedSnapshotCompactor _compactor = persistedSnapshotCompactor;
     private readonly IPersistedSnapshotLoader _loader = persistedSnapshotLoader;
     private readonly ICompactionSchedule _schedule = compactionSchedule;
-    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // reused to presort trie-node keys before write
+    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;

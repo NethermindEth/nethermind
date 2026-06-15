@@ -164,7 +164,7 @@ public class SnapshotCompactor(
 
                 if (addressToClear.Count > 0)
                 {
-                    // Drop storage slots of accounts self-destructed in this snapshot.
+                    // Clear
                     foreach ((HashedKey<(Address, UInt256)> key, SlotValue? _) in storages)
                     {
                         if (addressToClear.Contains(key.Key.Item1))
