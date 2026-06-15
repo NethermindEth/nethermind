@@ -21,6 +21,9 @@ namespace Nethermind.State.Flat.Test;
 /// </remarks>
 internal sealed class PersistedTierTestHarness : IDisposable
 {
+    private readonly IArenaManager _arena;
+    private readonly BlobArenaManager _blobs;
+
     public SnapshotRepository Repository { get; }
 
     /// <summary>The loader paired with <see cref="Repository"/> — also exposes <c>Convert</c> for tests
@@ -29,10 +32,23 @@ internal sealed class PersistedTierTestHarness : IDisposable
 
     public PersistedTierTestHarness(IArenaManager arena, BlobArenaManager blobs, IDb catalogDb, IFlatDbConfig config)
     {
+        _arena = arena;
+        _blobs = blobs;
         Repository = new SnapshotRepository(arena, blobs, catalogDb, config, LimboLogs.Instance);
         Loader = new PersistedSnapshotLoader(Repository, arena, blobs, catalogDb, config, LimboLogs.Instance);
         Loader.Load();
     }
 
-    public void Dispose() => Loader.Dispose();
+    /// <summary>
+    /// Emulates the production DI disposal order (loader → repository → arena/blobs) which tests have no
+    /// container to drive: the loader flags files for shutdown, the repository disposes its buckets, then
+    /// the arena/blob managers are disposed.
+    /// </summary>
+    public void Dispose()
+    {
+        Loader.Dispose();
+        Repository.Dispose();
+        _arena.Dispose();
+        _blobs.Dispose();
+    }
 }

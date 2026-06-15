@@ -45,24 +45,21 @@ public interface ISnapshotRepository
     /// <summary>Whether the persisted base bucket holds a snapshot at <paramref name="stateId"/>.</summary>
     bool HasBaseSnapshot(in StateId stateId);
 
-    /// <summary>Insert a reloaded persisted snapshot into the <paramref name="tier"/> bucket's dictionary
-    /// without writing the catalog (the entry is already there). Lock-free — safe to call concurrently
-    /// during the parallel catalog load. The block-ordered set is populated separately via
-    /// <see cref="RegisterPersistedOrdered"/>. <paramref name="tier"/> must be a <c>Persisted*</c> value.</summary>
+    /// <summary>Index a reloaded persisted snapshot into the <paramref name="tier"/> bucket (dictionary,
+    /// block-ordered set, and totals) without writing the catalog (the entry is already there). Taken
+    /// under the bucket's lock, so it is safe to call from the parallel catalog load.
+    /// <paramref name="tier"/> must be a <c>Persisted*</c> value.</summary>
     void LoadPersistedSnapshot(SnapshotTier tier, in StateId to, PersistedSnapshot snapshot);
-
-    /// <summary>Record <paramref name="to"/> in the <paramref name="tier"/> bucket's block-ordered set.
-    /// The serial post-pass of the catalog load, run after <see cref="LoadPersistedSnapshot"/> for every
-    /// entry. <paramref name="tier"/> must be a <c>Persisted*</c> value.</summary>
-    void RegisterPersistedOrdered(SnapshotTier tier, in StateId to);
 
     /// <summary>Every loaded persisted snapshot across the three buckets, for one-off lifecycle iteration
     /// (bloom rebuild) at load time.</summary>
     IEnumerable<PersistedSnapshot> PersistedSnapshots { get; }
 
-    /// <summary>Tear down the persisted tier: flag each snapshot's files shutdown-preserved, then dispose
-    /// every snapshot and clear the buckets. Does not dispose the arena/blob managers — the caller owns those.</summary>
-    void DisposePersistedTier();
+    /// <summary>Flag every persisted snapshot's files as shutdown-preserved so they survive process exit.
+    /// Must run (across all buckets) before the repository is disposed — a file shared between a base and a
+    /// compacted snapshot must be flagged before either snapshot is disposed. The implementation's
+    /// <c>Dispose</c> (invoked by DI) then disposes the snapshots and clears the buckets.</summary>
+    void MarkPersistedTierForShutdown();
 
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
     void RemovePersistedStatesUntil(long blockNumber);

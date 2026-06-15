@@ -27,7 +27,7 @@ namespace Nethermind.State.Flat;
 /// arena/blob/catalog stores). Two-tier graph walks, persistence, and compaction-assembly all
 /// live here so they operate on the buckets directly.
 /// </summary>
-public class SnapshotRepository : ISnapshotRepository
+public class SnapshotRepository : ISnapshotRepository, IDisposable
 {
     // ---- Edge-priority tables: the parent-edge expansion/lease order for the graph walks, one per
     // walk mode. Every order is explicit — it does NOT track SnapshotTier's numeric order.
@@ -92,6 +92,7 @@ public class SnapshotRepository : ISnapshotRepository
     private readonly SnapshotBucket _base;
     private readonly SnapshotBucket _compacted;
     private readonly SnapshotBucket _persistable;
+    private int _disposed;
 
     // ---- In-memory tier.
     // Do NOT iterate these dictionaries: entry counts can reach hundreds of thousands
@@ -972,9 +973,6 @@ public class SnapshotRepository : ISnapshotRepository
     public void LoadPersistedSnapshot(SnapshotTier tier, in StateId to, PersistedSnapshot snapshot) =>
         BucketFor(tier).Set(to, snapshot);
 
-    public void RegisterPersistedOrdered(SnapshotTier tier, in StateId to) =>
-        BucketFor(tier).RegisterOrdered(to);
-
     public IEnumerable<PersistedSnapshot> PersistedSnapshots
     {
         get
@@ -985,20 +983,25 @@ public class SnapshotRepository : ISnapshotRepository
         }
     }
 
-    public void DisposePersistedTier()
+    public void MarkPersistedTierForShutdown()
     {
         // Mark every loaded snapshot's files as shutdown-preserved before any teardown runs.
         // Snapshots already pruned during this session aren't in the buckets, so their files
         // won't get the flag and will be deleted when the arena/blob managers are disposed. This
-        // pass must complete for every bucket before any disposal — a file shared between a base
-        // and a compacted snapshot must be flagged before either of them is torn down.
+        // pass must complete for every bucket before Dispose tears any bucket down — a file shared
+        // between a base and a compacted snapshot must be flagged before either of them is disposed.
         _base.PersistAllOnShutdown();
         _compacted.PersistAllOnShutdown();
         _persistable.PersistAllOnShutdown();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         // Dispose snapshots (drops their reservation + blob leases) and roll back each bucket's
         // share of the global metrics. Files self-clean as their refcount hits zero; the preserve
-        // flag set above keeps the on-disk file in place for any snapshot that opted in.
+        // flag set by MarkPersistedTierForShutdown keeps the on-disk file in place for opt-in snapshots.
         _base.DisposeAndClear();
         _compacted.DisposeAndClear();
         _persistable.DisposeAndClear();
@@ -1050,24 +1053,21 @@ public class SnapshotRepository : ISnapshotRepository
         public bool ContainsKey(in StateId to) => _byTo.ContainsKey(to);
 
         /// <summary>
-        /// Insert the dictionary entry and bump this bucket's + the global memory/count totals.
-        /// Lock-free (used by the parallel catalog load); the ordered set is populated separately
-        /// via <see cref="RegisterOrdered"/>.
+        /// Index a snapshot: insert the dictionary entry, record its block-ordered id, and bump this
+        /// bucket's + the global memory/count totals — all under this bucket's lock so the dictionary
+        /// and the ordered set stay consistent against a concurrent catalog load or a racing prune.
         /// </summary>
         public void Set(in StateId to, PersistedSnapshot snapshot)
         {
-            _byTo[to] = snapshot;
-            Interlocked.Add(ref _memoryBytes, snapshot.Size);
-            Interlocked.Increment(ref _count);
-            Interlocked.Add(ref GlobalMemory, snapshot.Size);
-            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
-        }
-
-        /// <summary>Record <paramref name="to"/> in the block-ordered set, under this bucket's lock.
-        /// Used by the serial post-pass of the catalog load.</summary>
-        public void RegisterOrdered(in StateId to)
-        {
-            lock (_lock) _ordered.Add(to);
+            lock (_lock)
+            {
+                _byTo[to] = snapshot;
+                _ordered.Add(to);
+                Interlocked.Add(ref _memoryBytes, snapshot.Size);
+                Interlocked.Increment(ref _count);
+                Interlocked.Add(ref GlobalMemory, snapshot.Size);
+                Interlocked.Increment(ref Metrics._persistedSnapshotCount);
+            }
         }
 
         /// <summary>
@@ -1082,7 +1082,6 @@ public class SnapshotRepository : ISnapshotRepository
             {
                 catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
                 Set(to, snapshot);
-                _ordered.Add(to);
                 snapshot.AcquireLease();
             }
         }

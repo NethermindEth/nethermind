@@ -74,8 +74,8 @@ public sealed class PersistedSnapshotLoader(
     /// Routes each catalog entry into its bucket by the stored <see cref="SnapshotTier"/> (range alone
     /// cannot tell a base from a sub-<c>CompactSize</c> compacted snapshot apart). For catalogs above
     /// <see cref="ParallelLoadThreshold"/> entries, the per-entry arena/blob lease work runs on
-    /// <see cref="Parallel.ForEach"/> with a heartbeat <see cref="ProgressLogger"/>; the non-concurrent
-    /// ordered-id rebuild runs serially after.
+    /// <see cref="Parallel.ForEach"/> with a heartbeat <see cref="ProgressLogger"/>; each entry is then
+    /// indexed under its bucket's lock via <see cref="ISnapshotRepository.LoadPersistedSnapshot"/>.
     /// </remarks>
     public void Load()
     {
@@ -89,12 +89,6 @@ public sealed class PersistedSnapshotLoader(
         arena.Initialize(entries);
 
         LoadSnapshotsParallel(entries);
-
-        // Serial post-pass: build the ordered sets from the now-populated dicts.
-        foreach (SnapshotCatalog.CatalogEntry entry in entries)
-        {
-            repository.RegisterPersistedOrdered(entry.Tier, entry.To);
-        }
 
         // Delete any blob arena file no loaded snapshot referenced — recoverable
         // orphans from a mid-write crash.
@@ -137,9 +131,10 @@ public sealed class PersistedSnapshotLoader(
     }
 
     /// <summary>
-    /// Constructs a single catalog entry's snapshot and routes it into its bucket via
-    /// <see cref="ISnapshotRepository.LoadPersistedSnapshot"/> (lock-free — safe under the parallel
-    /// load). The block-ordered set is populated by the serial post-pass in <see cref="Load"/>.
+    /// Constructs a single catalog entry's snapshot and indexes it into its bucket via
+    /// <see cref="ISnapshotRepository.LoadPersistedSnapshot"/>, which takes the bucket's lock — so this
+    /// is safe to run from the parallel load. The heavy work (arena open + snapshot construction) stays
+    /// outside that lock.
     /// </summary>
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
@@ -273,20 +268,16 @@ public sealed class PersistedSnapshotLoader(
     }
 
     /// <summary>
-    /// Tear down the persisted tier: flush + dispose the repository's buckets, then dispose the arena
-    /// and blob managers. Ordered after the manager's workers stop (manager → loader → repository
-    /// disposal chain) so no background work touches the buckets during teardown.
+    /// Flags the persisted tier's files for shutdown preservation. This is the loader's only teardown
+    /// step; the actual disposal of the repository (its buckets) and the arena/blob managers is left to
+    /// DI. Because the loader depends on <see cref="ISnapshotRepository"/>, DI disposes it before the
+    /// repository, so the mark always lands before the buckets are torn down; and because the repository
+    /// depends on the arena/blob managers, they are disposed after it — buckets drop their reservation
+    /// and blob leases before the stores they point into go.
     /// </summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-
-        repository.DisposePersistedTier();
-
-        // Drop the managers' dictionary refs; any file still alive cleans up here. Orphans /
-        // unreferenced files (no PersistOnShutdown caller) get deleted. Dispose is idempotent —
-        // DI also owns these singletons, so it disposes them again as a no-op.
-        arena.Dispose();
-        blobs.Dispose();
+        repository.MarkPersistedTierForShutdown();
     }
 }
