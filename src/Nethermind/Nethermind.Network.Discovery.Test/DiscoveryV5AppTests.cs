@@ -297,23 +297,11 @@ public class DiscoveryV5AppTests
         Assert.That(node, Is.Null);
     }
 
-    [Test]
-    public void Should_Accept_Ipv6_Enr()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Should_Accept_Ipv6_Enr(bool useUdp6)
     {
-        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001);
-
-        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
-
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
-        Assert.That(node!.Host, Is.EqualTo("2001:4860:4860::8888"));
-        Assert.That(node.Port, Is.EqualTo(9001));
-    }
-
-    [Test]
-    public void Should_Accept_Ipv6_Enr_With_Default_Udp_Port()
-    {
-        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001, useUdp6: false);
+        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001, useUdp6);
 
         bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 

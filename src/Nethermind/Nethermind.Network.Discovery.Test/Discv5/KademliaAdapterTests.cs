@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -93,43 +94,17 @@ public class KademliaAdapterTests
         Assert.That(adapter.TryAcceptChallenge(endpoint), Is.False);
     }
 
-    [Test]
-    public void IsAcceptableNodeRecord_ShouldRejectSpecialUseRecord()
+    [TestCaseSource(nameof(AcceptableNodeRecordCases))]
+    public void IsAcceptableNodeRecord_ShouldValidateRecord(AcceptableNodeRecordCase testCase)
     {
-        NodeRecord documentationRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("192.0.2.1"));
+        NodeRecord record = CreateEnr(testCase.PrivateKey, testCase.IpAddress, includeEth2: testCase.IncludeEth2);
 
         Assert.That(
             KademliaAdapter.IsAcceptableNodeRecord(
-                documentationRecord,
-                TestItem.PrivateKeyB.PublicKey.Hash,
-                allowNonRoutable: true),
-            Is.False);
-    }
-
-    [Test]
-    public void IsAcceptableNodeRecord_ShouldRejectNodeIdMismatch()
-    {
-        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"));
-
-        Assert.That(
-            KademliaAdapter.IsAcceptableNodeRecord(
-                record,
-                TestItem.PrivateKeyA.PublicKey.Hash,
-                allowNonRoutable: false),
-            Is.False);
-    }
-
-    [Test]
-    public void IsAcceptableNodeRecord_ShouldAllowNonRoutableWhenRequested()
-    {
-        NodeRecord loopbackRecord = CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback);
-
-        Assert.That(
-            KademliaAdapter.IsAcceptableNodeRecord(
-                loopbackRecord,
-                TestItem.PrivateKeyB.PublicKey.Hash,
-                allowNonRoutable: true),
-            Is.True);
+                NodeRecord.FromEnrString(record.EnrString),
+                testCase.ExpectedNodeId,
+                testCase.AllowNonRoutable),
+            Is.EqualTo(testCase.ExpectedResult));
     }
 
     private KademliaAdapter CreateAdapter()
@@ -158,19 +133,6 @@ public class KademliaAdapterTests
         new(publicKey, $"192.168.1.{hostSuffix}", 30303);
 
     [Test]
-    public void IsAcceptableNodeRecord_ShouldRejectConsensusOnlyRecord()
-    {
-        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"), includeEth2: true);
-
-        Assert.That(
-            KademliaAdapter.IsAcceptableNodeRecord(
-                NodeRecord.FromEnrString(record.EnrString),
-                TestItem.PrivateKeyB.PublicKey.Hash,
-                allowNonRoutable: false),
-            Is.False);
-    }
-
-    [Test]
     public void TrySetKnownRecord_ShouldNotDowngradeSequence()
     {
         KademliaAdapter adapter = CreateAdapter();
@@ -195,4 +157,44 @@ public class KademliaAdapterTests
             tcpPort: null,
             enrSequence: enrSequence,
             configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
+
+    private static IEnumerable<TestCaseData> AcceptableNodeRecordCases()
+    {
+        yield return new TestCaseData(new AcceptableNodeRecordCase(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse("192.0.2.1"),
+            TestItem.PrivateKeyB.PublicKey.Hash,
+            AllowNonRoutable: true,
+            IncludeEth2: false,
+            ExpectedResult: false)).SetName("Rejects special-use record");
+        yield return new TestCaseData(new AcceptableNodeRecordCase(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse("8.8.8.8"),
+            TestItem.PrivateKeyA.PublicKey.Hash,
+            AllowNonRoutable: false,
+            IncludeEth2: false,
+            ExpectedResult: false)).SetName("Rejects node-id mismatch");
+        yield return new TestCaseData(new AcceptableNodeRecordCase(
+            TestItem.PrivateKeyB,
+            IPAddress.Loopback,
+            TestItem.PrivateKeyB.PublicKey.Hash,
+            AllowNonRoutable: true,
+            IncludeEth2: false,
+            ExpectedResult: true)).SetName("Allows non-routable when requested");
+        yield return new TestCaseData(new AcceptableNodeRecordCase(
+            TestItem.PrivateKeyB,
+            IPAddress.Parse("8.8.8.8"),
+            TestItem.PrivateKeyB.PublicKey.Hash,
+            AllowNonRoutable: false,
+            IncludeEth2: true,
+            ExpectedResult: false)).SetName("Rejects consensus-only record");
+    }
+
+    public readonly record struct AcceptableNodeRecordCase(
+        PrivateKey PrivateKey,
+        IPAddress IpAddress,
+        Hash256 ExpectedNodeId,
+        bool AllowNonRoutable,
+        bool IncludeEth2,
+        bool ExpectedResult);
 }

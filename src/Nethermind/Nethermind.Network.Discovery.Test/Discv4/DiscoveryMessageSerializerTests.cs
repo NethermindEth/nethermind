@@ -145,25 +145,13 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
-    public void Enr_request_contains_hash()
-    {
-        EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
-        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
-
-        Assert.That(deserialized.Hash, Is.Not.Null);
-        Hash256 hash = new(deserialized.Hash!.Value);
-
-        Assert.That(hash, Is.EqualTo(new Hash256("0x64c2e38e89cdfca030166b7a271c301dd77cf043172966ab112d97fc3430fa16")));
-    }
-
-    [Test]
     public void Enr_request_hash_does_not_alias_input_buffer()
     {
         EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
         using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
         byte[] packet = serialized.ReadAllBytesAsArray();
         Hash256 expectedHash = new(packet.AsSpan(0, 32));
+        Assert.That(expectedHash, Is.EqualTo(new Hash256("0x64c2e38e89cdfca030166b7a271c301dd77cf043172966ab112d97fc3430fa16")));
 
         using DisposableByteBuffer input = Unpooled.WrappedBuffer(packet).AsDisposable();
         EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(input);

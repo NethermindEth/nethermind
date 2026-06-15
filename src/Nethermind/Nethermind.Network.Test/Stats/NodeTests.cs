@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -39,19 +40,20 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.Equals(1), Is.False);
         }
 
-        [Test]
-        public void TryFromEnr_uses_tcp_endpoint_for_peer_candidate()
+        [TestCase(NodeFromEnrMode.PeerCandidate, 30303)]
+        [TestCase(NodeFromEnrMode.Discovery, 30304)]
+        public void TryFromEnr_uses_expected_endpoint(NodeFromEnrMode mode, int expectedPort)
         {
             NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
 
-            bool result = Node.TryFromEnr(enr, out Node? node);
+            bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.True);
                 Assert.That(node, Is.Not.Null);
                 Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
-                Assert.That(node.Port, Is.EqualTo(30303));
+                Assert.That(node.Port, Is.EqualTo(expectedPort));
                 Assert.That(node.Enr, Is.EqualTo(enr.EnrString));
             }
         }
@@ -65,23 +67,6 @@ namespace Nethermind.Network.Test.Stats
 
             Assert.That(result, Is.False);
             Assert.That(node, Is.Null);
-        }
-
-        [Test]
-        public void TryFromDiscoveryEnr_uses_udp_endpoint_for_discovery()
-        {
-            NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
-
-            bool result = Node.TryFromDiscoveryEnr(enr, out Node? node);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result, Is.True);
-                Assert.That(node, Is.Not.Null);
-                Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
-                Assert.That(node.Port, Is.EqualTo(30304));
-                Assert.That(node.Enr, Is.EqualTo(enr.EnrString));
-            }
         }
 
         [TestCase("s", "127.0.0.1:303")]
@@ -122,5 +107,18 @@ namespace Nethermind.Network.Test.Stats
             return enr;
         }
 
+        private static bool TryCreateNodeFromEnr(NodeFromEnrMode mode, NodeRecord enr, out Node? node) =>
+            mode switch
+            {
+                NodeFromEnrMode.PeerCandidate => Node.TryFromEnr(enr, out node),
+                NodeFromEnrMode.Discovery => Node.TryFromDiscoveryEnr(enr, out node),
+                _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null)
+            };
+
+        public enum NodeFromEnrMode
+        {
+            PeerCandidate,
+            Discovery
+        }
     }
 }
