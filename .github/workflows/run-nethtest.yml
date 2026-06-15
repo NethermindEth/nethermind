@@ -185,7 +185,9 @@ jobs:
                 # OOM'd, so it keeps big chunks; margin is added only where OOMs actually
                 # occurred (flat_parallel, flat_parallelfull, flat_batchread, the state tests).
                 if run_sequential; then
-                  emit "$type" patricia_seq full '' false false 4 1
+                  # patricia_seq doesn't OOM (per-test disposal) but the full ~22k set in one
+                  # chunk ran ~21 min; 3 chunks keeps it ~7 min, under the wall budget.
+                  emit "$type" patricia_seq full '' false false 4 3
                   emit "$type" patricia_parallel amsterdam '' true false 1 2
                   emit "$type" patricia_batchread amsterdam '' false true 4 2
                   emit "$type" patricia_parallelfull amsterdam '' true true 1 2
