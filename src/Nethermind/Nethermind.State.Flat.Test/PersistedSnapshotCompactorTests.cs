@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Logging;
 using System.Collections.Generic;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -50,72 +49,61 @@ public class PersistedSnapshotCompactorTests
     [TestCase(32)]
     public void TryCompactPersistedSnapshots_MergesNBaseSnapshots(int n)
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
+        // CompactSize=4. n is a power of 2 in {8, 16, 32}, so n & -n == n: block n's natural
+        // window covers the whole (0, n] range and DoCompactSnapshot triggers a single merge.
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 256 * 1024,
+            blobFileSizeBytes: 4 * 1024 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 4 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= n; i++)
+        {
+            StateId next = new(i, Keccak.Compute($"s{i}"));
+            SnapshotContent c = new();
+            // Unique account per block (different address each time).
+            c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
+            // Shared overlapping account: same AddressA every block, distinct balance and
+            // a distinct slot — drives matchCount == N through NWayMergePerAddressHsst,
+            // and the slot merge sees N inputs with N unique slot keys.
+            c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
+            c.Storages[(TestItem.AddressA, (UInt256)i)] = new SlotValue(new byte[] { (byte)i });
+            repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = next;
+        }
+
+        compactor.DoCompactSnapshot(prev);
+
+        Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
+            Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
+            Assert.That(compacted.To.BlockNumber, Is.EqualTo(n));
 
-            // CompactSize=4. n is a power of 2 in {8, 16, 32}, so n & -n == n: block n's natural
-            // window covers the whole (0, n] range and DoCompactSnapshot triggers a single merge.
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            StateId prev = new(0, Keccak.EmptyTreeHash);
+            // Every unique account must survive.
             for (int i = 1; i <= n; i++)
             {
-                StateId next = new(i, Keccak.Compute($"s{i}"));
-                SnapshotContent c = new();
-                // Unique account per block (different address each time).
-                c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-                // Shared overlapping account: same AddressA every block, distinct balance and
-                // a distinct slot — drives matchCount == N through NWayMergePerAddressHsst,
-                // and the slot merge sees N inputs with N unique slot keys.
-                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-                c.Storages[(TestItem.AddressA, (UInt256)i)] = new SlotValue(new byte[] { (byte)i });
-                repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-                prev = next;
+                Assert.That(compacted.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True,
+                    $"Account from block {i} missing");
             }
 
-            compactor.DoCompactSnapshot(prev);
+            // Overlapping account: newest balance wins.
+            Assert.That(compacted.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+            Assert.That(a!.Balance, Is.EqualTo((UInt256)n), "Newest balance must win on the overlapping account");
 
-            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
-            try
+            // Every per-block slot must survive (each block wrote a distinct slot index).
+            for (int i = 1; i <= n; i++)
             {
-                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
-                Assert.That(compacted.To.BlockNumber, Is.EqualTo(n));
-
-                // Every unique account must survive.
-                for (int i = 1; i <= n; i++)
-                {
-                    Assert.That(compacted.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True,
-                        $"Account from block {i} missing");
-                }
-
-                // Overlapping account: newest balance wins.
-                Assert.That(compacted.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
-                Assert.That(a!.Balance, Is.EqualTo((UInt256)n), "Newest balance must win on the overlapping account");
-
-                // Every per-block slot must survive (each block wrote a distinct slot index).
-                for (int i = 1; i <= n; i++)
-                {
-                    SlotValue slot = default;
-                    Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, ref slot), Is.True,
-                        $"Slot {i} must survive merge");
-                    Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { (byte)i }).AsReadOnlySpan.ToArray()),
-                        $"Slot {i} value mismatch");
-                }
+                SlotValue slot = default;
+                Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, ref slot), Is.True,
+                    $"Slot {i} must survive merge");
+                Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { (byte)i }).AsReadOnlySpan.ToArray()),
+                    $"Slot {i} value mismatch");
             }
-            finally { compacted!.Dispose(); }
         }
-        finally
-        {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
-        }
+        finally { compacted!.Dispose(); }
     }
 
     /// <summary>
@@ -132,56 +120,45 @@ public class PersistedSnapshotCompactorTests
         const int snapshotCount = 16;
         const int slotsPerSnapshot = 16 * 1024; // 16 × 16384 = 256k merged slots
 
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
+        // 64 MiB shared arena: the per-block snapshots and the ~10 MiB compacted output
+        // stay below the 512 MiB dedicated-arena threshold, so each must fit a shared file.
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 64 * 1024 * 1024,
+            blobFileSizeBytes: 4 * 1024 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 4 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        // Each block writes a contiguous 16384-slot slice on AddressA. A slice stays well
+        // under ArenaBufferWriter's 1 MiB buffer, so every per-block build succeeds; only
+        // the merged 65536-slot prefix groups cross the threshold.
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= snapshotCount; i++)
+        {
+            StateId next = new(i, Keccak.Compute($"s{i}"));
+            SnapshotContent c = new();
+            TestFixtureHelpers.AddSequentialSlots(c, TestItem.AddressA,
+                firstSlot: (i - 1) * slotsPerSnapshot + 1, count: slotsPerSnapshot);
+            repo.ConvertToPersistedBase(
+                new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = next;
+        }
+
+        compactor.DoCompactSnapshot(prev);
+
+        Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
-            // 64 MiB shared arena: the per-block snapshots and the ~10 MiB compacted output
-            // stay below the 512 MiB dedicated-arena threshold, so each must fit a shared file.
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
-
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            // Each block writes a contiguous 16384-slot slice on AddressA. A slice stays well
-            // under ArenaBufferWriter's 1 MiB buffer, so every per-block build succeeds; only
-            // the merged 65536-slot prefix groups cross the threshold.
-            StateId prev = new(0, Keccak.EmptyTreeHash);
-            for (int i = 1; i <= snapshotCount; i++)
+            int totalSlots = snapshotCount * slotsPerSnapshot;
+            foreach (int probe in new[] { 1, 65535, 65536, 131072, totalSlots })
             {
-                StateId next = new(i, Keccak.Compute($"s{i}"));
-                SnapshotContent c = new();
-                TestFixtureHelpers.AddSequentialSlots(c, TestItem.AddressA,
-                    firstSlot: (i - 1) * slotsPerSnapshot + 1, count: slotsPerSnapshot);
-                repo.ConvertToPersistedBase(
-                    new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-                prev = next;
+                SlotValue slot = default;
+                Assert.That(compacted!.TryGetSlot(TestItem.AddressA, (UInt256)probe, ref slot), Is.True, $"slot {probe} missing");
+                Assert.That(slot.AsReadOnlySpan.SequenceEqual(TestFixtureHelpers.SequentialSlotValue(probe)), Is.True,
+                    $"slot {probe} value mismatch");
             }
-
-            compactor.DoCompactSnapshot(prev);
-
-            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
-            try
-            {
-                int totalSlots = snapshotCount * slotsPerSnapshot;
-                foreach (int probe in new[] { 1, 65535, 65536, 131072, totalSlots })
-                {
-                    SlotValue slot = default;
-                    Assert.That(compacted!.TryGetSlot(TestItem.AddressA, (UInt256)probe, ref slot), Is.True, $"slot {probe} missing");
-                    Assert.That(slot.AsReadOnlySpan.SequenceEqual(TestFixtureHelpers.SequentialSlotValue(probe)), Is.True,
-                        $"slot {probe} value mismatch");
-                }
-            }
-            finally { compacted!.Dispose(); }
         }
-        finally
-        {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
-        }
+        finally { compacted!.Dispose(); }
     }
 
     /// <summary>
@@ -197,70 +174,58 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void Compact_SingleSourceAddress_AddsAllSubTagBloomKeys()
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        try
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 64 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        Hash256 addrHash256 = Keccak.Compute(TestItem.AddressA.Bytes);
+        TreePath topPath = new(Keccak.Compute("trie_top"), 4);          // → StorageTopSubTag (4-byte key)
+        TreePath compactPath = new(Keccak.Compute("trie_compact"), 10); // → StorageCompactSubTag (8-byte key)
+        TreePath fallbackPath = new(Keccak.Compute("trie_fb"), 20);     // → StorageFallbackSubTag (33-byte key)
+        UInt256 slotIndex = 7;
+
+        SnapshotContent c0 = new();
+        c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
+        c0.Storages[(TestItem.AddressA, slotIndex)] = new SlotValue(new byte[] { 0x42 });
+        c0.StorageNodes[(addrHash256, topPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+        c0.StorageNodes[(addrHash256, compactPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
+        c0.StorageNodes[(addrHash256, fallbackPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x82]);
+
+        // Different address in the second source so AddressA has matchCount==1 (single
+        // matching source) while still having ≥ 2 sources to compact.
+        SnapshotContent c1 = new();
+        c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("s1"));
+        StateId s2 = new(2, Keccak.Compute("s2"));
+        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+
+        compactor.DoCompactSnapshot(s2);
+
+        Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
+        using (compacted)
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
+            BloomFilter bloom = compacted!.Bloom;
+            Assert.That(bloom.Count, Is.GreaterThan(0),
+                "Compacted snapshot must have a real bloom — the merge populates it from both sources");
+            ValueHash256 addrHash = ValueKeccak.Compute(TestItem.AddressA.Bytes);
+            ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(TestItem.AddressA);
 
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            Hash256 addrHash256 = Keccak.Compute(TestItem.AddressA.Bytes);
-            TreePath topPath = new(Keccak.Compute("trie_top"), 4);          // → StorageTopSubTag (4-byte key)
-            TreePath compactPath = new(Keccak.Compute("trie_compact"), 10); // → StorageCompactSubTag (8-byte key)
-            TreePath fallbackPath = new(Keccak.Compute("trie_fb"), 20);     // → StorageFallbackSubTag (33-byte key)
-            UInt256 slotIndex = 7;
-
-            SnapshotContent c0 = new();
-            c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
-            c0.Storages[(TestItem.AddressA, slotIndex)] = new SlotValue(new byte[] { 0x42 });
-            c0.StorageNodes[(addrHash256, topPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-            c0.StorageNodes[(addrHash256, compactPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
-            c0.StorageNodes[(addrHash256, fallbackPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x82]);
-
-            // Different address in the second source so AddressA has matchCount==1 (single
-            // matching source) while still having ≥ 2 sources to compact.
-            SnapshotContent c1 = new();
-            c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
-
-            StateId s0 = new(0, Keccak.EmptyTreeHash);
-            StateId s1 = new(1, Keccak.Compute("s1"));
-            StateId s2 = new(2, Keccak.Compute("s2"));
-            repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-
-            compactor.DoCompactSnapshot(s2);
-
-            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
-            using (compacted)
+            Assert.Multiple(() =>
             {
-                BloomFilter bloom = compacted!.Bloom;
-                Assert.That(bloom.Count, Is.GreaterThan(0),
-                    "Compacted snapshot must have a real bloom — the merge populates it from both sources");
-                ValueHash256 addrHash = ValueKeccak.Compute(TestItem.AddressA.Bytes);
-                ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(TestItem.AddressA);
-
-                Assert.Multiple(() =>
-                {
-                    Assert.That(bloom.MightContain(addrKey), Is.True, "Address key");
-                    Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, slotIndex)), Is.True, "Slot key");
-                    Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in topPath)), Is.True,
-                        "Storage-trie top — fails when sibling TrySeek bound isn't reset between sub-tag seeks");
-                    Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in compactPath)), Is.True,
-                        "Storage-trie compact");
-                    Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in fallbackPath)), Is.True,
-                        "Storage-trie fallback");
-                });
-            }
-        }
-        finally
-        {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
+                Assert.That(bloom.MightContain(addrKey), Is.True, "Address key");
+                Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, slotIndex)), Is.True, "Slot key");
+                Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in topPath)), Is.True,
+                    "Storage-trie top — fails when sibling TrySeek bound isn't reset between sub-tag seeks");
+                Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in compactPath)), Is.True,
+                    "Storage-trie compact");
+                Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in fallbackPath)), Is.True,
+                    "Storage-trie fallback");
+            });
         }
     }
 
@@ -278,78 +243,67 @@ public class PersistedSnapshotCompactorTests
     [TestCase(120)]
     public void Compact_SingleSourceAddress_PageAlignPaddingPreservesValues(int accountCount)
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        try
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 256 * 1024,
+            blobFileSizeBytes: 4 * 1024 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        // Source 0: accountCount addresses with varying slot counts so inner-HSST
+        // sizes span ~tens to ~hundreds of bytes — repeated fast-path writes
+        // sweep across 4 KiB page boundaries in the destination arena.
+        SnapshotContent c0 = new();
+        for (int i = 0; i < accountCount; i++)
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
-
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            // Source 0: accountCount addresses with varying slot counts so inner-HSST
-            // sizes span ~tens to ~hundreds of bytes — repeated fast-path writes
-            // sweep across 4 KiB page boundaries in the destination arena.
-            SnapshotContent c0 = new();
-            for (int i = 0; i < accountCount; i++)
-            {
-                Address addr = TestItem.Addresses[i];
-                c0.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
-                int slots = 1 + (i % 7);
-                for (int s = 0; s < slots; s++)
-                    c0.Storages[(addr, (UInt256)(s + 1))] = new SlotValue(new byte[] { (byte)((i * 13 + s) & 0xFF) });
-                c0.StorageNodes[(Keccak.Compute(addr.Bytes), new TreePath(Keccak.Compute($"p{i}"), 4))]
-                    = new TrieNode(NodeType.Leaf, [0xC1, (byte)(i & 0xFF)]);
-            }
-
-            // Source 1: a single unrelated address so matchCount == 1 for every
-            // address in source 0 (drives them all through the fast path).
-            SnapshotContent c1 = new();
-            c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(999).TestObject;
-
-            StateId s0 = new(0, Keccak.EmptyTreeHash);
-            StateId s1 = new(1, Keccak.Compute("p1"));
-            StateId s2 = new(2, Keccak.Compute("p2"));
-            repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-
-            compactor.DoCompactSnapshot(s2);
-
-            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
-            using (compacted)
-            {
-                Assert.Multiple(() =>
-                {
-                    for (int i = 0; i < accountCount; i++)
-                    {
-                        Address addr = TestItem.Addresses[i];
-                        Assert.That(compacted!.TryGetAccount(addr, out Account? a), Is.True,
-                            $"Account {i} must survive fast-path compaction");
-                        Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
-                            $"Account {i} balance mismatch — pad bytes leaked into the value range");
-
-                        int slots = 1 + (i % 7);
-                        for (int s = 0; s < slots; s++)
-                        {
-                            SlotValue slot = default;
-                            Assert.That(compacted.TryGetSlot(addr, (UInt256)(s + 1), ref slot), Is.True,
-                                $"Slot {s + 1} for account {i} must survive fast-path compaction");
-                            SlotValue expected = new(new byte[] { (byte)((i * 13 + s) & 0xFF) });
-                            Assert.That(slot.AsReadOnlySpan.ToArray(),
-                                Is.EqualTo(expected.AsReadOnlySpan.ToArray()),
-                                $"Slot value mismatch for account {i} slot {s + 1}");
-                        }
-                    }
-                });
-            }
+            Address addr = TestItem.Addresses[i];
+            c0.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+            int slots = 1 + (i % 7);
+            for (int s = 0; s < slots; s++)
+                c0.Storages[(addr, (UInt256)(s + 1))] = new SlotValue(new byte[] { (byte)((i * 13 + s) & 0xFF) });
+            c0.StorageNodes[(Keccak.Compute(addr.Bytes), new TreePath(Keccak.Compute($"p{i}"), 4))]
+                = new TrieNode(NodeType.Leaf, [0xC1, (byte)(i & 0xFF)]);
         }
-        finally
+
+        // Source 1: a single unrelated address so matchCount == 1 for every
+        // address in source 0 (drives them all through the fast path).
+        SnapshotContent c1 = new();
+        c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(999).TestObject;
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("p1"));
+        StateId s2 = new(2, Keccak.Compute("p2"));
+        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+
+        compactor.DoCompactSnapshot(s2);
+
+        Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
+        using (compacted)
         {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
+            Assert.Multiple(() =>
+            {
+                for (int i = 0; i < accountCount; i++)
+                {
+                    Address addr = TestItem.Addresses[i];
+                    Assert.That(compacted!.TryGetAccount(addr, out Account? a), Is.True,
+                        $"Account {i} must survive fast-path compaction");
+                    Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
+                        $"Account {i} balance mismatch — pad bytes leaked into the value range");
+
+                    int slots = 1 + (i % 7);
+                    for (int s = 0; s < slots; s++)
+                    {
+                        SlotValue slot = default;
+                        Assert.That(compacted.TryGetSlot(addr, (UInt256)(s + 1), ref slot), Is.True,
+                            $"Slot {s + 1} for account {i} must survive fast-path compaction");
+                        SlotValue expected = new(new byte[] { (byte)((i * 13 + s) & 0xFF) });
+                        Assert.That(slot.AsReadOnlySpan.ToArray(),
+                            Is.EqualTo(expected.AsReadOnlySpan.ToArray()),
+                            $"Slot value mismatch for account {i} slot {s + 1}");
+                    }
+                }
+            });
         }
     }
 
@@ -362,63 +316,51 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void CompactedSnapshot_Metadata_NodeRefsFlagAndRefIdsUnion()
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        try
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 64 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 4 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        StateId[] states = new StateId[9];
+        states[0] = prev;
+        HashSet<ushort> baseRefIds = [];
+        for (int i = 1; i <= 8; i++)
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
+            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+            SnapshotContent c = new();
+            c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
+            c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [(byte)(0xC1), (byte)i]);
+            repo.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = states[i];
+        }
 
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            StateId prev = new(0, Keccak.EmptyTreeHash);
-            StateId[] states = new StateId[9];
-            states[0] = prev;
-            HashSet<ushort> baseRefIds = [];
-            for (int i = 1; i <= 8; i++)
+        for (int i = 1; i <= 8; i++)
+        {
+            Assert.That(repo.TryLeasePersistedState(states[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseSnap), Is.True);
+            using (baseSnap)
             {
-                states[i] = new StateId(i, Keccak.Compute($"{i}"));
-                SnapshotContent c = new();
-                c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-                c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [(byte)(0xC1), (byte)i]);
-                repo.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-                prev = states[i];
-            }
-
-            for (int i = 1; i <= 8; i++)
-            {
-                Assert.That(repo.TryLeasePersistedState(states[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseSnap), Is.True);
-                using (baseSnap)
-                {
-                    using WholeReadSession session = baseSnap!.BeginWholeReadSession();
-                    WholeReadSessionReader reader = session.CreateReader();
-                    ushort[]? ids = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
-                    Assert.That(ids, Is.Not.Null.And.Length.EqualTo(1),
-                        $"Base snapshot {i} must carry exactly one blob-arena ref_id");
-                    baseRefIds.Add(ids![0]);
-                }
-            }
-
-            compactor.DoCompactSnapshot(states[8]);
-
-            Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
-            using (compacted)
-            {
-                using WholeReadSession session = compacted!.BeginWholeReadSession();
+                using WholeReadSession session = baseSnap!.BeginWholeReadSession();
                 WholeReadSessionReader reader = session.CreateReader();
-                ushort[]? mergedIds = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
-                Assert.That(mergedIds, Is.Not.Null);
-                Assert.That(new HashSet<ushort>(mergedIds!), Is.EquivalentTo(baseRefIds),
-                    "Compacted ref_ids must equal the union of source base blob-arena ids");
+                ushort[]? ids = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+                Assert.That(ids, Is.Not.Null.And.Length.EqualTo(1),
+                    $"Base snapshot {i} must carry exactly one blob-arena ref_id");
+                baseRefIds.Add(ids![0]);
             }
         }
-        finally
+
+        compactor.DoCompactSnapshot(states[8]);
+
+        Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
+        using (compacted)
         {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
+            using WholeReadSession session = compacted!.BeginWholeReadSession();
+            WholeReadSessionReader reader = session.CreateReader();
+            ushort[]? mergedIds = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+            Assert.That(mergedIds, Is.Not.Null);
+            Assert.That(new HashSet<ushort>(mergedIds!), Is.EquivalentTo(baseRefIds),
+                "Compacted ref_ids must equal the union of source base blob-arena ids");
         }
     }
 
@@ -693,42 +635,30 @@ public class PersistedSnapshotCompactorTests
     [TestCaseSource(nameof(MergeValidationTestCases))]
     public void MergeSnapshots_ValidatesCorrectly(SnapshotContent[] contents, Action<PersistedSnapshot> assertCompacted)
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        try
+        // maxCompactSize == 2 — only a size-2 compaction is attempted, so
+        // exactly two consecutive base snapshots are merged into one compacted snapshot.
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 64 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId[] states = new StateId[contents.Length + 1];
+        states[0] = new StateId(0, Keccak.EmptyTreeHash);
+        for (int i = 0; i < contents.Length; i++)
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
-
-            // maxCompactSize == 2 — only a size-2 compaction is attempted, so
-            // exactly two consecutive base snapshots are merged into one compacted snapshot.
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            StateId[] states = new StateId[contents.Length + 1];
-            states[0] = new StateId(0, Keccak.EmptyTreeHash);
-            for (int i = 0; i < contents.Length; i++)
-            {
-                states[i + 1] = new StateId(i + 1, Keccak.Compute($"{i + 1}"));
-                repo.ConvertToPersistedBase(
-                    new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            }
-
-            compactor.DoCompactSnapshot(states[contents.Length]);
-
-            Assert.That(repo.TryLeasePersistedState(states[contents.Length], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
-                "Expected a compacted snapshot to exist after DoCompactSnapshot");
-            using (compacted)
-            {
-                assertCompacted(compacted!);
-            }
+            states[i + 1] = new StateId(i + 1, Keccak.Compute($"{i + 1}"));
+            repo.ConvertToPersistedBase(
+                new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
         }
-        finally
+
+        compactor.DoCompactSnapshot(states[contents.Length]);
+
+        Assert.That(repo.TryLeasePersistedState(states[contents.Length], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
+            "Expected a compacted snapshot to exist after DoCompactSnapshot");
+        using (compacted)
         {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
+            assertCompacted(compacted!);
         }
     }
 
@@ -768,52 +698,40 @@ public class PersistedSnapshotCompactorTests
     public void DoCompactSnapshot_CompactsPartialWindow(
         int[] presentBlocks, bool expectCompacted, long expectedFromBlock, long expectedToBlock)
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        try
+        // CompactSize=1 makes every block a boundary; block 8 → window [0, 8].
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 64 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 8 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId[] states = new StateId[9];
+        states[0] = new StateId(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 8; i++)
+            states[i] = new StateId(i, Keccak.Compute($"{i}"));
+
+        foreach (int block in presentBlocks)
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
-
-            // CompactSize=1 makes every block a boundary; block 8 → window [0, 8].
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 8 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            StateId[] states = new StateId[9];
-            states[0] = new StateId(0, Keccak.EmptyTreeHash);
-            for (int i = 1; i <= 8; i++)
-                states[i] = new StateId(i, Keccak.Compute($"{i}"));
-
-            foreach (int block in presentBlocks)
-            {
-                SnapshotContent content = new();
-                content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
-                repo.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            }
-
-            compactor.DoCompactSnapshot(states[8]);
-
-            if (!expectCompacted)
-            {
-                Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? none), Is.False,
-                    "Expected no compacted snapshot");
-                _ = none;
-            }
-            else
-            {
-                Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
-                    "Expected a compacted snapshot");
-                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(expectedFromBlock));
-                Assert.That(compacted.To.BlockNumber, Is.EqualTo(expectedToBlock));
-                compacted.Dispose();
-            }
+            SnapshotContent content = new();
+            content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
+            repo.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
         }
-        finally
+
+        compactor.DoCompactSnapshot(states[8]);
+
+        if (!expectCompacted)
         {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
+            Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? none), Is.False,
+                "Expected no compacted snapshot");
+            _ = none;
+        }
+        else
+        {
+            Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
+                "Expected a compacted snapshot");
+            Assert.That(compacted!.From.BlockNumber, Is.EqualTo(expectedFromBlock));
+            Assert.That(compacted.To.BlockNumber, Is.EqualTo(expectedToBlock));
+            compacted.Dispose();
         }
     }
 
@@ -827,82 +745,70 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void CompactedSnapshot_TrieNodeResolution_NewerOverridesOlder()
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        try
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 64 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 4 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        TreePath sharedStatePath = new(Keccak.Compute("shared_state"), 4);
+        TreePath onlyOldStatePath = new(Keccak.Compute("only_old_state"), 4);
+        TreePath onlyNewStatePath = new(Keccak.Compute("only_new_state"), 4);
+        Hash256 storageTrieAddr = Keccak.Compute("storage_trie_addr");
+        TreePath sharedStoragePath = new(Keccak.Compute("shared_storage"), 6);
+
+        byte[] oldStateRlp = [0xC1, 0x80];
+        byte[] newStateRlp = [0xC2, 0x81, 0x42];
+        byte[] onlyOldRlp = [0xC1, 0x33];
+        byte[] onlyNewRlp = [0xC1, 0x55];
+        byte[] oldStorageRlp = [0xC1, 0x80];
+        byte[] newStorageRlp = [0xC2, 0x82, 0x99];
+
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 8; i++)
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
-
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            TreePath sharedStatePath = new(Keccak.Compute("shared_state"), 4);
-            TreePath onlyOldStatePath = new(Keccak.Compute("only_old_state"), 4);
-            TreePath onlyNewStatePath = new(Keccak.Compute("only_new_state"), 4);
-            Hash256 storageTrieAddr = Keccak.Compute("storage_trie_addr");
-            TreePath sharedStoragePath = new(Keccak.Compute("shared_storage"), 6);
-
-            byte[] oldStateRlp = [0xC1, 0x80];
-            byte[] newStateRlp = [0xC2, 0x81, 0x42];
-            byte[] onlyOldRlp = [0xC1, 0x33];
-            byte[] onlyNewRlp = [0xC1, 0x55];
-            byte[] oldStorageRlp = [0xC1, 0x80];
-            byte[] newStorageRlp = [0xC2, 0x82, 0x99];
-
-            StateId prev = new(0, Keccak.EmptyTreeHash);
-            for (int i = 1; i <= 8; i++)
+            StateId next = new(i, Keccak.Compute($"{i}"));
+            SnapshotContent c = new();
+            if (i == 1)
             {
-                StateId next = new(i, Keccak.Compute($"{i}"));
-                SnapshotContent c = new();
-                if (i == 1)
-                {
-                    c.StateNodes[sharedStatePath] = new TrieNode(NodeType.Leaf, oldStateRlp);
-                    c.StateNodes[onlyOldStatePath] = new TrieNode(NodeType.Leaf, onlyOldRlp);
-                    c.StorageNodes[(storageTrieAddr, sharedStoragePath)] = new TrieNode(NodeType.Leaf, oldStorageRlp);
-                }
-                else if (i == 8)
-                {
-                    c.StateNodes[sharedStatePath] = new TrieNode(NodeType.Leaf, newStateRlp);
-                    c.StateNodes[onlyNewStatePath] = new TrieNode(NodeType.Leaf, onlyNewRlp);
-                    c.StorageNodes[(storageTrieAddr, sharedStoragePath)] = new TrieNode(NodeType.Leaf, newStorageRlp);
-                }
-                else
-                {
-                    c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
-                }
-                repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-                prev = next;
+                c.StateNodes[sharedStatePath] = new TrieNode(NodeType.Leaf, oldStateRlp);
+                c.StateNodes[onlyOldStatePath] = new TrieNode(NodeType.Leaf, onlyOldRlp);
+                c.StorageNodes[(storageTrieAddr, sharedStoragePath)] = new TrieNode(NodeType.Leaf, oldStorageRlp);
             }
-
-            compactor.DoCompactSnapshot(prev);
-
-            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
-            using (compacted)
+            else if (i == 8)
             {
-                Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
-                Assert.That(sharedResult, Is.EqualTo(newStateRlp),
-                    "Overlapping state-node path must resolve to newest writer's RLP");
-
-                Assert.That(compacted.TryLoadStateNodeRlp(onlyOldStatePath, out byte[]? oldOnly), Is.True);
-                Assert.That(oldOnly, Is.EqualTo(onlyOldRlp),
-                    "State node only in the oldest source must survive the merge with its original RLP");
-
-                Assert.That(compacted.TryLoadStateNodeRlp(onlyNewStatePath, out byte[]? newOnly), Is.True);
-                Assert.That(newOnly, Is.EqualTo(onlyNewRlp),
-                    "State node only in the newest source must survive the merge with its original RLP");
-
-                Assert.That(compacted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, sharedStoragePath, out byte[]? storageResult), Is.True);
-                Assert.That(storageResult, Is.EqualTo(newStorageRlp),
-                    "Overlapping storage-node path must resolve to newest writer's RLP");
+                c.StateNodes[sharedStatePath] = new TrieNode(NodeType.Leaf, newStateRlp);
+                c.StateNodes[onlyNewStatePath] = new TrieNode(NodeType.Leaf, onlyNewRlp);
+                c.StorageNodes[(storageTrieAddr, sharedStoragePath)] = new TrieNode(NodeType.Leaf, newStorageRlp);
             }
+            else
+            {
+                c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
+            }
+            repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = next;
         }
-        finally
+
+        compactor.DoCompactSnapshot(prev);
+
+        Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
+        using (compacted)
         {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
+            Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
+            Assert.That(sharedResult, Is.EqualTo(newStateRlp),
+                "Overlapping state-node path must resolve to newest writer's RLP");
+
+            Assert.That(compacted.TryLoadStateNodeRlp(onlyOldStatePath, out byte[]? oldOnly), Is.True);
+            Assert.That(oldOnly, Is.EqualTo(onlyOldRlp),
+                "State node only in the oldest source must survive the merge with its original RLP");
+
+            Assert.That(compacted.TryLoadStateNodeRlp(onlyNewStatePath, out byte[]? newOnly), Is.True);
+            Assert.That(newOnly, Is.EqualTo(onlyNewRlp),
+                "State node only in the newest source must survive the merge with its original RLP");
+
+            Assert.That(compacted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, sharedStoragePath, out byte[]? storageResult), Is.True);
+            Assert.That(storageResult, Is.EqualTo(newStorageRlp),
+                "Overlapping storage-node path must resolve to newest writer's RLP");
         }
     }
 
@@ -920,66 +826,54 @@ public class PersistedSnapshotCompactorTests
     [TestCase(120)]
     public void WritePerAddressColumn_NoStorageFastPath_RoundTripsEoaSnapshot(int accountCount)
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        try
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 256 * 1024, blobFileSizeBytes: 4 * 1024 * 1024);
+        SnapshotRepository repo = tier.Repository;
+
+        // Every 7th address gets storage (so the streaming path also fires) and the
+        // routing decision flips per-address; every 5th address gets a self-destruct
+        // flag (so the SD sub-tag is exercised on the staged DenseByteIndex).
+        SnapshotContent c = new();
+        for (int i = 0; i < accountCount; i++)
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
-
-            // Every 7th address gets storage (so the streaming path also fires) and the
-            // routing decision flips per-address; every 5th address gets a self-destruct
-            // flag (so the SD sub-tag is exercised on the staged DenseByteIndex).
-            SnapshotContent c = new();
-            for (int i = 0; i < accountCount; i++)
-            {
-                Address addr = TestItem.Addresses[i];
-                c.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
-                if (i % 5 == 0)
-                    c.SelfDestructedStorageAddresses[addr] = (i % 10 == 0);
-                if (i % 7 == 0)
-                    c.Storages[(addr, 1)] = new SlotValue(new byte[] { (byte)(i & 0xFF) });
-            }
-
-            StateId s0 = new(0, Keccak.EmptyTreeHash);
-            StateId s1 = new(1, Keccak.Compute("p1"));
-            repo.ConvertToPersistedBase(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-
-            Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? built), Is.True);
-            using (built)
-            {
-                Assert.Multiple(() =>
-                {
-                    for (int i = 0; i < accountCount; i++)
-                    {
-                        Address addr = TestItem.Addresses[i];
-                        Assert.That(built!.TryGetAccount(addr, out Account? a), Is.True,
-                            $"Account {i} ({(i % 7 == 0 ? "with-storage" : "no-storage")}) must survive WritePerAddressColumn");
-                        Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
-                            $"Account {i} balance mismatch — pad bytes leaked into the value range");
-                        if (i % 5 == 0)
-                        {
-                            Assert.That(built.TryGetSelfDestructFlag(addr), Is.EqualTo((bool?)(i % 10 == 0)),
-                                $"Self-destruct flag for account {i} must survive the staged DenseByteIndex path");
-                        }
-                        if (i % 7 == 0)
-                        {
-                            SlotValue slot = default;
-                            Assert.That(built.TryGetSlot(addr, 1, ref slot), Is.True,
-                                $"Slot for storage-bearing account {i} must come back from the streaming path");
-                            SlotValue expected = new(new byte[] { (byte)(i & 0xFF) });
-                            Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(expected.AsReadOnlySpan.ToArray()));
-                        }
-                    }
-                });
-            }
+            Address addr = TestItem.Addresses[i];
+            c.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+            if (i % 5 == 0)
+                c.SelfDestructedStorageAddresses[addr] = (i % 10 == 0);
+            if (i % 7 == 0)
+                c.Storages[(addr, 1)] = new SlotValue(new byte[] { (byte)(i & 0xFF) });
         }
-        finally
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("p1"));
+        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+
+        Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? built), Is.True);
+        using (built)
         {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
+            Assert.Multiple(() =>
+            {
+                for (int i = 0; i < accountCount; i++)
+                {
+                    Address addr = TestItem.Addresses[i];
+                    Assert.That(built!.TryGetAccount(addr, out Account? a), Is.True,
+                        $"Account {i} ({(i % 7 == 0 ? "with-storage" : "no-storage")}) must survive WritePerAddressColumn");
+                    Assert.That(a!.Balance, Is.EqualTo((UInt256)(i + 1)),
+                        $"Account {i} balance mismatch — pad bytes leaked into the value range");
+                    if (i % 5 == 0)
+                    {
+                        Assert.That(built.TryGetSelfDestructFlag(addr), Is.EqualTo((bool?)(i % 10 == 0)),
+                            $"Self-destruct flag for account {i} must survive the staged DenseByteIndex path");
+                    }
+                    if (i % 7 == 0)
+                    {
+                        SlotValue slot = default;
+                        Assert.That(built.TryGetSlot(addr, 1, ref slot), Is.True,
+                            $"Slot for storage-bearing account {i} must come back from the streaming path");
+                        SlotValue expected = new(new byte[] { (byte)(i & 0xFF) });
+                        Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(expected.AsReadOnlySpan.ToArray()));
+                    }
+                }
+            });
         }
     }
 
@@ -995,68 +889,57 @@ public class PersistedSnapshotCompactorTests
     [TestCase(120)]
     public void Compact_MultiSourceMerge_NoStorageFastPath_RoundTrips(int accountCount)
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        try
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 256 * 1024,
+            blobFileSizeBytes: 4 * 1024 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 }, 0)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        // Both sources touch every address with a different balance — collision on
+        // every cursor address forces matchCount==2, and the absence of slots /
+        // storage-trie nodes in either source flips the no-storage routing on.
+        SnapshotContent c0 = new();
+        SnapshotContent c1 = new();
+        for (int i = 0; i < accountCount; i++)
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
-
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, PersistedSnapshotMaxCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config);
-
-            // Both sources touch every address with a different balance — collision on
-            // every cursor address forces matchCount==2, and the absence of slots /
-            // storage-trie nodes in either source flips the no-storage routing on.
-            SnapshotContent c0 = new();
-            SnapshotContent c1 = new();
-            for (int i = 0; i < accountCount; i++)
-            {
-                Address addr = TestItem.Addresses[i];
-                c0.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
-                c1.Accounts[addr] = Build.An.Account.WithBalance((UInt256)((i + 1) * 1000)).TestObject;
-                // Every 5th address: set the destruct flag only in c0 (older). TryAdd
-                // semantics must preserve it through the merge with c1 (which doesn't set
-                // it), and the staged DenseByteIndex must emit it as sub-tag 0x03.
-                if (i % 5 == 0)
-                    c0.SelfDestructedStorageAddresses[addr] = false;
-            }
-
-            StateId s0 = new(0, Keccak.EmptyTreeHash);
-            StateId s1 = new(1, Keccak.Compute("p1"));
-            StateId s2 = new(2, Keccak.Compute("p2"));
-            repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-
-            compactor.DoCompactSnapshot(s2);
-
-            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
-            using (compacted)
-            {
-                Assert.Multiple(() =>
-                {
-                    for (int i = 0; i < accountCount; i++)
-                    {
-                        Address addr = TestItem.Addresses[i];
-                        Assert.That(compacted!.TryGetAccount(addr, out Account? a), Is.True,
-                            $"Account {i} must survive the staged multi-source merge");
-                        Assert.That(a!.Balance, Is.EqualTo((UInt256)((i + 1) * 1000)),
-                            $"Account {i}: newest balance (c1) must win — pad bytes must not leak into the value range");
-                        if (i % 5 == 0)
-                        {
-                            Assert.That(compacted.TryGetSelfDestructFlag(addr), Is.False,
-                                $"Self-destruct flag for account {i} must survive the staged DenseByteIndex merge");
-                        }
-                    }
-                });
-            }
+            Address addr = TestItem.Addresses[i];
+            c0.Accounts[addr] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+            c1.Accounts[addr] = Build.An.Account.WithBalance((UInt256)((i + 1) * 1000)).TestObject;
+            // Every 5th address: set the destruct flag only in c0 (older). TryAdd
+            // semantics must preserve it through the merge with c1 (which doesn't set
+            // it), and the staged DenseByteIndex must emit it as sub-tag 0x03.
+            if (i % 5 == 0)
+                c0.SelfDestructedStorageAddresses[addr] = false;
         }
-        finally
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("p1"));
+        StateId s2 = new(2, Keccak.Compute("p2"));
+        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+
+        compactor.DoCompactSnapshot(s2);
+
+        Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
+        using (compacted)
         {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
+            Assert.Multiple(() =>
+            {
+                for (int i = 0; i < accountCount; i++)
+                {
+                    Address addr = TestItem.Addresses[i];
+                    Assert.That(compacted!.TryGetAccount(addr, out Account? a), Is.True,
+                        $"Account {i} must survive the staged multi-source merge");
+                    Assert.That(a!.Balance, Is.EqualTo((UInt256)((i + 1) * 1000)),
+                        $"Account {i}: newest balance (c1) must win — pad bytes must not leak into the value range");
+                    if (i % 5 == 0)
+                    {
+                        Assert.That(compacted.TryGetSelfDestructFlag(addr), Is.False,
+                            $"Self-destruct flag for account {i} must survive the staged DenseByteIndex merge");
+                    }
+                }
+            });
         }
     }
 
@@ -1077,50 +960,39 @@ public class PersistedSnapshotCompactorTests
     [Test]
     public void DoCompactSnapshot_WithNonZeroScheduleOffset_StartingBlockSpansFullAlignment()
     {
-        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
+        using FlatTestContainer tier = new(
+            arenaFileSizeBytes: 256 * 1024,
+            blobFileSizeBytes: 4 * 1024 * 1024,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 64, PersistedSnapshotMaxCompactSize = 32 }, 3)));
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        // 45 base snapshots, blocks 1..45. No intermediate compactions so
+        // AssemblePersistedSnapshotsForCompaction sees only bases.
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        StateId tip = prev;
+        for (int i = 1; i <= 45; i++)
+        {
+            StateId next = new(i, Keccak.Compute($"s{i}"));
+            SnapshotContent c = new();
+            c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
+            repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = next;
+            if (i == 45) tip = next;
+        }
+
+        // At block 45 with offset=3, alignment=16. Window must be (29, 45].
+        compactor.DoCompactSnapshot(tip);
+
+        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
-            using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024);
-            using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-            SnapshotRepository repo = repoH.Repository;
-
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 64, PersistedSnapshotMaxCompactSize = 32 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config, scheduleOffset: 3);
-
-            // 45 base snapshots, blocks 1..45. No intermediate compactions so
-            // AssemblePersistedSnapshotsForCompaction sees only bases.
-            StateId prev = new(0, Keccak.EmptyTreeHash);
-            StateId tip = prev;
-            for (int i = 1; i <= 45; i++)
-            {
-                StateId next = new(i, Keccak.Compute($"s{i}"));
-                SnapshotContent c = new();
-                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-                repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-                prev = next;
-                if (i == 45) tip = next;
-            }
-
-            // At block 45 with offset=3, alignment=16. Window must be (29, 45].
-            compactor.DoCompactSnapshot(tip);
-
-            Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
-            try
-            {
-                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),
-                    "startingBlockNumber must be (blockNumber - alignment) — the left edge of the window the offset-shifted alignment trigger selects");
-                Assert.That(compacted.To.BlockNumber, Is.EqualTo(45));
-                Assert.That(compacted.To.BlockNumber - compacted.From.BlockNumber, Is.EqualTo(16),
-                    "compacted span must equal alignment, not (blockNumber mod alignment)");
-            }
-            finally { compacted!.Dispose(); }
+            Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),
+                "startingBlockNumber must be (blockNumber - alignment) — the left edge of the window the offset-shifted alignment trigger selects");
+            Assert.That(compacted.To.BlockNumber, Is.EqualTo(45));
+            Assert.That(compacted.To.BlockNumber - compacted.From.BlockNumber, Is.EqualTo(16),
+                "compacted span must equal alignment, not (blockNumber mod alignment)");
         }
-        finally
-        {
-            if (Directory.Exists(testDir))
-                Directory.Delete(testDir, recursive: true);
-        }
+        finally { compacted!.Dispose(); }
     }
 }

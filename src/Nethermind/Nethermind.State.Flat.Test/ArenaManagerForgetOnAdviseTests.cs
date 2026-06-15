@@ -3,6 +3,8 @@
 
 using System;
 using System.IO;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
@@ -35,7 +37,11 @@ public class ArenaManagerForgetOnAdviseTests
     }
 
     private ArenaManager NewManager() =>
-        ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas"), pageCacheBytes: 1024L * Environment.SystemPageSize, maxArenaSize: 1L << 20);
+        new(Path.Combine(_testDir, "arenas"), new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 1024L * Environment.SystemPageSize,
+            ArenaFileSizeBytes = 1L << 20,
+        }, LimboLogs.Instance);
 
     // Throwaway file backing — the manager's `_arenas` dict still doesn't know about the
     // synthesised reservation's id, so the file-level madvise path operates on the synthetic

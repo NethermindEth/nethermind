@@ -50,10 +50,8 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void PersistSnapshot_And_Query()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -83,10 +81,8 @@ public class PersistedSnapshotRepositoryTests
     {
         // 64 MiB shared arena: a 256k-slot snapshot (~10 MiB) stays below the 512 MiB
         // dedicated-arena threshold, so it must fit within a single shared arena file.
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024 * 1024);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 4 * 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024 * 1024, blobFileSizeBytes: 4 * 1024 * 1024);
+        SnapshotRepository repo = tier.Repository;
 
         const int slotCount = 256 * 1024;
         SnapshotContent content = new();
@@ -110,10 +106,8 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void NewerSnapshot_OverridesOlderValue()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -150,21 +144,17 @@ public class PersistedSnapshotRepositoryTests
         MemDb catalogDb = new();
 
         // Session 1: persist a snapshot
-        using (ArenaManager smallArena1 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier1 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier1.Repository;
             Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
             repo.ConvertToPersistedBase(snap).Dispose();
         }
 
         // Session 2: reload from disk
-        using (ArenaManager smallArena2 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier2.Repository;
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
             Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snapshot), Is.True);
             snapshot!.Dispose();
@@ -174,10 +164,8 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void ConvertSnapshot_RoundTrip_AllDataCategories()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -235,10 +223,8 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void RemoveStatesUntil_RemovesOldSnapshots()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -267,10 +253,8 @@ public class PersistedSnapshotRepositoryTests
         // bug: ids were minted per base-conversion call, so 65k base
         // snapshots used 65k blob arena ids. Per-file ids pack many writers into one file —
         // file count stays bounded under steady state.
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024);
+        SnapshotRepository repo = tier.Repository;
 
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= count; i++)
@@ -283,7 +267,7 @@ public class PersistedSnapshotRepositoryTests
 
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(count));
         // Files stay packed: bounded by max file size / typical write size, not by snapshot count.
-        int blobFileCount = Directory.GetFiles(Path.Combine(_testDir, "blobs", "small"), "blob_*.bin").Length;
+        int blobFileCount = Directory.GetFiles(Path.Combine(tier.BaseDbPath, "persisted_snapshot", "blob"), "blob_*.bin").Length;
         Assert.That(blobFileCount, Is.LessThan(count),
             "expected many base snapshots to share blob arena files");
     }
@@ -292,10 +276,8 @@ public class PersistedSnapshotRepositoryTests
     [TestCase(false, TestName = "ConvertSnapshot_RecordsBlobRange(no trie nodes)")]
     public void ConvertSnapshot_RecordsBlobRange(bool withTrieNode)
     {
-        using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "base"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(arena, blobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -325,17 +307,13 @@ public class PersistedSnapshotRepositoryTests
         // The blob range lives in the snapshot's own metadata HSST (blob_range key), not the
         // catalog, so it must round-trip a restart: read back by the PersistedSnapshot ctor.
         MemDb catalogDb = new();
-        string arenaDir = Path.Combine(_testDir, "arenas", "base");
-        string blobDir = Path.Combine(_testDir, "blobs", "base");
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        using (ArenaManager arena1 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024))
-        using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
-        using (PersistedTierTestHarness repo1H = new(arena1, blobs1, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier1 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb))
         {
-            SnapshotRepository repo1 = repo1H.Repository;
+            SnapshotRepository repo1 = tier1.Repository;
             SnapshotContent content = new();
             content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
             if (withTrieNode)
@@ -344,10 +322,8 @@ public class PersistedSnapshotRepositoryTests
                 new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
         }
 
-        using ArenaManager arena2 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
-        using PersistedTierTestHarness repo2H = new(arena2, blobs2, catalogDb, new FlatDbConfig());
-        SnapshotRepository repo2 = repo2H.Repository;
+        using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
+        SnapshotRepository repo2 = tier2.Repository;
 
         Assert.That(repo2.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? reloaded), Is.True);
         using (reloaded)
@@ -358,10 +334,8 @@ public class PersistedSnapshotRepositoryTests
     [Test]
     public void LeaseBaseSnapshotsInRange_ReturnsBasesTilingWindow()
     {
-        using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "base"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(arena, blobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024);
+        SnapshotRepository repo = tier.Repository;
 
         StateId[] ids = new StateId[4];
         ids[0] = new(0, Keccak.EmptyTreeHash);
@@ -393,29 +367,23 @@ public class PersistedSnapshotRepositoryTests
         for (int i = 1; i <= 4; i++) ids[i] = new(i, Keccak.Compute($"s{i}"));
 
         MemDb catalogDb = new();
-        string arenaDir = Path.Combine(_testDir, "arenas", "base");
-        string blobDir = Path.Combine(_testDir, "blobs", "base");
 
         // Session 1: 4 bases + a CompactSize=4 persistable covering all 4 of them.
-        using (ArenaManager arena1 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024))
-        using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(arena1, blobs1, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier1 = new(
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 4 }, 0))))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier1.Repository;
             for (int i = 1; i <= 4; i++)
                 repo.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, arena1, config);
-            compactor.DoCompactPersistable(ids[4]);  // persistable at To=4 covering (0, 4]
+            tier1.Compactor.DoCompactPersistable(ids[4]);  // persistable at To=4 covering (0, 4]
         }
 
         // Session 2: reload. LoadFromCatalog now auto-calls ReconstructBloom.
-        using ArenaManager arena2 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
-        using PersistedTierTestHarness repo2H = new(arena2, blobs2, catalogDb, new FlatDbConfig());
-        SnapshotRepository repo2 = repo2H.Repository;
+        using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
+        SnapshotRepository repo2 = tier2.Repository;
 
         // With the v7 (To, depth)-keyed catalog the base at ids[4] survives alongside the
         // persistable at the same To — both buckets must lease independently.
@@ -467,29 +435,23 @@ public class PersistedSnapshotRepositoryTests
         for (int i = 1; i <= 4; i++) ids[i] = new(i, Keccak.Compute($"s{i}"));
 
         MemDb catalogDb = new();
-        string arenaDir = Path.Combine(_testDir, "arenas", "rt");
-        string blobDir = Path.Combine(_testDir, "blobs", "rt");
 
-        using (ArenaManager arena1 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024))
-        using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(arena1, blobs1, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier1 = new(
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 4 }, 0))))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier1.Repository;
             for (int i = 1; i <= 4; i++)
                 repo.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, arena1, config);
-            compactor.DoCompactPersistable(ids[4]);
+            tier1.Compactor.DoCompactPersistable(ids[4]);
 
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(5), "session 1 must hold 4 bases + 1 persistable");
         }
 
-        using ArenaManager arena2 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
-        using PersistedTierTestHarness repo2H = new(arena2, blobs2, catalogDb, new FlatDbConfig());
-        SnapshotRepository repo2 = repo2H.Repository;
+        using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
+        SnapshotRepository repo2 = tier2.Repository;
 
         Assert.That(repo2.PersistedSnapshotCount, Is.EqualTo(5),
             "all five snapshots (4 bases + 1 persistable at the last base's To) must round-trip under v7");
@@ -522,14 +484,12 @@ public class PersistedSnapshotRepositoryTests
         for (int i = 1; i <= N; i++) ids[i] = new(i, Keccak.Compute($"s{i}"));
 
         MemDb catalogDb = new();
-        string arenaDir = Path.Combine(_testDir, "arenas", "par");
-        string blobDir = Path.Combine(_testDir, "blobs", "par");
 
-        using (ArenaManager arena1 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024))
-        using (BlobArenaManager blobs1 = new(blobDir, 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(arena1, blobs1, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier1 = new(
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb,
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 8 }, 0))))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier1.Repository;
             for (int i = 1; i <= N; i++)
                 repo.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length])).Dispose();
@@ -537,16 +497,12 @@ public class PersistedSnapshotRepositoryTests
             // Throw in two persistables (CompactSize=8) at boundaries 8 and 16 so the
             // catalog has multi-bucket entries that exercise the bucket-routing branch
             // in the parallel LoadSnapshot.
-            IFlatDbConfig config = new FlatDbConfig { CompactSize = 8 };
-            PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, arena1, config);
-            compactor.DoCompactPersistable(ids[8]);
-            compactor.DoCompactPersistable(ids[16]);
+            tier1.Compactor.DoCompactPersistable(ids[8]);
+            tier1.Compactor.DoCompactPersistable(ids[16]);
         }
 
-        using ArenaManager arena2 = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager blobs2 = new(blobDir, 1024 * 1024);
-        using PersistedTierTestHarness repo2H = new(arena2, blobs2, catalogDb, new FlatDbConfig());
-        SnapshotRepository repo2 = repo2H.Repository;
+        using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
+        SnapshotRepository repo2 = tier2.Repository;
 
         // All N bases + 2 persistables survive.
         Assert.That(repo2.PersistedSnapshotCount, Is.EqualTo(N + 2));

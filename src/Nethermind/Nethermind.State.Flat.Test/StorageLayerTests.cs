@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
@@ -150,7 +151,11 @@ public class StorageLayerTests
     public void ArenaManager_CreateWriterAndComplete_WritesToArena()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 4096);
+        using ArenaManager manager = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 4096,
+        }, LimboLogs.Instance);
         manager.Initialize([]);
 
         byte[] data = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -175,7 +180,11 @@ public class StorageLayerTests
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
-        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using ArenaManager manager = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 64 * 1024,
+        }, LimboLogs.Instance);
         manager.Initialize([]);
 
         // First write some data to establish a baseline
@@ -214,7 +223,11 @@ public class StorageLayerTests
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
-        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 64 * 1024);
+        using ArenaManager manager = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 64 * 1024,
+        }, LimboLogs.Instance);
         manager.Initialize([]);
 
         // Write small data via ArenaWriter
@@ -249,7 +262,12 @@ public class StorageLayerTests
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // Lower the dedicated threshold so the test doesn't need to allocate 512 MiB.
-        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 4096, dedicatedArenaThreshold: 64 * 1024);
+        using ArenaManager manager = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 4096,
+            PersistedSnapshotDedicatedArenaThresholdBytes = 64 * 1024,
+        }, LimboLogs.Instance);
         manager.Initialize([]);
 
         const long estimate = 256 * 1024;
@@ -274,7 +292,11 @@ public class StorageLayerTests
     public void ArenaManager_ConcurrentWriters_UseDifferentArenas()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, 0, maxArenaSize: 200);
+        using ArenaManager manager = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 200,
+        }, LimboLogs.Instance);
         manager.Initialize([]);
 
         // Write some data

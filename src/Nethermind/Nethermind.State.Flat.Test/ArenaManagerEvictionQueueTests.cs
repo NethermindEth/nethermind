@@ -4,6 +4,8 @@
 using System;
 using System.IO;
 using System.Threading;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
@@ -46,7 +48,11 @@ public class ArenaManagerEvictionQueueTests
     }
 
     private ArenaManager NewManager(long pageCacheBytes) =>
-        ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas"), pageCacheBytes, maxArenaSize: 64 * 1024);
+        new(Path.Combine(_testDir, "arenas"), new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = pageCacheBytes,
+            ArenaFileSizeBytes = 64 * 1024,
+        }, LimboLogs.Instance);
 
     [Test]
     public void DisabledTracker_NoQueueOrDrain_QueueEvictionIsNoOp()

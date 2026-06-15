@@ -72,10 +72,8 @@ public class LongFinalityIntegrationTests
     [Test]
     public void FullStack_PersistAndQuery_AccountsStorageAndTrieNodes()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -143,11 +141,9 @@ public class LongFinalityIntegrationTests
         MemDb catalogDb = new();
 
         // Session 1: persist two snapshots
-        using (ArenaManager smallArena1 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: maxArenaSize))
-        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier1 = new(arenaFileSizeBytes: maxArenaSize, baseDbPath: _testDir, catalogDb: catalogDb))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier1.Repository;
 
             repo.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
             {
@@ -166,8 +162,8 @@ public class LongFinalityIntegrationTests
         // referenced blob file with PersistOnShutdown before tearing down the managers,
         // so both file kinds must survive on disk for the catalog to re-bind in session 2.
         // Split assertions so a missing flag on one side fingerprints which side regressed.
-        string arenaDir = Path.Combine(_testDir, "arenas", "base");
-        string blobDir = Path.Combine(_testDir, "blobs", "small");
+        string arenaDir = Path.Combine(_testDir, "persisted_snapshot", "arena");
+        string blobDir = Path.Combine(_testDir, "persisted_snapshot", "blob");
         Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Is.Not.Empty,
             "arena files were deleted on Dispose — PersistOnShutdown flag did not propagate to ArenaFile");
         string[] blobFiles = Directory.GetFiles(blobDir, "blob_*.bin");
@@ -187,11 +183,9 @@ public class LongFinalityIntegrationTests
         }
 
         // Session 2: reload and verify
-        using (ArenaManager smallArena2 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier2.Repository;
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(2));
 
             // s0→s1 carries paths1[] + AddressA; s1→s2 carries paths2[] + AddressB. Every
@@ -278,10 +272,8 @@ public class LongFinalityIntegrationTests
     [TestCase(100)]
     public void ManySnapshots_PersistAndQuery(int snapshotCount)
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024);
+        SnapshotRepository repo = tier.Repository;
 
         StateId prev = new(0, Keccak.EmptyTreeHash);
         for (int i = 1; i <= snapshotCount; i++)
@@ -300,10 +292,8 @@ public class LongFinalityIntegrationTests
     [Test]
     public async Task FlatDbManager_EndToEnd_WithPersistedSnapshots()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -352,11 +342,9 @@ public class LongFinalityIntegrationTests
         MemDb catalogDb = new();
 
         // Session 1: persist snapshots
-        using (ArenaManager smallArena1 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier1 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier1.Repository;
             repo.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject)).Dispose();
             repo.ConvertToPersistedBase(CreateSnapshot(s1, s2, c =>
@@ -366,11 +354,9 @@ public class LongFinalityIntegrationTests
         }
 
         // Session 2: reload and prune
-        using (ArenaManager smallArena2 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(smallArena2, smallBlobs2, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier2.Repository;
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(3));
 
             repo.RemovePersistedStatesUntil(3); // s1 and s2 removed
@@ -378,11 +364,9 @@ public class LongFinalityIntegrationTests
         }
 
         // Session 3: verify pruned state persists
-        using (ArenaManager smallArena3 = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (BlobArenaManager smallBlobs3 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
-        using (PersistedTierTestHarness repoH = new(smallArena3, smallBlobs3, catalogDb, new FlatDbConfig()))
+        using (FlatTestContainer tier3 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
-            SnapshotRepository repo = repoH.Repository;
+            SnapshotRepository repo = tier3.Repository;
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
         }
     }
@@ -390,10 +374,8 @@ public class LongFinalityIntegrationTests
     [Test]
     public void EmptySnapshot_PersistsAndLoads()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));

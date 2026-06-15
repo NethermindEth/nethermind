@@ -37,14 +37,8 @@ public class PersistenceManagerPersistedTests
     [Test]
     public void ConvertToPersistedSnapshot_PersistsViaManager()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
-
-        IFlatDbConfig config = new FlatDbConfig();
-        config.PersistedSnapshotMaxCompactSize = config.CompactSize / 2;
-        _ = CompactorTestFactory.Create(repo, smallArena, config);
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -62,14 +56,8 @@ public class PersistenceManagerPersistedTests
     [Test]
     public void PrunePersistedSnapshots_RemovesOldSnapshots()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
-
-        IFlatDbConfig config = new FlatDbConfig();
-        config.PersistedSnapshotMaxCompactSize = config.CompactSize / 2;
-        _ = CompactorTestFactory.Create(repo, smallArena, config);
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         // Persist snapshots at various block heights
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -100,10 +88,8 @@ public class PersistenceManagerPersistedTests
     [Test]
     public void RemoveSiblingAndDescendents_CrossTier_PrunesPersistedOrphans_KeepsCanonicalThroughPersistedAncestor()
     {
-        using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(arena, blobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -139,10 +125,8 @@ public class PersistenceManagerPersistedTests
     [Test]
     public void RemoveSiblingAndDescendents_PersistedLinearChain_RemovesNothing()
     {
-        using ArenaManager arena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(arena, blobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));

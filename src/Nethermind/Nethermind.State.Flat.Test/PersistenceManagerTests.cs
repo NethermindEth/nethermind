@@ -28,7 +28,7 @@ public class PersistenceManagerTests
     private PersistenceManager _persistenceManager = null!;
     private FlatDbConfig _config = null!;
     private TestFinalizedStateProvider _finalizedStateProvider = null!;
-    private PersistedTierTestHarness _harness = null!;
+    private FlatTestContainer _tier = null!;
     private SnapshotRepository _snapshotRepository = null!;
     private IPersistence _persistence = null!;
     private IPersistedSnapshotCompactor _persistedSnapshotCompactor = null!;
@@ -49,10 +49,11 @@ public class PersistenceManagerTests
 
         _resourcePool = new ResourcePool(_config);
         _finalizedStateProvider = new TestFinalizedStateProvider();
-        // SnapshotRepository owns both tiers over a real temp-dir-backed persisted store; the harness
-        // pairs it with its loader (load on construct, teardown on dispose).
-        _harness = SnapshotRepositoryTestFactory.Create();
-        _snapshotRepository = _harness.Repository;
+        // SnapshotRepository owns both tiers over a real temp-dir-backed persisted store, wired the
+        // production way through FlatWorldStateModule; the container pairs it with its loader (load on
+        // build, teardown on dispose).
+        _tier = new FlatTestContainer();
+        _snapshotRepository = _tier.Repository;
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -69,7 +70,7 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
-            _harness.Loader);
+            _tier.Loader);
     }
 
     [TearDown]
@@ -77,7 +78,7 @@ public class PersistenceManagerTests
     {
         await _persistenceManager.DisposeAsync();
         await _persistedSnapshotCompactor.DisposeAsync();
-        _harness.Dispose();
+        _tier.Dispose();
     }
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)
@@ -196,7 +197,7 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
-            _harness.Loader);
+            _tier.Loader);
 
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);

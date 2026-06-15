@@ -53,10 +53,8 @@ public class FlatDbManagerPersistedTests
     [Test]
     public async Task ConstructorAcceptsPersistedRepository()
     {
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
@@ -87,10 +85,8 @@ public class FlatDbManagerPersistedTests
         content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
         repo.ConvertToPersistedBase(snap).Dispose();
 
         // Mock persistence manager at s0 — persisted snapshot fills gap s0→s1
@@ -125,10 +121,8 @@ public class FlatDbManagerPersistedTests
     [Test]
     public async Task DisposeAsync_DisposesPersistedRepository()
     {
-        ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
-        using PersistedTierTestHarness repoH = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig());
-        SnapshotRepository repo = repoH.Repository;
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
 
         // Persist something to verify cleanup
         StateId s0 = new(0, Keccak.EmptyTreeHash);

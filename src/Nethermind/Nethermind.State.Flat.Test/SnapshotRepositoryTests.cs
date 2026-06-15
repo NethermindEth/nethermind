@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class SnapshotRepositoryTests
 {
-    private PersistedTierTestHarness _harness = null!;
+    private FlatTestContainer _tier = null!;
     private SnapshotRepository _repository = null!;
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
@@ -30,12 +30,12 @@ public class SnapshotRepositoryTests
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _harness = SnapshotRepositoryTestFactory.Create();
-        _repository = _harness.Repository;
+        _tier = new FlatTestContainer();
+        _repository = _tier.Repository;
     }
 
     [TearDown]
-    public void TearDown() => _harness.Dispose();
+    public void TearDown() => _tier.Dispose();
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {

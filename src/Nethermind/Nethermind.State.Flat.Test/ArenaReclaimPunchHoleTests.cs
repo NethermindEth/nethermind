@@ -5,6 +5,8 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
@@ -42,9 +44,12 @@ public class ArenaReclaimPunchHoleTests
         int pageSize = Environment.SystemPageSize;
         string arenaDir = Path.Combine(_testDir, "arena");
 
-        using ArenaManager manager = ArenaManagerTestFactory.Create(arenaDir, pageCacheBytes: 0,
-            maxArenaSize: 8L * 1024 * 1024,
-            punchHoleOnReclaim: punchHoleOnReclaim);
+        using ArenaManager manager = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 8L * 1024 * 1024,
+            PersistedSnapshotPunchHoleOnReclaim = punchHoleOnReclaim,
+        }, LimboLogs.Instance);
 
         // Two reservations in one shared arena file: disposing the first leaves the file
         // alive (the second keeps DeadBytes < Frontier), so cleanup actually punches.
