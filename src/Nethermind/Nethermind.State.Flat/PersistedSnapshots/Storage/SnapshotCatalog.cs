@@ -87,11 +87,12 @@ public sealed class SnapshotCatalog(IDb db)
     private static long Depth(CatalogEntry entry) => entry.To.BlockNumber - entry.From.BlockNumber;
 
     /// <summary>
-    /// Read every catalog entry from the underlying DB, sorted by <c>To.BlockNumber</c> ascending
-    /// (callers depend on block order, e.g. the registration-tip rebuild after a load). The DB is
-    /// the source of truth; no entries are cached in memory.
+    /// Lazily stream every catalog entry from the underlying DB (unordered) — the iterator reads one
+    /// entry at a time rather than buffering them all. The version check and first-write of the
+    /// metadata word run eagerly when <see cref="Load"/> is called; the entries are read on
+    /// enumeration. The DB is the source of truth; no entries are cached in memory.
     /// </summary>
-    public IReadOnlyList<CatalogEntry> Load()
+    public IEnumerable<CatalogEntry> Load()
     {
         byte[]? meta = _db.Get(MetadataKey);
         if (meta is not null)
@@ -107,22 +108,24 @@ public sealed class SnapshotCatalog(IDb db)
                     $"Persisted snapshot catalog version mismatch: on-disk v{version}, runtime expects v{CurrentVersion}. " +
                     "The persisted_snapshot/ directory has an incompatible layout — wipe and resync.");
         }
+        else
+        {
+            // Persist the version word if the catalog has never been written before.
+            WriteMetadata();
+        }
 
-        List<CatalogEntry> entries = [];
+        return EnumerateEntries();
+    }
+
+    private IEnumerable<CatalogEntry> EnumerateEntries()
+    {
         foreach (KeyValuePair<byte[], byte[]?> kv in _db.GetAll(ordered: false))
         {
             // Entry keys are exactly KeySize; the metadata key is 4 bytes.
             if (kv.Key.Length != KeySize) continue;
             if (kv.Value is null || kv.Value.Length != EntrySize) continue;
-            entries.Add(ReadEntry(kv.Value));
+            yield return ReadEntry(kv.Value);
         }
-
-        // Persist the version word if the catalog has never been written before.
-        if (meta is null)
-            WriteMetadata();
-
-        entries.Sort(static (a, b) => a.To.BlockNumber.CompareTo(b.To.BlockNumber));
-        return entries;
     }
 
     private void WriteMetadata()

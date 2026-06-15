@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using Autofac.Features.AttributeFilters;
 using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -75,7 +76,7 @@ public class SnapshotRepository : ISnapshotRepository
     public SnapshotRepository(
         IArenaManager arenaManager,
         BlobArenaManager blobArenaManager,
-        IDb catalogDb,
+        [KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb catalogDb,
         IFlatDbConfig config,
         ILogManager logManager)
     {

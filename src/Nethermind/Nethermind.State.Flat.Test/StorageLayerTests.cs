@@ -126,7 +126,7 @@ public class StorageLayerTests
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Not.Null);
         Assert.That(catalog.Remove(s1, depth: 1), Is.True);
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Null);
-        Assert.That(catalog.Load().Count, Is.EqualTo(2));
+        Assert.That(catalog.Load().Count(), Is.EqualTo(2));
         Assert.That(catalog.Remove(missing, depth: 1), Is.False);
 
         // Removing one (To, depth) leaves the sibling at the same To intact.
