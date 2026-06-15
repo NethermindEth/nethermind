@@ -28,9 +28,15 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
         }
 
-        IEnumerable<string> directories = !string.IsNullOrEmpty(testsDir)
-            ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
-            : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
+        string rootDir = !string.IsNullOrEmpty(testsDir)
+            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
+            : testsDirectoryName;
+
+        // Skip absent fork fixtures instead of throwing
+        if (!Directory.Exists(rootDir))
+            return [];
+
+        IEnumerable<string> directories = Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true });
         List<string> testDirs = [];
         foreach (string testDir in directories)
         {
