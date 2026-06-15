@@ -61,8 +61,12 @@ public static class SszCodec
         safeBlockHash: w.SafeBlockHash);
 
 
-    public static int EncodeGetPayloadV1Response(ExecutionPayload ep, IBufferWriter<byte> writer)
-        => EncodeToWriter(new SszExecutionPayloadV1(ep), writer);
+    public static int EncodeGetPayloadV1Response(GetPayloadV2Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new GetPayloadResponseV1Wire
+        {
+            ExecutionPayload = new SszExecutionPayloadV1(r!.ExecutionPayload),
+            BlockValue = r.BlockValue
+        }, writer);
 
     public static int EncodeGetPayloadV2Response(GetPayloadV2Result? r, IBufferWriter<byte> writer)
         => EncodeToWriter(new GetPayloadResponseV2Wire
@@ -148,19 +152,9 @@ public static class SszCodec
         return EncodeToWriter(new GetBlobsV2ResponseWire { Entries = arr }, writer);
     }
 
+    // execution-apis#793 forbids a separate BlobV3 wire type — /v3 entry shape is V2 verbatim.
     public static int EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
-    {
-        int count = blobs.Count;
-        BlobV3EntryWire[] arr = new BlobV3EntryWire[count];
-        for (int i = 0; i < count; i++)
-        {
-            BlobAndProofV2? b = blobs[i];
-            arr[i] = b is null
-                ? new BlobV3EntryWire { Available = false, Contents = default }
-                : new BlobV3EntryWire { Available = true, Contents = new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() } };
-        }
-        return EncodeToWriter(new GetBlobsV3ResponseWire { Entries = arr }, writer);
-    }
+        => EncodeGetBlobsV2Response(blobs, writer);
 
     public static (byte[][] hashes, System.Collections.BitArray indices) DecodeGetBlobsV4Request(ReadOnlySequence<byte> buf)
     {
