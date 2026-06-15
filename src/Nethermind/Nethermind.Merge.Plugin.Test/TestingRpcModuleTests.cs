@@ -26,6 +26,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
@@ -352,12 +353,34 @@ public class TestingRpcModuleTests
         }
     }
 
+    [TestCase(null, Description = "No config — uses default target, adjusts up from parent below default")]
+    [TestCase(20_000_000L, Description = "Configured target below parent — adjusts down")]
+    public async Task Gas_limit_uses_configured_or_default_target(long? targetBlockGasLimit)
+    {
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(
+            targetBlockGasLimit: targetBlockGasLimit);
+
+        ResultWrapper<object> result = await module.testing_buildBlockV1(
+            parentHash, CreateDefaultPayloadAttributes(parentHeader), [], []);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+
+        long effectiveTarget = targetBlockGasLimit ?? TestingRpcGasLimitCalculator.DefaultGasLimit;
+        TargetAdjustedGasLimitCalculator expectedCalculator = new(
+            new TestSpecProvider(Osaka.Instance),
+            new BlocksConfig { TargetBlockGasLimit = effectiveTarget });
+        long expectedGasLimit = expectedCalculator.GetGasLimit(parentHeader);
+        Assert.That(payloadResult.ExecutionPayload.GasLimit, Is.EqualTo(expectedGasLimit));
+    }
+
     private (TestingRpcModule module, IBlockTree blockTree, IBlockFinder blockFinder, BlockHeader parentHeader) CreateModuleWithMocks(
         IReleaseSpec? spec = null,
         ulong? slotNumber = null,
         Action<Block>? onProcess = null,
         Func<Block, Block?>? processOverride = null,
         ITxSource? txSource = null,
+        long? targetBlockGasLimit = null,
         Action<Block, ProcessingOptions>? onProcessWithOptions = null)
     {
         BlockHeader parentHeader = CreateDefaultParentHeader(slotNumber);
@@ -365,8 +388,8 @@ public class TestingRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? Osaka.Instance);
 
-        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
-        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+        TestingRpcGasLimitCalculator gasLimitCalculator = new(
+            specProvider, new BlocksConfig { TargetBlockGasLimit = targetBlockGasLimit });
 
         IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess, onProcessWithOptions);
 
@@ -392,10 +415,11 @@ public class TestingRpcModuleTests
         ulong? slotNumber = null,
         Action<Block>? onProcess = null,
         Func<Block, Block?>? processOverride = null,
-        ITxSource? txSource = null)
+        ITxSource? txSource = null,
+        long? targetBlockGasLimit = null)
     {
         (TestingRpcModule module, _, IBlockFinder blockFinder, BlockHeader parentHeader) =
-            CreateModuleWithMocks(spec, slotNumber, onProcess, processOverride, txSource);
+            CreateModuleWithMocks(spec, slotNumber, onProcess, processOverride, txSource, targetBlockGasLimit);
 
         Hash256 parentHash = parentHeader.Hash!;
         Block parentBlock = new(parentHeader, [], [], []);
