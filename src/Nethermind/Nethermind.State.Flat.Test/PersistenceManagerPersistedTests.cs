@@ -123,6 +123,39 @@ public class PersistenceManagerPersistedTests
     }
 
     [Test]
+    public void RemoveSiblingAndDescendents_PersistedOrphanAboveInMemoryTip_IsPruned()
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        SnapshotRepository repo = tier.Repository;
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s2 = new(2, Keccak.Compute("2"));
+        StateId c3 = new(3, Keccak.Compute("c3"));
+        StateId nc3 = new(3, Keccak.Compute("nc3"));
+        StateId nc4 = new(4, Keccak.Compute("nc4"));
+
+        // Persisted tier: common chain s0->s1->s2, canonical s2->C3, and a non-canonical fork
+        // s2->NC3->NC4 diverging at block 3 — NC4 is an orphan at block 4.
+        PersistToTier(repo, s0, s1);
+        PersistToTier(repo, s1, s2);
+        PersistToTier(repo, s2, c3);
+        PersistToTier(repo, s2, nc3);
+        PersistToTier(repo, nc3, nc4);
+
+        // In-memory tip sits at the canonical block (3), BELOW the persisted orphan NC4 (block 4).
+        // The orphan walk's upper bound must come from the persisted tier, not the in-memory tip,
+        // or NC4 is never visited.
+        AddInMemory(repo, s2, c3);
+
+        repo.RemoveSiblingAndDescendents(c3);
+
+        Assert.That(LeasePresent(repo, nc4), Is.False, "persisted orphan NC4 above the in-memory tip should be pruned");
+        Assert.That(repo.HasBaseSnapshot(c3), Is.True, "canonical C3 should be kept");
+        Assert.That(repo.HasBaseSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
+    }
+
+    [Test]
     public void RemoveSiblingAndDescendents_PersistedLinearChain_RemovesNothing()
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);

@@ -750,8 +750,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         // was converted before the reorg pruned it — in the persisted tier.
         if (!HasForkAt(canonicalBlock) && !HasPersistedForkAt(canonicalStateId)) return;
 
-        // The in-memory tier always sits at or above the persisted tier, so its highest block
-        // bounds the orphan walk across both.
+        // Bound the orphan walk by the highest block in either tier. GetLastSnapshotId folds in the
+        // persisted-tier tips, so a persisted orphan above the in-memory tip — DoConvert moves a
+        // converted range into the persisted tier and drops it from in-memory — is still covered.
         long maxBlock = GetLastSnapshotId()?.BlockNumber ?? long.MinValue;
         if (maxBlock <= canonicalBlock) return;
 
