@@ -76,11 +76,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     cfg.ArenaFileSizeBytes);
             })
             .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
-            // SnapshotRepository owns both tiers: the in-memory snapshots and the persisted tier
-            // (the arena/blob/catalog stores). It always loads the catalog on construction, so the
-            // persisted_snapshot/ stores are created even when long finality is disabled — the
-            // conversion path stays gated in PersistenceManager. The catalog column is bound via
-            // [KeyFilter(DbNames.PersistedSnapshotCatalog)] on its ctor (keyed IDb registered below).
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
@@ -106,8 +101,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .CreateColumnsDb<PersistedSnapshotCatalogColumns>(new DbSettings(
                     nameof(DbNames.PersistedSnapshotCatalog),
                     Path.Combine("persisted_snapshot", "catalog"))))
-            // Expose the single catalog column as a keyed IDb so SnapshotRepository binds it via
-            // [KeyFilter(DbNames.PersistedSnapshotCatalog)] on its constructor.
             .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx =>
                 ctx.Resolve<IColumnsDb<PersistedSnapshotCatalogColumns>>().GetColumnDb(PersistedSnapshotCatalogColumns.Catalog))
             .AddSingleton<RocksDbPersistence>()

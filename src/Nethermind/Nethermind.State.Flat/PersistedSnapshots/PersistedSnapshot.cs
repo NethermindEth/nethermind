@@ -32,27 +32,14 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public sealed class PersistedSnapshot : RefCountingDisposable
 {
 
-    // On address-bound cache miss, pre-fault the trailing slice of the per-address inner HSST
-    // in one madvise(MADV_POPULATE_READ) syscall over a fixed window at the tail of the bound.
-    // The DenseByteIndex layout streams values in descending-tag order, so the hot small-blob
-    // sub-tags (AccountSubTag, SelfDestructSubTag) and the index trailer cluster at the tail —
-    // 32 KiB lands at most 8 pages and covers every realistic hot inner HSST entirely. When the
-    // whole bound fits inside the window, the sub-tag walk continues over the now-resident span
-    // through a zero-touch <see cref="SpanByteReader"/> instead of <see cref="ArenaByteReader"/>,
-    // skipping the per-read tracker probe loop for the rest of the lookup.
+    // Window pre-faulted (one MADV_POPULATE_READ) at the tail of the bound on an address-bound
+    // cache miss, so the rest of the inner-HSST walk reads an already-resident span.
     private const long AddressBoundWarmupBytes = 32 * 1024;
 
     private AddressBoundCache _addrCache;
 
-    // Cached descriptor of the outer address-column BTree's root, snapshotted once at
-    // construction. The address column is immutable for the life of the snapshot, so the
-    // values the BTree walker would otherwise read out of the trailer (root prefix bytes,
-    // root size, key length) are fixed too. Caching them lets the cache-miss path of
-    // <see cref="TryGetAddressBound"/> skip the two trailer-region reads in
-    // <see cref="HsstBTreeReader.TrySeek"/> and start the walk from the cached root offset.
-    // _addressBtreeBound.Length == 0 is the sentinel for "no address column in this snapshot"
-    // (legitimate for a snapshot that touched no accounts); the miss path short-circuits to
-    // "no entry" without bothering with the BTree at all.
+    // Cached address-column BTree root, snapshotted at construction (the column is immutable for
+    // the snapshot's life). Length == 0 = no address column.
     private readonly Bound _addressBtreeBound;
     private readonly long _addressBtreeRootStart;
     private readonly byte[] _addressBtreeRootPrefix = [];
@@ -174,12 +161,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 acquired++;
             }
 
-            // Cache the address-column BTree's root descriptor so the cache-miss path of
-            // TryGetAddressBound can walk the tree directly without re-reading the trailer
-            // and root prefix on every miss. Defensive: a missing address column (legitimate
-            // for snapshots that touched no accounts) or an unreadable trailer leaves the
-            // cache empty and the miss path short-circuits to "no entry" — same outcome as
-            // the slow path delivered before.
+            // Cache the address-column BTree root for the TryGetAddressBound miss path. A missing
+            // column or unreadable trailer leaves the cache empty and the miss path returns "no entry".
             ArenaByteReader probeReader = _reservation.CreateReader();
             if (PersistedSnapshotReader.TryGetAddressColumnBound<ArenaByteReader, NoOpPin>(
                     in probeReader, out Bound addrColBound) &&
