@@ -248,8 +248,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
     {
-        // A linked list of snapshots was considered but rejected: the constantly-moving chain
-        // makes invalidation error-prone.
+        // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
+        // hard to pull of due to the constantly moving chain making invalidation hard.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
 
         if (baseBlock == StateId.PreGenesis)
@@ -473,7 +473,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await _persistenceTask;
         await _clearBundleCacheTask;
 
-        _snapshotRepository.Dispose();
         _cancelTokenSource.Dispose();
     }
 }

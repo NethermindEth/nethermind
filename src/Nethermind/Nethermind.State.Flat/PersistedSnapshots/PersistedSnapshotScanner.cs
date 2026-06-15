@@ -305,7 +305,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         public TreePath Path => _stage switch
         {
             0 => TreePath.DecodeWith4Byte(_key),
-            1 => PersistedSnapshotReader.DecodeCompactTreePath(_key),
+            1 => TreePath.DecodeWith8Byte(_key),
             _ => new(new ValueHash256(_key[..32]), _key[32]),
         };
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
@@ -387,7 +387,7 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
         public TreePath Path => _stage switch
         {
             0 => TreePath.DecodeWith4Byte(_pathKey),
-            1 => PersistedSnapshotReader.DecodeCompactTreePath(_pathKey),
+            1 => TreePath.DecodeWith8Byte(_pathKey),
             _ => new(new ValueHash256(_pathKey[..32]), _pathKey[32]),
         };
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);

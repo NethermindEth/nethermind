@@ -241,7 +241,4 @@ public static class PersistedSnapshotReader
         bound = r.GetBound();
         return true;
     }
-
-    internal static TreePath DecodeCompactTreePath(ReadOnlySpan<byte> key) =>
-        TreePath.DecodeWith8Byte(key);
 }

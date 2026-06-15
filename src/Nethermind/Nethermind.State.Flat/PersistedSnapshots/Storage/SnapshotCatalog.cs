@@ -40,28 +40,8 @@ public sealed class SnapshotCatalog(IDb db)
     private const int KeySize = 48;
 
     // Catalog version: bumped when the on-disk binary layout changes incompatibly. Old
-    // directories will fail to load with a clear "wipe and resync" message. v2 was the
-    // BlobArena-backed layout (no PersistedSnapshotType byte, ref_ids are blob arena ids).
-    // v3: blob arena ids are now per-file (was per-slice); NodeRef.RlpDataOffset is now
-    // file-absolute (was slice-relative); entries are keyed by StateId.To and the
-    // per-entry Id field is gone.
-    // v4: BTreeNode node Flags byte no longer encodes ValueType in bits 3-4 (those bits
-    // are now reserved/zero); writers always emit Uniform values for b-tree index nodes.
-    // v5: catalog moved out of the flatdb column set into a dedicated RocksDB under
-    // persisted_snapshot/catalog/. Old directories must wipe persisted_snapshot/ so the
-    // new dedicated DB and the on-disk arena/blob files start in sync.
-    // v6: tiers merged — single arena/blob/catalog (the persisted_snapshot/small + /large
-    // directory split is gone). Entries gain a per-base blob-RLP BlobRange and a SnapshotKind
-    // byte; wipe-and-resync.
-    // v7: entry key is (To.BlockNumber, To.StateRoot, depth=To.BlockNumber-From.BlockNumber)
-    // so base/compacted/persistable at the same To round-trip independently; wipe-and-resync.
-    // v8: the per-base blob-RLP BlobRange is no longer stored in the catalog — it moved into
-    // the snapshot's own metadata HSST under the blob_range key; entries shrink to 101 bytes;
-    // wipe-and-resync.
-    // v9: the bucket discriminator byte is now a SnapshotTier (replacing SnapshotKind); the
-    // persisted values shifted (Base/Compacted/Persistable 0/1/2 -> PersistedBase/
-    // PersistedCompacted/PersistedPersistable 2/3/4); wipe-and-resync.
-    private const int CurrentVersion = 9;
+    // directories will fail to load with a clear "wipe and resync" message.
+    private const int CurrentVersion = 1;
 
     // Length-4 sentinel key holding the version word. Entry keys are 48 bytes, so the
     // length disambiguation is unambiguous when iterating GetAll().

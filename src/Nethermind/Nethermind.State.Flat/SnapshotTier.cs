@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.State.Flat;
 
 /// <summary>
@@ -31,4 +33,17 @@ public enum SnapshotTier
 
     /// <summary>The <c>CompactSize</c>-wide persistable snapshot written to RocksDB.</summary>
     PersistedPersistable,
+}
+
+public static class SnapshotTierExtensions
+{
+    /// <summary>Whether <paramref name="tier"/> is one of the persisted tiers (vs in-memory).</summary>
+    public static bool IsPersisted(this SnapshotTier tier) => tier >= SnapshotTier.PersistedBase;
+
+    /// <summary>Guards the in-memory-only operations: throws when <paramref name="tier"/> is persisted.</summary>
+    public static void EnsureInMemory(this SnapshotTier tier)
+    {
+        if (tier.IsPersisted())
+            throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only in-memory tiers are valid here.");
+    }
 }
