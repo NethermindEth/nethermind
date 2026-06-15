@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 
@@ -17,9 +18,9 @@ public static class StreamInterpreter
 {
     /// <summary>
     /// Rollout switch; off by default, set at startup from <see cref="IEvmConfig.StreamInterpreter"/>.
-    /// Mutable so differential tests can flip interpreters in-process; read once per frame.
+    /// Volatile so a test flipping it in-process is visible to frame-executing threads.
     /// </summary>
-    public static bool Enabled;
+    public static volatile bool Enabled;
 
     /// <summary>
     /// Executions a <see cref="CodeAnalysis.CodeInfo"/> must reach before its stream is built (see
@@ -31,7 +32,7 @@ public static class StreamInterpreter
 
     /// <summary>
     /// Frames executed by the stream interpreter; engagement proof for tests and rollout.
-    /// Unsynchronized — an approximate count is enough.
+    /// Bumped via <see cref="Interlocked"/> so the 64-bit count is atomic on 32-bit platforms.
     /// </summary>
     public static long FramesExecuted;
 }
@@ -55,7 +56,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         ReturnData = null;
         EvmExceptionType exceptionType = EvmExceptionType.None;
-        StreamInterpreter.FramesExecuted++;
+        Interlocked.Increment(ref StreamInterpreter.FramesExecuted);
 
         int programCounter = VmState.ProgramCounter;
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
@@ -289,9 +290,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                             break;
                         default:
-                            // Unreachable: every TryGetInBlockCost opcode has a case above, and
-                            // ExecutorCoversInBlockOps asserts it. A miss would precharge then
-                            // mis-dispatch, so fail closed rather than corrupt gas.
+                            // Unreachable: every TryGetInBlockCost opcode has a case above, asserted by
+                            // StreamExecutor_DispatchesEveryInBlockOpcode_IdenticallyToBytecodeLoop. A miss
+                            // would precharge then mis-dispatch, so fail closed rather than corrupt gas.
                             exceptionType = EvmExceptionType.BadInstruction;
                             break;
                     }
