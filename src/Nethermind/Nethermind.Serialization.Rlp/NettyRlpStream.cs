@@ -11,6 +11,9 @@ namespace Nethermind.Serialization.Rlp
 {
     public sealed class NettyRlpStream(IByteBuffer buffer) : RlpStream, IDisposable
     {
+        private static readonly ValueRlpWriteSink _writeToBuffer = WriteToBuffer;
+        private static readonly ValueRlpWriteByteSink _writeByteToBuffer = WriteByteToBuffer;
+
         private readonly IByteBuffer _buffer = buffer;
 
         private readonly int _initialPosition = buffer.ReaderIndex;
@@ -59,12 +62,24 @@ namespace Nethermind.Serialization.Rlp
 
         public void Dispose() => _buffer.SafeRelease();
 
+        public static ValueRlpWriter CreateWriter(IByteBuffer byteBuffer) =>
+            new(byteBuffer, _writeToBuffer, _writeByteToBuffer);
+
         public static bool TryWriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
         {
             if (list is not IRlpWrapper rlpWrapper) return false;
-            byteBuffer.EnsureWritable(rlpWrapper.RlpLength);
-            rlpWrapper.Write(new NettyRlpStream(byteBuffer));
+            WriteRlpWrapper(byteBuffer, rlpWrapper);
             return true;
+        }
+
+        public static void WriteRlpWrapper(IByteBuffer byteBuffer, IRlpWrapper rlpWrapper)
+        {
+            byteBuffer.EnsureWritable(rlpWrapper.RlpLength);
+            int writerIndex = byteBuffer.WriterIndex;
+            Span<byte> target = byteBuffer.Array.AsSpan(byteBuffer.ArrayOffset + writerIndex, rlpWrapper.RlpLength);
+            ValueRlpWriter writer = new(target);
+            rlpWrapper.Write(ref writer);
+            byteBuffer.SetWriterIndex(writerIndex + writer.Position);
         }
 
         public static void WriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
@@ -91,7 +106,7 @@ namespace Nethermind.Serialization.Rlp
         public static RlpByteArrayList DecodeByteArrayList(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            ValueRlpReader ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
             RlpByteArrayList? list = null;
 
@@ -108,6 +123,24 @@ namespace Nethermind.Serialization.Rlp
                 memoryOwner?.Dispose();
                 throw;
             }
+        }
+
+        private static void WriteToBuffer(object sink, ReadOnlySpan<byte> bytesToWrite)
+        {
+            IByteBuffer buffer = (IByteBuffer)sink;
+            buffer.EnsureWritable(bytesToWrite.Length);
+
+            Span<byte> target =
+                buffer.Array.AsSpan(buffer.ArrayOffset + buffer.WriterIndex, bytesToWrite.Length);
+            bytesToWrite.CopyTo(target);
+            buffer.SetWriterIndex(buffer.WriterIndex + bytesToWrite.Length);
+        }
+
+        private static void WriteByteToBuffer(object sink, byte byteToWrite)
+        {
+            IByteBuffer buffer = (IByteBuffer)sink;
+            buffer.EnsureWritable(1);
+            buffer.WriteByte(byteToWrite);
         }
     }
 }

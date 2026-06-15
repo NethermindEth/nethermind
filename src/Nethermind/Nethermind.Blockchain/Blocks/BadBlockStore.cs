@@ -22,15 +22,15 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-        blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        Rlp newRlp = _blockDecoder.Encode(block);
+        blockDb.Set(block.Number, block.Hash, newRlp.Bytes, writeFlags);
 
         TruncateToMaxSize();
     }
 
     public IEnumerable<Block> GetAll() => blockDb.GetAllValues(true).Select(bytes =>
     {
-        Rlp.ValueDecoderContext ctx = ((byte[]?)bytes ?? []).AsRlpValueContext();
+        ValueRlpReader ctx = ((byte[]?)bytes ?? []).AsRlpValueContext();
         return _blockDecoder.Decode(ref ctx);
     });
 

@@ -17,15 +17,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
 
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(contentLength);
-            stream.Encode(message.RequestId);
+            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+            writer.StartSequence(contentLength);
+            writer.Encode(message.RequestId);
             SerializeInternal(byteBuffer, message);
         }
 
         public virtual TMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
 
-        private TMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private TMessage Deserialize(ref ValueRlpReader ctx)
         {
             int sequenceLength = ctx.ReadSequenceLength();
             int checkPosition = ctx.Position + sequenceLength;
@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         }
 
         protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message);
-        protected abstract TMessage DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId);
+        protected abstract TMessage DeserializeInternal(ref ValueRlpReader ctx, long requestId);
         protected abstract int GetLengthInternal(TMessage message);
     }
 }

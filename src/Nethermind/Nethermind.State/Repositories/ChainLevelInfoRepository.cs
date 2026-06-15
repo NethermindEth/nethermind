@@ -87,7 +87,7 @@ namespace Nethermind.State.Repositories
             return data.Select(kv =>
                 {
                     if (kv.Value == null || kv.Value.Length == 0) return null;
-                    Rlp.ValueDecoderContext rlpValueContext = kv.Value.AsRlpValueContext();
+                    ValueRlpReader rlpValueContext = kv.Value.AsRlpValueContext();
                     return _decoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                 })
                 .ToPooledList(data.Length);

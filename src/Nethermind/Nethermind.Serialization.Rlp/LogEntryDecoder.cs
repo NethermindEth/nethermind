@@ -15,7 +15,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static LogEntryDecoder Instance { get; } = new();
 
-        protected override LogEntry? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override LogEntry? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -46,24 +46,30 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            ValueRlpWriter writer = new(rlpStream);
+            Encode(ref writer, item, rlpBehaviors);
+        }
+
+        public override void Encode(ref ValueRlpWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
             if (item is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
             (int total, int topics) = GetContentLength(item);
-            rlpStream.StartSequence(total);
+            writer.StartSequence(total);
 
-            rlpStream.Encode(item.Address);
-            rlpStream.StartSequence(topics);
+            writer.Encode(item.Address);
+            writer.StartSequence(topics);
 
             for (int i = 0; i < item.Topics.Length; i++)
             {
-                rlpStream.Encode(item.Topics[i]);
+                writer.Encode(item.Topics[i]);
             }
 
-            rlpStream.Encode(item.Data);
+            writer.Encode(item.Data);
         }
 
         public override int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -109,7 +115,7 @@ namespace Nethermind.Serialization.Rlp
             return topicsLength;
         }
 
-        public static void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
+        public static void DecodeStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemEmptyList())
             {

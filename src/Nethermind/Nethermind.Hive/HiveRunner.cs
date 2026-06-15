@@ -184,7 +184,7 @@ namespace Nethermind.Hive
 
         private static Block DecodeNextChainBlock(byte[] chainFileContent, int position, out int nextPosition)
         {
-            Rlp.ValueDecoderContext rlpContext = new(chainFileContent) { Position = position };
+            ValueRlpReader rlpContext = new(chainFileContent) { Position = position };
             rlpContext.PeekNextItem();
             Block block = Rlp.Decode<Block>(ref rlpContext, RlpBehaviors.AllowExtraBytes);
             nextPosition = rlpContext.Position;

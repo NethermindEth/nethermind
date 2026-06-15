@@ -14,12 +14,20 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 
     public abstract void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    public virtual void Encode(ref ValueRlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        Encode(new RlpStream(bytes), item, rlpBehaviors);
+        writer.Write(bytes);
+    }
+
+    protected abstract T DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public virtual Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        Encode(new RlpStream(bytes), item, rlpBehaviors);
+        ValueRlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
         return new Rlp(bytes);
     }
 
@@ -31,7 +39,8 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         }
 
         byte[] bytes = new byte[GetLength(items, rlpBehaviors)];
-        Encode(new RlpStream(bytes), items, rlpBehaviors);
+        ValueRlpWriter writer = new(bytes);
+        Encode(ref writer, items, rlpBehaviors);
         return new Rlp(bytes);
     }
 
@@ -40,7 +49,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     protected static void ThrowRlpException(Exception exception) =>
         throw new RlpException($"Cannot decode stream of {typeof(T).Name}", exception);
 
-    public T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public T Decode(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         try
         {
@@ -54,7 +63,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
 
-    public virtual T[] DecodeArray(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+    public virtual T[] DecodeArray(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
     {
         int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
         int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
@@ -75,12 +84,12 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 
     public virtual T Decode(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        ValueRlpReader context = new(bytes);
         return Decode(ref context, rlpBehaviors);
     }
 
     /// <inheritdoc/>
-    public virtual T DecodeComplete(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T DecodeComplete(ref ValueRlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T value = Decode(ref context, rlpBehaviors);
         context.CheckEnd();
@@ -90,11 +99,11 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// <inheritdoc/>
     public virtual T DecodeComplete(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        ValueRlpReader context = new(bytes);
         return DecodeComplete(ref context, rlpBehaviors);
     }
 
-    public virtual T DecodeGuardNotNull(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T DecodeGuardNotNull(ref ValueRlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T value = Decode(ref context, rlpBehaviors);
         if (!typeof(T).IsValueType && value is null)
@@ -106,7 +115,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
     /// <inheritdoc/>
-    public virtual T DecodeCompleteNotNull(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual T DecodeCompleteNotNull(ref ValueRlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T value = DecodeGuardNotNull(ref context, rlpBehaviors);
         context.CheckEnd();
@@ -116,7 +125,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// <inheritdoc/>
     public virtual T DecodeCompleteNotNull(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        ValueRlpReader context = new(bytes);
         return DecodeCompleteNotNull(ref context, rlpBehaviors);
     }
 
@@ -124,7 +133,8 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     {
         int size = GetLength(item, rlpBehaviors);
         CappedArray<byte> buffer = bufferPool.SafeRent(size);
-        Encode(buffer.AsRlpStream(), item, rlpBehaviors);
+        ValueRlpWriter writer = new(buffer);
+        Encode(ref writer, item, rlpBehaviors);
         return buffer;
     }
 
@@ -147,6 +157,29 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
             else
             {
                 Encode(stream, item, behaviors);
+            }
+        }
+    }
+
+    public virtual void Encode(ref ValueRlpWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+    {
+        if (items is null)
+        {
+            writer.WriteByte(Rlp.EmptyListByte);
+            return;
+        }
+
+        writer.StartSequence(GetContentLength(items, behaviors));
+        for (int index = 0; index < items.Length; index++)
+        {
+            T item = items[index];
+            if (item is null)
+            {
+                writer.WriteByte(Rlp.EmptyListByte);
+            }
+            else
+            {
+                Encode(ref writer, item, behaviors);
             }
         }
     }

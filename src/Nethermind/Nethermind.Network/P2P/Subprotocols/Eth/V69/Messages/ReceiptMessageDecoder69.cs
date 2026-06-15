@@ -16,7 +16,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
     // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
     private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
 
-    protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt? DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (ctx.IsNextItemEmptyList())
         {
@@ -125,37 +125,43 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
     public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        ValueRlpWriter writer = new(rlpStream);
+        Encode(ref writer, item, rlpBehaviors);
+    }
+
+    public override void Encode(ref ValueRlpWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
         if (item is null)
         {
-            rlpStream.EncodeNullObject();
+            writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
 
         (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
 
-        rlpStream.StartSequence(totalContentLength);
+        writer.StartSequence(totalContentLength);
 
-        rlpStream.Encode((byte)item.TxType);
+        writer.Encode((byte)item.TxType);
 
         if (!skipStateAndStatus)
         {
             if ((rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts)
             {
-                rlpStream.Encode(item.StatusCode);
+                writer.Encode(item.StatusCode);
             }
             else
             {
-                rlpStream.Encode(item.PostTransactionState);
+                writer.Encode(item.PostTransactionState);
             }
         }
 
-        rlpStream.Encode(item.GasUsedTotal);
+        writer.Encode(item.GasUsedTotal);
 
-        rlpStream.StartSequence(logsLength);
+        writer.StartSequence(logsLength);
         LogEntry[] logs = item.Logs;
         for (int i = 0; i < logs.Length; i++)
         {
-            rlpStream.Encode(logs[i]);
+            LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
         }
     }
 }

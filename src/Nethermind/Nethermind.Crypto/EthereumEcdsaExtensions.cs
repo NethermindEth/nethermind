@@ -15,7 +15,8 @@ public static class EthereumEcdsaExtensions
     {
         KeccakRlpStream stream = new();
         stream.WriteByte(Eip7702Constants.Magic);
-        AuthorizationTupleDecoder.EncodeWithoutSignature(stream, chainId, codeAddress, nonce);
+        ValueRlpWriter writer = stream.AsValueWriter();
+        AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
         Signature sig = ecdsa.Sign(signer, stream.GetValueHash());
         return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
     }
@@ -27,7 +28,10 @@ public static class EthereumEcdsaExtensions
             tx.ChainId = ecdsa.ChainId;
         }
 
-        ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, ecdsa.ChainId).Bytes);
+        KeccakRlpStream stream = new();
+        ValueRlpWriter writer = stream.AsValueWriter();
+        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, ecdsa.ChainId);
+        ValueHash256 hash = stream.GetValueHash();
         tx.Signature = ecdsa.Sign(privateKey, in hash);
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
@@ -96,7 +100,8 @@ public static class EthereumEcdsaExtensions
         };
 
         KeccakRlpStream stream = new();
-        _txDecoder.EncodeTx(stream, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
+        ValueRlpWriter writer = stream.AsValueWriter();
+        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
 
         return stream.GetValueHash();
     }
@@ -107,7 +112,8 @@ public static class EthereumEcdsaExtensions
     {
         KeccakRlpStream stream = new();
         stream.WriteByte(Eip7702Constants.Magic);
-        AuthorizationTupleDecoder.EncodeWithoutSignature(stream, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+        ValueRlpWriter writer = stream.AsValueWriter();
+        AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
         return ecdsa.RecoverAddress(tuple.AuthoritySignature, stream.GetValueHash());
     }
 }

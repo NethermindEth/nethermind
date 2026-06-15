@@ -18,10 +18,10 @@ public class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
-        NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
-        stream.Encode(msg.SearchedNodeId);
-        stream.Encode(msg.ExpirationTime);
+        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        writer.StartSequence(contentLength);
+        writer.Encode(msg.SearchedNodeId);
+        writer.Encode(msg.ExpirationTime);
 
         byteBuffer.ResetIndex();
         AddSignatureAndMdc(byteBuffer, length + 1);
@@ -30,7 +30,7 @@ public class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey
     public FindNodeMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
+        ValueRlpReader ctx = Data.AsRlpContext();
         ctx.ReadSequenceLength();
         byte[] searchedNodeId = ctx.DecodeByteArray(NodeIdRlpLimit);
         long expirationTime = ctx.DecodeLong();

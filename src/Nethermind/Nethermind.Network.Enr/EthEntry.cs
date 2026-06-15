@@ -16,13 +16,13 @@ public class EthEntry(byte[] forkHash, long nextBlock) : EnrContentEntry<ForkId>
                 Rlp.LengthOfSequence(
                     5 + Rlp.LengthOf(Value.NextBlock)));
 
-    protected override void EncodeValue(RlpStream rlpStream)
+    protected override void EncodeValue(ref ValueRlpWriter writer)
     {
         // I am just guessing this one
         int contentLength = 5 + Rlp.LengthOf(Value.NextBlock);
-        rlpStream.StartSequence(contentLength + 1);
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(Value.ForkHash);
-        rlpStream.Encode(Value.NextBlock);
+        writer.StartSequence(contentLength + 1);
+        writer.StartSequence(contentLength);
+        writer.Encode(Value.ForkHash);
+        writer.Encode(Value.NextBlock);
     }
 }

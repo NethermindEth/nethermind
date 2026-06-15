@@ -21,18 +21,18 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message)
     {
         IOwnedReadOnlyList<byte[]?> blockAccessLists = message.BlockAccessLists;
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        rlpStream.StartSequence(GetBlockAccessListsContentLength(blockAccessLists));
+        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        writer.StartSequence(GetBlockAccessListsContentLength(blockAccessLists));
         for (int i = 0; i < blockAccessLists.Count; i++)
         {
             byte[]? blockAccessListRlp = blockAccessLists[i];
             if (blockAccessListRlp is null)
             {
-                rlpStream.WriteByte(Rlp.EmptyByteArrayByte);
+                writer.WriteByte(Rlp.EmptyByteArrayByte);
             }
             else
             {
-                rlpStream.Write(blockAccessListRlp);
+                writer.Write(blockAccessListRlp);
             }
         }
     }
@@ -40,7 +40,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     public override BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
     {
         using NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
-        Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory);
+        ValueRlpReader ctx = new(memoryOwner.Memory);
         int startPosition = ctx.Position;
         ArrayPoolList<byte[]?>? blockAccessLists = null;
 
@@ -66,7 +66,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     protected override int GetLengthInternal(BlockAccessListsMessage message) =>
         Rlp.LengthOfSequence(GetBlockAccessListsContentLength(message.BlockAccessLists));
 
-    protected override BlockAccessListsMessage DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId) =>
+    protected override BlockAccessListsMessage DeserializeInternal(ref ValueRlpReader ctx, long requestId) =>
         new(requestId, DecodeBlockAccessLists(ref ctx));
 
     internal static int GetBlockAccessListEntryLength(byte[]? blockAccessListRlp) =>
@@ -83,7 +83,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         return contentLength;
     }
 
-    private static ArrayPoolList<byte[]?> DecodeBlockAccessLists(ref Rlp.ValueDecoderContext ctx)
+    private static ArrayPoolList<byte[]?> DecodeBlockAccessLists(ref ValueRlpReader ctx)
     {
         int blockAccessListsContentLength = ctx.ReadSequenceLength();
         int checkPosition = ctx.Position + blockAccessListsContentLength;
@@ -108,7 +108,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         }
     }
 
-    private static byte[]? DecodeBlockAccessListEntry(ref Rlp.ValueDecoderContext ctx)
+    private static byte[]? DecodeBlockAccessListEntry(ref ValueRlpReader ctx)
     {
         int length = ctx.PeekNextRlpLength();
         ReadOnlySpan<byte> blockAccessListRlp = ctx.Read(length);

@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal sealed class PendingValidatorsDecoder : RlpDecoder<PendingValidators>
     {
-        protected override PendingValidators DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override PendingValidators DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -61,6 +61,26 @@ namespace Nethermind.Consensus.AuRa.Validators
                 rlpStream.Encode(item.Addresses[i]);
             }
             rlpStream.Encode(item.AreFinalized);
+        }
+
+        public override void Encode(ref ValueRlpWriter writer, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                writer.EncodeNullObject();
+                return;
+            }
+
+            (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.BlockNumber);
+            writer.Encode(item.BlockHash);
+            writer.StartSequence(addressesLength);
+            for (int i = 0; i < item.Addresses.Length; i++)
+            {
+                writer.Encode(item.Addresses[i]);
+            }
+            writer.Encode(item.AreFinalized);
         }
 
         public override int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>

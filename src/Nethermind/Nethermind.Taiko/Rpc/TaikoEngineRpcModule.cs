@@ -59,7 +59,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ITxPool txPool,
         IBlockFinder blockFinder,
         IShareableTxProcessorSource txProcessorSource,
-        IRlpDecoder<Transaction> txDecoder,
+        TxDecoder txDecoder,
         IL1OriginStore l1OriginStore,
         ISurgeConfig surgeConfig) :
             EngineRpcModule(getPayloadHandlerV1,
@@ -324,7 +324,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpDecoder<Transaction> txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, int transactionsListCapacity, TxDecoder txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
@@ -353,15 +353,15 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
             try
             {
-                RlpStream rlpStream = new(data);
+                ValueRlpWriter writer = data.AsRlpValueWriter();
 
-                rlpStream.StartSequence(contentLength);
+                writer.StartSequence(contentLength);
                 foreach (Transaction tx in Transactions.AsSpan())
                 {
-                    txDecoder.Encode(rlpStream, tx);
+                    txDecoder.Encode(ref writer, tx);
                 }
 
-                return GetCompressedLength(data, rlpStream.Position);
+                return GetCompressedLength(data, writer.Position);
 
             }
             finally
@@ -377,12 +377,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
             try
             {
-                RlpStream rlpStream = new(data);
+                ValueRlpWriter writer = data.AsRlpValueWriter();
 
-                rlpStream.StartSequence(contentLength);
-                txDecoder.Encode(rlpStream, tx);
+                writer.StartSequence(contentLength);
+                txDecoder.Encode(ref writer, tx);
 
-                return GetCompressedLength(data, rlpStream.Position);
+                return GetCompressedLength(data, writer.Position);
             }
             finally
             {

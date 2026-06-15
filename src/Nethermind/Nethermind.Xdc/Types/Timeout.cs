@@ -18,7 +18,17 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool is
     public Address? Signer { get; set; }
     public bool IsMyVote { get; } = isMyVote;
     public override string ToString() => $"{Round}:{GapNumber}";
-    public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_timeoutDecoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
-    protected override void Encode(KeccakRlpStream stream) =>
-        _timeoutDecoder.Encode(stream, this, RlpBehaviors.None);
+    public (ulong Round, Hash256 hash) PoolKey()
+    {
+        KeccakRlpStream stream = new();
+        ValueRlpWriter writer = stream.AsValueWriter();
+        _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
+        return (Round, stream.GetHash());
+    }
+
+    protected override void Encode(KeccakRlpStream stream)
+    {
+        ValueRlpWriter writer = stream.AsValueWriter();
+        _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.None);
+    }
 }

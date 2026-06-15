@@ -8,7 +8,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal sealed class ValidatorInfoDecoder : RlpDecoder<ValidatorInfo>
     {
-        protected override ValidatorInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override ValidatorInfo? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -53,6 +53,25 @@ namespace Nethermind.Consensus.AuRa.Validators
             for (int i = 0; i < item.Validators.Length; i++)
             {
                 stream.Encode(item.Validators[i]);
+            }
+        }
+
+        public override void Encode(ref ValueRlpWriter writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                writer.EncodeNullObject();
+                return;
+            }
+
+            (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.FinalizingBlockNumber);
+            writer.Encode(item.PreviousFinalizingBlockNumber);
+            writer.StartSequence(validatorLength);
+            for (int i = 0; i < item.Validators.Length; i++)
+            {
+                writer.Encode(item.Validators[i]);
             }
         }
 

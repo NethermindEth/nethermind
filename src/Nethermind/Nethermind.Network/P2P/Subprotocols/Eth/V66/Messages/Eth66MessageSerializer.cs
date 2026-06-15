@@ -21,16 +21,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
+            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+            writer.StartSequence(contentLength);
+            writer.Encode(message.RequestId);
             _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);
         }
 
         public TEth66Message Deserialize(IByteBuffer byteBuffer)
         {
             int startReaderIndex = byteBuffer.ReaderIndex;
-            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            ValueRlpReader ctx = byteBuffer.AsRlpContext();
             int sequenceLength = ctx.ReadSequenceLength();
             int checkPosition = ctx.Position + sequenceLength;
             TEth66Message eth66Message = new();

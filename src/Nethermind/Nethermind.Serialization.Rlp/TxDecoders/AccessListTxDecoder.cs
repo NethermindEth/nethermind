@@ -13,23 +13,30 @@ public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFacto
     public override void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
+        ValueRlpWriter writer = new(stream);
+        Encode(transaction, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+    }
+
+    public override void Encode(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    {
         int contentLength = GetContentLength(transaction, rlpBehaviors, forSigning);
         int sequenceLength = Rlp.LengthOfSequence(contentLength);
 
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
         {
-            stream.StartByteArray(sequenceLength + 1, false);
+            writer.StartByteArray(sequenceLength + 1, false);
         }
 
-        stream.WriteByte((byte)Type);
-        EncodeTypedWrapped(transaction, stream, rlpBehaviors, forSigning, contentLength);
+        writer.WriteByte((byte)Type);
+        EncodeTypedWrapped(transaction, ref writer, rlpBehaviors, forSigning, contentLength);
     }
 
-    protected virtual void EncodeTypedWrapped(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
+    protected virtual void EncodeTypedWrapped(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
     {
-        stream.StartSequence(contentLength);
-        EncodePayload(transaction, stream, rlpBehaviors);
-        EncodeSignature(transaction.Signature, stream, forSigning);
+        writer.StartSequence(contentLength);
+        EncodePayload(transaction, ref writer, rlpBehaviors);
+        EncodeSignature(transaction.Signature, ref writer, forSigning);
     }
 
     public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false,
@@ -41,7 +48,7 @@ public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFacto
             : Rlp.LengthOfSequence(1 + txPayloadLength);
     }
 
-    protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
+    protected override void DecodePayload(Transaction transaction, ref ValueRlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction.ChainId = decoderContext.DecodeULong();
@@ -49,11 +56,11 @@ public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFacto
         transaction.AccessList = AccessListDecoder.Instance.Decode(ref decoderContext, rlpBehaviors);
     }
 
-    protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.Encode(transaction.ChainId ?? 0);
-        base.EncodePayload(transaction, stream, rlpBehaviors);
-        AccessListDecoder.Instance.Encode(stream, transaction.AccessList, rlpBehaviors);
+        writer.Encode(transaction.ChainId ?? 0);
+        base.EncodePayload(transaction, ref writer, rlpBehaviors);
+        AccessListDecoder.Instance.Encode(ref writer, transaction.AccessList, rlpBehaviors);
     }
 
     protected override int GetPayloadLength(Transaction transaction) => base.GetPayloadLength(transaction)
@@ -62,4 +69,3 @@ public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFacto
 }
 
 public sealed class AccessListTxDecoder<T>(Func<T>? transactionFactory = null) : BaseAccessListTxDecoder<T>(TxType.AccessList, transactionFactory) where T : Transaction, new();
-

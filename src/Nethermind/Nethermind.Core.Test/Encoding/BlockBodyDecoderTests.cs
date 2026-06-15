@@ -17,7 +17,7 @@ public class BlockBodyDecoderTests
         int length = BlockBodyDecoder.Instance.GetLength(body, RlpBehaviors.None);
         RlpStream stream = new(length);
         BlockBodyDecoder.Instance.Encode(stream, body);
-        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
+        ValueRlpReader ctx = new(stream.Data.AsSpan());
         BlockBody decodedBody = BlockBodyDecoder.Instance.Decode(ref ctx);
 
         Assert.That(decodedBody, Is.EqualTo(body).UsingBlockBodyComparer());
@@ -59,7 +59,7 @@ public class BlockBodyDecoderTests
 
     private static void DecodeBody(RlpStream stream)
     {
-        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
+        ValueRlpReader ctx = new(stream.Data.AsSpan());
         BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, stream.Data.Length);
     }
 

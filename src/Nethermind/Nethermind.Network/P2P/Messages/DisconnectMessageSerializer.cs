@@ -14,10 +14,10 @@ namespace Nethermind.Network.P2P.Messages
         {
             int length = GetLength(msg, out int contentLength);
             byteBuffer.EnsureWritable(length, force: true);
-            NettyRlpStream rlpStream = new(byteBuffer);
+            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
 
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode((byte)msg.Reason);
+            writer.StartSequence(contentLength);
+            writer.Encode((byte)msg.Reason);
         }
 
         private static int GetLength(DisconnectMessage message, out int contentLength)
@@ -42,10 +42,10 @@ namespace Nethermind.Network.P2P.Messages
             }
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
+            ValueRlpReader rlpStream = msg.AsRlpValueContext();
             if (!rlpStream.IsSequenceNext())
             {
-                rlpStream = new Rlp.ValueDecoderContext(rlpStream.DecodeByteArraySpan());
+                rlpStream = new ValueRlpReader(rlpStream.DecodeByteArraySpan());
             }
 
             rlpStream.ReadSequenceLength();

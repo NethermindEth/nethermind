@@ -12,12 +12,14 @@ namespace Nethermind.Serialization.Rlp
 
         public static RlpStream AsRlpStream(in this CappedArray<byte> bytes) => new(in bytes.IsNotNull ? ref bytes : ref CappedArray<byte>.Empty);
 
+        public static ValueRlpWriter AsRlpValueWriter(this byte[]? bytes) => new(bytes ?? []);
 
+        public static ValueRlpWriter AsRlpValueWriter(in this CappedArray<byte> bytes) => new(in bytes.IsNotNull ? ref bytes : ref CappedArray<byte>.Empty);
 
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[]? bytes) => new(bytes ?? []);
+        public static ValueRlpReader AsRlpValueContext(this byte[]? bytes) => new(bytes ?? []);
 
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this Span<byte> span) => ((ReadOnlySpan<byte>)span).AsRlpValueContext();
+        public static ValueRlpReader AsRlpValueContext(this Span<byte> span) => ((ReadOnlySpan<byte>)span).AsRlpValueContext();
 
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this ReadOnlySpan<byte> span) => span.IsEmpty ? new Rlp.ValueDecoderContext([]) : new Rlp.ValueDecoderContext(span);
+        public static ValueRlpReader AsRlpValueContext(this ReadOnlySpan<byte> span) => span.IsEmpty ? new ValueRlpReader([]) : new ValueRlpReader(span);
     }
 }

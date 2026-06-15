@@ -6,5 +6,5 @@ namespace Nethermind.Serialization.Rlp;
 public interface IRlpWrapper
 {
     int RlpLength { get; }
-    void Write(RlpStream stream);
+    void Write(ref ValueRlpWriter writer);
 }

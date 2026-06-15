@@ -118,7 +118,7 @@ namespace Nethermind.Synchronization.FastSync
                 return;
             }
 
-            Rlp.ValueDecoderContext ctx = new(serializedData);
+            ValueRlpReader ctx = new(serializedData);
             ctx.ReadSequenceLength();
             ConsumedNodesCount = ctx.DecodeLong();
             SavedStorageCount = ctx.DecodeLong();
@@ -157,13 +157,14 @@ namespace Nethermind.Synchronization.FastSync
             };
 
             int contentLength = GetLength(progress);
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
+            byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+            ValueRlpWriter writer = bytes.AsRlpValueWriter();
+            writer.StartSequence(contentLength);
             foreach (long entry in progress)
             {
-                stream.Encode(entry);
+                writer.Encode(entry);
             }
-            return stream.Data.ToArray()!;
+            return bytes;
         }
 
         private static int GetLength(Span<long> progress)

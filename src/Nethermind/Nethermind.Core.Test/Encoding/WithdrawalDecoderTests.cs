@@ -44,7 +44,7 @@ public class WithdrawalDecoderTests
     }
 
     [Test]
-    public void Should_decode_with_ValueDecoderContext()
+    public void Should_decode_with_ValueRlpReader()
     {
         Withdrawal withdrawal = new()
         {
@@ -58,7 +58,7 @@ public class WithdrawalDecoderTests
 
         codec.Encode(stream, withdrawal);
 
-        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
+        ValueRlpReader decoderContext = new(stream.Data.AsSpan());
         Withdrawal? decoded = codec.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());

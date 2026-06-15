@@ -12,6 +12,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
         private readonly BlockBodyDecoder _blockBodyDecoder = new(headerDecoder);
+        private readonly WithdrawalDecoder _withdrawalDecoder = new();
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
@@ -56,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        protected override Block? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Block? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -85,60 +86,67 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptyList;
             }
 
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new(rlpStream.Data.ToArray());
+            byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+            ValueRlpWriter writer = bytes.AsRlpValueWriter();
+            Encode(ref writer, item, rlpBehaviors);
+            return new(bytes);
         }
 
         public override void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            ValueRlpWriter writer = new(stream);
+            Encode(ref writer, item, rlpBehaviors);
+        }
+
+        public override void Encode(ref ValueRlpWriter writer, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
             if (item is null)
             {
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
             (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            _headerDecoder.Encode(stream, item.Header);
-            stream.StartSequence(txsLength);
+            writer.StartSequence(contentLength);
+            _headerDecoder.Encode(ref writer, item.Header);
+            writer.StartSequence(txsLength);
 
             byte[][]? encodedTxs = item.EncodedTransactions;
             if (encodedTxs is not null)
             {
                 for (int i = 0; i < encodedTxs.Length; i++)
                 {
-                    TxDecoder.WriteWrappedFormat(stream, item.Transactions[i].Type, encodedTxs[i]);
+                    TxDecoder.WriteWrappedFormat(ref writer, item.Transactions[i].Type, encodedTxs[i]);
                 }
             }
             else
             {
                 for (int i = 0; i < item.Transactions.Length; i++)
                 {
-                    stream.Encode(item.Transactions[i]);
+                    TxDecoder.Instance.Encode(ref writer, item.Transactions[i]);
                 }
             }
 
-            stream.StartSequence(unclesLength);
+            writer.StartSequence(unclesLength);
             for (int i = 0; i < item.Uncles.Length; i++)
             {
-                stream.Encode(item.Uncles[i]);
+                _headerDecoder.Encode(ref writer, item.Uncles[i]);
             }
 
             if (withdrawalsLength.HasValue)
             {
-                stream.StartSequence(withdrawalsLength.Value);
+                writer.StartSequence(withdrawalsLength.Value);
 
                 for (int i = 0; i < item.Withdrawals.Length; i++)
                 {
-                    stream.Encode(item.Withdrawals[i]);
+                    _withdrawalDecoder.Encode(ref writer, item.Withdrawals[i]);
                 }
             }
         }
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
-            Rlp.ValueDecoderContext decoderContext = new(memory, true);
+            ValueRlpReader decoderContext = new(memory, true);
 
             if (decoderContext.IsNextItemEmptyList())
             {

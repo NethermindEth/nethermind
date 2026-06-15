@@ -39,9 +39,19 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteWrappedFormat(RlpStream stream, TxType type, byte[] clEncoded)
     {
+        ValueRlpWriter writer = new(stream);
+        WriteWrappedFormat(ref writer, type, clEncoded);
+    }
+
+    /// <summary>
+    /// Writes a pre-encoded CL-format transaction in block format.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void WriteWrappedFormat(ref ValueRlpWriter writer, TxType type, byte[] clEncoded)
+    {
         if (type != TxType.Legacy)
-            stream.StartByteArray(clEncoded.Length, false);
-        stream.Write(clEncoded);
+            writer.StartByteArray(clEncoded.Length, false);
+        writer.Write(clEncoded);
     }
 }
 
@@ -79,14 +89,14 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
             ? decoder
             : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 
-    protected override T? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override T? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         T transaction = null;
         Decode(ref decoderContext, ref transaction, rlpBehaviors);
         return transaction;
     }
 
-    public void Decode(ref Rlp.ValueDecoderContext decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Decode(ref ValueRlpReader decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -124,20 +134,29 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
-    public override void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => EncodeTx(stream, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+    public override void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        ValueRlpWriter writer = new(stream);
+        EncodeTx(ref writer, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+    }
+
+    public override void Encode(ref ValueRlpWriter writer, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => EncodeTx(ref writer, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
     public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray() ?? []);
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        Encode(ref writer, item, rlpBehaviors);
+        return new Rlp(bytes);
     }
 
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId));
-        EncodeTx(rlpStream, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-        return new Rlp(rlpStream.Data.ToArray() ?? []);
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        return new Rlp(bytes);
     }
 
     /// <summary>
@@ -147,13 +166,19 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
     public void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
     {
+        ValueRlpWriter writer = new(stream);
+        EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+    }
+
+    public void EncodeTx(ref ValueRlpWriter writer, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    {
         if (item is null)
         {
-            stream.WriteByte(Rlp.EmptyListByte);
+            writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
 
-        GetDecoder(item.Type).Encode(item, stream, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        GetDecoder(item.Type).Encode(item, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
     }
 
     private int GetLength(T? tx, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId) =>

@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
 
-            long blockNum = new Rlp.ValueDecoderContext(blockHashData).DecodeLong();
+            long blockNum = new ValueRlpReader(blockHashData).DecodeLong();
             return _blockTree.FindBlockHash(blockNum);
         }
 
@@ -287,13 +287,11 @@ namespace Nethermind.Blockchain.Receipts
             long blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
-            {
-                Span<byte> blockNumPrefixed = stackalloc byte[40];
-                GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
+            Rlp rlp = _storageDecoder.Encode(txReceipts, behaviors);
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-                _receiptsDb.PutSpan(blockNumPrefixed, stream.AsSpan(), writeFlags);
-            }
+            _receiptsDb.PutSpan(blockNumPrefixed, rlp.Bytes, writeFlags);
 
             _receiptsCache.Set(block.Hash, txReceipts);
 

@@ -103,7 +103,7 @@ public static class BaseFlatPersistence
             ReadOnlySpan<byte> value = buffer[..resultSize];
             if (rlpWrapSlots)
             {
-                Rlp.ValueDecoderContext ctx = new(value);
+                ValueRlpReader ctx = new(value);
                 value = ctx.DecodeByteArraySpan();
             }
 
@@ -293,7 +293,7 @@ public static class BaseFlatPersistence
 
             // The bytes are stored verbatim — no decode + re-encode round-trip. The single DecodeByteArraySpan
             // call validates canonical form and bounds the item exactly (trimming any trailing bytes).
-            Rlp.ValueDecoderContext ctx = new(rlpValue);
+            ValueRlpReader ctx = new(rlpValue);
             ctx.DecodeByteArraySpan();
             storage.PutSpan(theKey, rlpValue[..ctx.Position], flags);
         }

@@ -277,7 +277,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
                 return null;
             }
 
-            Rlp.ValueDecoderContext context = new(bytes);
+            ValueRlpReader context = new(bytes);
             return _accountDecoder.Decode(ref context);
         }
 

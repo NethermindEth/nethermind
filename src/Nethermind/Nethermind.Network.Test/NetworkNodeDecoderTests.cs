@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             Rlp encoded = new(Bytes.FromHexString("f8a7b84013a1107b6f78a4977222d2d5a4cd05a8a042b75222c8ec99129b83793eda3d214208d4e835617512fc8d148d3d1b4d89530861644f531675b1fb64b785c6c152953a3a666666663a38352e3131322e3131332e3138368294c680ce0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
-            Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
+            ValueRlpReader context = encoded.Bytes.AsRlpValueContext();
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
             using (Assert.EnterMultipleScope())
             {
@@ -55,7 +55,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             Rlp encoded = Rlp.Encode(node);
-            Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
+            ValueRlpReader context = encoded.Bytes.AsRlpValueContext();
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
             using (Assert.EnterMultipleScope())
             {

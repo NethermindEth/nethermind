@@ -30,18 +30,18 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
     public NodeRecord Deserialize(RlpStream rlpStream)
     {
-        Rlp.ValueDecoderContext ctx = new(rlpStream.Data.AsSpan().Slice(rlpStream.Position));
+        ValueRlpReader ctx = new(rlpStream.Data.AsSpan().Slice(rlpStream.Position));
         NodeRecord result = Deserialize(ref ctx);
         rlpStream.Position += ctx.Position;
         return result;
     }
 
     /// <summary>
-    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="Rlp.ValueDecoderContext"/>.
+    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="ValueRlpReader"/>.
     /// </summary>
     /// <param name="ctx">A value decoder context to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
-    public NodeRecord Deserialize(ref Rlp.ValueDecoderContext ctx)
+    public NodeRecord Deserialize(ref ValueRlpReader ctx)
     {
         int startPosition = ctx.Position;
         int recordRlpLength = ctx.ReadSequenceLength();
@@ -105,11 +105,11 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
             int noSigContentLength = ctx.Length - ctx.Position;
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
             byte[] originalContent = new byte[noSigSequenceLength];
-            RlpStream originalContentStream = new(originalContent);
-            originalContentStream.StartSequence(noSigContentLength);
-            originalContentStream.Write(ctx.Read(noSigContentLength));
+            ValueRlpWriter writer = originalContent.AsRlpValueWriter();
+            writer.StartSequence(noSigContentLength);
+            writer.Write(ctx.Read(noSigContentLength));
             ctx.Position = startPosition;
-            nodeRecord.OriginalContentRlp = originalContentStream.Data.ToArray()!;
+            nodeRecord.OriginalContentRlp = originalContent;
         }
 
         nodeRecord.EnrSequence = enrSequence;

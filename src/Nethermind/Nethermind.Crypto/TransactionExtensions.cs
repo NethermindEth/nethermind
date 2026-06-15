@@ -14,7 +14,7 @@ namespace Nethermind.Crypto
         public static Hash256 CalculateHash(this Transaction transaction)
         {
             KeccakRlpStream stream = new();
-            _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+            stream.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
             return stream.GetHash();
         }
     }

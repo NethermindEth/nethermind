@@ -155,8 +155,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 return;
             }
 
-            using NettyRlpStream stream = SlimAccountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
+            Rlp rlp = SlimAccountDecoder.Encode(account);
+            _flatWriteBatch.SetAccount(fakeAddrHash, rlp.Bytes);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
@@ -203,7 +203,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 return null;
             }
 
-            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
+            ValueRlpReader ctx = new(valueBuffer[..responseSize]);
             return AccountDecoder.Slim.Decode(ref ctx);
         }
 

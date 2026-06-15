@@ -21,11 +21,11 @@ public interface INodeRecordSigner
     NodeRecord Deserialize(RlpStream rlpStream);
 
     /// <summary>
-    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="Rlp.ValueDecoderContext"/>.
+    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="ValueRlpReader"/>.
     /// </summary>
     /// <param name="ctx">A value decoder context to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
-    NodeRecord Deserialize(ref Rlp.ValueDecoderContext ctx);
+    NodeRecord Deserialize(ref ValueRlpReader ctx);
 
     /// <summary>
     /// Verifies if the public key recovered from the <see cref="Signature"/> of this record matches

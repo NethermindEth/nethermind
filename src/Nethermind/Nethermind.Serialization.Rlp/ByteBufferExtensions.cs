@@ -54,12 +54,12 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static Rlp.ValueDecoderContext AsRlpContext(this IByteBuffer buffer) =>
+        public static ValueRlpReader AsRlpContext(this IByteBuffer buffer) =>
             new(buffer.AsSpan());
 
         public static T DeserializeRlp<T>(this IByteBuffer buffer, DecodeRlpValue<T> deserialize)
         {
-            Rlp.ValueDecoderContext ctx = buffer.AsRlpContext();
+            ValueRlpReader ctx = buffer.AsRlpContext();
             try
             {
                 return deserialize(ref ctx);

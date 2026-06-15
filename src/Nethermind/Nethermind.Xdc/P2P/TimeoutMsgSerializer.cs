@@ -18,14 +18,14 @@ internal class TimeoutMsgSerializer : IZeroInnerMessageSerializer<TimeoutMsg>
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        NettyRlpStream stream = new(byteBuffer);
-        _timeDecoder.Encode(stream, message.Timeout);
+        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        _timeDecoder.Encode(ref writer, message.Timeout);
     }
 
     public TimeoutMsg Deserialize(IByteBuffer byteBuffer)
     {
         Memory<byte> memory = byteBuffer.AsMemory();
-        Rlp.ValueDecoderContext ctx = new(memory, true);
+        ValueRlpReader ctx = new(memory, true);
         Timeout timeout = _timeDecoder.Decode(ref ctx, RlpBehaviors.None);
         byteBuffer.SkipBytes(memory.Length);
         return new() { Timeout = timeout };

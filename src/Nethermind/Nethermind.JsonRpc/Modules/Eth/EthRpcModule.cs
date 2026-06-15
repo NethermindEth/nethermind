@@ -419,8 +419,8 @@ public partial class EthRpcModule(
         ArrayPoolList<byte> buffer = new(length, length);
         try
         {
-            RlpStream stream = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
-            TxDecoder.Instance.Encode(stream, tx, encodeBehaviors);
+            ValueRlpWriter writer = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
+            TxDecoder.Instance.Encode(ref writer, tx, encodeBehaviors);
             return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
             {
                 Raw = buffer,
@@ -634,8 +634,8 @@ public partial class EthRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
+        Rlp rlp = TxRlpDecoder.Encode(transaction, encodingSettings);
+        return ResultWrapper<string?>.Success(rlp.Bytes.ToHexString(true));
     }
 
     public virtual ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
@@ -698,8 +698,8 @@ public partial class EthRpcModule(
 
         Transaction transaction = block.Transactions[(int)positionIndex];
         // Block-stored txs never carry a sidecar (blob commitments live separately), so consensus form only.
-        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
+        Rlp rlp = TxRlpDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
+        return ResultWrapper<string?>.Success(rlp.Bytes.ToHexString(true));
     }
 
     protected virtual ResultWrapper<TransactionForRpc?> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)

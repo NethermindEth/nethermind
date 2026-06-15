@@ -69,26 +69,58 @@ namespace Nethermind.Serialization.Rlp
                 }
                 else
                 {
-                    decoder.Encode(this, item, rlpBehaviors);
+                    ValueRlpWriter writer = new(this);
+                    decoder.Encode(ref writer, item, rlpBehaviors);
                 }
             }
         }
-        public void Encode(Block value) => _blockDecoder.Encode(this, value);
+        public void Encode(Block value)
+        {
+            ValueRlpWriter writer = new(this);
+            _blockDecoder.Encode(ref writer, value);
+        }
 
-        public void Encode(BlockHeader value) => _headerDecoder.Encode(this, value);
+        public void Encode(BlockHeader value)
+        {
+            ValueRlpWriter writer = new(this);
+            _headerDecoder.Encode(ref writer, value);
+        }
 
         public void Encode(Transaction value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            => _txDecoder.Encode(this, value, rlpBehaviors);
+        {
+            ValueRlpWriter writer = new(this);
+            _txDecoder.Encode(ref writer, value, rlpBehaviors);
+        }
 
-        public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
+        public void Encode(Withdrawal value)
+        {
+            ValueRlpWriter writer = new(this);
+            _withdrawalDecoder.Encode(ref writer, value);
+        }
 
-        public void Encode(LogEntry value) => _logEntryDecoder.Encode(this, value);
+        public void Encode(LogEntry value)
+        {
+            ValueRlpWriter writer = new(this);
+            _logEntryDecoder.Encode(ref writer, value);
+        }
 
-        public void Encode(BlockInfo value) => _blockInfoDecoder.Encode(this, value);
+        public void Encode(BlockInfo value)
+        {
+            ValueRlpWriter writer = new(this);
+            _blockInfoDecoder.Encode(ref writer, value);
+        }
 
-        public void Encode(ReadOnlyBlockAccessList value) => _blockAccessListDecoder.Encode(this, value);
+        public void Encode(ReadOnlyBlockAccessList value)
+        {
+            ValueRlpWriter writer = new(this);
+            _blockAccessListDecoder.Encode(ref writer, value);
+        }
 
-        public void Encode(GeneratedBlockAccessList value) => _blockAccessListDecoder.Encode(this, value);
+        public void Encode(GeneratedBlockAccessList value)
+        {
+            ValueRlpWriter writer = new(this);
+            _blockAccessListDecoder.Encode(ref writer, value);
+        }
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
         {
@@ -179,7 +211,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (list is IRlpWrapper rlpWrapper)
             {
-                rlpWrapper.Write(this);
+                Write(rlpWrapper);
                 return;
             }
 
@@ -194,6 +226,20 @@ namespace Nethermind.Serialization.Rlp
             {
                 Encode(list[i]);
             }
+        }
+
+        private void Write(IRlpWrapper rlpWrapper)
+        {
+            if (GetType() == typeof(RlpStream))
+            {
+                ValueRlpWriter writer = new(Data.AsSpan(Position, rlpWrapper.RlpLength));
+                rlpWrapper.Write(ref writer);
+                Position += writer.Position;
+                return;
+            }
+
+            ValueRlpWriter streamWriter = new(this);
+            rlpWrapper.Write(ref streamWriter);
         }
 
         protected virtual string Description =>

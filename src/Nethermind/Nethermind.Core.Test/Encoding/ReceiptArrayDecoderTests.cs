@@ -73,7 +73,7 @@ namespace Nethermind.Core.Test.Encoding
             using NettyRlpStream rlp = encoder.EncodeToNewNettyStream(txReceipts, encodeBehaviors);
 
             ReceiptArrayStorageDecoder decoder = new();
-            Rlp.ValueDecoderContext ctx = new(rlp.AsSpan());
+            ValueRlpReader ctx = new(rlp.AsSpan());
             TxReceipt[] deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpectedArray());

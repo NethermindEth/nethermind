@@ -31,7 +31,8 @@ internal class XdcSealer(ISigner signer, ILogManager logManager) : ISealer
         if (block.IsGenesis) throw new InvalidOperationException("Can't sign genesis block");
 
         KeccakRlpStream hashStream = new();
-        _xdcHeaderDecoder.Encode(hashStream, xdcBlockHeader, RlpBehaviors.ForSealing);
+        ValueRlpWriter writer = hashStream.AsValueWriter();
+        _xdcHeaderDecoder.Encode(ref writer, xdcBlockHeader, RlpBehaviors.ForSealing);
         ValueHash256 hash = hashStream.GetValueHash();
         if (!signer.TrySign(in hash, out Signature signature))
         {

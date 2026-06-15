@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IDb _blocksDb;
         private readonly int _length;
-        private Rlp.ValueDecoderContext _decoderContext;
+        private ValueRlpReader _decoderContext;
         private readonly int _startingPosition;
 
         private readonly TxReceipt[]? _receipts;
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Receipts
         /// <param name="receipts"></param>
         public ReceiptsIterator(TxReceipt[] receipts)
         {
-            _decoderContext = new Rlp.ValueDecoderContext();
+            _decoderContext = new ValueRlpReader();
             _length = receipts.Length;
             _blocksDb = null;
             _receipts = receipts;
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Receipts
                 ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder)
                 : new LogEntriesIterator(receipt.Logs);
 
-        public readonly Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) =>
+        public readonly Hash256[] DecodeTopics(ValueRlpReader valueDecoderContext) =>
             _receiptRefDecoder.DecodeTopics(valueDecoderContext);
 
         public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;

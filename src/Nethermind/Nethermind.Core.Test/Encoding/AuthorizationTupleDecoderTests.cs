@@ -29,21 +29,21 @@ public class AuthorizationTupleDecoderTests
         AuthorizationTupleDecoder sut = new();
 
         Rlp result = sut.Encode(item);
-        Rlp.ValueDecoderContext ctx = new(result.Bytes);
+        ValueRlpReader ctx = new(result.Bytes);
 
         AuthorizationTuple decoded = sut.Decode(ref ctx);
         Assert.That(decoded, Is.EqualTo(item).UsingAuthorizationTupleComparer());
     }
 
     [Test]
-    public void DecodeValueDecoderContext_CodeAddressIsNull_ThrowsRlpException()
+    public void DecodeValueRlpReader_CodeAddressIsNull_ThrowsRlpException()
     {
         RlpStream stream = TupleRlpStreamWithNull();
 
         AuthorizationTupleDecoder sut = new();
         Assert.That(() =>
         {
-            Rlp.ValueDecoderContext decoderContext = new(stream.Data);
+            ValueRlpReader decoderContext = new(stream.Data);
             sut.Decode(ref decoderContext, RlpBehaviors.None);
         }, Throws.TypeOf<RlpException>());
     }
@@ -128,7 +128,7 @@ public class AuthorizationTupleDecoderTests
 
         Assert.That(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(badEncoding.Data);
+            ValueRlpReader ctx = new(badEncoding.Data);
             sut.Decode(ref ctx, RlpBehaviors.None);
         }, Throws.InstanceOf<RlpException>());
     }

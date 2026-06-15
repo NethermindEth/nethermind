@@ -504,8 +504,8 @@ public class DebugRpcModule(
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
 
-        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
+        Rlp rlp = TxRlpDecoder.Encode(transaction, encodingSettings);
+        return ResultWrapper<string?>.Success(rlp.Bytes.ToHexString(true));
     }
 
     public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)
@@ -833,7 +833,7 @@ public class DebugRpcModule(
 
         try
         {
-            Rlp.ValueDecoderContext context = blockRlp.Bytes.AsRlpValueContext();
+            ValueRlpReader context = blockRlp.Bytes.AsRlpValueContext();
             block = _blockDecoder.Decode(ref context);
             if (block is null)
             {

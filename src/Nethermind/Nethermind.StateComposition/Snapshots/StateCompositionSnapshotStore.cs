@@ -52,8 +52,8 @@ internal sealed class StateCompositionSnapshotStore(
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
         try
         {
-            RlpStream stream = new(buffer);
-            Decoder.Encode(stream, snapshot);
+            ValueRlpWriter writer = new(buffer.AsSpan(0, length));
+            Decoder.Encode(ref writer, snapshot);
             db.PutSpan(key, buffer.AsSpan(0, length));
         }
         finally
@@ -86,7 +86,7 @@ internal sealed class StateCompositionSnapshotStore(
         // to a fresh scan — callers don't need to distinguish "missing" from "corrupt".
         try
         {
-            Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
+            ValueRlpReader ctx = data.AsRlpValueContext();
             return Decoder.Decode(ref ctx);
         }
         catch (Exception ex) when (ex is RlpException or InvalidDataException or EndOfStreamException or IOException)

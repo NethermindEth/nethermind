@@ -21,7 +21,7 @@ namespace Nethermind.Crypto
                 return resolver.CalculateHash();
 
             KeccakRlpStream stream = new();
-            _headerDecoder.Encode(stream, header, behaviors);
+            stream.Encode(header, behaviors);
 
             return stream.GetValueHash();
         }

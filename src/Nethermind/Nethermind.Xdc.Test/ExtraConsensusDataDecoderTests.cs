@@ -18,12 +18,12 @@ internal class ExtraConsensusDataDecoderTests
     public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(string extraDataRlp)
     {
         ExtraConsensusDataDecoder decoder = new();
-        Rlp.ValueDecoderContext context = new(Bytes.FromHexString(extraDataRlp));
+        ValueRlpReader context = new(Bytes.FromHexString(extraDataRlp));
         ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
 
         Rlp encodedExtraData = decoder.Encode(decodedExtraData);
 
-        Rlp.ValueDecoderContext encodedContext = encodedExtraData.Bytes.AsRlpValueContext();
+        ValueRlpReader encodedContext = encodedExtraData.Bytes.AsRlpValueContext();
         ExtraFieldsV2 unencoded = decoder.Decode(ref encodedContext);
 
         Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingXdcComparer());
@@ -37,7 +37,7 @@ internal class ExtraConsensusDataDecoderTests
         RlpStream stream = new(decoder.GetLength(extraFields));
         decoder.Encode(stream, extraFields);
 
-        Rlp.ValueDecoderContext context = new(stream.Data);
+        ValueRlpReader context = new(stream.Data);
         ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
 
         Assert.That(decodedExtraData, Is.EqualTo(extraFields).UsingXdcComparer());
@@ -51,7 +51,7 @@ internal class ExtraConsensusDataDecoderTests
 
         Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
 
-        Rlp.ValueDecoderContext context = encodedExtraData.Bytes.AsRlpValueContext();
+        ValueRlpReader context = encodedExtraData.Bytes.AsRlpValueContext();
         ExtraFieldsV2 unencoded = decoder.Decode(ref context);
 
         Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingXdcComparer());

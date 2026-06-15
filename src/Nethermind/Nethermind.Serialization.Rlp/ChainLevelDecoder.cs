@@ -40,7 +40,36 @@ namespace Nethermind.Serialization.Rlp
                 => throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
         }
 
-        protected override ChainLevelInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(ref ValueRlpWriter writer, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                writer.EncodeNullObject();
+                return;
+            }
+
+            if (item.BlockInfos.AsSpan().Contains(null))
+            {
+                ThrowHasNull();
+            }
+
+            int contentLength = GetContentLength(item, rlpBehaviors);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.HasBlockOnMainChain);
+            int infoLength = GetBlockInfoLength(item.BlockInfos);
+            writer.StartSequence(infoLength);
+            BlockInfoDecoder blockInfoDecoder = BlockInfoDecoder.Instance;
+            foreach (BlockInfo? blockInfo in item.BlockInfos)
+            {
+                blockInfoDecoder.Encode(ref writer, blockInfo);
+            }
+
+            [StackTraceHidden, DoesNotReturn]
+            static void ThrowHasNull()
+                => throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
+        }
+
+        protected override ChainLevelInfo? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {

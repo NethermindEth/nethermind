@@ -16,7 +16,7 @@ public class OptimismCompactReceiptStorageDecoder :
 {
     private static readonly CompactLogEntryDecoder LogEntryDecoder = CompactLogEntryDecoder.Instance;
 
-    protected override OptimismTxReceipt DecodeInternal(ref ValueDecoderContext decoderContext,
+    protected override OptimismTxReceipt DecodeInternal(ref ValueRlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
@@ -78,7 +78,7 @@ public class OptimismCompactReceiptStorageDecoder :
         return txReceipt;
     }
 
-    public void DecodeStructRef(scoped ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)
+    public void DecodeStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item)
     {
         // Note: This method runs at 2.5 million times/sec on my machine
         item = new TxReceiptStructRef();
@@ -127,19 +127,25 @@ public class OptimismCompactReceiptStorageDecoder :
         decoderContext.SkipItem();
     }
 
-    public void DecodeLogEntryStructRef(scoped ref ValueDecoderContext decoderContext, RlpBehaviors none,
+    public void DecodeLogEntryStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors none,
         out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-    public Hash256[] DecodeTopics(ValueDecoderContext valueDecoderContext) => CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
+    public Hash256[] DecodeTopics(ValueRlpReader valueDecoderContext) => CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
 
     // Refstruct decode does not generate bloom
     public bool CanDecodeBloom => false;
 
     public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        ValueRlpWriter writer = new(rlpStream);
+        Encode(ref writer, item, rlpBehaviors);
+    }
+
+    public override void Encode(ref ValueRlpWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
         if (item is null)
         {
-            rlpStream.EncodeNullObject();
+            writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
 
@@ -148,34 +154,34 @@ public class OptimismCompactReceiptStorageDecoder :
         bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
         // Note: Any byte saved here is about 3GB on mainnet.
-        rlpStream.StartSequence(totalContentLength);
+        writer.StartSequence(totalContentLength);
         if (isEip658receipts)
         {
-            rlpStream.Encode(item.StatusCode);
+            writer.Encode(item.StatusCode);
         }
         else
         {
-            rlpStream.Encode(item.PostTransactionState);
+            writer.Encode(item.PostTransactionState);
         }
 
-        rlpStream.Encode(item.Sender);
-        rlpStream.Encode(item.GasUsedTotal);
+        writer.Encode(item.Sender);
+        writer.Encode(item.GasUsedTotal);
 
-        rlpStream.StartSequence(logsLength);
+        writer.StartSequence(logsLength);
 
         LogEntry[] logs = item.Logs ?? [];
         for (int i = 0; i < logs.Length; i++)
         {
-            LogEntryDecoder.Encode(rlpStream, logs[i]);
+            LogEntryDecoder.Encode(ref writer, logs[i]);
         }
 
         if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem) && opItem.DepositNonce is not null)
         {
-            rlpStream.Encode(opItem.DepositNonce.Value);
+            writer.Encode(opItem.DepositNonce.Value);
 
             if (opItem.DepositReceiptVersion is not null)
             {
-                rlpStream.Encode(opItem.DepositReceiptVersion.Value);
+                writer.Encode(opItem.DepositReceiptVersion.Value);
             }
         }
     }

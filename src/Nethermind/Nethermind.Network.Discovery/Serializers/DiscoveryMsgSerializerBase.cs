@@ -109,14 +109,14 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return (nodeId, mdc, data);
     }
 
-    protected static void Encode(RlpStream stream, IPEndPoint address, int length)
+    protected static void Encode(ref ValueRlpWriter writer, IPEndPoint address, int length)
     {
-        stream.StartSequence(length);
-        stream.Encode(address.Address.GetAddressBytes());
+        writer.StartSequence(length);
+        writer.Encode(address.Address.GetAddressBytes());
         //tcp port
-        stream.Encode(address.Port);
+        writer.Encode(address.Port);
         //udp port
-        stream.Encode(address.Port);
+        writer.Encode(address.Port);
     }
 
     protected static int GetIPEndPointLength(IPEndPoint address)
@@ -127,16 +127,16 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return length;
     }
 
-    protected static void SerializeNode(RlpStream stream, IPEndPoint address, byte[] id)
+    protected static void SerializeNode(ref ValueRlpWriter writer, IPEndPoint address, byte[] id)
     {
         int length = GetLengthSerializeNode(address, id);
-        stream.StartSequence(length);
-        stream.Encode(address.Address.GetAddressBytes());
+        writer.StartSequence(length);
+        writer.Encode(address.Address.GetAddressBytes());
         //tcp port
-        stream.Encode(address.Port);
+        writer.Encode(address.Port);
         //udp port
-        stream.Encode(address.Port);
-        stream.Encode(id);
+        writer.Encode(address.Port);
+        writer.Encode(id);
     }
 
     protected static int GetLengthSerializeNode(IPEndPoint address, byte[] id)

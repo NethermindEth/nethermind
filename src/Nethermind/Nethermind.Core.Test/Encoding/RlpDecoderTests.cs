@@ -46,7 +46,7 @@ public class RlpDecoderTests
 
         RlpStream stream = new(decoder.GetLength(withdrawals));
         decoder.Encode(stream, withdrawals);
-        Rlp.ValueDecoderContext context = new(stream.Data.AsSpan());
+        ValueRlpReader context = new(stream.Data.AsSpan());
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
@@ -69,7 +69,7 @@ public class RlpDecoderTests
         static void DecodeEmptyInput()
         {
             WithdrawalDecoder decoder = new();
-            Rlp.ValueDecoderContext context = new(ReadOnlySpan<byte>.Empty);
+            ValueRlpReader context = new(ReadOnlySpan<byte>.Empty);
             decoder.Decode(ref context);
         }
     }
@@ -134,7 +134,7 @@ public class RlpDecoderTests
 
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        ValueRlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
@@ -145,7 +145,7 @@ public class RlpDecoderTests
 
     private static void AssertEncodedNullItem(ReadOnlySpan<byte> bytes)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        ValueRlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
@@ -172,7 +172,7 @@ public class RlpDecoderTests
             stream.Encode(Rlp.OfEmptyByteArray);
         }
 
-        protected override NonNullableItem DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        protected override NonNullableItem DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

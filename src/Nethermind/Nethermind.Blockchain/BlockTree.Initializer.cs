@@ -323,7 +323,7 @@ public partial class BlockTree
     {
         Block? startBlock = null;
         byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-        BestPersistedState = persistedNumberData is null ? null : new Rlp.ValueDecoderContext(persistedNumberData).DecodeLong();
+        BestPersistedState = persistedNumberData is null ? null : new ValueRlpReader(persistedNumberData).DecodeLong();
         long? persistedNumber = BestPersistedState;
         if (persistedNumber is not null)
         {
@@ -376,7 +376,7 @@ public partial class BlockTree
             return;
         }
 
-        Rlp.ValueDecoderContext pivotStream = new(pivotFromDb!);
+        ValueRlpReader pivotStream = new(pivotFromDb!);
         long updatedPivotBlockNumber = pivotStream.DecodeLong();
         Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 

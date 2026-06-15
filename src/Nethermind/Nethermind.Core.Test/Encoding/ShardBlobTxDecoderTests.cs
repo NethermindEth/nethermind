@@ -39,7 +39,7 @@ public partial class ShardBlobTxDecoderTests
     {
         RlpStream rlpStream = new(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
         _txDecoder.Encode(rlpStream, testCase.Tx);
-        Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+        ValueRlpReader ctx = new(rlpStream.Data);
         Transaction? decoded = _txDecoder.Decode(ref ctx);
         decoded!.SenderAddress =
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
@@ -55,20 +55,20 @@ public partial class ShardBlobTxDecoderTests
 
         Action tryDecode = () =>
         {
-            Rlp.ValueDecoderContext ctx = new(bytes);
+            ValueRlpReader ctx = new(bytes);
             _txDecoder.Decode(ref ctx);
         };
         Assert.That(tryDecode, Throws.TypeOf<RlpException>());
     }
 
     [TestCaseSource(nameof(TestCaseSource))]
-    public void Roundtrip_ValueDecoderContext_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
+    public void Roundtrip_ValueRlpReader_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
         RlpStream rlpStream = new(10000);
         _txDecoder.Encode(rlpStream, testCase.Tx);
 
         Span<byte> spanIncomingTxRlp = rlpStream.Data.AsSpan();
-        Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp);
+        ValueRlpReader decoderContext = new(spanIncomingTxRlp);
         rlpStream.Position = 0;
         Transaction? decoded = _txDecoder.Decode(ref decoderContext);
         decoded!.SenderAddress =
@@ -114,7 +114,7 @@ public partial class ShardBlobTxDecoderTests
         // Decoding should fail
         Action tryDecode = () =>
         {
-            Rlp.ValueDecoderContext ctx = new(stream.Data);
+            ValueRlpReader ctx = new(stream.Data);
             _txDecoder.Decode(ref ctx);
         };
         Assert.That(tryDecode, Throws.TypeOf<RlpException>());
@@ -125,13 +125,13 @@ public partial class ShardBlobTxDecoderTests
     {
         Rlp encoded = _txDecoder.Encode(tx, rlpBehaviors);
 
-        void DecodeByValueDecoderContext()
+        void DecodeByValueRlpReader()
         {
-            Rlp.ValueDecoderContext decoderContext = new(encoded.Bytes);
+            ValueRlpReader decoderContext = new(encoded.Bytes);
             _txDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
 
-        Assert.That(DecodeByValueDecoderContext, Throws.InstanceOf<RlpException>());
+        Assert.That(DecodeByValueRlpReader, Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -144,7 +144,7 @@ public partial class ShardBlobTxDecoderTests
             ProofVersion.V1);
         Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
 
-        Rlp.ValueDecoderContext decoderContext = new(encoded.Bytes);
+        ValueRlpReader decoderContext = new(encoded.Bytes);
         Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)decoded!.NetworkWrapper!;
@@ -173,7 +173,7 @@ public partial class ShardBlobTxDecoderTests
 
         Assert.That(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(rlp);
+            ValueRlpReader ctx = new(rlp);
             _txDecoder.Decode(ref ctx);
         }, Throws.InstanceOf<RlpException>());
     }
@@ -182,22 +182,22 @@ public partial class ShardBlobTxDecoderTests
     public void NetworkWrapper_is_decoded_correctly(string rlp, Hash256 signedHash, RlpBehaviors rlpBehaviors)
     {
         byte[] spanIncomingTxRlp = Bytes.FromHexString(rlp);
-        Rlp.ValueDecoderContext ctx = new(spanIncomingTxRlp.AsSpan());
-        Rlp.ValueDecoderContext decoderContext = new(spanIncomingTxRlp.AsSpan());
+        ValueRlpReader ctx = new(spanIncomingTxRlp.AsSpan());
+        ValueRlpReader decoderContext = new(spanIncomingTxRlp.AsSpan());
 
         Transaction? decoded = _txDecoder.Decode(ref ctx, rlpBehaviors);
-        Transaction? decodedByValueDecoderContext = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
+        Transaction? decodedByValueRlpReader = _txDecoder.Decode(ref decoderContext, rlpBehaviors);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded!.Hash, Is.EqualTo(signedHash));
-            Assert.That(decodedByValueDecoderContext!.Hash, Is.EqualTo(signedHash));
+            Assert.That(decodedByValueRlpReader!.Hash, Is.EqualTo(signedHash));
         }
 
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) == RlpBehaviors.InMempoolForm)
         {
             Rlp epEncoded = _txDecoder.Encode(decoded!, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
-            Rlp.ValueDecoderContext epCtx = new(epEncoded.Bytes);
+            ValueRlpReader epCtx = new(epEncoded.Bytes);
             Transaction? epDecoded = _txDecoder.Decode(ref epCtx, rlpBehaviors ^ RlpBehaviors.InMempoolForm);
             Assert.That(epDecoded!.Hash, Is.EqualTo(signedHash));
         }
@@ -208,12 +208,12 @@ public partial class ShardBlobTxDecoderTests
         }
 
         Rlp encoded = _txDecoder.Encode(decoded!, rlpBehaviors);
-        Rlp encodedWithDecodedByValueDecoderContext =
-            _txDecoder.Encode(decodedByValueDecoderContext!, rlpBehaviors);
+        Rlp encodedWithDecodedByValueRlpReader =
+            _txDecoder.Encode(decodedByValueRlpReader!, rlpBehaviors);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded.Bytes, Is.EqualTo(spanIncomingTxRlp));
-            Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(spanIncomingTxRlp));
+            Assert.That(encodedWithDecodedByValueRlpReader.Bytes, Is.EqualTo(spanIncomingTxRlp));
         }
     }
 

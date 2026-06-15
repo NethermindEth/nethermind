@@ -26,11 +26,20 @@ namespace Nethermind.Network.Enr
         /// </summary>
         public void Encode(RlpStream rlpStream)
         {
-            rlpStream.Encode(Key);
-            EncodeValue(rlpStream);
+            ValueRlpWriter writer = new(rlpStream);
+            Encode(ref writer);
         }
 
-        protected abstract void EncodeValue(RlpStream rlpStream);
+        /// <summary>
+        /// Encodes the entry into a value RLP writer.
+        /// </summary>
+        public void Encode(ref ValueRlpWriter writer)
+        {
+            writer.Encode(Key);
+            EncodeValue(ref writer);
+        }
+
+        protected abstract void EncodeValue(ref ValueRlpWriter writer);
 
         public override int GetHashCode() => Key.GetHashCode();
     }

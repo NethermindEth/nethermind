@@ -40,11 +40,8 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        // if we carry Rlp from the network message all the way here we could avoid encoding back to RLP here
-        // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
-        using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-
-        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        Rlp newRlp = _blockDecoder.Encode(block);
+        _blockDb.Set(block.Number, block.Hash, newRlp.Bytes, writeFlags);
     }
 
     public void Delete(long blockNumber, Hash256 blockHash)

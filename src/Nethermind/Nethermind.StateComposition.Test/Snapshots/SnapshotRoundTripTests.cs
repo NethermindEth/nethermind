@@ -77,7 +77,7 @@ public class SnapshotRoundTripTests
         RlpStream stream = new(buffer);
         decoder.Encode(stream, original);
 
-        Rlp.ValueDecoderContext ctx = buffer.AsRlpValueContext();
+        ValueRlpReader ctx = buffer.AsRlpValueContext();
         return decoder.Decode(ref ctx);
     }
 

@@ -12,8 +12,14 @@ public class UInt256Decoder : RlpDecoder<UInt256>
     public override int GetLength(UInt256 item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOf(item);
 
-    protected override UInt256 DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors) => ctx.DecodeUInt256();
+    protected override UInt256 DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors) => ctx.DecodeUInt256();
 
     public override void Encode(RlpStream stream, UInt256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => stream.Encode(item);
+    {
+        ValueRlpWriter writer = new(stream);
+        Encode(ref writer, item, rlpBehaviors);
+    }
+
+    public override void Encode(ref ValueRlpWriter writer, UInt256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => writer.Encode(item);
 }

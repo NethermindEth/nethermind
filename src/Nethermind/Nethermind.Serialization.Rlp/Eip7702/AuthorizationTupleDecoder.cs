@@ -14,7 +14,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
 {
     public static readonly AuthorizationTupleDecoder Instance = new();
 
-    protected override AuthorizationTuple DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override AuthorizationTuple DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
@@ -40,23 +40,58 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
 
     public override void Encode(RlpStream stream, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        ValueRlpWriter writer = new(stream);
+        Encode(ref writer, item, rlpBehaviors);
+    }
+
+    public override void Encode(ref ValueRlpWriter writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
         int contentLength = GetContentLength(item);
-        stream.StartSequence(contentLength);
-        stream.Encode(item.ChainId);
-        stream.Encode(item.CodeAddress);
-        stream.Encode(item.Nonce);
-        stream.Encode(item.AuthoritySignature.V - Signature.VOffset);
-        stream.Encode(new UInt256(item.AuthoritySignature.R.Span, true));
-        stream.Encode(new UInt256(item.AuthoritySignature.S.Span, true));
+        writer.StartSequence(contentLength);
+        writer.Encode(item.ChainId);
+        writer.Encode(item.CodeAddress);
+        writer.Encode(item.Nonce);
+        writer.Encode(item.AuthoritySignature.V - Signature.VOffset);
+        writer.Encode(new UInt256(item.AuthoritySignature.R.Span, true));
+        writer.Encode(new UInt256(item.AuthoritySignature.S.Span, true));
     }
 
     public static void EncodeWithoutSignature(RlpStream stream, UInt256 chainId, Address codeAddress, ulong nonce)
     {
+        ValueRlpWriter writer = new(stream);
+        EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
+    }
+
+    public static void EncodeWithoutSignature(ref ValueRlpWriter writer, UInt256 chainId, Address codeAddress, ulong nonce)
+    {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
-        stream.StartSequence(contentLength);
-        stream.Encode(chainId);
-        stream.Encode(codeAddress ?? throw new RlpException($"Invalid tx {nameof(AuthorizationTuple)} format - address is null"));
-        stream.Encode(nonce);
+        writer.StartSequence(contentLength);
+        writer.Encode(chainId);
+        writer.Encode(codeAddress ?? throw new RlpException($"Invalid tx {nameof(AuthorizationTuple)} format - address is null"));
+        writer.Encode(nonce);
+    }
+
+    public void EncodeArray(ref ValueRlpWriter writer, AuthorizationTuple[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (items is null)
+        {
+            writer.WriteByte(Rlp.EmptyListByte);
+            return;
+        }
+
+        writer.StartSequence(GetContentLength(items, rlpBehaviors));
+        for (int i = 0; i < items.Length; i++)
+        {
+            AuthorizationTuple? item = items[i];
+            if (item is null)
+            {
+                writer.WriteByte(Rlp.EmptyListByte);
+            }
+            else
+            {
+                Encode(ref writer, item, rlpBehaviors);
+            }
+        }
     }
 
     public override int GetLength(AuthorizationTuple item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item));

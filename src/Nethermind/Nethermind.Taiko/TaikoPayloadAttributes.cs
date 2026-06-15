@@ -89,14 +89,15 @@ public class TaikoPayloadAttributes : PayloadAttributes
             contentLength += codec.GetLength(withdrawal, RlpBehaviors.None);
         }
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        writer.StartSequence(contentLength);
         foreach (Withdrawal withdrawal in withdrawals)
         {
-            codec.Encode(stream, withdrawal);
+            codec.Encode(ref writer, withdrawal);
         }
 
-        hasher.AppendData(stream.Data.AsSpan());
+        hasher.AppendData(bytes);
     }
 
     public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,

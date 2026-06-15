@@ -51,7 +51,7 @@ public struct ReceiptRecoveryBlock
             return _transactions[_currentTransactionIndex++];
         }
 
-        Rlp.ValueDecoderContext decoderContext = new(_transactionData, true)
+        ValueRlpReader decoderContext = new(_transactionData, true)
         {
             Position = _currentTransactionPosition
         };

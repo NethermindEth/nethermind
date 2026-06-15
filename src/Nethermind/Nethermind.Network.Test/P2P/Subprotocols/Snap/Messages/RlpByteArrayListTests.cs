@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Linq;
+using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -72,6 +73,47 @@ public class RlpByteArrayListTests
     }
 
     [TestCaseSource(nameof(TestCases))]
+    public void ValueRlpWriter_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    {
+        using RlpByteArrayList list = CreateList(items);
+        byte[] expected = EncodeItems(items);
+
+        byte[] buffer = new byte[list.RlpLength];
+        ValueRlpWriter writer = new(buffer);
+        writer.WriteByteArrayList(list);
+
+        Assert.That(writer.Position, Is.EqualTo(expected.Length));
+        Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expected));
+    }
+
+    [TestCaseSource(nameof(TestCases))]
+    public void NettyRlpStream_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    {
+        using RlpByteArrayList list = CreateList(items);
+        byte[] expected = EncodeItems(items);
+
+        using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
+        NettyRlpStream.WriteByteArrayList(byteBuffer, list);
+
+        Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
+        Assert.That(byteBuffer.AsSpan().ToArray(), Is.EqualTo(expected));
+    }
+
+    [TestCaseSource(nameof(TestCases))]
+    public void DerivedRlpStream_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    {
+        using RlpByteArrayList list = CreateList(items);
+        byte[] expected = EncodeItems(items);
+
+        using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
+        RlpStream stream = new NettyRlpStream(byteBuffer);
+        stream.WriteByteArrayList(list);
+
+        Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
+        Assert.That(byteBuffer.AsSpan().ToArray(), Is.EqualTo(expected));
+    }
+
+    [TestCaseSource(nameof(TestCases))]
     public void BackwardAccess_ReturnsCorrectData(byte[][] items)
     {
         if (items.Length < 2) return;
@@ -105,13 +147,13 @@ public class RlpByteArrayListTests
         {
             Assert.Throws<RlpLimitException>(() =>
             {
-                Rlp.ValueDecoderContext ctx = new(encoded, true);
+                ValueRlpReader ctx = new(encoded, true);
                 using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
             });
         }
         else
         {
-            Rlp.ValueDecoderContext ctx = new(encoded, true);
+            ValueRlpReader ctx = new(encoded, true);
             using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
             Assert.That(list.Count, Is.EqualTo(itemCount));
         }
@@ -123,7 +165,7 @@ public class RlpByteArrayListTests
         const int count = 10_000;
         byte[] encoded = EncodeSingleByteItemList(count);
 
-        Rlp.ValueDecoderContext ctx = new(encoded, true);
+        ValueRlpReader ctx = new(encoded, true);
         using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
         Assert.That(list.Count, Is.EqualTo(count));
     }
@@ -143,6 +185,13 @@ public class RlpByteArrayListTests
 
     private static RlpByteArrayList CreateList(byte[][] items)
     {
+        byte[] data = EncodeItems(items);
+        ExactMemoryOwner memoryOwner = new(data);
+        return new RlpByteArrayList(memoryOwner, memoryOwner.Memory.Slice(0, data.Length));
+    }
+
+    private static byte[] EncodeItems(byte[][] items)
+    {
         int contentLength = 0;
         for (int i = 0; i < items.Length; i++)
         {
@@ -158,9 +207,7 @@ public class RlpByteArrayListTests
             rlpStream.Encode(items[i]);
         }
 
-        byte[] data = rlpStream.Data.ToArray()!;
-        ExactMemoryOwner memoryOwner = new(data);
-        return new RlpByteArrayList(memoryOwner, memoryOwner.Memory.Slice(0, totalLength));
+        return rlpStream.Data.ToArray()!;
     }
 
     private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>

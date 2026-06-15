@@ -77,7 +77,8 @@ public class NodeRecord
     private Hash256 CalculateContentHash()
     {
         KeccakRlpStream rlpStream = new();
-        EncodeContent(rlpStream);
+        ValueRlpWriter writer = rlpStream.AsValueWriter();
+        EncodeContent(ref writer);
         return rlpStream.GetHash();
     }
 
@@ -170,15 +171,15 @@ public class NodeRecord
     /// <summary>
     /// Applies Rlp([seq, k, v, ...]]).
     /// </summary>
-    /// <param name="rlpStream">An RLP stream to encode the content to.</param>
-    private void EncodeContent(RlpStream rlpStream)
+    /// <param name="writer">An RLP writer to encode the content to.</param>
+    private void EncodeContent(ref ValueRlpWriter writer)
     {
         int contentLength = GetContentLengthWithoutSignature();
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(EnrSequence);
+        writer.StartSequence(contentLength);
+        writer.Encode(EnrSequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
-            contentEntry.Encode(rlpStream);
+            contentEntry.Encode(ref writer);
         }
     }
 
@@ -190,9 +191,10 @@ public class NodeRecord
     {
         int contentLength = GetContentLengthWithSignature();
         int totalLength = Rlp.LengthOfSequence(contentLength);
-        RlpStream rlpStream = new(totalLength);
-        Encode(rlpStream);
-        return rlpStream.Data.AsSpan().ToHexString();
+        byte[] bytes = new byte[totalLength];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        Encode(ref writer);
+        return bytes.AsSpan().ToHexString();
     }
 
     /// <summary>
@@ -201,15 +203,25 @@ public class NodeRecord
     /// <param name="rlpStream">An RLP stream to encode the content to.</param>
     public void Encode(RlpStream rlpStream)
     {
+        ValueRlpWriter writer = new(rlpStream);
+        Encode(ref writer);
+    }
+
+    /// <summary>
+    /// Applies Rlp([signature, seq, k, v, ...]]).
+    /// </summary>
+    /// <param name="writer">An RLP writer to encode the content to.</param>
+    public void Encode(ref ValueRlpWriter writer)
+    {
         RequireSignature();
 
         int contentLength = GetContentLengthWithSignature();
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(Signature!.Bytes);
-        rlpStream.Encode(EnrSequence); // a different sequence here (not RLP sequence)
+        writer.StartSequence(contentLength);
+        writer.Encode(Signature!.Bytes);
+        writer.Encode(EnrSequence); // a different sequence here (not RLP sequence)
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
-            contentEntry.Encode(rlpStream);
+            contentEntry.Encode(ref writer);
         }
     }
 
@@ -222,8 +234,8 @@ public class NodeRecord
         IByteBuffer buffer = NethermindBuffers.Default.Buffer(rlpLength);
         try
         {
-            NettyRlpStream rlpStream = new(buffer);
-            Encode(rlpStream);
+            ValueRlpWriter writer = NettyRlpStream.CreateWriter(buffer);
+            Encode(ref writer);
             IByteBuffer resultBuffer = Base64.Encode(buffer, Base64Dialect.URL_SAFE);
             try
             {

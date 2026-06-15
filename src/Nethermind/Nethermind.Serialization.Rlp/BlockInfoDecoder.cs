@@ -34,6 +34,27 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        public override void Encode(ref ValueRlpWriter writer, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                writer.EncodeNullObject();
+                return;
+            }
+
+            int contentLength = GetContentLength(item, rlpBehaviors);
+
+            bool hasMetadata = item.Metadata != BlockMetadata.None;
+            writer.StartSequence(contentLength);
+            writer.Encode(item.BlockHash);
+            writer.Encode(item.WasProcessed);
+            writer.Encode(item.TotalDifficulty);
+            if (hasMetadata)
+            {
+                writer.Encode((int)item.Metadata);
+            }
+        }
+
         private static int GetContentLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             bool hasMetadata = item.Metadata != BlockMetadata.None;
@@ -52,7 +73,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-        protected override BlockInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override BlockInfo? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {

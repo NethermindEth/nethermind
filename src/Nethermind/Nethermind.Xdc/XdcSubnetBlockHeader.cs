@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using System.Collections.Immutable;
 using Nethermind.Xdc.RLP;
 
@@ -41,7 +42,8 @@ public class XdcSubnetBlockHeader(
     public override ValueHash256 CalculateHash()
     {
         KeccakRlpStream rlpStream = new();
-        _headerDecoder.Encode(rlpStream, this);
+        ValueRlpWriter writer = rlpStream.AsValueWriter();
+        _headerDecoder.Encode(ref writer, this);
         return rlpStream.GetHash();
     }
 

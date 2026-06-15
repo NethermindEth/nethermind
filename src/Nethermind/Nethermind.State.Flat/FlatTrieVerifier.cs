@@ -383,10 +383,10 @@ public class FlatTrieVerifier
     {
         ReadOnlySpan<byte> trieAccountRlp = trieLeaf.Value.AsSpan();
 
-        Rlp.ValueDecoderContext flatCtx = new(flatAccountRlp);
+        ValueRlpReader flatCtx = new(flatAccountRlp);
         Account? flatAccount = AccountDecoder.Slim.Decode(ref flatCtx);
 
-        Rlp.ValueDecoderContext trieCtx = new(trieAccountRlp);
+        ValueRlpReader trieCtx = new(trieAccountRlp);
         Account? trieAccount = AccountDecoder.Instance.Decode(ref trieCtx);
 
         if (flatAccount != trieAccount)
@@ -411,10 +411,10 @@ public class FlatTrieVerifier
         ChannelWriter<StorageVerificationJob> storageWriter,
         CancellationToken cancellationToken)
     {
-        Rlp.ValueDecoderContext flatCtx = new(flatAccountRlp);
+        ValueRlpReader flatCtx = new(flatAccountRlp);
         Account? flatAccount = AccountDecoder.Slim.Decode(ref flatCtx);
 
-        Rlp.ValueDecoderContext trieCtx = new(trieAccountRlp);
+        ValueRlpReader trieCtx = new(trieAccountRlp);
         Account? trieAccount = AccountDecoder.Instance.Decode(ref trieCtx);
 
         if (flatAccount != trieAccount)
@@ -607,7 +607,7 @@ public class FlatTrieVerifier
             return;
         }
 
-        Rlp.ValueDecoderContext ctx = new(trieValue);
+        ValueRlpReader ctx = new(trieValue);
         byte[] decodedTrieValue = ctx.DecodeByteArray();
 
         ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
@@ -623,7 +623,7 @@ public class FlatTrieVerifier
     private void VerifySlotMatchPreimageWithRlp(ReadOnlySpan<byte> flatValue, ReadOnlySpan<byte> trieValueRlp, in ValueHash256 accountKey, in ValueHash256 slotKey)
     {
         // Decode RLP to get the actual value
-        Rlp.ValueDecoderContext ctx = new(trieValueRlp);
+        ValueRlpReader ctx = new(trieValueRlp);
         byte[] decodedTrieValue = ctx.DecodeByteArray();
 
         ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();

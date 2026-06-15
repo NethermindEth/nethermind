@@ -101,12 +101,12 @@ namespace Nethermind.ExternalSigner.Plugin
         {
             ArgumentNullException.ThrowIfNull(header);
 
-            using NettyRlpStream rlpStream = _headerDecoder.EncodeToNewNettyStream(header, RlpBehaviors.None);
+            Rlp rlp = _headerDecoder.Encode(header, RlpBehaviors.None);
             string? signed = rpcClient.Post<string>(
                 "account_signData",
                 "application/x-clique-header",
                 address.ToString(),
-                rlpStream.AsSpan().ToHexString(true))
+                rlp.Bytes.ToHexString(true))
                 .GetAwaiter().GetResult();
             if (signed is null)
             {

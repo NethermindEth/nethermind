@@ -303,7 +303,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     {
         Timeout timeout = new(round, null, gap);
         KeccakRlpStream stream = new();
-        _timeoutDecoder.Encode(stream, timeout, RlpBehaviors.ForSealing);
+        ValueRlpWriter writer = stream.AsValueWriter();
+        _timeoutDecoder.Encode(ref writer, timeout, RlpBehaviors.ForSealing);
         return stream.GetValueHash();
     }
 

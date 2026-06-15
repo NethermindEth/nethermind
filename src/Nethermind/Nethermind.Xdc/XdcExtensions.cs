@@ -21,14 +21,17 @@ internal static partial class XdcExtensions
     private static readonly VoteDecoder _voteDecoder = new();
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
-        ValueHash256 hash = ValueKeccak.Compute(_headerDecoder.Encode(header, RlpBehaviors.ForSealing).Bytes);
+        KeccakRlpStream stream = new();
+        ValueRlpWriter writer = stream.AsValueWriter();
+        _headerDecoder.Encode(ref writer, header, RlpBehaviors.ForSealing);
+        ValueHash256 hash = stream.GetValueHash();
         return ecdsa.Sign(privateKey, in hash);
     }
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpStream stream = new();
-        //TODO this could be optimized to encoding directly to KeccakRlpStream to avoid several allocation
-        _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+        ValueRlpWriter writer = stream.AsValueWriter();
+        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
         ValueHash256 hash = stream.GetValueHash();
         return ecdsa.RecoverAddress(vote.Signature, in hash);
     }
@@ -82,7 +85,7 @@ internal static partial class XdcExtensions
         && (blockInfo.Hash == blockHeader.Hash)
         && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
 
-    public static Signature DecodeSignature(this ref Rlp.ValueDecoderContext decoderContext)
+    public static Signature DecodeSignature(this ref ValueRlpReader decoderContext)
     {
         //includes the list prefix, which is 2 bytes for a 65 byte signature
         ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
@@ -95,7 +98,7 @@ internal static partial class XdcExtensions
 
     public static Signature DecodeSignature(this RlpStream stream)
     {
-        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
+        ValueRlpReader ctx = new(stream.Data.AsSpan());
         ctx.Position = stream.Position;
         Signature signature = DecodeSignature(ref ctx);
         stream.Position = ctx.Position;

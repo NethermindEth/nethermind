@@ -22,12 +22,12 @@ namespace Nethermind.Evm
             byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
             try
             {
-                RlpStream stream = new(new CappedArray<byte>(rented, totalLength));
-                stream.StartSequence(contentLength);
-                stream.Encode(deployingAddress);
-                stream.Encode(nonce);
+                ValueRlpWriter writer = new(new CappedArray<byte>(rented, totalLength));
+                writer.StartSequence(contentLength);
+                writer.Encode(deployingAddress);
+                writer.Encode(nonce);
 
-                ValueHash256 contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
+                ValueHash256 contractAddressKeccak = ValueKeccak.Compute(writer.WrittenSpan);
 
                 return new(in contractAddressKeccak);
             }

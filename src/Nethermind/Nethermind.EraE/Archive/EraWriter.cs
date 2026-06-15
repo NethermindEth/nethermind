@@ -130,15 +130,11 @@ public sealed class EraWriter : IDisposable
 
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        using (NettyRlpStream headerRlp = _headerDecoder.EncodeToNewNettyStream(block.Header, rlpBehaviors))
-        {
-            _headers.Add(headerRlp.AsMemory().ToArray());
-        }
+        Rlp headerRlp = _headerDecoder.Encode(block.Header, rlpBehaviors);
+        _headers.Add(headerRlp.Bytes);
 
-        using (NettyRlpStream bodyRlp = _blockBodyDecoder.EncodeToNewNettyStream(block.Body, rlpBehaviors))
-        {
-            _bodies.Add(bodyRlp.AsMemory().ToArray());
-        }
+        Rlp bodyRlp = _blockBodyDecoder.Encode(block.Body, rlpBehaviors);
+        _bodies.Add(bodyRlp.Bytes);
 
         _receipts.Add(EncodeSlimReceipts(receipts, spec.IsEip658Enabled));
 
@@ -293,11 +289,12 @@ public sealed class EraWriter : IDisposable
         foreach (TxReceipt receipt in receipts)
             totalLength += Rlp.LengthOfSequence(GetReceiptContentLength(receipt, isEip658));
 
-        RlpStream stream = new(Rlp.LengthOfSequence(totalLength));
-        stream.StartSequence(totalLength);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(totalLength)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        writer.StartSequence(totalLength);
         foreach (TxReceipt receipt in receipts)
-            WriteReceipt(stream, receipt, isEip658);
-        return stream.Data.ToArray() ?? [];
+            WriteReceipt(ref writer, receipt, isEip658);
+        return bytes;
     }
 
     private static int GetReceiptContentLength(TxReceipt receipt, bool isEip658)
@@ -313,7 +310,7 @@ public sealed class EraWriter : IDisposable
         return 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
     }
 
-    private static void WriteReceipt(RlpStream stream, TxReceipt receipt, bool isEip658)
+    private static void WriteReceipt(ref ValueRlpWriter writer, TxReceipt receipt, bool isEip658)
     {
         int logsLength = 0;
         if (receipt.Logs is not null)
@@ -325,29 +322,29 @@ public sealed class EraWriter : IDisposable
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
         int contentLength = 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
 
-        stream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
 
         // TxType: empty byte array for legacy, single byte for typed (EIP-2718)
         if (receipt.TxType == TxType.Legacy)
-            stream.Encode(Array.Empty<byte>());
+            writer.Encode(Array.Empty<byte>());
         else
-            stream.WriteByte((byte)receipt.TxType);
+            writer.WriteByte((byte)receipt.TxType);
 
         // postStateOrStatus: 32-byte hash (pre-EIP-658), 0x01 (success), or empty (failure)
         if (!isEip658)
-            stream.Encode(receipt.PostTransactionState);
+            writer.Encode(receipt.PostTransactionState);
         else if (receipt.StatusCode == 0)
-            stream.Encode(Array.Empty<byte>());
+            writer.Encode(Array.Empty<byte>());
         else
-            stream.WriteByte(receipt.StatusCode);
+            writer.WriteByte(receipt.StatusCode);
 
-        stream.Encode(receipt.GasUsedTotal);
+        writer.Encode(receipt.GasUsedTotal);
 
-        stream.StartSequence(logsLength);
+        writer.StartSequence(logsLength);
         if (receipt.Logs is not null)
         {
             foreach (LogEntry log in receipt.Logs)
-                LogEntryDecoder.Instance.Encode(stream, log);
+                LogEntryDecoder.Instance.Encode(ref writer, log);
         }
     }
 

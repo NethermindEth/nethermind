@@ -77,7 +77,7 @@ public static class WitnessExtensions
 
                 for (int i = 0; i < headersSpan.Length; i++)
                 {
-                    Rlp.ValueDecoderContext stream = new(headersSpan[i]);
+                    ValueRlpReader stream = new(headersSpan[i]);
 
                     decodedHeaders[i] = _decoder.Decode(ref stream)
                         ?? throw new InvalidOperationException($"No header decoded at index {i}");

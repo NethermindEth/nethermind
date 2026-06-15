@@ -328,7 +328,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Assert.That(rawAccount, Is.Not.Null);
 
             // Decode and verify
-            Rlp.ValueDecoderContext ctx = new(rawAccount);
+            ValueRlpReader ctx = new(rawAccount);
             Assert.That(AccountDecoder.Instance.Decode(ref ctx), Is.EqualTo(acc));
         }
 

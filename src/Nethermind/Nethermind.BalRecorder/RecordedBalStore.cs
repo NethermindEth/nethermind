@@ -24,8 +24,8 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
 
     public void Insert(Block block, GeneratedBlockAccessList bal)
     {
-        using NettyRlpStream rlp = BalDecoder.EncodeToNewNettyStream(bal);
-        if (!_store.Write(block.Number, rlp.AsSpan()))
+        byte[] rlp = BlockAccessListDecoder.EncodeToBytes(bal);
+        if (!_store.Write(block.Number, rlp))
             if (_logger.IsDebug) _logger.Debug($"BAL slot for block {block.Number} already filled; skipping.");
     }
 

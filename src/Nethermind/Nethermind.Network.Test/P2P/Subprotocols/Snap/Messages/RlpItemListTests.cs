@@ -265,9 +265,10 @@ public class RlpItemListTests
         using IRlpItemList view = builder1.ToRlpItemList();
         Assert.That(view.RlpLength, Is.EqualTo(outerSeqLen));
 
-        RlpStream actual = new(view.RlpLength);
-        view.Write(actual);
-        Assert.That(actual.Data.ToArray(), Is.EqualTo(expected.Data.ToArray()));
+        byte[] actual = new byte[view.RlpLength];
+        ValueRlpWriter writer = new(actual);
+        view.Write(ref writer);
+        Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expected.Data.ToArray()));
     }
 
     [Test]
@@ -329,9 +330,10 @@ public class RlpItemListTests
         // inner0 contains [0x01, 0x02] → RLP: c2 01 02
         byte[] expectedBytes = [0xc2, 0x01, 0x02];
         Assert.That(inner0.RlpLength, Is.EqualTo(expectedBytes.Length));
-        RlpStream actual = new(inner0.RlpLength);
-        inner0.Write(actual);
-        Assert.That(actual.Data.ToArray(), Is.EqualTo(expectedBytes));
+        byte[] actual = new byte[inner0.RlpLength];
+        ValueRlpWriter writer = new(actual);
+        inner0.Write(ref writer);
+        Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expectedBytes));
     }
 
     private static RlpItemList CreateList(byte[][] items)

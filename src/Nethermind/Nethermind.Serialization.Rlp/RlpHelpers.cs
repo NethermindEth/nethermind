@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp;
 
 /// <summary>
 /// Shared helper methods for RLP processing to avoid code duplication between
-/// ValueRlpStream, RlpStream, and ValueDecoderContext.
+/// RlpStream and ValueRlpReader.
 /// </summary>
 internal static class RlpHelpers
 {
@@ -212,7 +212,7 @@ internal static class RlpHelpers
 
     /// <summary>
     /// Deserializes a length value from a byte reference using unsafe operations.
-    /// This is shared between ValueRlpStream, RlpStream, and ValueDecoderContext.
+    /// This is shared between RlpStream and ValueRlpReader.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int DeserializeLengthRef(ref byte firstElement, int lengthOfLength)

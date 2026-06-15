@@ -26,10 +26,10 @@ public class BlockAccessListStore(
     [SkipLocalsInit]
     public void Insert(long blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal)
     {
-        using NettyRlpStream rlpStream = _balDecoder.EncodeToNewNettyStream(bal);
+        Rlp rlp = _balDecoder.Encode(bal);
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        balDb.PutSpan(key, rlpStream.AsSpan());
+        balDb.PutSpan(key, rlp.Bytes);
     }
 
     [SkipLocalsInit]

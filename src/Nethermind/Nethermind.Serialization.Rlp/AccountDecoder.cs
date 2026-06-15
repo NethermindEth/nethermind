@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder(bool slimFormat = false) => _slimFormat = slimFormat;
 
-        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
+        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref ValueRlpReader context)
         {
             context.SkipLength();
             context.SkipItem();
@@ -33,7 +33,7 @@ namespace Nethermind.Serialization.Rlp
             return (codeHash, storageRoot);
         }
 
-        public Hash256 DecodeStorageRootOnly(ref Rlp.ValueDecoderContext context)
+        public Hash256 DecodeStorageRootOnly(ref ValueRlpReader context)
         {
             context.SkipLength();
             context.SkipItem();
@@ -51,6 +51,17 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Encode(item, stream);
+        }
+
+        public override void Encode(ref ValueRlpWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                writer.EncodeNullObject();
+                return;
+            }
+
+            Encode(item, ref writer);
         }
 
         public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)
@@ -77,6 +88,33 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 rlpStream.Encode(account.CodeHash);
+            }
+        }
+
+        public void Encode(Account account, ref ValueRlpWriter writer, int? contentLength = null)
+        {
+            contentLength ??= GetContentLength(account);
+
+            writer.StartSequence(contentLength.Value);
+            writer.Encode(account.Nonce);
+            writer.Encode(account.Balance);
+
+            if (_slimFormat && !account.HasStorage)
+            {
+                writer.EncodeEmptyByteArray();
+            }
+            else
+            {
+                writer.Encode(account.StorageRoot);
+            }
+
+            if (_slimFormat && !account.HasCode)
+            {
+                writer.EncodeEmptyByteArray();
+            }
+            else
+            {
+                writer.Encode(account.CodeHash);
             }
         }
 
@@ -138,7 +176,7 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        protected override Account? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Account? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)
@@ -158,7 +196,7 @@ namespace Nethermind.Serialization.Rlp
             return new(nonce, balance, storageRoot, codeHash);
         }
 
-        private Hash256 DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)
+        private Hash256 DecodeStorageRoot(ref ValueRlpReader rlpStream)
         {
             Hash256 storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
@@ -174,7 +212,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        private Hash256 DecodeCodeHash(ref Rlp.ValueDecoderContext rlpStream)
+        private Hash256 DecodeCodeHash(ref ValueRlpReader rlpStream)
         {
             Hash256 codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
@@ -190,7 +228,7 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        private ValueHash256 DecodeStorageRootStruct(ref Rlp.ValueDecoderContext rlpStream)
+        private ValueHash256 DecodeStorageRootStruct(ref ValueRlpReader rlpStream)
         {
             ValueHash256 storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
@@ -206,7 +244,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        private ValueHash256 DecodeCodeHashStruct(ref Rlp.ValueDecoderContext rlpStream)
+        private ValueHash256 DecodeCodeHashStruct(ref ValueRlpReader rlpStream)
         {
             ValueHash256 codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
@@ -222,7 +260,7 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        public bool TryDecodeStruct(ref Rlp.ValueDecoderContext decoderContext, out AccountStruct account)
+        public bool TryDecodeStruct(ref ValueRlpReader decoderContext, out AccountStruct account)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)

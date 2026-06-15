@@ -11,7 +11,7 @@ namespace Nethermind.Xdc.RLP;
 
 internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapshot
 {
-    protected TResult DecodeBase<TResult>(ref Rlp.ValueDecoderContext decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
+    protected TResult DecodeBase<TResult>(ref ValueRlpReader decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -25,7 +25,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         Address[] candidates = DecodeAddressArray(ref decoderContext);
         return createSnapshot(number, hash256, candidates);
     }
-    public static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
+    public static Address[] DecodeAddressArray(ref ValueRlpReader decoderContext)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -52,41 +52,48 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        Encode(ref writer, item, rlpBehaviors);
+        return new Rlp(bytes);
     }
 
     public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        ValueRlpWriter writer = new(stream);
+        Encode(ref writer, item, rlpBehaviors);
+    }
+
+    public override void Encode(ref ValueRlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        EncodeContent(stream, item, rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        EncodeContent(ref writer, item, rlpBehaviors);
     }
 
-    protected virtual void EncodeContent(RlpStream stream, T item, RlpBehaviors rlpBehaviors)
+    protected virtual void EncodeContent(ref ValueRlpWriter writer, T item, RlpBehaviors rlpBehaviors)
     {
-        stream.Encode(item.BlockNumber);
-        stream.Encode(item.HeaderHash);
+        writer.Encode(item.BlockNumber);
+        writer.Encode(item.HeaderHash);
 
         if (item.NextEpochCandidates is null)
-            stream.EncodeArray<Address>([]);
+            writer.StartSequence(0);
         else
-            EncodeAddressSequence(stream, item.NextEpochCandidates);
+            EncodeAddressSequence(ref writer, item.NextEpochCandidates);
     }
 
-    protected void EncodeAddressSequence(RlpStream stream, Address[] nextEpochCandidates)
+    protected void EncodeAddressSequence(ref ValueRlpWriter writer, Address[] nextEpochCandidates)
     {
         int length = nextEpochCandidates.Length;
-        stream.StartSequence(Rlp.LengthOfAddressRlp * length);
+        writer.StartSequence(Rlp.LengthOfAddressRlp * length);
         for (int i = 0; i < length; i++)
         {
-            stream.Encode(nextEpochCandidates[i]);
+            writer.Encode(nextEpochCandidates[i]);
         }
     }
 

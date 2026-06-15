@@ -424,7 +424,8 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
     private ValueHash256 VoteHash(Vote vote)
     {
         KeccakRlpStream stream = new();
-        _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+        ValueRlpWriter writer = stream.AsValueWriter();
+        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
         return stream.GetValueHash();
     }
 

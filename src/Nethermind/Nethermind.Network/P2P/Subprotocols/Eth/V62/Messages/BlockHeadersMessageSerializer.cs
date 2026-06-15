@@ -18,13 +18,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
 
-            rlpStream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
             for (int i = 0; i < blockHeaders.Length; i++)
             {
-                _headerDecoder.Encode(rlpStream, blockHeaders[i]);
+                _headerDecoder.Encode(ref writer, blockHeaders[i]);
             }
         }
 
@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public BlockHeadersMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        public BlockHeadersMessage Deserialize(ref ValueRlpReader ctx)
         {
             BlockHeadersMessage message = new();
             message.BlockHeaders = Rlp.DecodeArrayPool(ref ctx, _headerDecoder, limit: RlpLimit);

@@ -17,14 +17,14 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        NettyRlpStream stream = new(byteBuffer);
-        _voteDecoder.Encode(stream, message.Vote);
+        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        _voteDecoder.Encode(ref writer, message.Vote);
     }
 
     public VoteMsg Deserialize(IByteBuffer byteBuffer)
     {
         Memory<byte> memory = byteBuffer.AsMemory();
-        Rlp.ValueDecoderContext ctx = new(memory, true);
+        ValueRlpReader ctx = new(memory, true);
         Types.Vote vote = _voteDecoder.Decode(ref ctx, RlpBehaviors.None);
         byteBuffer.SkipBytes(memory.Length);
         return new() { Vote = vote };

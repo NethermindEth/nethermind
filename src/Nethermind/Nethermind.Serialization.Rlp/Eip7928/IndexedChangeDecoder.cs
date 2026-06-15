@@ -15,7 +15,7 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     public override int GetLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    protected override T DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override T DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
@@ -32,10 +32,16 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
 
     public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        ValueRlpWriter writer = new(stream);
+        Encode(ref writer, item, rlpBehaviors);
+    }
+
+    public override void Encode(ref ValueRlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
         // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.Index);
-        EncodeValue(stream, item);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.Encode(item.Index);
+        EncodeValue(ref writer, item);
     }
 
     public int GetContentLength(T item, RlpBehaviors rlpBehaviors)
@@ -44,12 +50,12 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     /// <summary>
     /// Decode Index + value field and return a new T.
     /// </summary>
-    protected abstract T DecodeFields(ref Rlp.ValueDecoderContext ctx);
+    protected abstract T DecodeFields(ref ValueRlpReader ctx);
 
     /// <summary>
     /// Encode only the value field (Index is handled by the base).
     /// </summary>
-    protected abstract void EncodeValue(RlpStream stream, T item);
+    protected abstract void EncodeValue(ref ValueRlpWriter writer, T item);
 
     /// <summary>
     /// Return the RLP length of the value field.

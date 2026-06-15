@@ -27,7 +27,8 @@ public static class RlpDecoderNettyExtensions
         }
 
         rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(decoder.GetLength(item, rlpBehaviors)));
-        decoder.Encode(rlpStream, item, rlpBehaviors);
+        ValueRlpWriter writer = new(rlpStream);
+        decoder.Encode(ref writer, item, rlpBehaviors);
         return rlpStream;
     }
 
@@ -37,7 +38,8 @@ public static class RlpDecoderNettyExtensions
     public static NettyRlpStream EncodeToNewNettyStream(this BlockAccessListDecoder decoder, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         NettyRlpStream rlpStream = new(NethermindBuffers.Default.Buffer(decoder.GetLength(item, rlpBehaviors)));
-        decoder.Encode(rlpStream, item, rlpBehaviors);
+        ValueRlpWriter writer = new(rlpStream);
+        decoder.Encode(ref writer, item, rlpBehaviors);
         return rlpStream;
     }
 
@@ -63,11 +65,12 @@ public static class RlpDecoderNettyExtensions
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
         rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
-        rlpStream.StartSequence(totalLength);
+        ValueRlpWriter writer = new(rlpStream);
+        writer.StartSequence(totalLength);
 
         for (int i = 0; i < items.Length; i++)
         {
-            EncodeNullable(decoder, rlpStream, items[i], behaviors);
+            EncodeNullable(decoder, ref writer, items[i], behaviors);
         }
 
         return rlpStream;
@@ -95,11 +98,12 @@ public static class RlpDecoderNettyExtensions
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
         rlpStream = new NettyRlpStream(NethermindBuffers.Default.Buffer(bufferLength));
-        rlpStream.StartSequence(totalLength);
+        ValueRlpWriter writer = new(rlpStream);
+        writer.StartSequence(totalLength);
 
         for (int i = 0; i < items.Count; i++)
         {
-            EncodeNullable(decoder, rlpStream, items[i], behaviors);
+            EncodeNullable(decoder, ref writer, items[i], behaviors);
         }
 
         return rlpStream;
@@ -119,25 +123,26 @@ public static class RlpDecoderNettyExtensions
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
         NettyRlpStream rlpStream = new(NethermindBuffers.Default.Buffer(bufferLength));
-        rlpStream.StartSequence(totalLength);
+        ValueRlpWriter writer = new(rlpStream);
+        writer.StartSequence(totalLength);
 
         for (int i = 0; i < items.Count; i++)
         {
-            EncodeNullable(decoder, rlpStream, items[i], behaviors);
+            EncodeNullable(decoder, ref writer, items[i], behaviors);
         }
 
         return rlpStream;
     }
 
-    private static void EncodeNullable<T>(IRlpDecoder<T> decoder, RlpStream rlpStream, T? item, RlpBehaviors behaviors)
+    private static void EncodeNullable<T>(IRlpDecoder<T> decoder, ref ValueRlpWriter writer, T? item, RlpBehaviors behaviors)
     {
         if (item is null)
         {
-            rlpStream.WriteByte(Rlp.EmptyListByte);
+            writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
 
-        decoder.Encode(rlpStream, item, behaviors);
+        decoder.Encode(ref writer, item, behaviors);
     }
 
     private static int GetNullableLength<T>(IRlpDecoder<T> decoder, T? item, RlpBehaviors behaviors)

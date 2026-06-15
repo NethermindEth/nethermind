@@ -274,7 +274,7 @@ public class SnapProviderTests
         Account[] accounts = new Account[asReq.Accounts.Count];
         for (int i = 0; i < accounts.Length; i++)
         {
-            Rlp.ValueDecoderContext context = Bytes.FromHexString(asReq.Accounts[i]).AsRlpValueContext();
+            ValueRlpReader context = Bytes.FromHexString(asReq.Accounts[i]).AsRlpValueContext();
             accounts[i] = acd.Decode(ref context)!;
         }
 

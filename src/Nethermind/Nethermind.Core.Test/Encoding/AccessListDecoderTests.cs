@@ -90,7 +90,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             RlpStream rlpStream = new(10000);
             _decoder.Encode(rlpStream, testCase.AccessList);
-            Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+            ValueRlpReader ctx = new(rlpStream.Data);
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
@@ -108,7 +108,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream rlpStream = new(10000);
             _decoder.Encode(rlpStream, testCase.AccessList);
             rlpStream.Position = 0;
-            Rlp.ValueDecoderContext ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
+            ValueRlpReader ctx = rlpStream.Data.AsSpan().AsRlpValueContext();
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
@@ -131,7 +131,7 @@ namespace Nethermind.Core.Test.Encoding
 
             void DecodeStream()
             {
-                Rlp.ValueDecoderContext ctx = new RlpStream(invalid).Data.AsSpan().AsRlpValueContext();
+                ValueRlpReader ctx = new RlpStream(invalid).Data.AsSpan().AsRlpValueContext();
                 _decoder.Decode(ref ctx);
             }
 
@@ -139,7 +139,7 @@ namespace Nethermind.Core.Test.Encoding
 
             void DecodeContext()
             {
-                Rlp.ValueDecoderContext ctx = invalid.AsSpan().AsRlpValueContext();
+                ValueRlpReader ctx = invalid.AsSpan().AsRlpValueContext();
                 _decoder.Decode(ref ctx);
             }
 

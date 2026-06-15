@@ -41,7 +41,7 @@ public class VoteDecoderTests
         VoteDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(vote);
-        Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
+        ValueRlpReader decoderContext = encoded.Bytes.AsRlpValueContext();
         Vote decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
@@ -61,7 +61,7 @@ public class VoteDecoderTests
         decoder.Encode(stream, vote);
         stream.Position = 0;
 
-        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
+        ValueRlpReader decoderContext = new(stream.Data.AsSpan());
         Vote decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
@@ -102,7 +102,7 @@ public class VoteDecoderTests
         Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        Rlp.ValueDecoderContext context = sealingEncoded.Bytes.AsRlpValueContext();
+        ValueRlpReader context = sealingEncoded.Bytes.AsRlpValueContext();
         Vote decoded = decoder.Decode(ref context, RlpBehaviors.ForSealing);
 
         Assert.That(decoded.Signature, Is.Null,
@@ -125,17 +125,17 @@ public class VoteDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        Rlp.ValueDecoderContext context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
+        ValueRlpReader context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
         Vote decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }
 
     [Test]
-    public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
+    public void Decode_EmptyByteArray_ValueRlpReader_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        Rlp.ValueDecoderContext decoderContext = new(Rlp.OfEmptyList.Bytes);
+        ValueRlpReader decoderContext = new(Rlp.OfEmptyList.Bytes);
 
         Vote decoded = decoder.Decode(ref decoderContext);
 

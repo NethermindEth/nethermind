@@ -83,7 +83,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return sum;
     }
 
-    protected override BlockBody? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockBody? DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int startingPosition = ctx.Position;
@@ -95,7 +95,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
+    public BlockBody? DecodeUnwrapped(ref ValueRlpReader ctx, int lastPosition)
     {
         Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
@@ -111,25 +111,31 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
 
     public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetBodyLength(body));
-        stream.StartSequence(GetTxLength(body.Transactions));
+        ValueRlpWriter writer = new(stream);
+        Encode(ref writer, body, rlpBehaviors);
+    }
+
+    public override void Encode(ref ValueRlpWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        writer.StartSequence(GetBodyLength(body));
+        writer.StartSequence(GetTxLength(body.Transactions));
         foreach (Transaction? txn in body.Transactions)
         {
-            stream.Encode(txn);
+            _txDecoder.Encode(ref writer, txn);
         }
 
-        stream.StartSequence(GetUnclesLength(body.Uncles));
+        writer.StartSequence(GetUnclesLength(body.Uncles));
         foreach (BlockHeader? uncle in body.Uncles)
         {
-            stream.Encode(uncle);
+            _headerDecoder.Encode(ref writer, uncle);
         }
 
         if (body.Withdrawals is not null)
         {
-            stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
+            writer.StartSequence(GetWithdrawalsLength(body.Withdrawals));
             foreach (Withdrawal? withdrawal in body.Withdrawals)
             {
-                stream.Encode(withdrawal);
+                _withdrawalDecoderDecoder.Encode(ref writer, withdrawal);
             }
         }
     }

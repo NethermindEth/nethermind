@@ -62,7 +62,7 @@ public class SyncInfoDecoderTests
         SyncInfoDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(syncInfo);
-        Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
+        ValueRlpReader decoderContext = encoded.Bytes.AsRlpValueContext();
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());
@@ -89,7 +89,7 @@ public class SyncInfoDecoderTests
         decoder.Encode(stream, syncInfo);
         stream.Position = 0;
 
-        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
+        ValueRlpReader decoderContext = new(stream.Data.AsSpan());
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());
@@ -133,17 +133,17 @@ public class SyncInfoDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        Rlp.ValueDecoderContext context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
+        ValueRlpReader context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
         SyncInfo decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }
 
     [Test]
-    public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
+    public void Decode_EmptyByteArray_ValueRlpReader_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        Rlp.ValueDecoderContext decoderContext = new(Rlp.OfEmptyList.Bytes);
+        ValueRlpReader decoderContext = new(Rlp.OfEmptyList.Bytes);
 
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
