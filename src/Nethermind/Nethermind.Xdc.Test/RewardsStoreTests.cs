@@ -32,9 +32,12 @@ public class RewardsStoreTests
 
         store.SaveEpochRewards(120, payload);
 
-        Assert.That(store.HasEpochRewards(120), Is.True);
-        Assert.That(store.TryGetAccountReward(account, 120, out UInt256 savedReward), Is.True);
-        Assert.That(savedReward, Is.EqualTo((UInt256)30));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.HasEpochRewards(120), Is.True);
+            Assert.That(store.TryGetAccountReward(account, 120, out UInt256 savedReward), Is.True);
+            Assert.That(savedReward, Is.EqualTo((UInt256)30));
+        }
     }
 
     [Test]
@@ -85,9 +88,12 @@ public class RewardsStoreTests
         store.SaveEpochRewards(120, payload10);
         store.SaveEpochRewards(180, payload20);
 
-        Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
-        Assert.That(oldest, Is.EqualTo(120));
-        Assert.That(newest, Is.EqualTo(180));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
+            Assert.That(oldest, Is.EqualTo(120));
+            Assert.That(newest, Is.EqualTo(180));
+        }
     }
 
     [Test]
@@ -207,14 +213,17 @@ public class RewardsStoreTests
             store.SaveEpochRewards(epoch, payload);
         }
 
-        Assert.That(store.HasEpochRewards(oldEpoch), Is.False);
-        Assert.That(store.TryGetAccountReward(account, oldEpoch, out _), Is.False);
-        ulong newOldestKeptEpoch = 2;
-        Assert.That(store.HasEpochRewards(newOldestKeptEpoch), Is.True);
-        Assert.That(store.TryGetAccountReward(account, newOldestKeptEpoch, out UInt256 keptReward), Is.True);
-        Assert.That(keptReward, Is.EqualTo((UInt256)newOldestKeptEpoch));
-        Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
-        Assert.That(oldest, Is.EqualTo(newOldestKeptEpoch));
-        Assert.That(newest, Is.EqualTo(latestEpoch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.HasEpochRewards(oldEpoch), Is.False);
+            Assert.That(store.TryGetAccountReward(account, oldEpoch, out _), Is.False);
+            ulong newOldestKeptEpoch = 2;
+            Assert.That(store.HasEpochRewards(newOldestKeptEpoch), Is.True);
+            Assert.That(store.TryGetAccountReward(account, newOldestKeptEpoch, out UInt256 keptReward), Is.True);
+            Assert.That(keptReward, Is.EqualTo((UInt256)newOldestKeptEpoch));
+            Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
+            Assert.That(oldest, Is.EqualTo(newOldestKeptEpoch));
+            Assert.That(newest, Is.EqualTo(latestEpoch));
+        }
     }
 }

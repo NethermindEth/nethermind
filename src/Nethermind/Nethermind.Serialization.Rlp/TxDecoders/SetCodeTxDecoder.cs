@@ -9,13 +9,18 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseEIP1559TxDecoder<T>(TxType.SetCode, transactionFactory) where T : Transaction, new()
 {
+    private static RlpLimit AuthorizationListLimit => RlpLimit.For<Transaction>(
+        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.PerAuthBaseCost + 1)),
+        nameof(Transaction.AuthorizationList)
+    );
+
     private static readonly AuthorizationTupleDecoder AuthTupleDecoder = AuthorizationTupleDecoder.Instance;
 
     protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-        transaction.AuthorizationList = decoderContext.DecodeArray(AuthTupleDecoder);
+        transaction.AuthorizationList = decoderContext.DecodeArray(AuthTupleDecoder, limit: AuthorizationListLimit);
     }
 
     protected override void EncodePayload(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
