@@ -323,7 +323,7 @@ public static class SszCodec
             ForkchoiceUpdatedRequestWire.Decode(body, out wire);
             return true;
         }
-        catch (Exception e) when (e is InvalidDataException or ArgumentException or IndexOutOfRangeException)
+        catch (Exception e) when (e is InvalidDataException or ArgumentException)
         {
             wire = default;
             return false;

@@ -34,6 +34,10 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     }
 }
 
+/// <summary>
+/// Handles <c>POST /engine/v4/forkchoice</c> while accepting both V4
+/// payload-attributes layouts, with or without <c>targetGasLimit</c>.
+/// </summary>
 public sealed class ForkchoiceUpdatedV4SszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";

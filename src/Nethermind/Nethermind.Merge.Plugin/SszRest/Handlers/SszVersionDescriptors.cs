@@ -111,17 +111,6 @@ public readonly struct ForkchoiceUpdatedDescriptorV3 : IForkchoiceUpdatedVersion
     }
 }
 
-public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedRequestWire>
-{
-    public static int VersionNumber => EngineApiVersions.Fcu.V4;
-    public static Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Call(IEngineRpcModule engine, in ForkchoiceUpdatedRequestWire wire)
-    {
-        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(wire.ForkchoiceState);
-        PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
-        return engine.engine_forkchoiceUpdatedV4(state, attrs);
-    }
-}
-
 public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<ExecutionPayload>
 {
     public static int VersionNumber => EngineApiVersions.GetPayload.V1;
