@@ -52,16 +52,18 @@ namespace Nethermind.AuRa.Test.Transactions
             Transaction sealedTx1 = sealedTxs.First();
             Transaction sealedTx2 = sealedTxs.Skip(1).First();
 
-            Assert.That(sealedTx1.IsSigned, Is.True);
-            Assert.That(sealedTx1.Nonce, Is.EqualTo(expectedNonce));
-            Assert.That(sealedTx1.Hash, Is.EqualTo(tx1.CalculateHash()));
-            Assert.That(sealedTx1.Timestamp, Is.EqualTo((UInt256)expectedTimeStamp));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sealedTx1.IsSigned, Is.True);
+                Assert.That(sealedTx1.Nonce, Is.EqualTo(expectedNonce));
+                Assert.That(sealedTx1.Hash, Is.EqualTo(tx1.CalculateHash()));
+                Assert.That(sealedTx1.Timestamp, Is.EqualTo((UInt256)expectedTimeStamp));
 
-            Assert.That(sealedTx2.IsSigned, Is.True);
-            Assert.That(sealedTx2.Nonce, Is.EqualTo(expectedNonce + 1));
-            Assert.That(sealedTx2.Hash, Is.Not.EqualTo(tx1.CalculateHash()));
-            Assert.That(sealedTx2.Timestamp, Is.EqualTo((UInt256)expectedTimeStamp));
-
+                Assert.That(sealedTx2.IsSigned, Is.True);
+                Assert.That(sealedTx2.Nonce, Is.EqualTo(expectedNonce + 1));
+                Assert.That(sealedTx2.Hash, Is.Not.EqualTo(tx1.CalculateHash()));
+                Assert.That(sealedTx2.Timestamp, Is.EqualTo((UInt256)expectedTimeStamp));
+            }
         }
     }
 }

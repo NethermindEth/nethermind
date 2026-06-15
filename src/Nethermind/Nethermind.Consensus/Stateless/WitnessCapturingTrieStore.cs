@@ -35,8 +35,11 @@ public class WitnessCapturingTrieStore(ITrieStore baseStore, WitnessCaptureSessi
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
         TrieNode node = baseStore.FindCachedOrUnknown(address, in path, hash);
+        // Pass the node, not its RLP: the recorder materialises node.FullRlp.ToArray() only on first
+        // capture, avoiding the allocate-then-discard on every cache hit (hot in SLOAD loops touching
+        // the same branch).
         if (node.NodeType != NodeType.Unknown && session.TrieRecorder is { } recorder)
-            recorder.Record(node.Keccak, node.FullRlp.ToArray());
+            recorder.Record(node.Keccak, node);
         return node;
     }
 

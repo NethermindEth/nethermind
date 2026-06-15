@@ -88,8 +88,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         (byte[]? res, Exception? err) = InvokeOnBareString(seq);
         Assert.That(err, Is.Null);
         Assert.That(res, Is.Not.Null);
-        Assert.That(res!.Length, Is.EqualTo(1));
-        Assert.That(res[0], Is.EqualTo(0xAB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res!.Length, Is.EqualTo(1));
+            Assert.That(res[0], Is.EqualTo(0xAB));
+        }
     }
 
     [Test]
@@ -97,8 +100,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
         ReadOnlySequence<byte> seq = JsonForLiteral("null");
         (byte[]? res, Exception? err) = InvokeRaw(seq);
-        Assert.That(err, Is.Null);
-        Assert.That(res, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(err, Is.Null);
+            Assert.That(res, Is.Null);
+        }
     }
 
     [TestCase("true")]
@@ -133,9 +139,12 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         foreach (ReadOnlySequence<byte> seq in Segmentations(json))
         {
             (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-            Assert.That(err, Is.Null);
-            Assert.That(res, Is.Not.Null);
-            Assert.That(res, Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(res, Is.Not.Null);
+                Assert.That(res, Is.EqualTo(expected));
+            }
         }
     }
 

@@ -10,6 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Logging;
+using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -40,7 +41,9 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<ILogManager>(ctx);
         services.Bridge<IRpcAuthentication>(ctx);
         services.Bridge<IEngineRpcModule>(ctx);
+        services.Bridge<ISpecProvider>(ctx);
         services.Bridge<IProcessExitSource>(ctx);
+        services.Bridge<Nethermind.Blockchain.Find.IBlockFinder>(ctx);
 
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>>();
@@ -64,6 +67,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
 
         services.AddSingleton<ISszEndpointHandler, GetBlobsV2SszHandler<GetBlobsDescriptorV2>>();
         services.AddSingleton<ISszEndpointHandler, GetBlobsV2SszHandler<GetBlobsDescriptorV3>>();
+        services.AddSingleton<ISszEndpointHandler, GetBlobsV4SszHandler>();
 
         services.AddSingleton<ISszEndpointHandler,
             GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>>();
@@ -78,8 +82,9 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         foreach (Type handler in SingletonHandlers)
             services.AddSingleton(typeof(ISszEndpointHandler), handler);
 
-        // Register as the concrete type so SszMiddleware can take it directly (and as
-        // ISszEndpointHandler so DI doesn't double-construct on resolution).
+        // EIP-7928 witness endpoint: registered as the concrete type so SszMiddleware can take it
+        // directly for its dedicated fast-path, and as ISszEndpointHandler (via the same instance)
+        // so DI doesn't double-construct on resolution.
         services.AddSingleton<NewPayloadWithWitnessSszHandler>();
         services.AddSingleton<ISszEndpointHandler>(static sp => sp.GetRequiredService<NewPayloadWithWitnessSszHandler>());
     }

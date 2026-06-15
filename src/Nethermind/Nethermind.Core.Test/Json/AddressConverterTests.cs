@@ -39,8 +39,11 @@ public class AddressConverterTests : ConverterTestBase<Address>
         Dictionary<Address, int>? result = JsonSerializer.Deserialize<Dictionary<Address, int>>(json, EthereumJsonSerializer.JsonOptions);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result![TestItem.AddressA], Is.EqualTo(1));
-        Assert.That(result[TestItem.AddressB], Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result![TestItem.AddressA], Is.EqualTo(1));
+            Assert.That(result[TestItem.AddressB], Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -58,8 +61,11 @@ public class AddressConverterTests : ConverterTestBase<Address>
         Dictionary<AddressAsKey, int>? result = JsonSerializer.Deserialize<Dictionary<AddressAsKey, int>>(json, EthereumJsonSerializer.JsonOptions);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result![addressA], Is.EqualTo(1));
-        Assert.That(result[addressB], Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result![addressA], Is.EqualTo(1));
+            Assert.That(result[addressB], Is.EqualTo(2));
+        }
     }
 
     static IEnumerable<TestCaseData> AddressTestCases =

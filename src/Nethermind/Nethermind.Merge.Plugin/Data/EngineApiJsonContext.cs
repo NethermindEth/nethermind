@@ -5,7 +5,6 @@ using System.Text.Json.Serialization;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -17,7 +16,6 @@ namespace Nethermind.Merge.Plugin.Data;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     IncludeFields = true,
     Converters = new[] { typeof(ByteArrayArrayConverter) })]
-[JsonSerializable(typeof(SszErrorResponse))]
 [JsonSerializable(typeof(ExecutionPayload))]
 [JsonSerializable(typeof(ExecutionPayloadV3))]
 [JsonSerializable(typeof(ExecutionPayloadV4))]

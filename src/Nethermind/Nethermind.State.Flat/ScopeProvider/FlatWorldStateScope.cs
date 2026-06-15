@@ -24,6 +24,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
+    private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
 
@@ -54,6 +55,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
+        Lazy<WarmReadPool>? warmReadPool = null,
         bool isReadOnly = false,
         ITrieNodeReadObserver? trieReadObserver = null)
     {
@@ -81,6 +83,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         };
 
         _configuration = configuration;
+        _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
 
@@ -261,6 +264,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
+        // Read-only providers have no pool; sinks are only passed on the writable block-processing path.
+        if (_warmReadPool is null) return;
+
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -285,12 +291,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
-        Parallel.For(0, idx, parallelOptions, (j) =>
+        // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
+        // that never see a BAL never allocate the dedicated reader threads.
+        WarmReadPool pool = _warmReadPool.Value;
+        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
+
+        pool.Run(idx, workers, j =>
         {
             if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        });
+        }, parallelOptions.CancellationToken);
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)

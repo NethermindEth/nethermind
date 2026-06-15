@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api;
@@ -142,9 +143,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
-        Assert.That(reader1.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(0)));
-        Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-        Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(2)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader1.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(0)));
+            Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+            Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(2)));
+        }
     }
 
     [Test]
@@ -169,6 +173,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.EqualTo([1]));
             Assert.That(GetSlot(reader, address, 123), Is.EqualTo([2]));
@@ -181,6 +186,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.Null);
             Assert.That(GetSlot(reader, address, 123), Is.Null);
@@ -205,6 +211,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Initially, slots should be null
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.Null);
             Assert.That(GetSlot(reader, address, UInt256.MaxValue), Is.Null);
@@ -221,6 +228,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify all slots can be read back
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, address, UInt256.MinValue), Is.EqualTo([1, 2, 3]));
             Assert.That(GetSlot(reader, address, 42), Is.EqualTo([0x42]));
@@ -258,9 +266,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
-        Assert.That(GetSlot(reader1, address, slot), Is.EqualTo([1]));
-        Assert.That(GetSlot(reader2, address, slot), Is.EqualTo([2]));
-        Assert.That(GetSlot(reader3, address, slot), Is.EqualTo([3]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetSlot(reader1, address, slot), Is.EqualTo([1]));
+            Assert.That(GetSlot(reader2, address, slot), Is.EqualTo([2]));
+            Assert.That(GetSlot(reader3, address, slot), Is.EqualTo([3]));
+        }
     }
 
     [Test]
@@ -326,7 +337,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorageRaw(addrHash, slotHash, SlotValue.FromBytes(storageValue));
+            ReadOnlySpan<byte> stripped = ((ReadOnlySpan<byte>)storageValue).WithoutLeadingZeros();
+            writer.SetStorageRawEncoded(addrHash, slotHash, Rlp.Encode(stripped).Bytes);
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
@@ -375,20 +387,23 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
-        // Verify reader1 sees initial state
-        Assert.That(reader1.GetAccount(address), Is.EqualTo(acc));
-        Assert.That(GetSlot(reader1, address, slot1), Is.EqualTo([1]));
-        Assert.That(GetSlot(reader1, address, slot2), Is.EqualTo([10]));
+        using (Assert.EnterMultipleScope())
+        {
+            // Verify reader1 sees initial state
+            Assert.That(reader1.GetAccount(address), Is.EqualTo(acc));
+            Assert.That(GetSlot(reader1, address, slot1), Is.EqualTo([1]));
+            Assert.That(GetSlot(reader1, address, slot2), Is.EqualTo([10]));
 
-        // Verify reader2 sees second state
-        Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-        Assert.That(GetSlot(reader2, address, slot1), Is.EqualTo([2]));
-        Assert.That(GetSlot(reader2, address, slot2), Is.EqualTo([10]));
+            // Verify reader2 sees second state
+            Assert.That(reader2.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+            Assert.That(GetSlot(reader2, address, slot1), Is.EqualTo([2]));
+            Assert.That(GetSlot(reader2, address, slot2), Is.EqualTo([10]));
 
-        // Verify reader3 sees final state
-        Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
-        Assert.That(GetSlot(reader3, address, slot1), Is.EqualTo([2]));
-        Assert.That(GetSlot(reader3, address, slot2), Is.EqualTo([20]));
+            // Verify reader3 sees final state
+            Assert.That(reader3.GetAccount(address), Is.EqualTo(TestItem.GenerateIndexedAccount(1)));
+            Assert.That(GetSlot(reader3, address, slot1), Is.EqualTo([2]));
+            Assert.That(GetSlot(reader3, address, slot2), Is.EqualTo([20]));
+        }
     }
 
     [Test]
@@ -413,6 +428,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify each account has its own isolated storage
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, addr1, slot), Is.EqualTo([0x11]));
             Assert.That(GetSlot(reader, addr2, slot), Is.EqualTo([0x22]));
@@ -427,6 +443,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify only addr2's storage changed
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(GetSlot(reader, addr1, slot), Is.EqualTo([0x11]));
             Assert.That(GetSlot(reader, addr2, slot), Is.EqualTo([0xff]));
@@ -472,6 +489,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify all nodes
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             // State trie nodes
             Assert.That(reader.TryLoadStateRlp(in stateShortPath, ReadFlags.None), Is.EqualTo(stateShortRlp));
@@ -515,9 +533,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
-        Assert.That(reader1.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData1));
-        Assert.That(reader2.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData2));
-        Assert.That(reader3.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader1.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData1));
+            Assert.That(reader2.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData2));
+            Assert.That(reader3.TryLoadStateRlp(in path, ReadFlags.None), Is.EqualTo(rlpData3));
+        }
     }
 
     [Test]
@@ -556,6 +577,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryLoadStateRlp(in statePath5, ReadFlags.None), Is.EqualTo(rlp5));
             Assert.That(reader.TryLoadStateRlp(in statePath6, ReadFlags.None), Is.EqualTo(rlp6));
@@ -603,6 +625,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify all nodes exist
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlpShort));
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in mediumPath, ReadFlags.None), Is.EqualTo(rlpMedium));
@@ -620,6 +643,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify account1's trie nodes are deleted, account2's remain
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             // Account 1 nodes should be gone
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in shortPath, ReadFlags.None), Is.Null);
@@ -672,6 +696,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify all nodes exist before SelfDestruct
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlp1));
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in longPath, ReadFlags.None), Is.EqualTo(rlp1));
@@ -700,6 +725,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         // Verify address1's trie nodes are deleted
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.TryLoadStorageRlp(address1Hash, in shortPath, ReadFlags.None), Is.Null);
             Assert.That(reader.TryLoadStorageRlp(address1Hash, in longPath, ReadFlags.None), Is.Null);

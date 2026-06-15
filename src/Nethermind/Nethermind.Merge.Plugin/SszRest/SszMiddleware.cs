@@ -32,21 +32,29 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
-    private const string EnginePrefix = "/engine/v";
+    // Path: /engine/v2/{fork}/{resource}[/{extra}]
+    private const string EnginePrefix = "/engine/v2/";
+
+    // The witness endpoint (EIP-7928) keeps its own dedicated, version-less path and a fast-path
+    // dispatch — it is not part of the /engine/v2/{fork}/{resource} routing scheme, and it speaks
+    // application/json rather than application/octet-stream.
     private const string WitnessPath = "/new-payload-with-witness";
 
-    /// <summary>MAX_REQUEST_BODY_SIZE per execution-apis#764 (16 MiB).</summary>
-    public const int MaxBodySize = 0x1000000;
+    /// <summary>
+    /// Maximum allowed request body size in bytes (64 MiB).
+    /// Mirrors the <c>payload.max_bytes</c> example value advertised in the Engine API
+    /// SSZ-REST spec capabilities response (see https://github.com/ethereum/execution-apis/pull/793).
+    /// </summary>
+    public const int MaxBodySize = 0x4000000;
 
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _postLookup;
     private readonly FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>> _getLookup;
 
-    private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _postPrefixRoutes;
-    private readonly (string Resource, List<ISszEndpointHandler> Handlers)[] _getPrefixRoutes;
-
     private readonly ISszEndpointHandler? _witnessHandler;
+
+    private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
     public SszMiddleware(
         RequestDelegate next,
@@ -63,16 +71,13 @@ public sealed class SszMiddleware
         _witnessHandler = witnessHandler;
         _logger = logManager.GetClassLogger<SszMiddleware>();
         _processExitToken = processExitSource.Token;
-
-        (_postRoutes, _getRoutes, _postPrefixRoutes, _getPrefixRoutes) = BuildRoutes(handlers);
+        (_postRoutes, _getRoutes) = BuildRoutes(handlers);
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
-                    FrozenDictionary<string, List<ISszEndpointHandler>> get,
-                    (string, List<ISszEndpointHandler>)[] postPrefix,
-                    (string, List<ISszEndpointHandler>)[] getPrefix)
+                    FrozenDictionary<string, List<ISszEndpointHandler>> get)
         BuildRoutes(IEnumerable<ISszEndpointHandler> handlers)
     {
         Dictionary<string, List<ISszEndpointHandler>> postDict = [];
@@ -83,14 +88,14 @@ public sealed class SszMiddleware
             // The witness handler is injected directly and dispatched via its own fast-path.
             if (h is NewPayloadWithWitnessSszHandler) continue;
 
-            string resource = h.Resource.ToLowerInvariant();
+            // Dictionaries are keyed case-insensitively below — keep resource as-is, no lowercasing.
             Dictionary<string, List<ISszEndpointHandler>> dict =
                 h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
                     ? getDict
                     : postDict;
 
-            if (!dict.TryGetValue(resource, out List<ISszEndpointHandler>? list))
-                dict[resource] = list = [];
+            if (!dict.TryGetValue(h.Resource, out List<ISszEndpointHandler>? list))
+                dict[h.Resource] = list = [];
 
             list.Add(h);
         }
@@ -98,27 +103,15 @@ public sealed class SszMiddleware
         FrozenDictionary<string, List<ISszEndpointHandler>> post = postDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
         FrozenDictionary<string, List<ISszEndpointHandler>> get = getDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-        return (post, get, BuildPrefix(postDict), BuildPrefix(getDict));
-
-        static (string Resource, List<ISszEndpointHandler> Handlers)[] BuildPrefix(
-            Dictionary<string, List<ISszEndpointHandler>> source)
-        {
-            List<(string, List<ISszEndpointHandler>)> prefix = [];
-            foreach ((string r, List<ISszEndpointHandler> list) in source)
-            {
-                List<ISszEndpointHandler> accepting = list.FindAll(static c => c.AcceptsPathExtra);
-                if (accepting.Count > 0) prefix.Add((r, accepting));
-            }
-            return prefix.ToArray();
-        }
+        return (post, get);
     }
 
     public Task InvokeAsync(HttpContext ctx)
     {
-        if (!IsSszRequest(ctx))
-        {
+        SszRequestKind kind = ClassifySszRequest(ctx);
+
+        if (kind == SszRequestKind.NotEngine)
             return _next(ctx);
-        }
 
         if (_processExitToken.IsCancellationRequested)
         {
@@ -129,6 +122,17 @@ public sealed class SszMiddleware
         if (!_urlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated || !url.RpcEndpoint.HasFlag(RpcEndpoint.Http))
         {
             return _next(ctx);
+        }
+
+        if (kind == SszRequestKind.EngineWrongMediaType)
+        {
+            Metrics.SszRestRequestsClientErrorTotal++;
+            return SszEndpointHandlerBase.WriteErrorAsync(
+                ctx,
+                StatusCodes.Status415UnsupportedMediaType,
+                "Engine API hot-path endpoints require Content-Type: application/octet-stream (POST) " +
+                "or Accept: application/octet-stream (GET)",
+                SszRestErrorCodes.UnsupportedMediaType);
         }
 
         Metrics.SszRestRequestsTotal++;
@@ -142,30 +146,50 @@ public sealed class SszMiddleware
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized,
-                "Authentication error", ErrorCodes.InvalidRequest);
+                "Authentication error");
         }
         else if (IsWitnessPath(ctx.Request.Path.Value ?? string.Empty))
         {
             await DispatchWitnessAsync(ctx);
         }
-        else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlyMemory<char> pathSegment))
+        else if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out string? fork,
+                     out ReadOnlyMemory<char> pathSegment, out bool unsupportedFork))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                "Unknown SSZ endpoint", ErrorCodes.MethodNotFound);
+            if (unsupportedFork)
+            {
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                    $"Fork '{fork}' is not supported by this EL",
+                    MergeErrorCodes.UnsupportedFork);
+            }
+            else
+            {
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
+                    "Unknown SSZ endpoint", SszRestErrorCodes.MethodNotFound);
+            }
         }
-        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
+        else if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, fork, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            // .Span avoids the extra ROM<char>.ToString() allocation in the interpolation.
+            // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
+            // intermediate string; appending the span goes straight into the format buffer.
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}", ErrorCodes.MethodNotFound);
+                $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
+                SszRestErrorCodes.MethodNotFound);
         }
         else
         {
-            if (_logger.IsTrace) _logger.Trace(extra.IsEmpty
-                ? $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}"
-                : $"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
+            if (fork is not null)
+            {
+                ctx.Items["SszRouteFork"] = fork;
+            }
+
+            if (_logger.IsTrace)
+            {
+                _logger.Trace(extra.IsEmpty
+                    ? $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}"
+                    : $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}/{extra.Span}");
+            }
 
             await DispatchAsync(ctx, handler!, version, extra);
         }
@@ -174,14 +198,19 @@ public sealed class SszMiddleware
     private static bool IsWitnessPath(string path)
         => path.Equals(WitnessPath, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Fast-path dispatch for the version-less witness endpoint. Validates method (POST only) and
+    /// content-type (application/json) before delegating to the witness handler via <see cref="DispatchAsync"/>.
+    /// </summary>
     private async Task DispatchWitnessAsync(HttpContext ctx)
     {
-        if (!string.Equals(ctx.Request.Method, "POST", StringComparison.OrdinalIgnoreCase))
+        if (!HttpMethods.IsPost(ctx.Request.Method))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             ctx.Response.Headers.Allow = "POST";
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status405MethodNotAllowed,
-                $"Method '{ctx.Request.Method}' is not allowed on {WitnessPath}. Only POST is supported.", ErrorCodes.MethodNotFound);
+                $"Method '{ctx.Request.Method}' is not allowed on {WitnessPath}. Only POST is supported.",
+                SszRestErrorCodes.MethodNotFound);
             return;
         }
 
@@ -191,7 +220,8 @@ public sealed class SszMiddleware
             Metrics.SszRestRequestsClientErrorTotal++;
             ctx.Response.Headers["Accept"] = "application/json";
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status415UnsupportedMediaType,
-                $"Content-Type must be application/json for {WitnessPath}.", ErrorCodes.ParseError);
+                $"Content-Type must be application/json for {WitnessPath}.",
+                SszRestErrorCodes.UnsupportedMediaType);
             return;
         }
 
@@ -199,7 +229,7 @@ public sealed class SszMiddleware
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                "Endpoint not available", ErrorCodes.MethodNotFound);
+                "Endpoint not available", SszRestErrorCodes.MethodNotFound);
             return;
         }
 
@@ -208,9 +238,15 @@ public sealed class SszMiddleware
         await DispatchAsync(ctx, _witnessHandler, version: 0, extra: default);
     }
 
-    /// <summary>Shared body-read + handler invocation + metrics + error mapping for both routes.</summary>
+    /// <summary>Shared body-read + handler invocation + metrics + error mapping for both the
+    /// fork-routed endpoints and the witness fast-path.</summary>
     private async Task DispatchAsync(HttpContext ctx, ISszEndpointHandler handler, int version, ReadOnlyMemory<char> extra)
     {
+        // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
+        // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
+        // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
+        // is zero-copy, multi-segment consolidates once via ArrayPool. Both paths skip the
+        // MemoryStream + ToArray dance the previous implementation needed.
         PipeReader reader = ctx.Request.BodyReader;
         ReadOnlySequence<byte> body = default;
         bool bodyRead = false;
@@ -222,7 +258,8 @@ public sealed class SszMiddleware
 
             await handler.HandleAsync(ctx, version, extra, body);
 
-            switch (ctx.Response.StatusCode)
+            int status = ctx.Response.StatusCode;
+            switch (status)
             {
                 case >= 200 and < 300:
                     Metrics.SszRestRequestsSuccessTotal++;
@@ -238,24 +275,31 @@ public sealed class SszMiddleware
         catch (InvalidOperationException ex) when (!bodyRead)
         {
             Metrics.SszRestRequestsClientErrorTotal++;
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message, ErrorCodes.ParseError);
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
         }
-        catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
+        catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
         {
-            // Malformed SSZ → 400 per execution-apis#764. 422 is reserved for InvalidPayloadAttributes.
+            // Per execution-apis #793 (Engine API SSZ Transport spec, "HTTP status codes" section):
+            // malformed SSZ encoding is 400 Bad Request with type=ssz-decode-error: canned error,
+            // no detail (spec verbatim).  422 Unprocessable Entity is reserved for
+            // "Invalid payload attributes" and is emitted by the handler chain via
+            // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
             Metrics.SszRestDecodeFailuresTotal++;
             Metrics.SszRestRequestsClientErrorTotal++;
             if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body", ErrorCodes.ParseError);
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                string.Empty, SszRestErrorCodes.SszDecodeError);
         }
         catch (Exception ex)
         {
             Metrics.SszRestRequestsServerErrorTotal++;
             if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
 
-            // Skip the 500 write if the handler already aborted (writing would throw OCE and log twice).
+            // If the inner code already aborted the request (e.g. encode failed mid-stream
+            // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
+            // OperationCanceledException, producing a duplicate exception in the logs.
             if (!ctx.RequestAborted.IsCancellationRequested)
-                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error", ErrorCodes.InternalError);
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
         }
         finally
         {
@@ -263,50 +307,96 @@ public sealed class SszMiddleware
         }
     }
 
-    private static bool TryRoute(string path, out int version, out ReadOnlyMemory<char> pathSegment)
+    private static bool TryRoute(string path, out int version, out string? fork,
+        out ReadOnlyMemory<char> pathSegment, out bool unsupportedFork)
     {
-        version = 0;
+        version = 1;
+        fork = null;
         pathSegment = default;
+        unsupportedFork = false;
 
         ReadOnlySpan<char> span = path.AsSpan();
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        int offset = EnginePrefix.Length;
-        span = span[offset..];
-
-        int slashPos = span.IndexOf('/');
-        if (slashPos <= 0) return false;
-
-        if (!int.TryParse(span[..slashPos], out version))
+        if (span.EndsWith("/"))
             return false;
 
-        offset += slashPos + 1;
-        span = span[(slashPos + 1)..];
+        int offset = EnginePrefix.Length;
+        span = span[offset..];
         if (span.IsEmpty) return false;
 
-        // Allowed segment chars: ASCII alphanumeric, '-' (kebab-case resources), '/' (resource/extra
-        // separator). Reject '//' in the same pass to fail malformed paths at one point.
-        bool prevSlash = false;
-        foreach (char c in span)
+        if (span.Equals("identity".AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || span.Equals("capabilities".AsSpan(), StringComparison.OrdinalIgnoreCase))
         {
-            if (c == '/')
-            {
-                if (prevSlash) return false;
-                prevSlash = true;
-                continue;
-            }
-            if (!char.IsAsciiLetterOrDigit(c) && c != '-')
-                return false;
-            prevSlash = false;
+            pathSegment = path.AsMemory(offset);
+            return true;
+        }
+        // Unscoped endpoints don't accept path extras — reject "/identity/foo" / "/capabilities/foo"
+        // as 404 method-not-found rather than letting them fall through to fork parsing.
+        if (span.StartsWith("identity/".AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || span.StartsWith("capabilities/".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
         }
 
-        // Zero-alloc slice — backing string lives as long as the request.
-        pathSegment = path.AsMemory(offset);
+        if (span.StartsWith("blobs/".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            ReadOnlySpan<char> sub = span["blobs/".Length..];
+            if (sub.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+            {
+                if (int.TryParse(sub[1..], out int blobVer))
+                {
+                    version = blobVer;
+                    pathSegment = path.AsMemory(offset, "blobs".Length);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Everything remaining should be a fork-scoped path: /{fork}/{resource}[/{extra}]
+        int nextSlash = span.IndexOf('/');
+        if (nextSlash <= 0)
+        {
+            // E.g. bodies query or payloads query without extra path segment
+            nextSlash = span.Length;
+        }
+
+        ReadOnlySpan<char> forkSpan = span[..nextSlash];
+        // SszRestPaths.SupportedForks uses OrdinalIgnoreCase, so no lowercasing needed.
+        if (!SszRestPaths.SupportedForksSpanLookup.Contains(forkSpan))
+        {
+            // Reject `/engine/v2/v<N>/...` (looks like a version-only path with no fork) before
+            // emitting an unsupported-fork error — let the caller produce a 404 instead.
+            if (forkSpan.Length > 1
+                && (forkSpan[0] == 'v' || forkSpan[0] == 'V')
+                && int.TryParse(forkSpan[1..], out _))
+            {
+                return false;
+            }
+
+            fork = forkSpan.ToString();
+            unsupportedFork = true;
+            return false;
+        }
+
+        fork = forkSpan.ToString();
+        if (nextSlash < span.Length)
+        {
+            offset += nextSlash + 1;
+            pathSegment = path.AsMemory(offset);
+        }
+        else
+        {
+            // Recognised fork but missing resource segment, e.g. /engine/v2/cancun — not
+            // a valid endpoint; leave unsupportedFork = false so the caller uses 404.
+            return false;
+        }
         return true;
     }
 
-    private bool TryResolveHandler(string method, ReadOnlyMemory<char> pathSegment, int version,
+    private bool TryResolveHandler(string method, ReadOnlyMemory<char> pathSegment, int version, string? fork,
         out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra)
     {
         handler = null;
@@ -315,6 +405,30 @@ public sealed class SszMiddleware
         bool isPost = HttpMethods.IsPost(method);
         bool isGet = !isPost && HttpMethods.IsGet(method);
 
+        ReadOnlyMemory<char> resource = pathSegment;
+        ReadOnlyMemory<char> extraMem = default;
+
+        int firstSlash = pathSegment.Span.IndexOf('/');
+        if (firstSlash > 0)
+        {
+            extraMem = pathSegment[(firstSlash + 1)..];
+            resource = pathSegment[..firstSlash];
+        }
+
+        if (resource.Span.Equals("bodies".AsSpan(), StringComparison.OrdinalIgnoreCase)
+            && extraMem.Span.Equals("hash".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            resource = SszRestPaths.PayloadBodiesByHash.AsMemory();
+            extraMem = default;
+        }
+
+        if (fork is not null)
+        {
+            int? mappedVersion = SszRestPaths.MapForkToVersion(fork, resource.Span, method);
+            if (mappedVersion is null) return false;
+            version = mappedVersion.Value;
+        }
+
         FrozenDictionary<string, List<ISszEndpointHandler>>? exactDict = isPost ? _postRoutes : isGet ? _getRoutes : null;
 
         if (exactDict is not null)
@@ -322,108 +436,104 @@ public sealed class SszMiddleware
             FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
                 lookup = isPost ? _postLookup : _getLookup;
 
-            if (lookup.TryGetValue(pathSegment.Span, out List<ISszEndpointHandler>? exactList))
+            if (lookup.TryGetValue(resource.Span, out List<ISszEndpointHandler>? exactList))
             {
                 ISszEndpointHandler? fallback = null;
                 foreach (ISszEndpointHandler candidate in exactList)
                 {
-                    if (candidate.Version == version) { handler = candidate; extra = default; return true; }
+                    if (candidate.Version == version)
+                    {
+                        if (!extraMem.IsEmpty && !candidate.AcceptsPathExtra)
+                            return false;
+
+                        handler = candidate;
+                        extra = extraMem;
+                        return true;
+                    }
                     if (candidate.Version is null) fallback = candidate;
                 }
-                if (fallback is not null) { handler = fallback; extra = default; return true; }
-            }
-        }
-
-        ISszEndpointHandler? prefixFallback = null;
-        ReadOnlyMemory<char> prefixFallbackExtra = default;
-
-        (string Resource, List<ISszEndpointHandler> Handlers)[] prefixRoutes =
-            isPost ? _postPrefixRoutes : isGet ? _getPrefixRoutes : [];
-
-        ReadOnlySpan<char> pathSpan = pathSegment.Span;
-        foreach ((string routeResource, List<ISszEndpointHandler> candidates) in prefixRoutes)
-        {
-            ReadOnlySpan<char> resourceSpan = routeResource.AsSpan();
-
-            if (pathSpan.Length <= resourceSpan.Length || pathSpan[resourceSpan.Length] != '/')
-                continue;
-            if (!pathSpan.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            ReadOnlyMemory<char> tail = pathSegment[(resourceSpan.Length + 1)..];
-
-            foreach (ISszEndpointHandler candidate in candidates)
-            {
-                if (candidate.Version == version)
+                if (fallback is not null)
                 {
-                    handler = candidate;
-                    extra = tail;
+                    if (!extraMem.IsEmpty && !fallback.AcceptsPathExtra)
+                        return false;
+
+                    handler = fallback;
+                    extra = extraMem;
                     return true;
                 }
-
-                if (candidate.Version is null)
-                {
-                    prefixFallback = candidate;
-                    prefixFallbackExtra = tail;
-                }
             }
-        }
-
-        if (prefixFallback is not null)
-        {
-            handler = prefixFallback;
-            extra = prefixFallbackExtra;
-            return true;
         }
 
         return false;
     }
 
-    /// <summary>
-    /// Determines whether this middleware should handle the incoming request.
-    /// </summary>
-    /// <remarks>
-    /// The witness endpoint (<c>/new-payload-with-witness</c>) is intercepted for ALL HTTP
-    /// methods — not just POST — so that non-POST requests receive a proper <c>405 Method Not
-    /// Allowed</c> from <see cref="DispatchWitnessAsync"/> rather than falling through to the
-    /// next middleware and returning a confusing 404.
-    ///
-    /// For a valid POST to the witness path, the request <c>Content-Type</c> must be
-    /// <c>application/json</c>. For any other method, <see cref="IsSszRequest"/> returns
-    /// <c>true</c> (so the middleware intercepts it) but without inspecting the Content-Type —
-    /// <see cref="DispatchWitnessAsync"/> will immediately reject it with 405.
-    /// </remarks>
-    private static bool IsSszRequest(HttpContext ctx)
+
+    private static SszRequestKind ClassifySszRequest(HttpContext ctx)
     {
         string path = ctx.Request.Path.Value ?? string.Empty;
 
-        // Non-versioned witness endpoint — intercept all methods so we can return 405 for
-        // non-POST instead of falling through and returning a confusing 404.
+        // The witness endpoint is a dedicated, version-less path. Intercept it for ALL methods so
+        // non-POST / wrong content-type get a proper 405/415 from DispatchWitnessAsync rather than
+        // falling through to the next middleware and returning a confusing 404. The application/json
+        // content-type check is deferred to DispatchWitnessAsync (it is not an octet-stream route).
         if (path.Equals(WitnessPath, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
+            return SszRequestKind.EngineOk;
 
         if (!path.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase))
-            return false;
+            return SszRequestKind.NotEngine;
+
+        ReadOnlySpan<char> span = path.AsSpan("/engine/".Length);
+        int nextSlash = span.IndexOf('/');
+        ReadOnlySpan<char> versionSegment = nextSlash < 0 ? span : span[..nextSlash];
+
+        bool isVersioned = versionSegment.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+            && versionSegment.Length > 1
+            && int.TryParse(versionSegment[1..], out _);
+
+        if (!isVersioned)
+            return SszRequestKind.NotEngine;
+
+        bool isEnginePrefix = path.StartsWith(EnginePrefix, StringComparison.OrdinalIgnoreCase);
 
         switch (ctx.Request.Method)
         {
             case "POST":
-                return ctx.Request.ContentType?.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true;
-            case "GET":
-                {
-                    foreach (string? v in ctx.Request.Headers.Accept)
-                    {
-                        if (v is not null && v.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
+                if (!isEnginePrefix) return SszRequestKind.EngineOk;
+                return ctx.Request.ContentType?.Contains(
+                    MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true
+                    ? SszRequestKind.EngineOk
+                    : SszRequestKind.EngineWrongMediaType;
 
-                    return false;
+            case "GET":
+                if (!isEnginePrefix) return SszRequestKind.EngineOk;
+                if (IsDiagnosticGetPath(path))
+                    return SszRequestKind.EngineOk;
+
+                // Hot-path SSZ GET endpoints require Accept: application/octet-stream.
+                foreach (string? v in ctx.Request.Headers.Accept)
+                {
+                    if (v is not null && v.Contains(
+                        MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
+                        return SszRequestKind.EngineOk;
                 }
+
+                return SszRequestKind.NotEngine;
+
             default:
-                return false;
+                return SszRequestKind.NotEngine;
         }
+    }
+
+    private static bool IsDiagnosticGetPath(string path)
+    {
+        ReadOnlySpan<char> span = path.AsSpan();
+        const string capabilitiesPath = "/engine/v2/capabilities";
+        const string identityPath = "/engine/v2/identity";
+
+        return span.Equals(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || (span.StartsWith(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase) && span.Length > capabilitiesPath.Length && span[capabilitiesPath.Length] == '/')
+            || span.Equals(identityPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
+            || (span.StartsWith(identityPath.AsSpan(), StringComparison.OrdinalIgnoreCase) && span.Length > identityPath.Length && span[identityPath.Length] == '/');
     }
 
     /// <summary>

@@ -28,6 +28,9 @@ public sealed class WitnessHeaderRecorder
     private static readonly HeaderDecoder _decoder = new();
     private long _lowestRequestedHeader = long.MaxValue;
 
+    /// <summary>Resets the low-water mark so the recorder can be reused across pooled env rents.</summary>
+    public void Reset() => _lowestRequestedHeader = long.MaxValue;
+
     public void OnHeaderRead(BlockHeader header)
     {
         if (header.Number < _lowestRequestedHeader) _lowestRequestedHeader = header.Number;
@@ -38,25 +41,45 @@ public sealed class WitnessHeaderRecorder
         Hash256 currentHash = parentHash;
         BlockHeader parentHeader = finder.Get(currentHash) ?? throw new ArgumentException($"Parent {currentHash} is not found");
 
+        // BLOCKHASH can only reach below the executed block, so a recorded header above the parent
+        // means the bookkeeping is broken — fail loudly instead of computing a non-positive count.
+        if (_lowestRequestedHeader < long.MaxValue && _lowestRequestedHeader > parentHeader.Number)
+        {
+            throw new InvalidOperationException(
+                $"Recorded header {_lowestRequestedHeader} is above the executed-against parent {parentHeader.Number}");
+        }
+
+        // Headers in ascending block-number order — any BLOCKHASH-touched ancestor first, block being
+        // recorded last — so the chain is contiguous and replayable. _lowestRequestedHeader stays at
+        // long.MaxValue unless BLOCKHASH reached further back during processing.
         int count = _lowestRequestedHeader < long.MaxValue
             ? (int)(parentHeader.Number - _lowestRequestedHeader + 1)
             : 1;
         int index = count - 1;
-        ArrayPoolList<byte[]> headers = new(count, count)
+        ArrayPoolList<byte[]> headers = new(capacity: count, count);
+        try
         {
-            [index--] = _decoder.Encode(parentHeader).Bytes
-        };
+            headers[index--] = _decoder.Encode(parentHeader).Bytes;
 
-        if (index >= 0)
-        {
-            for (long i = parentHeader.Number - 1; i >= _lowestRequestedHeader; i--)
+            if (index >= 0)
             {
-                currentHash = parentHeader.ParentHash!;
-                parentHeader = finder.Get(currentHash, i) ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
-                headers[index--] = _decoder.Encode(parentHeader).Bytes;
+                for (long i = parentHeader.Number - 1; i >= _lowestRequestedHeader; i--)
+                {
+                    currentHash = parentHeader.ParentHash!;
+                    parentHeader = finder.Get(currentHash, i)
+                        ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
+                    headers[index--] = _decoder.Encode(parentHeader).Bytes;
+                }
             }
-        }
 
-        return headers;
+            return headers;
+        }
+        catch
+        {
+            // A missing ancestor (reorg/prune mid-walk) leaves the partially-filled list holding pooled
+            // buffers — return them before propagating.
+            headers.Dispose();
+            throw;
+        }
     }
 }

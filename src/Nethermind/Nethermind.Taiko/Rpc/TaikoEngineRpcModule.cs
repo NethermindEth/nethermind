@@ -31,7 +31,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.Taiko.Config;
-using Nethermind.Taiko.ZkGas;
 using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
@@ -50,6 +49,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
         IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         INewPayloadWithWitnessHandler newPayloadWithWitnessHandler,
@@ -77,6 +77,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 capabilitiesHandler,
                 getBlobsHandler,
                 getBlobsHandlerV2,
+                getBlobsHandlerV4,
                 getPayloadBodiesByHashV2Handler,
                 getPayloadBodiesByRangeV2Handler,
                 newPayloadWithWitnessHandler,
@@ -123,7 +124,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     /// any resolved batch-lookup block id strictly less than this value is reported as null.
     /// </summary>
     private readonly UInt256? _batchLookupThreshold =
-        ZkGasSchedule.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
+        BatchLookupThresholds.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
             ? new UInt256(t)
             : (UInt256?)null;
 

@@ -26,7 +26,7 @@ public class FlatWorldStateManager(
     IFlatStateRootIndex flatStateRootIndex,
     ILogManager logManager,
     ITrieNodeReadObserver? mainTrieReadObserver = null)
-    : IWorldStateManager
+    : IWorldStateManager, IDisposable
 {
     // The read observer is threaded into the main world state only: read-only/resettable scopes
     // (RPC envs, prewarming) never feed witness capture and stay observer-free.
@@ -89,4 +89,6 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public void Dispose() => _mainWorldState.Dispose();
 }

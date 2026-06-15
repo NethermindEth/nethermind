@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -19,6 +20,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IGetPayloadBodiesByRangeV2Handler _executionGetPayloadBodiesByRangeV2Handler = getPayloadBodiesByRangeV2Handler;
     private readonly INewPayloadWithWitnessHandler _newPayloadWithWitnessHandler = newPayloadWithWitnessHandler;
 
+    private readonly IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> _getBlobsHandlerV4 = getBlobsHandlerV4;
+
     public Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId)
         => _getPayloadHandlerV6.HandleAsync(payloadId);
 
@@ -33,10 +36,16 @@ public partial class EngineRpcModule : IEngineRpcModule
         => _newPayloadWithWitnessHandler.HandleAsync(
             executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
 
-    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(
-        ForkchoiceStateV1 forkchoiceState,
-        PayloadAttributes? payloadAttributes = null)
-        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
+    {
+        // Per execution-apis #793: custody-column updates are best-effort, errors swallowed.
+        // No EL-side custody consumer wired yet — log at trace level so the CL request is auditable.
+        // TODO(custody): once a consumer is wired, validate custodyColumns.Length == 128 here
+        // (the SSZ wire enforces this on REST, but the JSON-RPC signature does not).
+        if (custodyColumns is not null && _logger.IsTrace)
+            _logger.Trace($"engine_forkchoiceUpdatedV4 received custody columns ({custodyColumns.Count} bits) — not yet applied");
+        return ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V4);
+    }
 
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(
         IReadOnlyList<Hash256> blockHashes)
@@ -46,4 +55,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         long start,
         long count)
         => _executionGetPayloadBodiesByRangeV2Handler.Handle(start, count);
+
+    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, System.Collections.BitArray indicesBitarray)
+        => _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, indicesBitarray));
 }
