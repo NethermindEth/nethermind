@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using Nethermind.Core;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
@@ -84,27 +83,4 @@ public static partial class EvmInstructions
         WriteUnaligned(ref topRef, TOpBitwise.Operation(in a, in b));
         return EvmExceptionType.None;
     }
-
-    // Out-of-line shims for the stream executor: keep these in-block cores OUT of the RunStream
-    // switch body (which the baseline RunByteCodeCore still inlines directly), shrinking the hot
-    // loop so the JIT allocates registers better. Stream is non-tracing, so tracing is OffFlag.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType Math2ParamOutOfLine<TOpMath>(ref EvmStack stack)
-        where TOpMath : struct, IOpMath2Param
-        => Math2ParamCore<TOpMath, OffFlag>(ref stack);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType BitwiseOutOfLine<TOpBitwise>(ref EvmStack stack)
-        where TOpBitwise : struct, IOpBitwise
-        => BitwiseCore<TOpBitwise>(ref stack);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType Math1ParamOutOfLine<TOpMath>(ref EvmStack stack)
-        where TOpMath : struct, IOpMath1Param
-        => Math1ParamCore<TOpMath>(ref stack);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType ShiftOutOfLine<TOpShift>(ref EvmStack stack)
-        where TOpShift : struct, IOpShift
-        => ShiftCore<TOpShift, OffFlag>(ref stack);
 }
