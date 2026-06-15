@@ -69,6 +69,13 @@ public static class BaseFlatPersistence
         return buffer[..StorageKeyLength];
     }
 
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
+        throw new InvalidConfigurationException(
+            $"Flat DB storage slot value is {length} bytes, exceeding the {SlotValue.ByteCount}-byte maximum " +
+            $"(rlpWrapSlots={rlpWrapSlots}). The slot-encoding metadata is likely missing or mismatched " +
+            $"(RLP-wrapped values read as raw). Re-sync the flat DB to recover.", -1);
+
     public readonly struct Reader(
         ISortedKeyValueStore state,
         ISortedKeyValueStore storage,
@@ -100,6 +107,9 @@ public static class BaseFlatPersistence
                 value = ctx.DecodeByteArraySpan();
             }
 
+            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
+            // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
+            // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
             int len = value.Length;
             if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
 
@@ -128,13 +138,6 @@ public static class BaseFlatPersistence
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
-            throw new InvalidConfigurationException(
-                $"Flat DB storage slot value is {length} bytes, exceeding the {SlotValue.ByteCount}-byte maximum " +
-                $"(rlpWrapSlots={rlpWrapSlots}). The slot-encoding metadata is likely missing or mismatched " +
-                $"(RLP-wrapped values read as raw). Re-sync the flat DB to recover.", -1);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
         {
@@ -210,8 +213,14 @@ public static class BaseFlatPersistence
 
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
-                ReadOnlySpan<byte> rawValue = view.CurrentValue;
-                _currentValue = rlpWrapSlots ? rawValue.AsRlpValueContext().DecodeByteArraySpan().ToArray() : rawValue.ToArray();
+                ReadOnlySpan<byte> slotValue = rlpWrapSlots
+                    ? view.CurrentValue.AsRlpValueContext().DecodeByteArraySpan()
+                    : view.CurrentValue;
+                // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
+                // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a
+                // bad value that would build wrong trie nodes.
+                if (slotValue.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
+                _currentValue = slotValue.ToArray();
                 return true;
             }
             return false;

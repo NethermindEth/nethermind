@@ -30,11 +30,13 @@ public class ClearColumnsTests
 
         BasePersistence.ClearAllColumns(db);
 
-        Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(FlatLayout.Flat));
-        Assert.That(metadata.Get(Keccak.Compute("SlotEncoding").BytesToArray()),
-            Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
-        Assert.That(BasePersistence.ReadCurrentState(metadata),
-            Is.EqualTo(new StateId(-1, ValueKeccak.EmptyTreeHash)));
-        Assert.That(db.GetColumnDb(FlatDbColumns.Storage).Get(slotKey), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(FlatLayout.Flat));
+            Assert.That(BasePersistence.ReadSlotEncoding(metadata), Is.EqualTo(BasePersistence.SlotEncodingRlp));
+            Assert.That(BasePersistence.ReadCurrentState(metadata),
+                Is.EqualTo(new StateId(-1, ValueKeccak.EmptyTreeHash)));
+            Assert.That(db.GetColumnDb(FlatDbColumns.Storage).Get(slotKey), Is.Null);
+        }
     }
 }
