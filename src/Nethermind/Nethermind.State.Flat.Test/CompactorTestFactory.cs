@@ -20,6 +20,7 @@ internal static class CompactorTestFactory
         => new(
             repo,
             arena,
+            repo.CatalogDb,
             config,
             ScheduleHelper.CreateWithOffset(config, scheduleOffset),
             LimboLogs.Instance);

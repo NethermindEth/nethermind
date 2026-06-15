@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Autofac.Features.AttributeFilters;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.Persistence.BloomFilter;
@@ -28,11 +29,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public class PersistedSnapshotCompactor(
     ISnapshotRepository snapshotRepository,
     IArenaManager arenaManager,
+    [KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb catalogDb,
     IFlatDbConfig config,
     ICompactionSchedule schedule,
     ILogManager logManager) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
+    private readonly SnapshotCatalog _catalog = new(catalogDb);
     private readonly ICompactionSchedule _schedule = schedule;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
@@ -293,13 +296,14 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             reservation.Fsync();
 
-            // PersistedSnapshot's ctor (called from inside AddCompactedSnapshot) reads
+            // PersistedSnapshot's ctor (called from inside AddPersistedSnapshot) reads
             // the merged ref_ids back from its own metadata and leases each blob arena
             // file via a ref-struct iterator — no ushort[] materialisation here. The
             // returned snapshot is pre-leased; dispose it via `using` once we're done
             // with the post-write step.
-            using (PersistedSnapshot compacted = snapshotRepository.AddPersistedSnapshot(from, to, location, reservation, mergedBloom,
-                isPersistable ? SnapshotTier.PersistedPersistable : SnapshotTier.PersistedCompacted))
+            SnapshotTier tier = isPersistable ? SnapshotTier.PersistedPersistable : SnapshotTier.PersistedCompacted;
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
+            using (PersistedSnapshot compacted = snapshotRepository.AddPersistedSnapshot(from, to, reservation, mergedBloom, tier))
             {
                 if (_schedule.IsIntermediateWindow(compactSize))
                 {

@@ -15,13 +15,12 @@ namespace Nethermind.State.Flat.Test;
 /// </summary>
 /// <remarks>
 /// The loader is convert-only here: it is not <see cref="System.IDisposable.Dispose"/>d (that would tear
-/// down the repository's shared arena/blobs), and the throwaway catalog db is unused by
-/// <see cref="PersistedSnapshotLoader.Convert"/> — it routes through
-/// <see cref="ISnapshotRepository.AddPersistedSnapshot"/>, which writes the repository's own catalog.
+/// down the repository's shared arena/blobs). It is built over the repository's own catalog db so the
+/// catalog entry <see cref="PersistedSnapshotLoader.Convert"/> writes is the same one a reload reads back.
 /// </remarks>
 internal static class PersistedSnapshotConverterTestExtensions
 {
     internal static PersistedSnapshot ConvertToPersistedBase(this SnapshotRepository repo, Snapshot snapshot)
-        => new PersistedSnapshotLoader(repo, repo.ArenaManager, repo.BlobArenaManager, new MemDb(), new FlatDbConfig(), LimboLogs.Instance)
+        => new PersistedSnapshotLoader(repo, repo.ArenaManager, repo.BlobArenaManager, repo.CatalogDb, new FlatDbConfig(), LimboLogs.Instance)
             .Convert(snapshot);
 }

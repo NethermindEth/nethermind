@@ -131,29 +131,21 @@ public sealed class PersistedSnapshotLoader(
     }
 
     /// <summary>
-    /// Constructs a single catalog entry's snapshot and indexes it into its bucket via
-    /// <see cref="ISnapshotRepository.LoadPersistedSnapshot"/>, which takes the bucket's lock — so this
-    /// is safe to run from the parallel load. The heavy work (arena open + snapshot construction) stays
-    /// outside that lock.
+    /// Re-indexes a single catalog entry's snapshot via <see cref="ISnapshotRepository.AddPersistedSnapshot"/>,
+    /// which builds it from the reservation and indexes it under the bucket's lock — so this is safe to run
+    /// from the parallel load. No catalog write: the entry is already in the catalog (we are reading from it).
     /// </summary>
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
         ArenaReservation reservation = arena.Open(entry.Location);
 
-        // The PersistedSnapshot ctor walks its own ref_ids metadata and leases each blob
-        // arena file (and reads its blob_range from the same metadata); on partial failure
-        // it releases what it took and disposes the reservation lease before rethrowing —
-        // no repository-side cleanup needed.
-        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, blobs);
-
-        // Bloom is intentionally NOT built here — each snapshot is constructed with the
-        // AlwaysTrue placeholder (correct, but unfiltered). The ReconstructBloom pass
-        // replaces it with the snapshot's real bloom once every snapshot is in place.
-
-        // Route by the stored tier, not by the To-From distance: a base and a sub-CompactSize
-        // compacted snapshot can span the same number of blocks, so range alone cannot tell
-        // them apart.
-        repository.LoadPersistedSnapshot(entry.Tier, entry.To, snapshot);
+        // AddPersistedSnapshot builds the snapshot (its ctor walks its own ref_ids metadata and leases
+        // each blob arena file, rolling back on partial failure), indexes it by the stored tier, disposes
+        // the reservation, and returns it pre-leased. The bloom is the AlwaysTrue placeholder here —
+        // ReconstructBloom replaces it once every snapshot is in place — and we drop the returned
+        // creation lease immediately; the bucket keeps its own.
+        using PersistedSnapshot _ = repository.AddPersistedSnapshot(
+            entry.From, entry.To, reservation, BloomFilter.AlwaysTrue(), entry.Tier);
     }
 
     /// <summary>
@@ -256,10 +248,11 @@ public sealed class PersistedSnapshotLoader(
         reservation.Fsync();
         blobWriter.Fsync();
 
-        // Store records the catalog entry into the base bucket, indexes the snapshot, and
-        // pre-acquires the caller's lease under the bucket's lock; it also disposes the reservation.
+        // Record the catalog entry, then index the snapshot. AddPersistedSnapshot indexes it,
+        // pre-acquires the caller's lease under the bucket's lock, and disposes the reservation.
+        _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
         PersistedSnapshot persisted = repository.AddPersistedSnapshot(
-            snapshot.From, snapshot.To, location, reservation, bloom, SnapshotTier.PersistedBase);
+            snapshot.From, snapshot.To, reservation, bloom, SnapshotTier.PersistedBase);
 
         if (_validatePersistedSnapshot)
             PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);

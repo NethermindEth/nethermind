@@ -34,22 +34,18 @@ public interface ISnapshotRepository
 
     bool HasState(in StateId stateId);
 
-    /// <summary>Store a pre-built persisted snapshot with a pre-computed location/reservation into the
+    /// <summary>Build a persisted snapshot from <paramref name="reservation"/> and index it into the
     /// bucket selected by <paramref name="tier"/> (must be a <c>Persisted*</c> value). Returns it
-    /// pre-leased — the caller owns the lease and MUST dispose it.</summary>
-    PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier);
+    /// pre-leased — the caller owns the lease and MUST dispose it. Does not write the catalog; the
+    /// caller records the catalog entry for a freshly persisted/compacted snapshot, or skips it when
+    /// reloading an entry that is already in the catalog.</summary>
+    PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier);
 
     /// <summary>Lease every persisted base snapshot tiling <c>(from, to]</c>. Caller disposes the list.</summary>
     PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);
 
     /// <summary>Whether the persisted base bucket holds a snapshot at <paramref name="stateId"/>.</summary>
     bool HasBaseSnapshot(in StateId stateId);
-
-    /// <summary>Index a reloaded persisted snapshot into the <paramref name="tier"/> bucket (dictionary,
-    /// block-ordered set, and totals) without writing the catalog (the entry is already there). Taken
-    /// under the bucket's lock, so it is safe to call from the parallel catalog load.
-    /// <paramref name="tier"/> must be a <c>Persisted*</c> value.</summary>
-    void LoadPersistedSnapshot(SnapshotTier tier, in StateId to, PersistedSnapshot snapshot);
 
     /// <summary>Every loaded persisted snapshot across the three buckets, for one-off lifecycle iteration
     /// (bloom rebuild) at load time.</summary>

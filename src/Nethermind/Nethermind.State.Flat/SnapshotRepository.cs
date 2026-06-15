@@ -87,6 +87,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // can live in more than one bucket (a base and a compacted snapshot can share it).
     private readonly IArenaManager _arena;
     private readonly BlobArenaManager _blobs;
+    private readonly IDb _catalogDb;
     private readonly SnapshotCatalog _catalog;
     private readonly int _compactSize;
     private readonly SnapshotBucket _base;
@@ -118,6 +119,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         _arena = arenaManager;
         _blobs = blobArenaManager;
+        _catalogDb = catalogDb;
         _catalog = new(catalogDb);
         _base = new SnapshotBucket(_catalog, SnapshotTier.PersistedBase);
         _compacted = new SnapshotBucket(_catalog, SnapshotTier.PersistedCompacted);
@@ -130,10 +132,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // Test-only observability; not part of ISnapshotRepository.
     internal int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
 
-    // Test-only: lets tests build a PersistedSnapshotConverter over the same shared arena/blob
-    // managers the repository reads through (see PersistedSnapshotConverterTestExtensions).
+    // Test-only: lets tests build a loader/compactor over the same shared arena/blob managers and
+    // catalog db the repository reads through (the compactor records its compacted entries in this
+    // same catalog so a reload sees them).
     internal IArenaManager ArenaManager => _arena;
     internal BlobArenaManager BlobArenaManager => _blobs;
+    internal IDb CatalogDb => _catalogDb;
 
     public int PersistedSnapshotCount => (int)(_base.Count + _compacted.Count + _persistable.Count);
 
@@ -850,19 +854,20 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // ===================== Persisted tier =====================
 
     /// <summary>
-    /// Store a pre-built persisted snapshot with a pre-computed location and reservation into the
-    /// bucket selected by <paramref name="tier"/>. The snapshot's referenced blob arena ids are read
-    /// off its own metadata HSST by the <see cref="PersistedSnapshot"/> ctor, which leases each one
-    /// and rolls back on partial failure.
+    /// Build a persisted snapshot from <paramref name="reservation"/> and index it into the bucket
+    /// selected by <paramref name="tier"/>, returning it pre-leased (caller disposes the lease). Does
+    /// NOT write the catalog — the caller records the catalog entry (a freshly persisted/compacted
+    /// snapshot writes one; a snapshot reloaded from the catalog does not). The snapshot's referenced
+    /// blob arena ids are read off its own metadata HSST by the <see cref="PersistedSnapshot"/> ctor,
+    /// which leases each one and rolls back on partial failure.
     /// </summary>
-    public PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier)
+    public PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier)
     {
         PersistedSnapshot snapshot = new(from, to, reservation, _blobs, bloom: bloom);
-        // Add records the catalog entry (with the bucket's own SnapshotTier), indexes the
-        // snapshot, and pre-acquires the caller's lease under the bucket's lock so a racing
-        // RemovePersistedStatesUntil on a background compactor thread can't dispose it between
-        // insert and the caller seeing the return.
-        BucketFor(tier).Add(from, to, location, snapshot);
+        // Index the snapshot and pre-acquire the caller's lease under the bucket's lock so a racing
+        // RemovePersistedStatesUntil on a background compactor thread can't dispose it between insert
+        // and the caller seeing the return.
+        BucketFor(tier).Add(to, snapshot);
 
         // Release the caller's "creation" lease — the bucket pre-acquired its own above.
         reservation.Dispose();
@@ -970,9 +975,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public bool HasBaseSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 
-    public void LoadPersistedSnapshot(SnapshotTier tier, in StateId to, PersistedSnapshot snapshot) =>
-        BucketFor(tier).Set(to, snapshot);
-
     public IEnumerable<PersistedSnapshot> PersistedSnapshots
     {
         get
@@ -1071,16 +1073,14 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
 
         /// <summary>
-        /// Runtime insert of a freshly persisted snapshot: write its catalog entry (tagged with this
-        /// bucket's <see cref="SnapshotTier"/>), index it (dictionary + ordered set + totals), and
-        /// pre-acquire the caller's lease — all under this bucket's lock so a racing prune cannot
-        /// dispose the entry between insert and the caller seeing the return.
+        /// Index a snapshot (dictionary + ordered set + totals) and pre-acquire the caller's lease —
+        /// both under this bucket's lock so a racing prune cannot dispose the entry between insert and
+        /// the caller seeing the return. The catalog entry is written by the caller, not here.
         /// </summary>
-        public void Add(in StateId from, in StateId to, in SnapshotLocation location, PersistedSnapshot snapshot)
+        public void Add(in StateId to, PersistedSnapshot snapshot)
         {
             lock (_lock)
             {
-                catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
                 Set(to, snapshot);
                 snapshot.AcquireLease();
             }
