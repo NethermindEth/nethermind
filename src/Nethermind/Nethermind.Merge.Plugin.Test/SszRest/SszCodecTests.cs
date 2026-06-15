@@ -238,8 +238,8 @@ public class SszCodecTests
     private static IEnumerable<TestCaseData> NonEmptyEncodings()
     {
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
-            SszCodec.EncodeGetPayloadV1Response(MakeV2Result(SszTestData.MakeMinimalPayload(), UInt256.One), w)))
-            .SetName(nameof(Encoded_buffer_is_non_empty) + "_GetPayloadV1");
+            SszCodec.EncodeBuiltPayloadParis(MakeV2Result(SszTestData.MakeMinimalPayload(), UInt256.One), w)))
+            .SetName(nameof(Encoded_buffer_is_non_empty) + "_BuiltPayloadParis");
 
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
         {
@@ -349,8 +349,8 @@ public class SszCodecTests
             .SetName(nameof(Encoded_buffer_length_is_consistent) + "_PayloadStatus");
 
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
-            SszCodec.EncodeGetPayloadV1Response(MakeV2Result(SszTestData.MakeMinimalPayload(), UInt256.One), w)))
-            .SetName(nameof(Encoded_buffer_length_is_consistent) + "_GetPayloadV1");
+            SszCodec.EncodeBuiltPayloadParis(MakeV2Result(SszTestData.MakeMinimalPayload(), UInt256.One), w)))
+            .SetName(nameof(Encoded_buffer_length_is_consistent) + "_BuiltPayloadParis");
     }
 
     [TestCaseSource(nameof(BufferConsistentEncodings))]
@@ -362,14 +362,14 @@ public class SszCodecTests
     }
 
     [Test]
-    public void EncodeGetPayloadV1Response_fields_land_at_spec_defined_offsets()
+    public void EncodeBuiltPayloadParis_fields_land_at_spec_defined_offsets()
     {
         ExecutionPayload ep = SszTestData.MakeMinimalPayload();
         ep.BaseFeePerGas = new UInt256(0xABCDEF);
         UInt256 blockValue = new(0xCAFEBABEu);
 
         ArrayBufferWriter<byte> w = new();
-        SszCodec.EncodeGetPayloadV1Response(MakeV2Result(ep, blockValue), w);
+        SszCodec.EncodeBuiltPayloadParis(MakeV2Result(ep, blockValue), w);
         ReadOnlySpan<byte> buffer = w.WrittenSpan;
 
         uint epOffset = BitConverter.ToUInt32(buffer.Slice(0, 4));
@@ -388,7 +388,7 @@ public class SszCodecTests
     }
 
     [Test]
-    public void EncodeGetPayloadV1Response_all_static_fields_land_at_spec_defined_offsets()
+    public void EncodeBuiltPayloadParis_all_static_fields_land_at_spec_defined_offsets()
     {
         ExecutionPayload ep = new()
         {
@@ -410,7 +410,7 @@ public class SszCodecTests
         UInt256 blockValue = new(0xCAFEBABEu);
 
         ArrayBufferWriter<byte> w = new();
-        SszCodec.EncodeGetPayloadV1Response(MakeV2Result(ep, blockValue), w);
+        SszCodec.EncodeBuiltPayloadParis(MakeV2Result(ep, blockValue), w);
         ReadOnlySpan<byte> outer = w.WrittenSpan;
 
         uint epOffset = BitConverter.ToUInt32(outer.Slice(0, 4));

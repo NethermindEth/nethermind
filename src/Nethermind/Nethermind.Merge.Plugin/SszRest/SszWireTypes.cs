@@ -205,7 +205,7 @@ public partial struct BlobsBundleV2Wire
 }
 
 [SszContainer]
-public partial struct GetPayloadResponseV1Wire
+public partial struct BuiltPayloadParisWire
 {
     public SszExecutionPayloadV1 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
@@ -227,8 +227,7 @@ public partial struct GetPayloadResponseV3Wire
     public bool ShouldOverrideBuilder { get; set; }
 }
 
-// execution-apis#793: execution_requests precedes should_override_builder on the wire,
-// diverging from legacy JSON-RPC envelope order. Mirrored in V5/V6 below.
+// Field order: execution_requests precedes should_override_builder (diverges from JSON-RPC).
 [SszContainer]
 public partial struct GetPayloadResponseV4Wire
 {

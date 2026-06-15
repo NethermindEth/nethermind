@@ -253,7 +253,7 @@ public sealed class SszMiddleware
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // execution-apis#793 no longer forbids trailing slashes — collapse them so the route resolves.
+        // Collapse a trailing slash so `/foo` and `/foo/` route identically.
         if (span.Length > EnginePrefix.Length && span[^1] == '/')
             span = span[..^1];
 

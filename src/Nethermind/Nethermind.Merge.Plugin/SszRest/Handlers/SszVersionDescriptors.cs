@@ -142,15 +142,14 @@ public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion
         ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
-// Routes to engine_getPayloadV2 (not V1) so the response carries block_value, required by
-// the Paris BuiltPayload wrapper introduced in execution-apis#793.
+// Paris (V1 routing) needs block_value, which engine_getPayloadV1 doesn't return — call V2.
 public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<GetPayloadV2Result>
 {
     public static int VersionNumber => EngineApiVersions.GetPayload.V1;
     public static Task<ResultWrapper<GetPayloadV2Result?>> Call(IEngineRpcModule engine, byte[] id)
         => engine.engine_getPayloadV2(id);
     public static int Encode(GetPayloadV2Result result, IBufferWriter<byte> writer)
-        => SszCodec.EncodeGetPayloadV1Response(result, writer);
+        => SszCodec.EncodeBuiltPayloadParis(result, writer);
 }
 
 public readonly struct GetPayloadDescriptorV2 : IGetPayloadVersion<GetPayloadV2Result>

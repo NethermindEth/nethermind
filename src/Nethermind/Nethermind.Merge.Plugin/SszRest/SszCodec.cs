@@ -61,8 +61,8 @@ public static class SszCodec
         safeBlockHash: w.SafeBlockHash);
 
 
-    public static int EncodeGetPayloadV1Response(GetPayloadV2Result? r, IBufferWriter<byte> writer)
-        => EncodeToWriter(new GetPayloadResponseV1Wire
+    public static int EncodeBuiltPayloadParis(GetPayloadV2Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new BuiltPayloadParisWire
         {
             ExecutionPayload = new SszExecutionPayloadV1(r!.ExecutionPayload),
             BlockValue = r.BlockValue
@@ -152,7 +152,7 @@ public static class SszCodec
         return EncodeToWriter(new GetBlobsV2ResponseWire { Entries = arr }, writer);
     }
 
-    // execution-apis#793 forbids a separate BlobV3 wire type — /v3 entry shape is V2 verbatim.
+    // V3 entry shape is byte-identical to V2; only response-level semantics differ.
     public static int EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
         => EncodeGetBlobsV2Response(blobs, writer);
 

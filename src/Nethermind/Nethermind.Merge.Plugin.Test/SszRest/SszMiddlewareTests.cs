@@ -896,8 +896,7 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
     }
 
-    // Unknown extra path segments still 404. execution-apis#793 dropped the trailing-slash rule,
-    // so /capabilities/ and /forkchoice/ resolve normally — covered separately below.
+    // Unknown extra path segments still 404; trailing slashes are accepted (covered below).
     private static readonly object[] MalformedPathCases =
     [
         new object[] { "GET", "/engine/v2/capabilities/foo", true },
