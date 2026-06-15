@@ -807,9 +807,12 @@ public partial class EngineModuleTests
     [Test, NonParallelizable]
     public async Task AlreadyKnown_not_cached_block_should_return_valid()
     {
+        // Disable the latestBlocks cache so the second b5 submission below routes
+        // through the AddBlockResult.AlreadyKnown branch (what the test name asserts)
+        // rather than a cache hit.
         using MergeTestBlockchain? chain = await CreateBlockchain(mergeConfig: new MergeConfig()
         {
-            NewPayloadBlockProcessingTimeout = 100
+            NewPayloadCacheSize = 0
         });
 
         IEngineRpcModule? rpc = chain.EngineRpcModule;
