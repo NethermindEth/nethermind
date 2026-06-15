@@ -126,80 +126,62 @@ public class SnapshotRepository : ISnapshotRepository
         _lastRegisteredState = stateId;
     }
 
+    // Dual-tier path BFS: each node has up to 4 edges (compacted/base × in-memory/persisted); once on a
+    // persisted edge further in-memory edges are not explored. The cursor's in-mem-base-before-persisted-
+    // base priority matters: a persisted-base win would lock the rest of the BFS into the persisted tier
+    // (via the enqueue), barring any wider in-mem compacted skip-pointer downstream.
+    private struct AssembleVisitor(StateId target, PooledSet<StateId> seen,
+        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited) : IParentWalkVisitor
+    {
+        public int WinnerIndex = -1;
+
+        public WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue)
+        {
+            if (from.BlockNumber < target.BlockNumber)
+            {
+                // In-memory snapshots are persistence-granular; overshoot means unusable edge. Persisted
+                // (especially compacted) snapshots can span past the target — accept as the terminal
+                // element without enqueuing further.
+                if (!viaPersisted) { snapshot.Dispose(); return WalkAction.Continue; }
+                WinnerIndex = visited.Count;
+                visited.Add((snapshot, parentIndex));
+                return WalkAction.Stop;
+            }
+
+            if (!seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; } // cycle
+
+            int idx = visited.Count;
+            visited.Add((snapshot, parentIndex));
+            if (from == target || from.BlockNumber == target.BlockNumber)
+            {
+                WinnerIndex = idx;
+                return WalkAction.Stop;
+            }
+            queue.Enqueue(new WalkNode(from, viaPersisted, idx));
+            return WalkAction.Continue;
+        }
+    }
+
     public AssembledSnapshotResult AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
     {
         if (baseBlock == targetState) return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
 
-        // BFS over the snapshot graph: each StateId node has up to 4 edges
-        // (compacted/base × in-memory/persisted). Once on a persisted edge,
-        // further in-memory edges are not explored.
         using ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = new(estimatedSize);
+        using PooledSet<StateId> seen = new();
+        using PooledQueue<WalkNode> queue = new();
         try
         {
-            Queue<(StateId current, bool isPersisted, int parentIndex)> queue = new();
-            HashSet<StateId> seen = [];
-            queue.Enqueue((baseBlock, false, -1));
             seen.Add(baseBlock);
-            int winnerIndex = -1;
+            AssembleVisitor visitor = new(targetState, seen, visited);
+            WalkParents(baseBlock, startViaPersisted: false, includePersisted: true, ref visitor, queue);
 
-            while (queue.Count > 0 && winnerIndex < 0)
-            {
-                (StateId current, bool currentPersisted, int parentIdx) = queue.Dequeue();
-
-                // The cursor's in-mem-base-before-persisted-base priority matters here: a
-                // persisted-base win would lock the rest of the BFS into the persisted tier
-                // (via the enqueue below), barring any wider in-mem compacted skip-pointer
-                // that might exist downstream.
-                ParentCursor edges = EnumerateParents(current, currentPersisted, includePersisted: true);
-                while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId from, out bool edgePersisted))
-                {
-                    if (from.BlockNumber < targetState.BlockNumber)
-                    {
-                        // In-memory snapshots are persistence-granular; overshoot means unusable edge.
-                        // Persisted (especially compacted) snapshots can span past the target — accept
-                        // as the terminal element without enqueuing further.
-                        if (!edgePersisted)
-                        {
-                            snapshot.Dispose();
-                            continue;
-                        }
-
-                        if (_logger.IsTrace) _logger.Trace($"BFS terminal persisted edge: {from} -> {current} spans below target {targetState} (persisted={edgePersisted})");
-                        int terminalIdx = visited.Count;
-                        visited.Add((snapshot, parentIdx));
-                        winnerIndex = terminalIdx;
-                        break;
-                    }
-
-                    // Cycle: already visited this node
-                    if (!seen.Add(from))
-                    {
-                        snapshot.Dispose();
-                        continue;
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace($"BFS edge: {from} -> {current} (persisted={edgePersisted})");
-
-                    int idx = visited.Count;
-                    visited.Add((snapshot, parentIdx));
-
-                    if (from == targetState || from.BlockNumber == targetState.BlockNumber)
-                    {
-                        winnerIndex = idx;
-                        break;
-                    }
-
-                    queue.Enqueue((from, edgePersisted, idx));
-                }
-            }
-
-            if (winnerIndex < 0)
+            if (visitor.WinnerIndex < 0)
                 return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
 
             // Reconstruct winning path and double-lease those snapshots so they
             // survive the finally block which disposes all visited entries.
             HashSet<int> pathIndices = [];
-            int walk = winnerIndex;
+            int walk = visitor.WinnerIndex;
             while (walk >= 0)
             {
                 pathIndices.Add(walk);
@@ -255,67 +237,64 @@ public class SnapshotRepository : ISnapshotRepository
     /// for compaction). `visited` owns a lease on every leased snapshot; the winning path is re-leased
     /// before the finally releases all of them.
     /// </remarks>
+    // In-memory-only path BFS: up to 2 edges per node, widest-jump first (in-memory compacted then base).
+    // Edges below minBlockNumber are pruned, so a wide compacted jump that overshoots is discarded for the
+    // narrower base edge. Wins at the first node reaching minBlockNumber (and equal to exactTarget when set).
+    // Holds an ArrayPoolListRef, so it must be a ref struct.
+    private ref struct AssembleBfsVisitor(long minBlockNumber, StateId? exactTarget, PooledSet<StateId> seen, int estimatedSize) : IParentWalkVisitor
+    {
+        public int WinnerIndex = -1;
+        public ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> Visited = new(estimatedSize);
+
+        public WalkAction Visit(IDisposable leased, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue)
+        {
+            // In-memory-only expansion — the lease is always a Snapshot.
+            Snapshot snapshot = (Snapshot)leased;
+
+            if (from.BlockNumber < minBlockNumber || !seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; }
+
+            int index = Visited.Count;
+            Visited.Add((snapshot, parentIndex));
+            if (from.BlockNumber == minBlockNumber && (exactTarget is not StateId target || from == target))
+            {
+                WinnerIndex = index;
+                return WalkAction.Stop;
+            }
+            queue.Enqueue(new WalkNode(from, viaPersisted, index)); // viaPersisted always false here
+            return WalkAction.Continue;
+        }
+    }
+
     private SnapshotPooledList AssembleSnapshotsBfs(in StateId baseBlock, long minBlockNumber, StateId? exactTarget, int estimatedSize)
     {
-        using ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> visited = new(estimatedSize);
-        using PooledQueue<(StateId Current, int ParentIndex)> queue = new();
+        using PooledQueue<WalkNode> queue = new();
         using PooledSet<StateId> seen = new();
+        AssembleBfsVisitor visitor = new(minBlockNumber, exactTarget, seen, estimatedSize);
         try
         {
-            queue.Enqueue((baseBlock, -1));
             seen.Add(baseBlock);
-            int winnerIndex = -1;
+            WalkParents(baseBlock, startViaPersisted: false, includePersisted: false, ref visitor, queue);
 
-            while (queue.Count > 0 && winnerIndex < 0)
-            {
-                (StateId current, int parentIndex) = queue.Dequeue();
-
-                ParentCursor edges = EnumerateParents(current, fromPersistedEdge: false, includePersisted: false);
-                while (edges.TryLeaseNext(out IDisposable? leased, out StateId from, out _))
-                {
-                    // In-memory-only expansion — the lease is always a Snapshot.
-                    Snapshot snapshot = (Snapshot)leased;
-
-                    if (from.BlockNumber < minBlockNumber || !seen.Add(from))
-                    {
-                        snapshot.Dispose();
-                        continue;
-                    }
-
-                    int index = visited.Count;
-                    visited.Add((snapshot, parentIndex));
-
-                    if (from.BlockNumber == minBlockNumber && (exactTarget is not StateId target || from == target))
-                    {
-                        winnerIndex = index;
-                        break;
-                    }
-
-                    queue.Enqueue((from, index));
-                }
-            }
-
-            if (winnerIndex < 0) return SnapshotPooledList.Empty();
+            if (visitor.WinnerIndex < 0) return SnapshotPooledList.Empty();
 
             // Walk winner -> root: yields ascending order directly (result[0].From == terminus,
             // result[^1].To == baseBlock).
             SnapshotPooledList result = new(estimatedSize);
-            for (int walk = winnerIndex; walk >= 0; walk = visited[walk].ParentIndex)
+            for (int walk = visitor.WinnerIndex; walk >= 0; walk = visitor.Visited[walk].ParentIndex)
             {
-                // `visited` still holds a lease, so re-acquire cannot fail; assert flags future
+                // `Visited` still holds a lease, so re-acquire cannot fail; assert flags future
                 // Snapshot lifecycle changes that could break this invariant.
-                bool acquired = visited[walk].Snapshot.TryAcquire();
+                bool acquired = visitor.Visited[walk].Snapshot.TryAcquire();
                 Debug.Assert(acquired, "TryAcquire failed despite held lease");
-                result.Add(visited[walk].Snapshot);
+                result.Add(visitor.Visited[walk].Snapshot);
             }
             return result;
         }
         finally
         {
-            for (int i = 0; i < visited.Count; i++)
-            {
-                visited[i].Snapshot.Dispose();
-            }
+            for (int i = 0; i < visitor.Visited.Count; i++)
+                visitor.Visited[i].Snapshot.Dispose();
+            visitor.Visited.Dispose();
         }
     }
 
@@ -427,6 +406,52 @@ public class SnapshotRepository : ISnapshotRepository
 
             (snapshot, from, viaPersistedEdge) = (null, default, false);
             return false;
+        }
+    }
+
+    private readonly struct WalkNode(in StateId current, bool viaPersisted, int parentIndex)
+    {
+        public readonly StateId Current = current;
+        public readonly bool ViaPersisted = viaPersisted;
+        public readonly int ParentIndex = parentIndex;
+    }
+
+    private enum WalkAction { Continue, Stop }
+
+    /// <summary>
+    /// Per-edge policy for <see cref="WalkParents{TVisitor}"/>. The visitor OWNS the lease handed to it:
+    /// dispose it and return <see cref="WalkAction.Continue"/> to skip the edge; retain it (e.g. in a
+    /// visited list) and enqueue the child via <paramref name="queue"/> to expand; or retain/dispose per
+    /// its own bookkeeping and return <see cref="WalkAction.Stop"/> to end the whole walk. The driver
+    /// never disposes a lease — there is exactly one owner at all times.
+    /// </summary>
+    private interface IParentWalkVisitor
+    {
+        WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue);
+    }
+
+    /// <summary>
+    /// Generic backward BFS over parent (<c>From</c>) edges via <see cref="EnumerateParents"/>. Owns only
+    /// the frontier and the edge-expansion loop; <typeparamref name="TVisitor"/> owns cycle detection,
+    /// pruning, the win condition, lease retention, and result building. <paramref name="queue"/> is
+    /// supplied by the caller (and cleared here) so a hot prune loop can reuse one instance.
+    /// </summary>
+    private void WalkParents<TVisitor>(in StateId start, bool startViaPersisted, bool includePersisted,
+            ref TVisitor visitor, PooledQueue<WalkNode> queue)
+        where TVisitor : struct, IParentWalkVisitor, allows ref struct
+    {
+        queue.Clear();
+        queue.Enqueue(new WalkNode(start, startViaPersisted, -1));
+
+        while (queue.Count > 0)
+        {
+            WalkNode node = queue.Dequeue();
+            ParentCursor edges = EnumerateParents(node.Current, node.ViaPersisted, includePersisted);
+            while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId from, out bool edgePersisted))
+            {
+                if (visitor.Visit(snapshot!, from, edgePersisted, node.ParentIndex, ref queue) == WalkAction.Stop)
+                    return;
+            }
         }
     }
 
@@ -734,7 +759,7 @@ public class SnapshotRepository : ISnapshotRepository
         long batchStart = canonicalBlock + 1;
         int totalPruned = 0;
 
-        using PooledStack<(StateId State, bool IsPersisted)> stack = new();
+        using PooledQueue<WalkNode> queue = new();
         using PooledSet<StateId> seen = new();
 
         while (batchStart <= maxBlock)
@@ -746,7 +771,7 @@ public class SnapshotRepository : ISnapshotRepository
             {
                 foreach (StateId stateId in inMemory)
                 {
-                    if (!CanReachState(stateId, canonicalStateId, stack, seen))
+                    if (!CanReachState(stateId, canonicalStateId, queue, seen))
                     {
                         // A To can exist in both in-memory tiers — remove from each.
                         RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryCompacted);
@@ -763,7 +788,7 @@ public class SnapshotRepository : ISnapshotRepository
             {
                 foreach (StateId stateId in persisted)
                 {
-                    if (!CanReachState(stateId, canonicalStateId, stack, seen)
+                    if (!CanReachState(stateId, canonicalStateId, queue, seen)
                         && RemovePersistedStateExact(stateId))
                     {
                         totalPruned++;
@@ -798,33 +823,33 @@ public class SnapshotRepository : ISnapshotRepository
     /// tier is required so a canonical in-memory state whose ancestry descends through a converted
     /// snapshot is not mistaken for an orphan.
     /// </remarks>
-    private bool CanReachState(in StateId from, in StateId target, PooledStack<(StateId State, bool IsPersisted)> stack, PooledSet<StateId> seen)
+    // Reachability only reads each parent's From, never retains a lease. BFS (the order is irrelevant
+    // for a boolean reachability result).
+    private struct CanReachVisitor(StateId target, PooledSet<StateId> seen) : IParentWalkVisitor
+    {
+        public bool Reached = false;
+
+        public WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue)
+        {
+            snapshot.Dispose();
+
+            if (from == target) { Reached = true; return WalkAction.Stop; }
+            if (from.BlockNumber > target.BlockNumber && seen.Add(from))
+                queue.Enqueue(new WalkNode(from, viaPersisted, parentIndex));
+            return WalkAction.Continue;
+        }
+    }
+
+    private bool CanReachState(in StateId from, in StateId target, PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
     {
         if (from == target) return true;
         if (from.BlockNumber <= target.BlockNumber) return false;
 
-        stack.Clear();
         seen.Clear();
-        stack.Push((from, false));
         seen.Add(from);
-
-        while (stack.Count > 0)
-        {
-            (StateId current, bool currentPersisted) = stack.Pop();
-
-            ParentCursor edges = EnumerateParents(current, currentPersisted, includePersisted: true);
-            while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId parent, out bool edgePersisted))
-            {
-                snapshot.Dispose();
-
-                if (parent == target) return true;
-                if (parent.BlockNumber > target.BlockNumber && seen.Add(parent))
-                {
-                    stack.Push((parent, edgePersisted));
-                }
-            }
-        }
-        return false;
+        CanReachVisitor visitor = new(target, seen);
+        WalkParents(from, startViaPersisted: false, includePersisted: true, ref visitor, queue);
+        return visitor.Reached;
     }
 
     private ArrayPoolListRef<StateId> GetStatesInRange(long blockStartInclusive, long blockEndInclusive)
