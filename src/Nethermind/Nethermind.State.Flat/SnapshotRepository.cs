@@ -369,8 +369,8 @@ public class SnapshotRepository : ISnapshotRepository
     /// persisted edge. Persisted snapshots only chain back to other persisted snapshots, so the
     /// in-memory edges are guaranteed misses and are skipped.</param>
     /// <param name="includePersisted">When <see langword="false"/>, only the in-memory edges are expanded.</param>
-    private ParentCursor EnumerateParents(in StateId to, bool fromPersistedEdge, bool includePersisted) =>
-        new(this, to, fromPersistedEdge, includePersisted);
+    private ParentCursor EnumerateParents(in StateId to, bool fromPersistedEdge, bool includePersisted, bool compaction = false) =>
+        new(this, to, fromPersistedEdge, includePersisted, compaction);
 
     private struct ParentCursor
     {
@@ -379,13 +379,15 @@ public class SnapshotRepository : ISnapshotRepository
         private readonly SnapshotTier[] _priority;
         private int _next;
 
-        internal ParentCursor(SnapshotRepository repo, in StateId to, bool fromPersistedEdge, bool includePersisted)
+        internal ParentCursor(SnapshotRepository repo, in StateId to, bool fromPersistedEdge, bool includePersisted, bool compaction)
         {
             _repo = repo;
             _to = to;
             // fromPersistedEdge is only ever passed together with includePersisted: true, so the
-            // persisted continuation always reaches the full persisted depth.
-            _priority = fromPersistedEdge ? PersistedContinuationPriority
+            // persisted continuation always reaches the full persisted depth. The compaction mode is
+            // persisted-only and includes the CompactSize-wide persistable as a source.
+            _priority = compaction ? CompactionEdgePriority
+                : fromPersistedEdge ? PersistedContinuationPriority
                 : includePersisted ? FullExpansionPriority
                 : InMemoryExpansionPriority;
             _next = 0;
@@ -437,7 +439,7 @@ public class SnapshotRepository : ISnapshotRepository
     /// supplied by the caller (and cleared here) so a hot prune loop can reuse one instance.
     /// </summary>
     private void WalkParents<TVisitor>(in StateId start, bool startViaPersisted, bool includePersisted,
-            ref TVisitor visitor, PooledQueue<WalkNode> queue)
+            ref TVisitor visitor, PooledQueue<WalkNode> queue, bool compaction = false)
         where TVisitor : struct, IParentWalkVisitor, allows ref struct
     {
         queue.Clear();
@@ -446,7 +448,7 @@ public class SnapshotRepository : ISnapshotRepository
         while (queue.Count > 0)
         {
             WalkNode node = queue.Dequeue();
-            ParentCursor edges = EnumerateParents(node.Current, node.ViaPersisted, includePersisted);
+            ParentCursor edges = EnumerateParents(node.Current, node.ViaPersisted, includePersisted, compaction);
             while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId from, out bool edgePersisted))
             {
                 if (visitor.Visit(snapshot!, from, edgePersisted, node.ParentIndex, ref queue) == WalkAction.Stop)
@@ -528,47 +530,9 @@ public class SnapshotRepository : ISnapshotRepository
             queue.Enqueue(from);
     }
 
-    /// <summary>
-    /// Assemble persisted snapshots for compaction, walking backward from <paramref name="toStateId"/>.
-    /// At each hop the widest persisted snapshot whose <c>From</c> does not span past
-    /// <paramref name="minBlockNumber"/> is chosen — compacted, then the CompactSize-wide
-    /// persistable, then base. Returns oldest-first, or empty if fewer than two are found.
-    /// </summary>
-    /// <remarks>
-    /// Per-edge selection reuses <see cref="TryLeaseParent"/> (persisted edges only), so each
-    /// candidate inspected is leased — overshooting ones are leased then disposed rather than
-    /// peeked. That trades a little work for sharing the single edge-lease path with the other walks.
-    /// </remarks>
-    public PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, long minBlockNumber)
-    {
-        PersistedSnapshotList result = new(0);
-        StateId current = toStateId;
-
-        while (true)
-        {
-            PersistedSnapshot? snapshot = SelectPersistedForCompaction(current, minBlockNumber);
-            if (snapshot is null) break;
-
-            result.Add(snapshot); // already leased by TryLeaseParent
-
-            if (snapshot.From == current) break;            // guard against a self-edge
-            if (snapshot.From.BlockNumber == minBlockNumber) break;
-            current = snapshot.From;
-        }
-
-        if (result.Count < 2)
-        {
-            result.Dispose();
-            return PersistedSnapshotList.Empty();
-        }
-
-        result.Reverse(); // oldest-first
-        return result;
-    }
-
-    // Widest-first persisted edge whose From does not span past minBlockNumber: compacted, then
-    // the CompactSize-wide persistable (the only source >CompactSize boundary compaction has),
-    // then base.
+    // Persisted-only, widest-first compaction expansion: compacted, then the CompactSize-wide
+    // persistable (the only source >CompactSize boundary compaction has), then base. Used by the
+    // compaction mode of ParentCursor / WalkParents.
     private static readonly SnapshotTier[] CompactionEdgePriority =
     [
         SnapshotTier.PersistedCompacted,
@@ -576,16 +540,78 @@ public class SnapshotRepository : ISnapshotRepository
         SnapshotTier.PersistedBase,
     ];
 
-    private PersistedSnapshot? SelectPersistedForCompaction(in StateId current, long minBlockNumber)
+    // Best-effort persisted compaction tiling over the WalkParents driver (compaction edge set):
+    // prunes edges overshooting minBlockNumber, and tracks the deepest (lowest-block) node reached.
+    // Widest-first expansion + BFS means the first path to each depth is the widest one. The window
+    // need not be fully populated — a partial chain (whatever reaches the deepest block >= min) still
+    // merges, and a reachable full window wins immediately at min.
+    private ref struct PersistedCompactionVisitor(long minBlockNumber, PooledSet<StateId> seen, int estimatedSize) : IParentWalkVisitor
     {
-        foreach (SnapshotTier tier in CompactionEdgePriority)
+        public ArrayPoolListRef<(PersistedSnapshot Snapshot, int ParentIndex)> Visited = new(estimatedSize);
+        public int WinnerIndex = -1;
+        private long _winnerBlock = long.MaxValue;
+
+        public WalkAction Visit(IDisposable leased, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue)
         {
-            if (!TryLeaseParent(current, tier, out IDisposable? leased, out StateId from)) continue;
-            PersistedSnapshot persisted = (PersistedSnapshot)leased;
-            if (from.BlockNumber >= minBlockNumber) return persisted;
-            persisted.Dispose(); // overshoots the window — release and try a narrower edge
+            // Compaction expansion is persisted-only — the lease is always a PersistedSnapshot.
+            PersistedSnapshot snapshot = (PersistedSnapshot)leased;
+            if (from.BlockNumber < minBlockNumber || !seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; }
+
+            int index = Visited.Count;
+            Visited.Add((snapshot, parentIndex));
+            if (from.BlockNumber < _winnerBlock)
+            {
+                _winnerBlock = from.BlockNumber;
+                WinnerIndex = index;
+            }
+
+            if (from.BlockNumber == minBlockNumber) return WalkAction.Stop; // window start — deepest possible
+            queue.Enqueue(new WalkNode(from, viaPersisted, index));
+            return WalkAction.Continue;
         }
-        return null;
+    }
+
+    /// <summary>
+    /// Best-effort backward BFS over the persisted tier from <paramref name="toStateId"/>, returning the
+    /// contiguous chain reaching the deepest block <c>&gt;= </c><paramref name="minBlockNumber"/>
+    /// (oldest-first). The window need not be fully populated; returns empty when fewer than two
+    /// snapshots are found.
+    /// </summary>
+    public PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, long minBlockNumber)
+    {
+        int estimatedSize = (int)Math.Clamp(toStateId.BlockNumber - minBlockNumber, 4, 4096);
+        using PooledQueue<WalkNode> queue = new();
+        using PooledSet<StateId> seen = new();
+        PersistedCompactionVisitor visitor = new(minBlockNumber, seen, estimatedSize);
+        try
+        {
+            seen.Add(toStateId);
+            WalkParents(toStateId, startViaPersisted: true, includePersisted: true, ref visitor, queue, compaction: true);
+
+            if (visitor.WinnerIndex < 0) return PersistedSnapshotList.Empty();
+
+            // Walk winner -> root: oldest-first (result[0].From == deepest terminus, result[^1].To == toStateId).
+            PersistedSnapshotList result = new(estimatedSize);
+            for (int walk = visitor.WinnerIndex; walk >= 0; walk = visitor.Visited[walk].ParentIndex)
+            {
+                bool acquired = visitor.Visited[walk].Snapshot.TryAcquire();
+                Debug.Assert(acquired, "TryAcquire failed despite held lease");
+                result.Add(visitor.Visited[walk].Snapshot);
+            }
+
+            if (result.Count < 2)
+            {
+                result.Dispose();
+                return PersistedSnapshotList.Empty();
+            }
+            return result;
+        }
+        finally
+        {
+            for (int i = 0; i < visitor.Visited.Count; i++)
+                visitor.Visited[i].Snapshot.Dispose();
+            visitor.Visited.Dispose();
+        }
     }
 
     public bool TryLeaseInMemoryState(in StateId stateId, SnapshotTier tier, [NotNullWhen(true)] out Snapshot? entry)
