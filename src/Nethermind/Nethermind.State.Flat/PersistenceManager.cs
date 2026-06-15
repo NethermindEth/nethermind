@@ -134,7 +134,8 @@ public class PersistenceManager(
             }
 
             if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Force persisting to conserve memory. finalized block number is {finalizedBlockNumber}.");
-            StateId head = snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
+            // Follow the committed head; fall back to the longest chain when nothing was committed this session.
+            StateId head = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
             snapshotToPersist = GetHeadAncestorAtBlockNumber(nextCompactedBoundary, currentPersistedState, head, true) ??
                                 GetHeadAncestorAtBlockNumber(currentPersistedState.BlockNumber + 1, currentPersistedState, head, false);
         }
@@ -180,7 +181,8 @@ public class PersistenceManager(
         using Lock.Scope scope = _persistenceLock.EnterScope();
 
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        StateId? latestStateId = snapshotRepository.GetLastSnapshotId();
+        // Follow the committed head; fall back to the longest chain when nothing was committed this session.
+        StateId? latestStateId = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId();
 
         if (latestStateId is null)
         {
