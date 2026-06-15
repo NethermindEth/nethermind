@@ -183,61 +183,61 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case Instruction.ADD:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpAdd>(ref stack);
                             break;
                         case Instruction.SUB:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSub, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpSub>(ref stack);
                             break;
                         case Instruction.MUL:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMul, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpMul>(ref stack);
                             break;
                         case Instruction.DIV:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpDiv, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpDiv>(ref stack);
                             break;
                         case Instruction.SDIV:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSDiv, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpSDiv>(ref stack);
                             break;
                         case Instruction.MOD:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpMod, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpMod>(ref stack);
                             break;
                         case Instruction.SMOD:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSMod, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpSMod>(ref stack);
                             break;
                         case Instruction.LT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpLt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpLt>(ref stack);
                             break;
                         case Instruction.GT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpGt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpGt>(ref stack);
                             break;
                         case Instruction.SLT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSLt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpSLt>(ref stack);
                             break;
                         case Instruction.SGT:
-                            exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpSGt, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.Math2ParamOutOfLine<EvmInstructions.OpSGt>(ref stack);
                             break;
                         case Instruction.EQ:
-                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseEq>(ref stack);
+                            exceptionType = EvmInstructions.BitwiseOutOfLine<EvmInstructions.OpBitwiseEq>(ref stack);
                             break;
                         case Instruction.AND:
-                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseAnd>(ref stack);
+                            exceptionType = EvmInstructions.BitwiseOutOfLine<EvmInstructions.OpBitwiseAnd>(ref stack);
                             break;
                         case Instruction.OR:
-                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseOr>(ref stack);
+                            exceptionType = EvmInstructions.BitwiseOutOfLine<EvmInstructions.OpBitwiseOr>(ref stack);
                             break;
                         case Instruction.XOR:
-                            exceptionType = EvmInstructions.BitwiseCore<EvmInstructions.OpBitwiseXor>(ref stack);
+                            exceptionType = EvmInstructions.BitwiseOutOfLine<EvmInstructions.OpBitwiseXor>(ref stack);
                             break;
                         case Instruction.ISZERO:
-                            exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpIsZero>(ref stack);
+                            exceptionType = EvmInstructions.Math1ParamOutOfLine<EvmInstructions.OpIsZero>(ref stack);
                             break;
                         case Instruction.NOT:
-                            exceptionType = EvmInstructions.Math1ParamCore<EvmInstructions.OpNot>(ref stack);
+                            exceptionType = EvmInstructions.Math1ParamOutOfLine<EvmInstructions.OpNot>(ref stack);
                             break;
                         case Instruction.SHL:
-                            exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShl, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.ShiftOutOfLine<EvmInstructions.OpShl>(ref stack);
                             break;
                         case Instruction.SHR:
-                            exceptionType = EvmInstructions.ShiftCore<EvmInstructions.OpShr, OffFlag>(ref stack);
+                            exceptionType = EvmInstructions.ShiftOutOfLine<EvmInstructions.OpShr>(ref stack);
                             break;
                         case Instruction.POP:
                             exceptionType = stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
