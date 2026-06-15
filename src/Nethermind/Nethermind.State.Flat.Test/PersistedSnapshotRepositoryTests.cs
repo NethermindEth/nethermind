@@ -58,7 +58,7 @@ public class PersistedSnapshotRepositoryTests
         StateId s1 = new(1, Keccak.Compute("1"));
         Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+        repo.ConvertToPersistedBase(snap).Dispose();
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
 
         // Query through the snapshot
@@ -92,7 +92,7 @@ public class PersistedSnapshotRepositoryTests
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("seq-slots"));
-        using PersistedSnapshot persisted = repo.ConvertSnapshotToPersistedSnapshot(
+        using PersistedSnapshot persisted = repo.ConvertToPersistedBase(
             new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
 
         // Probe slots spanning multiple prefix groups (group boundaries fall on multiples of 65536).
@@ -129,8 +129,8 @@ public class PersistedSnapshotRepositoryTests
         content2.StateNodes[path] = new TrieNode(NodeType.Leaf, rlp2);
         Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap1).Dispose();
-        repo.ConvertSnapshotToPersistedSnapshot(snap2).Dispose();
+        repo.ConvertToPersistedBase(snap1).Dispose();
+        repo.ConvertToPersistedBase(snap2).Dispose();
 
         // The newest snapshot (s1→s2) should have rlp2 at the path
         Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedBase, out PersistedSnapshot? newest), Is.True);
@@ -152,7 +152,7 @@ public class PersistedSnapshotRepositoryTests
         using (SnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
-            repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+            repo.ConvertToPersistedBase(snap).Dispose();
         }
 
         // Session 2: reload from disk
@@ -199,7 +199,7 @@ public class PersistedSnapshotRepositoryTests
         content.StorageNodes[(storageTrieAddr, storagePath)] = new TrieNode(NodeType.Branch, storageRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+        repo.ConvertToPersistedBase(snap).Dispose();
 
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         using PersistedSnapshot _ = persisted!;
@@ -242,9 +242,9 @@ public class PersistedSnapshotRepositoryTests
         Snapshot snap2 = CreateTestSnapshot(s1, s2, TestItem.AddressB);
         Snapshot snap3 = CreateTestSnapshot(s2, s3, TestItem.AddressC);
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap1).Dispose();
-        repo.ConvertSnapshotToPersistedSnapshot(snap2).Dispose();
-        repo.ConvertSnapshotToPersistedSnapshot(snap3).Dispose();
+        repo.ConvertToPersistedBase(snap1).Dispose();
+        repo.ConvertToPersistedBase(snap2).Dispose();
+        repo.ConvertToPersistedBase(snap3).Dispose();
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(3));
 
         // Remove states until block 2 (removes snap1 with To=1)
@@ -257,7 +257,7 @@ public class PersistedSnapshotRepositoryTests
     public void ManyBaseSnapshots_ShareUnderlyingFiles(int count)
     {
         // Regression for the old "Blob arena id space exhausted (65535 arenas per tier)"
-        // bug: ids were minted per ConvertSnapshotToPersistedSnapshot call, so 65k base
+        // bug: ids were minted per base-conversion call, so 65k base
         // snapshots used 65k blob arena ids. Per-file ids pack many writers into one file —
         // file count stays bounded under steady state.
         using ArenaManager smallArena = ArenaManagerTestFactory.Create(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
@@ -269,7 +269,7 @@ public class PersistedSnapshotRepositoryTests
         {
             StateId next = new(i, Keccak.Compute($"s{i}"));
             Snapshot snap = CreateTestSnapshot(prev, next, TestItem.Addresses[i % TestItem.Addresses.Length]);
-            repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+            repo.ConvertToPersistedBase(snap).Dispose();
             prev = next;
         }
 
@@ -295,7 +295,7 @@ public class PersistedSnapshotRepositoryTests
         if (withTrieNode)
             content.StateNodes[new TreePath(Keccak.Compute("p"), 4)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
 
-        using PersistedSnapshot persisted = repo.ConvertSnapshotToPersistedSnapshot(
+        using PersistedSnapshot persisted = repo.ConvertToPersistedBase(
             new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
 
         if (withTrieNode)
@@ -330,7 +330,7 @@ public class PersistedSnapshotRepositoryTests
             content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
             if (withTrieNode)
                 content.StateNodes[new TreePath(Keccak.Compute("p"), 4)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
-            repo1.ConvertSnapshotToPersistedSnapshot(
+            repo1.ConvertToPersistedBase(
                 new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
         }
 
@@ -356,7 +356,7 @@ public class PersistedSnapshotRepositoryTests
         for (int i = 1; i < 4; i++)
         {
             ids[i] = new(i, Keccak.Compute($"s{i}"));
-            repo.ConvertSnapshotToPersistedSnapshot(
+            repo.ConvertToPersistedBase(
                 CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i])).Dispose();
         }
 
@@ -390,7 +390,7 @@ public class PersistedSnapshotRepositoryTests
         using (SnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             for (int i = 1; i <= 4; i++)
-                repo.ConvertSnapshotToPersistedSnapshot(
+                repo.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
@@ -461,7 +461,7 @@ public class PersistedSnapshotRepositoryTests
         using (SnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             for (int i = 1; i <= 4; i++)
-                repo.ConvertSnapshotToPersistedSnapshot(
+                repo.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4 };
@@ -514,7 +514,7 @@ public class PersistedSnapshotRepositoryTests
         using (SnapshotRepository repo = new(arena1, blobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
             for (int i = 1; i <= N; i++)
-                repo.ConvertSnapshotToPersistedSnapshot(
+                repo.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length])).Dispose();
 
             // Throw in two persistables (CompactSize=8) at boundaries 8 and 16 so the

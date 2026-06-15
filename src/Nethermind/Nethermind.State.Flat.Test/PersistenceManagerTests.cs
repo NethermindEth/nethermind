@@ -31,6 +31,7 @@ public class PersistenceManagerTests
     private SnapshotRepository _snapshotRepository = null!;
     private IPersistence _persistence = null!;
     private IPersistedSnapshotCompactor _persistedSnapshotCompactor = null!;
+    private IPersistedSnapshotConverter _converter = null!;
     private ResourcePool _resourcePool = null!;
     private StateId Block0 = new(0, Keccak.EmptyTreeHash);
 
@@ -50,6 +51,8 @@ public class PersistenceManagerTests
         _finalizedStateProvider = new TestFinalizedStateProvider();
         // SnapshotRepository now owns both tiers over a real temp-dir-backed persisted store.
         _snapshotRepository = SnapshotRepositoryTestFactory.Create();
+        _converter = new PersistedSnapshotConverter(
+            _snapshotRepository.ArenaManager, _snapshotRepository.BlobArenaManager, _config, _snapshotRepository);
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -65,7 +68,8 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            _persistedSnapshotCompactor);
+            _persistedSnapshotCompactor,
+            _converter);
     }
 
     [TearDown]
@@ -108,7 +112,7 @@ public class PersistenceManagerTests
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
-        _snapshotRepository.ConvertSnapshotToPersistedSnapshot(snapshot).Dispose();
+        _snapshotRepository.ConvertToPersistedBase(snapshot).Dispose();
     }
 
     private Snapshot CreateSnapshotWithSelfDestruct(StateId from, StateId to)
@@ -181,7 +185,7 @@ public class PersistenceManagerTests
     public async Task DetermineSnapshotAction_LongFinalityDisabled_SkipsConversionPath()
     {
         // In-memory depth ~301, finality stalled at block 10. With EnableLongFinality off, the
-        // conversion path must not fire and we must not call ConvertSnapshotToPersistedSnapshot.
+        // conversion path must not fire and we must not invoke the converter.
         await _persistenceManager.DisposeAsync();
         _config.EnableLongFinality = false;
         _persistenceManager = new PersistenceManager(
@@ -191,7 +195,8 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            _persistedSnapshotCompactor);
+            _persistedSnapshotCompactor,
+            _converter);
 
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);

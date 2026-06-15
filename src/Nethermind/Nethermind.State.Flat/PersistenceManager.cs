@@ -32,7 +32,8 @@ public class PersistenceManager(
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
     ILogManager logManager,
-    IPersistedSnapshotCompactor persistedSnapshotCompactor) : IPersistenceManager
+    IPersistedSnapshotCompactor persistedSnapshotCompactor,
+    IPersistedSnapshotConverter persistedSnapshotConverter) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
@@ -44,6 +45,7 @@ public class PersistenceManager(
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
     private readonly IPersistedSnapshotCompactor _compactor = persistedSnapshotCompactor;
+    private readonly IPersistedSnapshotConverter _converter = persistedSnapshotConverter;
     private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // reused to presort trie-node keys before write
     private readonly Lock _persistenceLock = new();
@@ -269,7 +271,7 @@ public class PersistenceManager(
                             long sw = Stopwatch.GetTimestamp();
                             // Pre-leased return — dispose the caller's lease immediately;
                             // the repository's dict entry holds its own lease.
-                            _snapshotRepository.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+                            _converter.Convert(snap).Dispose();
                             Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
                             snap.Dispose();
                         }
@@ -303,7 +305,7 @@ public class PersistenceManager(
                 long sw = Stopwatch.GetTimestamp();
                 // Pre-leased return — dispose the caller's lease immediately;
                 // the repository's dict entry holds its own lease.
-                _snapshotRepository.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
+                _converter.Convert(baseSnap).Dispose();
                 Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
 
                 ArrayPoolList<StateId> single = new(1) { baseSnap.To };

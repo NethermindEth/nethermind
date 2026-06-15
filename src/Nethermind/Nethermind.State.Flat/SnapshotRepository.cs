@@ -50,9 +50,7 @@ public class SnapshotRepository : ISnapshotRepository
     private readonly BlobArenaManager _blobs;
     private readonly SnapshotCatalog _catalog;
     private readonly int _compactSize;
-    private readonly bool _validatePersistedSnapshot;
     private readonly double _bloomBitsPerKey;
-    private readonly StringLabel _tierLabel = new("persisted");
     private readonly SnapshotBucket _base;
     private readonly SnapshotBucket _compacted;
     private readonly SnapshotBucket _persistable;
@@ -87,7 +85,6 @@ public class SnapshotRepository : ISnapshotRepository
         _compacted = new SnapshotBucket(_catalog, SnapshotTier.PersistedCompacted);
         _persistable = new SnapshotBucket(_catalog, SnapshotTier.PersistedPersistable);
         _compactSize = config.CompactSize;
-        _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
         _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
@@ -99,6 +96,11 @@ public class SnapshotRepository : ISnapshotRepository
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
     // Test-only observability; not part of ISnapshotRepository.
     internal int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
+
+    // Test-only: lets tests build a PersistedSnapshotConverter over the same shared arena/blob
+    // managers the repository reads through (see PersistedSnapshotConverterTestExtensions).
+    internal IArenaManager ArenaManager => _arena;
+    internal BlobArenaManager BlobArenaManager => _blobs;
 
     public int PersistedSnapshotCount => (int)(_base.Count + _compacted.Count + _persistable.Count);
 
@@ -935,87 +937,21 @@ public class SnapshotRepository : ISnapshotRepository
     }
 
     /// <summary>
-    /// Persist an in-memory snapshot as a base input: write its HSST metadata + a contiguous
-    /// trie-RLP region into the arena / blob pools (the region is recorded in the metadata
-    /// HSST's <c>blob_range</c> key by the builder), and insert it into <see cref="_base"/>.
+    /// Store a pre-built persisted snapshot with a pre-computed location and reservation into the
+    /// bucket selected by <paramref name="tier"/>. The snapshot's referenced blob arena ids are read
+    /// off its own metadata HSST by the <see cref="PersistedSnapshot"/> ctor, which leases each one
+    /// and rolls back on partial failure.
     /// </summary>
-    public PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
-    {
-        // One unified bloom covering account/slot/SD keys + state-trie + storage-trie paths.
-        // Sized as the union of both expected key counts at the configured bits-per-key.
-        BloomFilter bloom;
-        if (BloomEnabled)
-        {
-            long capacity = (long)snapshot.AccountsCount
-                          + snapshot.Content.SelfDestructedStorageAddresses.Count
-                          + 2L * snapshot.StoragesCount
-                          + snapshot.StateNodesCount
-                          + snapshot.StorageNodesCount;
-            bloom = new BloomFilter(Math.Max(capacity, 1), _bloomBitsPerKey);
-        }
-        else
-        {
-            bloom = BloomFilter.AlwaysTrue();
-        }
-
-        long estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
-
-        SnapshotLocation location;
-        ArenaReservation reservation;
-        using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize);
-        using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize))
-        {
-            PersistedSnapshotBuilder.Build<ArenaBufferWriter>(
-                snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
-            Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written, _tierLabel);
-            (location, reservation) = arenaWriter.Complete();
-        }
-        blobWriter.Complete();
-
-        // Durability barrier — fsync both the metadata arena and the blob arena before the
-        // catalog records the new entry. A crash between this point and the next persistence
-        // checkpoint would otherwise leave the catalog pointing at unsynced pages whose
-        // contents are not yet guaranteed to be on disk.
-        reservation.Fsync();
-        blobWriter.Fsync();
-
-        // PersistedSnapshot's ctor reads its own ref_ids metadata and leases each blob
-        // arena file, and reads its contiguous blob run from the blob_range metadata key the
-        // builder wrote. The single id written above (blobWriter.BlobArenaId) is the only
-        // entry the new metadata carries, so the ctor's iterator yields exactly that id.
-        PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs, bloom);
-        if (_validatePersistedSnapshot)
-            PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
-        // Add records the catalog entry, indexes the snapshot, and pre-acquires the caller's
-        // lease under the bucket's lock so a racing RemovePersistedStatesUntil can't dispose the
-        // entry between insert and the caller seeing the return.
-        _base.Add(snapshot.From, snapshot.To, location, persisted);
-
-        // Release the metadata writer's creation lease (PersistedSnapshot took its own in
-        // the ctor). The blob writer's creation lease is dropped automatically when its
-        // `using` scope exits — BlobArenaWriter.Dispose calls BlobArenaFile.Dispose.
-        reservation.Dispose();
-        return persisted;
-    }
-
-    /// <summary>
-    /// Store a compacted snapshot with a pre-computed location and reservation. The
-    /// snapshot's referenced blob arena ids are read off its own metadata HSST by the
-    /// <see cref="PersistedSnapshot"/> ctor, which leases each one and rolls back on
-    /// partial failure. <paramref name="isPersistable"/> routes a <c>CompactSize</c>-wide
-    /// merge into <see cref="_persistable"/> (the RocksDB-bound bucket);
-    /// otherwise it lands in <see cref="_compacted"/>.
-    /// </summary>
-    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false)
+    public PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier)
     {
         PersistedSnapshot snapshot = new(from, to, reservation, _blobs, bloom: bloom);
         // Add records the catalog entry (with the bucket's own SnapshotTier), indexes the
         // snapshot, and pre-acquires the caller's lease under the bucket's lock so a racing
         // RemovePersistedStatesUntil on a background compactor thread can't dispose it between
         // insert and the caller seeing the return.
-        (isPersistable ? _persistable : _compacted).Add(from, to, location, snapshot);
+        BucketFor(tier).Add(from, to, location, snapshot);
 
-        // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.
+        // Release the caller's "creation" lease — the bucket pre-acquired its own above.
         reservation.Dispose();
         return snapshot;
     }

@@ -317,7 +317,8 @@ public class PersistedSnapshotCompactor(
             // file via a ref-struct iterator — no ushort[] materialisation here. The
             // returned snapshot is pre-leased; dispose it via `using` once we're done
             // with the post-write step.
-            using (PersistedSnapshot compacted = snapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom, isPersistable))
+            using (PersistedSnapshot compacted = snapshotRepository.AddPersistedSnapshot(from, to, location, reservation, mergedBloom,
+                isPersistable ? SnapshotTier.PersistedPersistable : SnapshotTier.PersistedCompacted))
             {
                 if (compactSize < _compactSize)
                 {

@@ -33,13 +33,10 @@ public interface ISnapshotRepository : IDisposable
 
     bool HasState(in StateId stateId);
 
-    /// <summary>Persist an in-memory snapshot as a base entry in the persisted tier. The returned
-    /// snapshot is pre-leased — the caller owns the lease and MUST dispose it.</summary>
-    PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
-
-    /// <summary>Store a compacted (or, when <paramref name="isPersistable"/>, the CompactSize-wide
-    /// persistable) snapshot with a pre-computed location/reservation. Returns it pre-leased.</summary>
-    PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false);
+    /// <summary>Store a pre-built persisted snapshot with a pre-computed location/reservation into the
+    /// bucket selected by <paramref name="tier"/> (must be a <c>Persisted*</c> value). Returns it
+    /// pre-leased — the caller owns the lease and MUST dispose it.</summary>
+    PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier);
 
     /// <summary>Lease every persisted base snapshot tiling <c>(from, to]</c>. Caller disposes the list.</summary>
     PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);

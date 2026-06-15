@@ -82,6 +82,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // conversion path stays gated in PersistenceManager. The catalog column is bound via
             // [KeyFilter(DbNames.PersistedSnapshotCatalog)] on its ctor (keyed IDb registered below).
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
+            // Owns the build half of in-memory -> persisted base conversion; resolves the same shared
+            // arena/blob singletons the repository reads through.
+            .AddSingleton<IPersistedSnapshotConverter, PersistedSnapshotConverter>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())

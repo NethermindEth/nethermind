@@ -95,7 +95,7 @@ public class LongFinalityIntegrationTests
             c.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Branch, storageRlp);
         });
 
-        repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+        repo.ConvertToPersistedBase(snap).Dispose();
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
 
         // Query all types through the individual persisted snapshot
@@ -147,13 +147,13 @@ public class LongFinalityIntegrationTests
         using (SnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
 
-            repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>
+            repo.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
             {
                 foreach (TreePath p in paths1) c.StateNodes[p] = new TrieNode(NodeType.Leaf, rlp1);
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             })).Dispose();
 
-            repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s1, s2, c =>
+            repo.ConvertToPersistedBase(CreateSnapshot(s1, s2, c =>
             {
                 foreach (TreePath p in paths2) c.StateNodes[p] = new TrieNode(NodeType.Leaf, rlp2);
                 c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
@@ -283,7 +283,7 @@ public class LongFinalityIntegrationTests
         for (int i = 1; i <= snapshotCount; i++)
         {
             StateId current = new(i, Keccak.Compute(i.ToString()));
-            repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(prev, current, c =>
+            repo.ConvertToPersistedBase(CreateSnapshot(prev, current, c =>
                 c.Accounts[new Address(Keccak.Compute(i.ToString()))] =
                     Build.An.Account.WithBalance((UInt256)i).TestObject)).Dispose();
             prev = current;
@@ -306,7 +306,7 @@ public class LongFinalityIntegrationTests
         byte[] nodeRlp = [0xC1, 0x80];
 
         // Persist a snapshot with a state node
-        repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>
+        repo.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
             c.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp))).Dispose();
 
         // Set up persistence reader at s0 — persisted snapshot fills gap s0→s1
@@ -350,11 +350,11 @@ public class LongFinalityIntegrationTests
         using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024))
         using (SnapshotRepository repo = new(smallArena1, smallBlobs1, catalogDb, new FlatDbConfig(), LimboLogs.Instance))
         {
-            repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s1, c =>
+            repo.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject)).Dispose();
-            repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s1, s2, c =>
+            repo.ConvertToPersistedBase(CreateSnapshot(s1, s2, c =>
                 c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(2).TestObject)).Dispose();
-            repo.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s2, s5, c =>
+            repo.ConvertToPersistedBase(CreateSnapshot(s2, s5, c =>
                 c.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(5).TestObject)).Dispose();
         }
 
@@ -390,7 +390,7 @@ public class LongFinalityIntegrationTests
 
         // Persist an empty snapshot
         Snapshot empty = CreateSnapshot(s0, s1, _ => { });
-        repo.ConvertSnapshotToPersistedSnapshot(empty).Dispose();
+        repo.ConvertToPersistedBase(empty).Dispose();
 
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
