@@ -132,14 +132,11 @@ public class PersistedSnapshotCompactor(
         foreach (StateId boundary in boundaries)
             DoCompactPersistable(boundary);
 
-        // Hand a boundary to the boundary compactor only when its highest power of two
-        // exceeds CompactSize — i.e. it has a >CompactSize hierarchical-merge window. One
-        // whose highest power of two is exactly CompactSize would just no-op there.
+        // Hand every boundary to the boundary compactor. DoCompactSnapshot there no-ops for a
+        // boundary whose highest power of two is exactly CompactSize (no >CompactSize merge window),
+        // so there's no need to pre-filter here.
         foreach (StateId boundary in boundaries)
-        {
-            if (_schedule.IsHierarchicalBoundary(boundary.BlockNumber))
-                await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
-        }
+            await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
     }
 
     private async Task RunBoundaryCompactor(CancellationToken cancellationToken)
