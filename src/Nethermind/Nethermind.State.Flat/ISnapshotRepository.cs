@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
+using Nethermind.State.Flat.PersistedSnapshots;
 
 namespace Nethermind.State.Flat;
 
@@ -20,6 +21,14 @@ public interface ISnapshotRepository
     bool HasState(in StateId stateId);
     AssembledSnapshotResult AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
     SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, long minBlockNumber, int estimatedSize);
+
+    /// <summary>
+    /// Backward BFS from <paramref name="seed"/> over the two-tier snapshot graph for the first
+    /// snapshot whose <c>From</c> equals <paramref name="currentPersistedState"/> — the next thing
+    /// to persist. Returns the leased persisted or in-memory snapshot (caller disposes), or
+    /// <c>(null, null)</c> when none is reachable.
+    /// </summary>
+    (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(in StateId seed, in StateId currentPersistedState, int compactSize);
     StateId? GetLastSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
     ArrayPoolList<StateId> GetSnapshotBeforeStateId(long blockNumber);

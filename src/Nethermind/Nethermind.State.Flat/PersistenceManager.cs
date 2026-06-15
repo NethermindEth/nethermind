@@ -46,7 +46,6 @@ public class PersistenceManager(
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
     private readonly IPersistedSnapshotCompactor _compactor = persistedSnapshotCompactor;
     private readonly IPersistedSnapshotRepository _repo = persistedSnapshotRepository;
-    private readonly SnapshotGraphWalker _walker = new(snapshotRepository, persistedSnapshotRepository);
     private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // reused to presort trie-node keys before write
     private readonly Lock _persistenceLock = new();
@@ -126,7 +125,7 @@ public class PersistenceManager(
         if (seed is not null)
         {
             (PersistedSnapshot? persisted, Snapshot? inMemory) =
-                TryFindSnapshotToPersist(seed.Value, currentPersistedState);
+                _snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null)
                 return (persisted, inMemory, null);
         }
@@ -136,79 +135,6 @@ public class PersistenceManager(
         if (_snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return (null, null, null);
 
         return (null, null, TryFindSnapshotToConvert(currentPersistedState));
-    }
-
-    /// <summary>
-    /// Phase 1 BFS — walks backward over the snapshot graph from <paramref name="seed"/> via
-    /// <see cref="Snapshot.From"/> pointers, returning the first snapshot whose <c>From</c> equals
-    /// <paramref name="currentPersistedState"/>. At each visited <c>StateId</c> the candidate
-    /// sources are tried in the fixed <see cref="PersistEdgePriority"/> order:
-    /// <list type="number">
-    ///   <item><see cref="SnapshotEdge.PersistedPersistable"/> — the CompactSize-wide
-    ///   persistable (one persist covers the whole window)</item>
-    ///   <item><see cref="SnapshotEdge.PersistedBase"/> — a persisted base (fallback when the
-    ///   persistable for this window has not been compacted yet)</item>
-    ///   <item><see cref="SnapshotEdge.InMemoryCompacted"/> filtered to depth == CompactSize —
-    ///   in-memory boundary compacted</item>
-    ///   <item><see cref="SnapshotEdge.InMemoryBase"/> — in-memory base, depth == 1</item>
-    /// </list>
-    /// </summary>
-    /// <remarks>
-    /// &gt;CompactSize compacted persisted entries (<see cref="SnapshotEdge.PersistedCompacted"/>,
-    /// last in <see cref="PersistEdgePriority"/>) and non-boundary in-memory compacted entries
-    /// are not returnable candidates; they are still traversed for navigation, acting as skip
-    /// pointers that jump multiple blocks per hop and shorten the path to a candidate.
-    /// </remarks>
-    private (PersistedSnapshot? Persisted, Snapshot? InMemory) TryFindSnapshotToPersist(
-        StateId seed, StateId currentPersistedState)
-    {
-        if (seed.BlockNumber <= currentPersistedState.BlockNumber) return (null, null);
-
-        HashSet<StateId> visited = [seed];
-        Queue<StateId> queue = new();
-        queue.Enqueue(seed);
-
-        while (queue.TryDequeue(out StateId current))
-        {
-            foreach (SnapshotEdge edge in PersistEdgePriority)
-            {
-                if (!_walker.TryLeaseParent(current, edge, out IDisposable? snapshot, out StateId from)) continue;
-
-                if (from == currentPersistedState && IsPersistCandidate(edge, current, from))
-                {
-                    return snapshot is PersistedSnapshot persistedSnapshot
-                        ? (persistedSnapshot, null)
-                        : (null, (Snapshot)snapshot);
-                }
-
-                EnqueueAncestor(from, currentPersistedState, visited, queue);
-                snapshot.Dispose();
-            }
-        }
-
-        return (null, null);
-    }
-
-    private static readonly SnapshotEdge[] PersistEdgePriority =
-    [
-        SnapshotEdge.PersistedPersistable,
-        SnapshotEdge.PersistedBase,
-        SnapshotEdge.InMemoryCompacted,
-        SnapshotEdge.InMemoryBase,
-        SnapshotEdge.PersistedCompacted,
-    ];
-
-    private bool IsPersistCandidate(SnapshotEdge edge, in StateId to, in StateId from) => edge switch
-    {
-        SnapshotEdge.PersistedCompacted => false,
-        SnapshotEdge.InMemoryCompacted => to.BlockNumber - from.BlockNumber == _compactSize,
-        _ => true,
-    };
-
-    private static void EnqueueAncestor(in StateId from, in StateId currentPersistedState, HashSet<StateId> visited, Queue<StateId> queue)
-    {
-        if (from.BlockNumber > currentPersistedState.BlockNumber && visited.Add(from))
-            queue.Enqueue(from);
     }
 
     /// <summary>
@@ -427,7 +353,7 @@ public class PersistenceManager(
             if (seed is null) break;
 
             (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
-                TryFindSnapshotToPersist(seed.Value, currentPersistedState);
+                _snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
 
             if (persisted is not null)
             {

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -51,7 +52,14 @@ public class PersistenceManagerTests
 
         _resourcePool = new ResourcePool(_config);
         _finalizedStateProvider = new TestFinalizedStateProvider();
-        _snapshotRepository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
+        // SnapshotRepository owns the two-tier persist-finding walk, so it must hold the same
+        // persisted repo PersistenceManager uses (a single DI singleton in production).
+        _persistedSnapshotRepository = Substitute.For<IPersistedSnapshotRepository>();
+        // SnapshotRepository's orphan-prune walk queries the persisted tier; keep the unconfigured
+        // mock from returning null (tests that need real entries override this).
+        _persistedSnapshotRepository.GetPersistedStatesInRange(Arg.Any<long>(), Arg.Any<long>())
+            .Returns(_ => ArrayPoolList<StateId>.Empty());
+        _snapshotRepository = new SnapshotRepository(_persistedSnapshotRepository, LimboLogs.Instance);
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -59,7 +67,6 @@ public class PersistenceManagerTests
         _persistence.CreateReader().Returns(persistenceReader);
 
         _persistedSnapshotCompactor = Substitute.For<IPersistedSnapshotCompactor>();
-        _persistedSnapshotRepository = Substitute.For<IPersistedSnapshotRepository>();
         _memArena = new TempDirArenaManager();
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-pmtest-blobs-{Guid.NewGuid():N}");
         _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);

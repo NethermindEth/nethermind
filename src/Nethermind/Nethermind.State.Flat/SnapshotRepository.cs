@@ -37,8 +37,6 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
     // Test-only observability; not part of ISnapshotRepository.
     internal int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
 
-    private SnapshotGraphWalker Walker => new(this, _persisted);
-
     /// <summary>
     /// Tip used as the seed for backward walks over the snapshot graph
     /// (see <see cref="PersistenceManager"/>'s persist-finding paths).
@@ -85,7 +83,7 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
                 // persisted-base win would lock the rest of the BFS into the persisted tier
                 // (via the enqueue below), barring any wider in-mem compacted skip-pointer
                 // that might exist downstream.
-                SnapshotGraphWalker.ParentCursor edges = Walker.EnumerateParents(current, currentPersisted, includePersisted: true);
+                ParentCursor edges = EnumerateParents(current, currentPersisted, includePersisted: true);
                 while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId from, out bool edgePersisted))
                 {
                     if (from.BlockNumber < targetState.BlockNumber)
@@ -205,7 +203,7 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
             {
                 (StateId current, int parentIndex) = queue.Dequeue();
 
-                SnapshotGraphWalker.ParentCursor edges = Walker.EnumerateParents(current, fromPersistedEdge: false, includePersisted: false);
+                ParentCursor edges = EnumerateParents(current, fromPersistedEdge: false, includePersisted: false);
                 while (edges.TryLeaseNext(out IDisposable? leased, out StateId from, out _))
                 {
                     // In-memory-only expansion — the lease is always a Snapshot.
@@ -252,6 +250,193 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
                 visited[i].Snapshot.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// Parent-edge kinds of the two-tier snapshot DAG. The first four values are ordered by
+    /// <see cref="ParentCursor"/>'s expansion priority (in-RAM-tier-first / widest-first).
+    /// </summary>
+    private enum SnapshotEdge
+    {
+        /// <summary>In-memory compacted — widest in-RAM hop, no disk read.</summary>
+        InMemoryCompacted,
+        /// <summary>In-memory base — narrow in-RAM hop, no disk read.</summary>
+        InMemoryBase,
+        /// <summary>Persisted compacted — &gt;CompactSize merges and the CompactSize persistable.</summary>
+        PersistedCompacted,
+        /// <summary>Persisted base — sub-CompactSize, narrowest persisted hop.</summary>
+        PersistedBase,
+        /// <summary>The CompactSize-wide persistable. Never expanded by <see cref="ParentCursor"/>;
+        /// only leased through explicit <see cref="TryLeaseParent"/> calls (see
+        /// <see cref="FindSnapshotToPersist"/>).</summary>
+        PersistedPersistable,
+    }
+
+    /// <summary>
+    /// Edge seam over the two-tier snapshot DAG: given a node, leases the snapshot backing one of
+    /// its parent (<c>From</c>) edges. Callers own every lease and must dispose it on all paths.
+    /// </summary>
+    private bool TryLeaseParent(in StateId to, SnapshotEdge edge, [NotNullWhen(true)] out IDisposable? snapshot, out StateId from)
+    {
+        switch (edge)
+        {
+            case SnapshotEdge.InMemoryCompacted:
+                if (TryLeaseCompactedState(to, out Snapshot? inMemoryCompacted))
+                {
+                    (snapshot, from) = (inMemoryCompacted, inMemoryCompacted.From);
+                    return true;
+                }
+                break;
+            case SnapshotEdge.InMemoryBase:
+                if (TryLeaseState(to, out Snapshot? inMemoryBase))
+                {
+                    (snapshot, from) = (inMemoryBase, inMemoryBase.From);
+                    return true;
+                }
+                break;
+            case SnapshotEdge.PersistedCompacted:
+                if (_persisted.TryLeaseCompactedSnapshotTo(to, out PersistedSnapshot? persistedCompacted))
+                {
+                    (snapshot, from) = (persistedCompacted, persistedCompacted.From);
+                    return true;
+                }
+                break;
+            case SnapshotEdge.PersistedBase:
+                if (_persisted.TryLeaseSnapshotTo(to, out PersistedSnapshot? persistedBase))
+                {
+                    (snapshot, from) = (persistedBase, persistedBase.From);
+                    return true;
+                }
+                break;
+            case SnapshotEdge.PersistedPersistable:
+                if (_persisted.TryLeasePersistableCompactedSnapshotTo(to, out PersistedSnapshot? persistable))
+                {
+                    (snapshot, from) = (persistable, persistable.From);
+                    return true;
+                }
+                break;
+        }
+
+        (snapshot, from) = (null, default);
+        return false;
+    }
+
+    /// <summary>
+    /// Starts a priority-ordered expansion of <paramref name="to"/>'s parent edges:
+    /// <see cref="SnapshotEdge.InMemoryCompacted"/>, <see cref="SnapshotEdge.InMemoryBase"/>,
+    /// <see cref="SnapshotEdge.PersistedCompacted"/>, <see cref="SnapshotEdge.PersistedBase"/>.
+    /// </summary>
+    /// <param name="fromPersistedEdge">Whether <paramref name="to"/> was itself reached over a
+    /// persisted edge. Persisted snapshots only chain back to other persisted snapshots, so the
+    /// in-memory edges are guaranteed misses and are skipped.</param>
+    /// <param name="includePersisted">When <see langword="false"/>, only the in-memory edges are expanded.</param>
+    private ParentCursor EnumerateParents(in StateId to, bool fromPersistedEdge, bool includePersisted) =>
+        new(this, to, fromPersistedEdge, includePersisted);
+
+    private struct ParentCursor
+    {
+        private readonly SnapshotRepository _repo;
+        private readonly StateId _to;
+        private readonly SnapshotEdge _end; // Exclusive.
+        private SnapshotEdge _next;
+
+        internal ParentCursor(SnapshotRepository repo, in StateId to, bool fromPersistedEdge, bool includePersisted)
+        {
+            _repo = repo;
+            _to = to;
+            _next = fromPersistedEdge ? SnapshotEdge.PersistedCompacted : SnapshotEdge.InMemoryCompacted;
+            _end = includePersisted ? SnapshotEdge.PersistedPersistable : SnapshotEdge.PersistedCompacted;
+        }
+
+        /// <summary>Leases the next available parent edge in priority order. The caller owns the lease.</summary>
+        public bool TryLeaseNext([NotNullWhen(true)] out IDisposable? snapshot, out StateId from, out bool viaPersistedEdge)
+        {
+            while (_next < _end)
+            {
+                SnapshotEdge edge = _next++;
+                if (_repo.TryLeaseParent(_to, edge, out snapshot, out from))
+                {
+                    viaPersistedEdge = edge >= SnapshotEdge.PersistedCompacted;
+                    return true;
+                }
+            }
+
+            (snapshot, from, viaPersistedEdge) = (null, default, false);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Phase 1 BFS — walks backward over the snapshot graph from <paramref name="seed"/> via
+    /// <see cref="Snapshot.From"/> pointers, returning the first snapshot whose <c>From</c> equals
+    /// <paramref name="currentPersistedState"/>. At each visited <c>StateId</c> the candidate
+    /// sources are tried in the fixed <see cref="PersistEdgePriority"/> order:
+    /// <list type="number">
+    ///   <item><see cref="SnapshotEdge.PersistedPersistable"/> — the CompactSize-wide
+    ///   persistable (one persist covers the whole window)</item>
+    ///   <item><see cref="SnapshotEdge.PersistedBase"/> — a persisted base (fallback when the
+    ///   persistable for this window has not been compacted yet)</item>
+    ///   <item><see cref="SnapshotEdge.InMemoryCompacted"/> filtered to depth == <paramref name="compactSize"/> —
+    ///   in-memory boundary compacted</item>
+    ///   <item><see cref="SnapshotEdge.InMemoryBase"/> — in-memory base, depth == 1</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>
+    /// &gt;CompactSize compacted persisted entries (<see cref="SnapshotEdge.PersistedCompacted"/>,
+    /// last in <see cref="PersistEdgePriority"/>) and non-boundary in-memory compacted entries
+    /// are not returnable candidates; they are still traversed for navigation, acting as skip
+    /// pointers that jump multiple blocks per hop and shorten the path to a candidate.
+    /// </remarks>
+    public (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(
+        in StateId seed, in StateId currentPersistedState, int compactSize)
+    {
+        if (seed.BlockNumber <= currentPersistedState.BlockNumber) return (null, null);
+
+        HashSet<StateId> visited = [seed];
+        Queue<StateId> queue = new();
+        queue.Enqueue(seed);
+
+        while (queue.TryDequeue(out StateId current))
+        {
+            foreach (SnapshotEdge edge in PersistEdgePriority)
+            {
+                if (!TryLeaseParent(current, edge, out IDisposable? snapshot, out StateId from)) continue;
+
+                if (from == currentPersistedState && IsPersistCandidate(edge, current, from, compactSize))
+                {
+                    return snapshot is PersistedSnapshot persistedSnapshot
+                        ? (persistedSnapshot, null)
+                        : (null, (Snapshot)snapshot);
+                }
+
+                EnqueueAncestor(from, currentPersistedState, visited, queue);
+                snapshot.Dispose();
+            }
+        }
+
+        return (null, null);
+    }
+
+    private static readonly SnapshotEdge[] PersistEdgePriority =
+    [
+        SnapshotEdge.PersistedPersistable,
+        SnapshotEdge.PersistedBase,
+        SnapshotEdge.InMemoryCompacted,
+        SnapshotEdge.InMemoryBase,
+        SnapshotEdge.PersistedCompacted,
+    ];
+
+    private static bool IsPersistCandidate(SnapshotEdge edge, in StateId to, in StateId from, int compactSize) => edge switch
+    {
+        SnapshotEdge.PersistedCompacted => false,
+        SnapshotEdge.InMemoryCompacted => to.BlockNumber - from.BlockNumber == compactSize,
+        _ => true,
+    };
+
+    private static void EnqueueAncestor(in StateId from, in StateId currentPersistedState, HashSet<StateId> visited, Queue<StateId> queue)
+    {
+        if (from.BlockNumber > currentPersistedState.BlockNumber && visited.Add(from))
+            queue.Enqueue(from);
     }
 
     public bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
@@ -486,7 +671,7 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
 
     /// <remarks>
     /// Walks parent (<c>From</c>) edges from <paramref name="from"/> toward <paramref name="target"/>
-    /// across both tiers via the same <see cref="SnapshotGraphWalker.ParentCursor"/> expansion as
+    /// across both tiers via the same <see cref="ParentCursor"/> expansion as
     /// <see cref="AssembleSnapshots"/>. Each lease is read for its <c>From</c> then disposed immediately. Crossing into the persisted
     /// tier is required so a canonical in-memory state whose ancestry descends through a converted
     /// snapshot is not mistaken for an orphan.
@@ -505,7 +690,7 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
         {
             (StateId current, bool currentPersisted) = stack.Pop();
 
-            SnapshotGraphWalker.ParentCursor edges = Walker.EnumerateParents(current, currentPersisted, includePersisted: true);
+            ParentCursor edges = EnumerateParents(current, currentPersisted, includePersisted: true);
             while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId parent, out bool edgePersisted))
             {
                 snapshot.Dispose();
