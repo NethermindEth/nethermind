@@ -10,6 +10,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     long BlockCacheSizeBudget { get; set; }
 
+    [ConfigItem(Description = "Fixed compaction schedule offset in blocks. When 0 or greater, overrides the per-instance offset in the metadata DB, which is neither read nor updated. Only the value modulo CompactSize matters. -1 to use the stored offset, generating a random one when absent.", DefaultValue = "-1")]
+    long CompactionOffset { get; set; }
+
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     int CompactSize { get; set; }
 
@@ -48,4 +51,7 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]
+    int WarmReadConcurrency { get; set; }
 }

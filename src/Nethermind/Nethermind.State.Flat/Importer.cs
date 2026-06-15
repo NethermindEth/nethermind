@@ -116,24 +116,17 @@ public class Importer(
                 {
                     Rlp.ValueDecoderContext accountContext = node.Value.AsSpan().AsRlpValueContext();
                     Account acc = _accountDecoder.Decode(ref accountContext)!;
-                    writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
+                    writeBatch.SetAccountRaw(fullPath, acc);
                 }
                 else
                 {
+                    // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
+                    // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
                     ReadOnlySpan<byte> value = node.Value.AsSpan();
-                    byte[] toWrite;
-
-                    if (value.IsEmpty)
+                    if (!value.IsEmpty)
                     {
-                        toWrite = StorageTree.ZeroBytes;
+                        writeBatch.SetStorageRawEncoded(address, fullPath, value);
                     }
-                    else
-                    {
-                        Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-                        toWrite = rlp.DecodeByteArray();
-                    }
-
-                    writeBatch.SetStorageRaw(address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
                 }
             }
 
