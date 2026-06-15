@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -152,7 +153,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCallMany_with_async_stream()
+    public async Task Debug_traceCallMany_to_async_stream()
     {
         using Context ctx = await CreateContext();
         ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;

@@ -19,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Test.Modules.Eth;
@@ -1573,7 +1574,7 @@ public class TraceRpcModuleTests
     // regression test ensuring asynchronous streaming pipe doesn't crash tracing
     // was caused by synchronously waiting non-completed IValueTaskSource-backed ValueTask
     [Test]
-    public async Task trace_block_with_async_stream()
+    public async Task trace_block_to_async_stream()
     {
         Context context = new();
         await context.Build();
