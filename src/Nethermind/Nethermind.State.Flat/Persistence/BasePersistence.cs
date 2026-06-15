@@ -125,7 +125,7 @@ public static class BasePersistence
         }
     }
 
-    private static byte? ReadSlotEncoding(IReadOnlyKeyValueStore kv)
+    internal static byte? ReadSlotEncoding(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(SlotEncodingKey);
         return bytes is null || bytes.Length == 0 ? null : bytes[0];
