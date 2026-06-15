@@ -39,7 +39,6 @@ public class PersistedSnapshotCompactor(
     private readonly ICompactionSchedule _schedule = schedule;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
-    private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
 
     private readonly Channel<ArrayPoolList<StateId>> _compactPersistedJobs = Channel.CreateBounded<ArrayPoolList<StateId>>(16);
     private readonly Channel<StateId> _boundaryCompactJobs = Channel.CreateBounded<StateId>(16);
@@ -142,7 +141,9 @@ public class PersistedSnapshotCompactor(
         foreach (StateId boundary in compactSizeBoundaries)
             DoCompactPersistable(boundary);
 
-        // Large boundaries additionally carry a >CompactSize merge; hand those to the boundary compactor.
+        // Large boundaries additionally carry a >CompactSize merge. These can be a few GB large, so
+        // they are handed to the boundary compactor to run as a separate background task rather than
+        // blocking this batch worker.
         foreach (StateId boundary in largeBoundaries)
             await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
     }
@@ -258,7 +259,6 @@ public class PersistedSnapshotCompactor(
         // value span — no pre-pass on this side.
         int n = snapshots.Count;
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
         try
         {
             long estimatedSize = 0;
@@ -268,20 +268,13 @@ public class PersistedSnapshotCompactor(
                 // Session dispose madvises the source's mmap range cold — the compacted
                 // snapshot that supersedes these sources warms its own cache lazily on the
                 // first read of each address, so there's no value in keeping these pages.
-                sessionArr[i] = snapshots[i].BeginWholeReadSession();
+                sessionsList[i] = snapshots[i].BeginWholeReadSession();
 
                 estimatedSize += snapshots[i].Size;
                 // Each source carries its own bloom; sum their key counts to size the merge.
                 // The AlwaysTrue placeholder reports Count == 0, so a not-yet-built source just
                 // contributes nothing — same as the old manager's sentinel did.
                 bloomCapacity += snapshots[i].Bloom.Count;
-            }
-
-            if (estimatedSize > _maxCompactedSourceBytes)
-            {
-                if (_logger.IsDebug) _logger.Debug(
-                    $"Skipping compactSize={compactSize}: source bytes {estimatedSize} > {_maxCompactedSourceBytes} cap");
-                return false;
             }
 
             // Bloom-disabled or empty-capacity case uses an AlwaysTrue sentinel so the
@@ -311,10 +304,6 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             reservation.Fsync();
 
-            // PersistedSnapshot's ctor reads the merged ref_ids back from its own metadata and leases
-            // each blob arena file via a ref-struct iterator — no ushort[] materialisation here — and
-            // takes its own reservation lease, so we drop ours right after. The `using` drops the
-            // construction lease at block end; the bucket keeps its own.
             SnapshotTier tier = isPersistable ? SnapshotTier.PersistedPersistable : SnapshotTier.PersistedCompacted;
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
             using (PersistedSnapshot compacted = new(from, to, reservation, blobs, mergedBloom))
@@ -323,31 +312,25 @@ public class PersistedSnapshotCompactor(
                 snapshotRepository.AddPersistedSnapshot(compacted, tier);
                 if (!_schedule.IsCompactSizeBoundary(snapshotTo.BlockNumber) && !_schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber))
                 {
-                    // Sub-CompactSize intermediate. Drop its freshly-written pages from the
-                    // cache + tracker; they would otherwise sit hot until the snapshot is
-                    // pruned.
+                    // Sub-CompactSize intermediate. The bundle priority means this is never queried
+                    // unless there's a deep reorg, so drop its freshly-written pages from the cache +
+                    // tracker; they would otherwise sit hot until the snapshot is pruned.
                     compacted.Demote();
                 }
                 else
                 {
-                    // The persistable (== CompactSize) is scanned in full by
-                    // PersistPersistedSnapshot; wider >CompactSize merges are queried as
-                    // snapshot-bundle skip pointers. Pre-fault the address column index so
-                    // the first query doesn't chain inline page faults.
+                    // Pre-fault the address column index so the first query doesn't chain
+                    // inline page faults.
                     WarmAddressColumnIndex(compacted);
                 }
             }
 
             Metrics.PersistedSnapshotCompactions++;
-            // PersistedSnapshotCount / PersistedSnapshotMemory / CompactedPersistedSnapshotMemory
-            // are now mutated delta-wise inside the repo at every add/remove site
-            // (AddCompactedSnapshot just ran above; the per-source disposals happen on Dispose).
-            // Arena file/byte counters update themselves via push deltas in ArenaManager.
             return true;
         }
         finally
         {
-            for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
+            for (int i = 0; i < n; i++) sessionsList[i]?.Dispose();
         }
     }
 
@@ -360,7 +343,7 @@ public class PersistedSnapshotCompactor(
     /// <remarks>
     /// The index region is the byte range from the end of the last data entry to the end
     /// of the address column's HSST bound (not the arena/file EOF). Locating it requires
-    /// (a) the column bound and (b) the bound of the largest data entry. The largest entry
+    /// (a) the column bound and (b) the bound of the last data entry. The last entry
     /// is found via <c>TrySeekFloor</c> with a 20-byte all-<c>0xFF</c> key — addresses are
     /// 20 bytes, so this floor-seek always lands on the rightmost entry of the BTree.
     /// </remarks>
