@@ -16,7 +16,7 @@ public static partial class EvmInstructions
     /// per-op failure order: the push's overflow at a full stack, then the op's underflow.
     /// </summary>
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static EvmExceptionType FusedConstBinaryCore<TOpMath>(ref EvmStack stack, in UInt256 a)
         where TOpMath : struct, IOpMath2Param
     {
@@ -39,7 +39,7 @@ public static partial class EvmInstructions
     /// <see cref="ShiftCore{TOpShift, TTracingInst}"/> against the pre-decoded amount.
     /// </summary>
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, in UInt256 a)
         where TOpShift : struct, IOpShift
     {
@@ -68,7 +68,7 @@ public static partial class EvmInstructions
     /// one vector load per operand, no limb conversion.
     /// </summary>
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static EvmExceptionType FusedConstBitwiseCore<TOpBitwise>(ref EvmStack stack, ref byte constantSlot)
         where TOpBitwise : struct, IOpBitwise
     {
