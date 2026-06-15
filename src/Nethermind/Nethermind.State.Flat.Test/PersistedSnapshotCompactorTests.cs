@@ -81,7 +81,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(prev);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             try
             {
                 Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
@@ -161,7 +161,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(prev);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             try
             {
                 int totalSlots = snapshotCount * slotsPerSnapshot;
@@ -232,7 +232,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(s2);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 BloomFilter bloom = compacted!.Bloom;
@@ -314,7 +314,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(s2);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 Assert.Multiple(() =>
@@ -385,7 +385,7 @@ public class PersistedSnapshotCompactorTests
 
             for (int i = 1; i <= 8; i++)
             {
-                Assert.That(repo.TryLeaseSnapshotTo(states[i], out PersistedSnapshot? baseSnap), Is.True);
+                Assert.That(repo.TryLeasePersistedState(states[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseSnap), Is.True);
                 using (baseSnap)
                 {
                     using WholeReadSession session = baseSnap!.BeginWholeReadSession();
@@ -399,7 +399,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(states[8]);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 using WholeReadSession session = compacted!.BeginWholeReadSession();
@@ -712,7 +712,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(states[contents.Length]);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(states[contents.Length], out PersistedSnapshot? compacted), Is.True,
+            Assert.That(repo.TryLeasePersistedState(states[contents.Length], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
                 "Expected a compacted snapshot to exist after DoCompactSnapshot");
             using (compacted)
             {
@@ -790,13 +790,13 @@ public class PersistedSnapshotCompactorTests
 
             if (!expectCompacted)
             {
-                Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? none), Is.False,
+                Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? none), Is.False,
                     "Expected no compacted snapshot");
                 _ = none;
             }
             else
             {
-                Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? compacted), Is.True,
+                Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
                     "Expected a compacted snapshot");
                 Assert.That(compacted!.From.BlockNumber, Is.EqualTo(expectedFromBlock));
                 Assert.That(compacted.To.BlockNumber, Is.EqualTo(expectedToBlock));
@@ -871,7 +871,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(prev);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
@@ -938,7 +938,7 @@ public class PersistedSnapshotCompactorTests
             StateId s1 = new(1, Keccak.Compute("p1"));
             repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
-            Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? built), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? built), Is.True);
             using (built)
             {
                 Assert.Multiple(() =>
@@ -1022,7 +1022,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(s2);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 Assert.Multiple(() =>
@@ -1095,7 +1095,7 @@ public class PersistedSnapshotCompactorTests
             // At block 45 with offset=3, alignment=16. Window must be (29, 45].
             compactor.DoCompactSnapshot(tip);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(tip, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             try
             {
                 Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),

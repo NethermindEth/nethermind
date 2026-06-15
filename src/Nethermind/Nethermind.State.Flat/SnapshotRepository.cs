@@ -336,43 +336,18 @@ public class SnapshotRepository : ISnapshotRepository
     /// leases from the compacted then the persistable bucket, so it doubles as the skip-pointer edge.</remarks>
     private bool TryLeaseParent(in StateId to, SnapshotTier tier, [NotNullWhen(true)] out IDisposable? snapshot, out StateId from)
     {
-        switch (tier)
+        if (IsPersisted(tier))
         {
-            case SnapshotTier.InMemoryCompacted:
-                if (TryLeaseInMemoryState(to, SnapshotTier.InMemoryCompacted, out Snapshot? inMemoryCompacted))
-                {
-                    (snapshot, from) = (inMemoryCompacted, inMemoryCompacted.From);
-                    return true;
-                }
-                break;
-            case SnapshotTier.InMemoryBase:
-                if (TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? inMemoryBase))
-                {
-                    (snapshot, from) = (inMemoryBase, inMemoryBase.From);
-                    return true;
-                }
-                break;
-            case SnapshotTier.PersistedCompacted:
-                if (TryLeaseCompactedSnapshotTo(to, out PersistedSnapshot? persistedCompacted))
-                {
-                    (snapshot, from) = (persistedCompacted, persistedCompacted.From);
-                    return true;
-                }
-                break;
-            case SnapshotTier.PersistedBase:
-                if (TryLeaseSnapshotTo(to, out PersistedSnapshot? persistedBase))
-                {
-                    (snapshot, from) = (persistedBase, persistedBase.From);
-                    return true;
-                }
-                break;
-            case SnapshotTier.PersistedPersistable:
-                if (TryLeasePersistableCompactedSnapshotTo(to, out PersistedSnapshot? persistable))
-                {
-                    (snapshot, from) = (persistable, persistable.From);
-                    return true;
-                }
-                break;
+            if (TryLeasePersistedState(to, tier, out PersistedSnapshot? persisted))
+            {
+                (snapshot, from) = (persisted, persisted.From);
+                return true;
+            }
+        }
+        else if (TryLeaseInMemoryState(to, tier, out Snapshot? inMemory))
+        {
+            (snapshot, from) = (inMemory, inMemory.From);
+            return true;
         }
 
         (snapshot, from) = (null, default);
@@ -889,13 +864,7 @@ public class SnapshotRepository : ISnapshotRepository
         // Serial post-pass: build the ordered sets from the now-populated dicts.
         foreach (SnapshotCatalog.CatalogEntry entry in entries)
         {
-            SnapshotBucket bucket = entry.Tier switch
-            {
-                SnapshotTier.PersistedCompacted => _compacted,
-                SnapshotTier.PersistedPersistable => _persistable,
-                _ => _base,
-            };
-            bucket.RegisterOrdered(entry.To);
+            BucketFor(entry.Tier).RegisterOrdered(entry.To);
         }
 
         // Delete any blob arena file no loaded snapshot referenced — recoverable
@@ -962,13 +931,7 @@ public class SnapshotRepository : ISnapshotRepository
         // Route by the stored tier, not by the To-From distance: a base and a sub-CompactSize
         // compacted snapshot can span the same number of blocks, so range alone cannot tell
         // them apart.
-        SnapshotBucket bucket = entry.Tier switch
-        {
-            SnapshotTier.PersistedCompacted => _compacted,
-            SnapshotTier.PersistedPersistable => _persistable,
-            _ => _base,
-        };
-        bucket.Set(entry.To, snapshot);
+        BucketFor(entry.Tier).Set(entry.To, snapshot);
     }
 
     /// <summary>
@@ -1057,35 +1020,38 @@ public class SnapshotRepository : ISnapshotRepository
         return snapshot;
     }
 
-    public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
-    {
-        if (_base.TryGet(toState, out snapshot) && snapshot.TryAcquire())
-            return true;
-        snapshot = null;
-        return false;
-    }
-
-    public bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
-    {
-        if (_compacted.TryGet(toState, out snapshot) && snapshot.TryAcquire())
-            return true;
-        if (_persistable.TryGet(toState, out snapshot) && snapshot.TryAcquire())
-            return true;
-        snapshot = null;
-        return false;
-    }
-
     /// <summary>
-    /// Lease the <c>CompactSize</c>-wide persistable snapshot ending at <paramref name="toState"/>
-    /// — the candidate <c>PersistenceManager</c> writes to RocksDB.
+    /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket(s) backing
+    /// <paramref name="tier"/>. <see cref="SnapshotTier.PersistedCompacted"/> spans both the compacted
+    /// and persistable buckets (it doubles as the skip-pointer edge); the other two map to a single
+    /// bucket. <paramref name="tier"/> must be a <c>Persisted*</c> value. Caller disposes the lease.
     /// </summary>
-    public bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    public bool TryLeasePersistedState(in StateId toState, SnapshotTier tier, [NotNullWhen(true)] out PersistedSnapshot? snapshot) => tier switch
     {
-        if (_persistable.TryGet(toState, out snapshot) && snapshot.TryAcquire())
+        SnapshotTier.PersistedBase => TryLeaseFrom(_base, toState, out snapshot),
+        SnapshotTier.PersistedCompacted => TryLeaseFrom(_compacted, toState, out snapshot) || TryLeaseFrom(_persistable, toState, out snapshot),
+        SnapshotTier.PersistedPersistable => TryLeaseFrom(_persistable, toState, out snapshot),
+        _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
+    };
+
+    private static bool TryLeaseFrom(SnapshotBucket bucket, in StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    {
+        if (bucket.TryGet(toState, out snapshot) && snapshot.TryAcquire())
             return true;
         snapshot = null;
         return false;
     }
+
+    /// <summary>The single bucket owning a persisted-tier catalog entry. Each entry carries exactly
+    /// one <c>Persisted*</c> tier, so this is a 1:1 map (unlike leasing, where the compacted edge
+    /// spans two buckets).</summary>
+    private SnapshotBucket BucketFor(SnapshotTier tier) => tier switch
+    {
+        SnapshotTier.PersistedBase => _base,
+        SnapshotTier.PersistedCompacted => _compacted,
+        SnapshotTier.PersistedPersistable => _persistable,
+        _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
+    };
 
     /// <summary>
     /// Lease every base snapshot tiling <c>(from, to]</c>, walking <c>From</c> pointers back

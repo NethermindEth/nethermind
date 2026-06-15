@@ -54,7 +54,7 @@ public class PersistenceManagerPersistedTests
         repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
 
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
-        Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snapshot), Is.True);
+        Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snapshot), Is.True);
         snapshot!.Dispose();
     }
 
@@ -173,7 +173,7 @@ public class PersistenceManagerPersistedTests
 
     private static bool LeasePresent(SnapshotRepository repo, StateId to)
     {
-        if (!repo.TryLeaseSnapshotTo(to, out PersistedSnapshot? snapshot)) return false;
+        if (!repo.TryLeasePersistedState(to, SnapshotTier.PersistedBase, out PersistedSnapshot? snapshot)) return false;
         snapshot!.Dispose();
         return true;
     }

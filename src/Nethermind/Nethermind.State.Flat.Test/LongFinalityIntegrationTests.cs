@@ -96,7 +96,7 @@ public class LongFinalityIntegrationTests
         });
 
         repo.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
-        Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
+        Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
 
         // Query all types through the individual persisted snapshot
         Assert.That(persisted!.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
@@ -197,7 +197,7 @@ public class LongFinalityIntegrationTests
             // blob, so the early-index nodes' RLPs would either not decode or read as zeros.
             // The cross-snapshot misses verify the snapshot boundary survives reload (i.e.
             // AddressB does NOT bleed into snap1's view, and vice versa).
-            Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snap1), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snap1), Is.True);
             foreach (TreePath p in paths1)
             {
                 Assert.That(snap1!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap1 missing {p}");
@@ -207,7 +207,7 @@ public class LongFinalityIntegrationTests
             Assert.That(snap1.TryGetAccount(TestItem.AddressB, out Account? snap1MissB), Is.False);
             snap1.Dispose();
 
-            Assert.That(repo.TryLeaseSnapshotTo(s2, out PersistedSnapshot? snap2), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedBase, out PersistedSnapshot? snap2), Is.True);
             foreach (TreePath p in paths2)
             {
                 Assert.That(snap2!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap2 missing {p}");
@@ -392,7 +392,7 @@ public class LongFinalityIntegrationTests
         Snapshot empty = CreateSnapshot(s0, s1, _ => { });
         repo.ConvertSnapshotToPersistedSnapshot(empty).Dispose();
 
-        Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
+        Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
         Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("any"), 4), out _), Is.False);
         persisted.Dispose();
