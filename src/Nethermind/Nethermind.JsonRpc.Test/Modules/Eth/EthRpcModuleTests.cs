@@ -1428,6 +1428,19 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [TestCase(true, TestName = "ByHash")]
+    [TestCase(false, TestName = "ByNumber")]
+    public async Task EthGetBlockByX_OmitsTotalDifficulty(bool byHash)
+    {
+        using Context ctx = await Context.Create();
+        string method = byHash ? "eth_getBlockByHash" : "eth_getBlockByNumber";
+        string param = byHash ? ctx.Test.BlockTree.Genesis!.Hash!.ToString() : "latest";
+        string serialized = await ctx.Test.TestEthRpc(method, param, "false");
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+
+        Assert.That(result.ContainsKey("totalDifficulty"), Is.False);
+    }
+
     [TestCase("eth_getHeaderByHash", "0x0000000000000000000000000000000000000000000000000000000000000000", TestName = "UnknownHash")]
     [TestCase("eth_getHeaderByNumber", "0x9999999", TestName = "UnknownNumber")]
     [TestCase("eth_getHeaderByNumber", "finalized", TestName = "FinalizedAbsent")]
