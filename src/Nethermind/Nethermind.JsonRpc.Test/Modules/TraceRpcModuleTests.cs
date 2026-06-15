@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -1588,7 +1589,7 @@ public class TraceRpcModuleTests
         IStreamableResult streaming = (IStreamableResult)result.Data;
 
         await using AsyncCompletingStream stream = new();
-        System.IO.Pipelines.PipeWriter writer = System.IO.Pipelines.PipeWriter.Create(stream);
+        PipeWriter writer = PipeWriter.Create(stream);
 
         Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
 
