@@ -87,7 +87,7 @@ public class FlatDbManagerPersistedTests
 
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
-        repo.ConvertToPersistedBase(snap).Dispose();
+        tier.ConvertToPersistedBase(snap).Dispose();
 
         // Mock persistence manager at s0 — persisted snapshot fills gap s0→s1
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
@@ -129,7 +129,7 @@ public class FlatDbManagerPersistedTests
         StateId s1 = new(1, Keccak.Compute("1"));
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
-        repo.ConvertToPersistedBase(new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),

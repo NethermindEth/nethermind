@@ -34,12 +34,11 @@ public interface ISnapshotRepository
 
     bool HasState(in StateId stateId);
 
-    /// <summary>Build a persisted snapshot from <paramref name="reservation"/> and index it into the
-    /// bucket selected by <paramref name="tier"/> (must be a <c>Persisted*</c> value). Returns it
-    /// pre-leased — the caller owns the lease and MUST dispose it. Does not write the catalog; the
-    /// caller records the catalog entry for a freshly persisted/compacted snapshot, or skips it when
-    /// reloading an entry that is already in the catalog.</summary>
-    PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier);
+    /// <summary>Index a caller-built <paramref name="snapshot"/> into the bucket selected by
+    /// <paramref name="tier"/> (must be a <c>Persisted*</c> value), acquiring the bucket's own lease. The
+    /// caller retains its construction lease and is responsible for the catalog entry — a freshly
+    /// persisted/compacted snapshot writes one; a snapshot reloaded from the catalog does not.</summary>
+    void AddPersistedSnapshot(PersistedSnapshot snapshot, SnapshotTier tier);
 
     /// <summary>Lease every persisted base snapshot tiling <c>(from, to]</c>. Caller disposes the list.</summary>
     PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);

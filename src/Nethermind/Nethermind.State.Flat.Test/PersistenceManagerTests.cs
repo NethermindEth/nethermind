@@ -113,7 +113,7 @@ public class PersistenceManagerTests
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
-        _snapshotRepository.ConvertToPersistedBase(snapshot).Dispose();
+        _tier.ConvertToPersistedBase(snapshot).Dispose();
     }
 
     private Snapshot CreateSnapshotWithSelfDestruct(StateId from, StateId to)

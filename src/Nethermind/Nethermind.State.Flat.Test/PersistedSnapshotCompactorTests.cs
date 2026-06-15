@@ -70,7 +70,7 @@ public class PersistedSnapshotCompactorTests
             // and the slot merge sees N inputs with N unique slot keys.
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
             c.Storages[(TestItem.AddressA, (UInt256)i)] = new SlotValue(new byte[] { (byte)i });
-            repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             prev = next;
         }
 
@@ -139,7 +139,7 @@ public class PersistedSnapshotCompactorTests
             SnapshotContent c = new();
             TestFixtureHelpers.AddSequentialSlots(c, TestItem.AddressA,
                 firstSlot: (i - 1) * slotsPerSnapshot + 1, count: slotsPerSnapshot);
-            repo.ConvertToPersistedBase(
+            tier.ConvertToPersistedBase(
                 new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             prev = next;
         }
@@ -201,8 +201,8 @@ public class PersistedSnapshotCompactorTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("s1"));
         StateId s2 = new(2, Keccak.Compute("s2"));
-        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-        repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         compactor.DoCompactSnapshot(s2);
 
@@ -273,8 +273,8 @@ public class PersistedSnapshotCompactorTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("p1"));
         StateId s2 = new(2, Keccak.Compute("p2"));
-        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-        repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         compactor.DoCompactSnapshot(s2);
 
@@ -332,7 +332,7 @@ public class PersistedSnapshotCompactorTests
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [(byte)(0xC1), (byte)i]);
-            repo.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             prev = states[i];
         }
 
@@ -648,7 +648,7 @@ public class PersistedSnapshotCompactorTests
         for (int i = 0; i < contents.Length; i++)
         {
             states[i + 1] = new StateId(i + 1, Keccak.Compute($"{i + 1}"));
-            repo.ConvertToPersistedBase(
+            tier.ConvertToPersistedBase(
                 new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
         }
 
@@ -714,7 +714,7 @@ public class PersistedSnapshotCompactorTests
         {
             SnapshotContent content = new();
             content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
-            repo.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            tier.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
         }
 
         compactor.DoCompactSnapshot(states[8]);
@@ -785,7 +785,7 @@ public class PersistedSnapshotCompactorTests
             {
                 c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
             }
-            repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             prev = next;
         }
 
@@ -845,7 +845,7 @@ public class PersistedSnapshotCompactorTests
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("p1"));
-        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? built), Is.True);
         using (built)
@@ -916,8 +916,8 @@ public class PersistedSnapshotCompactorTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("p1"));
         StateId s2 = new(2, Keccak.Compute("p2"));
-        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-        repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         compactor.DoCompactSnapshot(s2);
 
@@ -976,7 +976,7 @@ public class PersistedSnapshotCompactorTests
             StateId next = new(i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             prev = next;
             if (i == 45) tip = next;
         }

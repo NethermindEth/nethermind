@@ -16,26 +16,6 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
-/// <summary>
-/// Owns the lifecycle of the <see cref="ISnapshotRepository"/>'s persisted tier: loads it from the
-/// catalog at startup (<see cref="Load"/>) and tears it down at shutdown (<see cref="IDisposable.Dispose"/>).
-/// </summary>
-public interface IPersistedSnapshotLoader : IDisposable
-{
-    /// <summary>Rehydrate the arena/blob stores, construct every persisted snapshot from the catalog
-    /// into the repository's tier buckets, and rebuild their blooms. Drives the repository's persisted
-    /// tier from empty to fully populated; called once at startup.</summary>
-    void Load();
-
-    /// <summary>
-    /// Persist an in-memory <see cref="Snapshot"/> as a base entry in the persisted tier: build its
-    /// HSST metadata + contiguous trie-RLP region into the shared arena/blob pools, fsync for
-    /// durability, then store it in the repository's base bucket. The returned snapshot is pre-leased —
-    /// the caller owns the lease and MUST dispose it.
-    /// </summary>
-    PersistedSnapshot Convert(Snapshot snapshot);
-}
-
 /// <inheritdoc cref="IPersistedSnapshotLoader"/>
 /// <remarks>
 /// A registered singleton that depends on <see cref="ISnapshotRepository"/> and the arena/blob/catalog
@@ -79,12 +59,13 @@ public sealed class PersistedSnapshotLoader(
     /// </remarks>
     public void Load()
     {
-        // Runs once at startup, before the repository serves any read — no concurrency beyond the
-        // parallel fan-out below. Blob arena pool first — rehydrates file lengths so the
-        // PersistedSnapshot ctor's TryLeaseFile calls (driven by each snapshot's ref_ids metadata)
-        // can resolve the ids. Whole-file reservations are created lazily on first lease.
+        // Blob arena pool first — rehydrates file lengths so the PersistedSnapshot ctor's TryLeaseFile
+        // calls (driven by each snapshot's ref_ids metadata) can resolve the ids. Whole-file
+        // reservations are created lazily on first lease.
         blobs.Initialize();
 
+        // Can be millions of entries on a long-running node — materialised once and shared by the
+        // arena init and the parallel load below.
         List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Load()];
         arena.Initialize(entries);
 
@@ -94,10 +75,6 @@ public sealed class PersistedSnapshotLoader(
         // orphans from a mid-write crash.
         blobs.SweepUnreferenced();
 
-        // Build blooms only for the maximal-covering snapshot in each contiguous
-        // range. The catalog-load itself stays cheap; this pass produces the same
-        // end-state as the runtime would after all of its compactions, while
-        // building only one bloom per uncovered slot instead of one per snapshot.
         ReconstructBloom();
     }
 
@@ -139,13 +116,14 @@ public sealed class PersistedSnapshotLoader(
     {
         ArenaReservation reservation = arena.Open(entry.Location);
 
-        // AddPersistedSnapshot builds the snapshot (its ctor walks its own ref_ids metadata and leases
-        // each blob arena file, rolling back on partial failure), indexes it by the stored tier, disposes
-        // the reservation, and returns it pre-leased. The bloom is the AlwaysTrue placeholder here —
-        // ReconstructBloom replaces it once every snapshot is in place — and we drop the returned
-        // creation lease immediately; the bucket keeps its own.
-        using PersistedSnapshot _ = repository.AddPersistedSnapshot(
-            entry.From, entry.To, reservation, BloomFilter.AlwaysTrue(), entry.Tier);
+        // The ctor walks its own ref_ids metadata and leases each blob arena file (rolling back on
+        // partial failure) and takes its own lease on the reservation, so we drop ours right after.
+        // The bloom is the AlwaysTrue placeholder — ReconstructBloom replaces it once every snapshot
+        // is in place. No catalog write: the entry is already in the catalog. The `using` drops the
+        // construction lease at the end; the bucket keeps its own.
+        using PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, blobs, BloomFilter.AlwaysTrue());
+        reservation.Dispose();
+        repository.AddPersistedSnapshot(snapshot, entry.Tier);
     }
 
     /// <summary>
@@ -190,7 +168,8 @@ public sealed class PersistedSnapshotLoader(
             long built = 0;
             Parallel.ForEach(snapshots, snap =>
             {
-                snap.SetBloom(BuildBloomFor(snap));
+                using WholeReadSession session = snap.BeginWholeReadSession();
+                snap.SetBloom(PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey));
                 if (bloomLog is not null) bloomLog.Update(Interlocked.Increment(ref built));
             });
             bloomLog?.LogProgress();
@@ -199,12 +178,6 @@ public sealed class PersistedSnapshotLoader(
         {
             heartbeat?.Dispose();
         }
-    }
-
-    private BloomFilter BuildBloomFor(PersistedSnapshot snap)
-    {
-        using WholeReadSession session = snap.BeginWholeReadSession();
-        return PersistedSnapshotBloomBuilder.Build(session, snap, _bloomBitsPerKey);
     }
 
     /// <inheritdoc/>
@@ -248,11 +221,13 @@ public sealed class PersistedSnapshotLoader(
         reservation.Fsync();
         blobWriter.Fsync();
 
-        // Record the catalog entry, then index the snapshot. AddPersistedSnapshot indexes it,
-        // pre-acquires the caller's lease under the bucket's lock, and disposes the reservation.
+        // Build the persisted snapshot (its ctor takes its own reservation + blob leases, so we drop
+        // ours), record the catalog entry, then index it. The returned snapshot carries the bucket's
+        // lease plus this construction lease; the caller disposes the latter.
+        PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, blobs, bloom);
+        reservation.Dispose();
         _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
-        PersistedSnapshot persisted = repository.AddPersistedSnapshot(
-            snapshot.From, snapshot.To, reservation, bloom, SnapshotTier.PersistedBase);
+        repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);
 
         if (_validatePersistedSnapshot)
             PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
@@ -262,11 +237,9 @@ public sealed class PersistedSnapshotLoader(
 
     /// <summary>
     /// Flags the persisted tier's files for shutdown preservation. This is the loader's only teardown
-    /// step; the actual disposal of the repository (its buckets) and the arena/blob managers is left to
-    /// DI. Because the loader depends on <see cref="ISnapshotRepository"/>, DI disposes it before the
-    /// repository, so the mark always lands before the buckets are torn down; and because the repository
-    /// depends on the arena/blob managers, they are disposed after it — buckets drop their reservation
-    /// and blob leases before the stores they point into go.
+    /// step; the container disposes the rest — the repository (tearing down its buckets) and then the
+    /// arena/blob managers it depends on. Because the loader depends on <see cref="ISnapshotRepository"/>,
+    /// DI disposes the loader before the repository, so the mark always lands before the buckets are torn down.
     /// </summary>
     public void Dispose()
     {

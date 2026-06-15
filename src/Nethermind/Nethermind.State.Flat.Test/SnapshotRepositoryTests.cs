@@ -373,7 +373,7 @@ public class SnapshotRepositoryTests
         StateId s5 = CreateStateId(5);
 
         // A persisted base spanning (s0, s5] — its From is below the target s2.
-        _repository.ConvertToPersistedBase(CreateSnapshot(s0, s5)).Dispose();
+        _tier.ConvertToPersistedBase(CreateSnapshot(s0, s5)).Dispose();
 
         using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
 
@@ -402,7 +402,7 @@ public class SnapshotRepositoryTests
         StateId s5 = CreateStateId(5);
 
         // A persisted base whose From is exactly the target s2.
-        _repository.ConvertToPersistedBase(CreateSnapshot(s2, s5)).Dispose();
+        _tier.ConvertToPersistedBase(CreateSnapshot(s2, s5)).Dispose();
 
         using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
 

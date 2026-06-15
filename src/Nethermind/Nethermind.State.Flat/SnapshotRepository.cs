@@ -85,9 +85,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // (lock-free point lookups), its block-ordered StateId set + running memory/count totals
     // (guarded by the bucket's own lock), and its share of the catalog and global metrics. A `To`
     // can live in more than one bucket (a base and a compacted snapshot can share it).
-    private readonly IArenaManager _arena;
-    private readonly BlobArenaManager _blobs;
-    private readonly IDb _catalogDb;
     private readonly SnapshotCatalog _catalog;
     private readonly int _compactSize;
     private readonly SnapshotBucket _base;
@@ -117,9 +114,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         IFlatDbConfig config,
         ILogManager logManager)
     {
-        _arena = arenaManager;
-        _blobs = blobArenaManager;
-        _catalogDb = catalogDb;
         _catalog = new(catalogDb);
         _base = new SnapshotBucket(_catalog, SnapshotTier.PersistedBase);
         _compacted = new SnapshotBucket(_catalog, SnapshotTier.PersistedCompacted);
@@ -131,13 +125,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
     // Test-only observability; not part of ISnapshotRepository.
     internal int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
-
-    // Test-only: lets tests build a loader/compactor over the same shared arena/blob managers and
-    // catalog db the repository reads through (the compactor records its compacted entries in this
-    // same catalog so a reload sees them).
-    internal IArenaManager ArenaManager => _arena;
-    internal BlobArenaManager BlobArenaManager => _blobs;
-    internal IDb CatalogDb => _catalogDb;
 
     public int PersistedSnapshotCount => (int)(_base.Count + _compacted.Count + _persistable.Count);
 
@@ -868,25 +855,14 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // ===================== Persisted tier =====================
 
     /// <summary>
-    /// Build a persisted snapshot from <paramref name="reservation"/> and index it into the bucket
-    /// selected by <paramref name="tier"/>, returning it pre-leased (caller disposes the lease). Does
-    /// NOT write the catalog — the caller records the catalog entry (a freshly persisted/compacted
-    /// snapshot writes one; a snapshot reloaded from the catalog does not). The snapshot's referenced
-    /// blob arena ids are read off its own metadata HSST by the <see cref="PersistedSnapshot"/> ctor,
-    /// which leases each one and rolls back on partial failure.
+    /// Index a caller-built <paramref name="snapshot"/> into the bucket selected by <paramref name="tier"/>,
+    /// acquiring the bucket's own lease under the bucket's lock so a racing prune can't dispose it
+    /// mid-insert. The caller retains its construction lease (and disposes it) and is responsible for the
+    /// catalog entry — a freshly persisted/compacted snapshot writes one; a snapshot reloaded from the
+    /// catalog does not.
     /// </summary>
-    public PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier)
-    {
-        PersistedSnapshot snapshot = new(from, to, reservation, _blobs, bloom: bloom);
-        // Index the snapshot and pre-acquire the caller's lease under the bucket's lock so a racing
-        // RemovePersistedStatesUntil on a background compactor thread can't dispose it between insert
-        // and the caller seeing the return.
-        BucketFor(tier).Add(to, snapshot);
-
-        // Release the caller's "creation" lease — the bucket pre-acquired its own above.
-        reservation.Dispose();
-        return snapshot;
-    }
+    public void AddPersistedSnapshot(PersistedSnapshot snapshot, SnapshotTier tier) =>
+        BucketFor(tier).Add(snapshot.To, snapshot);
 
     /// <summary>
     /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket(s) backing

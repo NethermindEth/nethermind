@@ -46,7 +46,7 @@ public class PersistenceManagerPersistedTests
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(500).TestObject;
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        repo.ConvertToPersistedBase(snap).Dispose();
+        tier.ConvertToPersistedBase(snap).Dispose();
 
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snapshot), Is.True);
@@ -67,15 +67,15 @@ public class PersistenceManagerPersistedTests
 
         SnapshotContent c1 = new();
         c1.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
-        repo.ConvertToPersistedBase(new Snapshot(s0, s1, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         SnapshotContent c2 = new();
         c2.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(2).TestObject;
-        repo.ConvertToPersistedBase(new Snapshot(s1, s3, c2, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s1, s3, c2, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         SnapshotContent c3 = new();
         c3.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(3).TestObject;
-        repo.ConvertToPersistedBase(new Snapshot(s3, s6, c3, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s3, s6, c3, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(3));
 
@@ -102,12 +102,12 @@ public class PersistenceManagerPersistedTests
 
         // Persisted tier: common chain s0->s1->s2, canonical s2->C3->C4, and a non-canonical
         // fork s2->NC3->NC4 diverging at block 3.
-        PersistToTier(repo, s0, s1);
-        PersistToTier(repo, s1, s2);
-        PersistToTier(repo, s2, c3);
-        PersistToTier(repo, c3, c4);
-        PersistToTier(repo, s2, nc3);
-        PersistToTier(repo, nc3, nc4);
+        PersistToTier(tier, s0, s1);
+        PersistToTier(tier, s1, s2);
+        PersistToTier(tier, s2, c3);
+        PersistToTier(tier, c3, c4);
+        PersistToTier(tier, s2, nc3);
+        PersistToTier(tier, nc3, nc4);
 
         // In-memory canonical C5 whose parent C4 lives only in the persisted tier — reachability
         // to C3 therefore has to cross from the in-memory tier into the persisted tier.
@@ -137,11 +137,11 @@ public class PersistenceManagerPersistedTests
 
         // Persisted tier: common chain s0->s1->s2, canonical s2->C3, and a non-canonical fork
         // s2->NC3->NC4 diverging at block 3 — NC4 is an orphan at block 4.
-        PersistToTier(repo, s0, s1);
-        PersistToTier(repo, s1, s2);
-        PersistToTier(repo, s2, c3);
-        PersistToTier(repo, s2, nc3);
-        PersistToTier(repo, nc3, nc4);
+        PersistToTier(tier, s0, s1);
+        PersistToTier(tier, s1, s2);
+        PersistToTier(tier, s2, c3);
+        PersistToTier(tier, s2, nc3);
+        PersistToTier(tier, nc3, nc4);
 
         // In-memory tip sits at the canonical block (3), BELOW the persisted orphan NC4 (block 4).
         // The orphan walk's upper bound must come from the persisted tier, not the in-memory tip,
@@ -165,9 +165,9 @@ public class PersistenceManagerPersistedTests
         StateId s1 = new(1, Keccak.Compute("1"));
         StateId s2 = new(2, Keccak.Compute("2"));
         StateId s3 = new(3, Keccak.Compute("3"));
-        PersistToTier(repo, s0, s1);
-        PersistToTier(repo, s1, s2);
-        PersistToTier(repo, s2, s3);
+        PersistToTier(tier, s0, s1);
+        PersistToTier(tier, s1, s2);
+        PersistToTier(tier, s2, s3);
 
         int before = repo.PersistedSnapshotCount;
         repo.RemoveSiblingAndDescendents(s1);
@@ -177,11 +177,11 @@ public class PersistenceManagerPersistedTests
         Assert.That(repo.HasBaseSnapshot(s3), Is.True);
     }
 
-    private void PersistToTier(SnapshotRepository repo, StateId from, StateId to)
+    private void PersistToTier(FlatTestContainer tier, StateId from, StateId to)
     {
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
-        repo.ConvertToPersistedBase(new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
     }
 
     private void AddInMemory(SnapshotRepository repo, StateId from, StateId to)

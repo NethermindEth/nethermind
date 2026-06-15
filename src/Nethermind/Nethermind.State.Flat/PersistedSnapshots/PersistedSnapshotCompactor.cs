@@ -29,6 +29,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public class PersistedSnapshotCompactor(
     ISnapshotRepository snapshotRepository,
     IArenaManager arenaManager,
+    BlobArenaManager blobs,
     [KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb catalogDb,
     IFlatDbConfig config,
     ICompactionSchedule schedule,
@@ -296,15 +297,16 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             reservation.Fsync();
 
-            // PersistedSnapshot's ctor (called from inside AddPersistedSnapshot) reads
-            // the merged ref_ids back from its own metadata and leases each blob arena
-            // file via a ref-struct iterator — no ushort[] materialisation here. The
-            // returned snapshot is pre-leased; dispose it via `using` once we're done
-            // with the post-write step.
+            // PersistedSnapshot's ctor reads the merged ref_ids back from its own metadata and leases
+            // each blob arena file via a ref-struct iterator — no ushort[] materialisation here — and
+            // takes its own reservation lease, so we drop ours right after. The `using` drops the
+            // construction lease at block end; the bucket keeps its own.
             SnapshotTier tier = isPersistable ? SnapshotTier.PersistedPersistable : SnapshotTier.PersistedCompacted;
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
-            using (PersistedSnapshot compacted = snapshotRepository.AddPersistedSnapshot(from, to, reservation, mergedBloom, tier))
+            using (PersistedSnapshot compacted = new(from, to, reservation, blobs, mergedBloom))
             {
+                reservation.Dispose();
+                snapshotRepository.AddPersistedSnapshot(compacted, tier);
                 if (_schedule.IsIntermediateWindow(compactSize))
                 {
                     // Sub-CompactSize intermediate. Drop its freshly-written pages from the
