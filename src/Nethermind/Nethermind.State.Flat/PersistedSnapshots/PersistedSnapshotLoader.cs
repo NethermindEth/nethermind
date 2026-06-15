@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
@@ -27,7 +26,7 @@ public sealed class PersistedSnapshotLoader(
     ISnapshotRepository repository,
     IArenaManager arena,
     BlobArenaManager blobs,
-    [KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb catalogDb,
+    SnapshotCatalog catalog,
     IFlatDbConfig config,
     ILogManager logManager) : IPersistedSnapshotLoader
 {
@@ -41,7 +40,7 @@ public sealed class PersistedSnapshotLoader(
 
     private static readonly StringLabel _tierLabel = new("persisted");
 
-    private readonly SnapshotCatalog _catalog = new(catalogDb);
+    private readonly SnapshotCatalog _catalog = catalog;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotLoader>();

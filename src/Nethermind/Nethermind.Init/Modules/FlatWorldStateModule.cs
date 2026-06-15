@@ -106,6 +106,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .CreateDb(new DbSettings(
                     nameof(DbNames.PersistedSnapshotCatalog),
                     Path.Combine("persisted_snapshot", "catalog"))))
+            .AddSingleton<SnapshotCatalog>(ctx =>
+                new SnapshotCatalog(ctx.ResolveKeyed<IDb>(DbNames.PersistedSnapshotCatalog)))
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()

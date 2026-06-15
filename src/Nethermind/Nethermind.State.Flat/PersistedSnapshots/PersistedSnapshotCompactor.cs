@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Autofac.Features.AttributeFilters;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.Persistence.BloomFilter;
@@ -30,13 +29,13 @@ public class PersistedSnapshotCompactor(
     ISnapshotRepository snapshotRepository,
     IArenaManager arenaManager,
     BlobArenaManager blobs,
-    [KeyFilter(DbNames.PersistedSnapshotCatalog)] IDb catalogDb,
+    SnapshotCatalog catalog,
     IFlatDbConfig config,
     ICompactionSchedule schedule,
     ILogManager logManager) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
-    private readonly SnapshotCatalog _catalog = new(catalogDb);
+    private readonly SnapshotCatalog _catalog = catalog;
     private readonly ICompactionSchedule _schedule = schedule;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
