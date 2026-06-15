@@ -130,11 +130,6 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         _bytesBuffered += bytes;
         _tailMemory = _tailMemory[bytes..];
         WrittenCount += bytes;
-
-        if (_bytesBuffered > _minimumBufferSize)
-        {
-            FlushInternal(writeToStream: true);
-        }
     }
 
     /// <inheritdoc />
@@ -198,10 +193,31 @@ public sealed class CountingStreamPipeWriter : CountingWriter
                     _tailBytesBuffered = 0;
                 }
 
+                // Bound the in-memory buffer by flushing completed segments to the inner stream once
+                // the buffered data crosses the threshold. This is done here, at buffer hand-off, and
+                // never in Advance: flushing recycles segments and clears _tailMemory, but a consumer
+                // such as Utf8JsonWriter may still hold a buffer it obtained earlier and continue to
+                // Advance against it across an async PipeWriter flush. Resetting that state inside
+                // Advance desynchronizes the consumer's view and trips the Advance range check (#9198).
+                if (_bytesBuffered > _minimumBufferSize)
+                {
+                    FlushInternal(writeToStream: true);
+                }
+
                 BufferSegment newSegment = AllocateSegment(sizeHint);
 
-                _tail.SetNext(newSegment);
-                _tail = newSegment;
+                if (_head is null)
+                {
+                    // FlushInternal recycled all segments; start a fresh chain.
+                    _head = _tail = newSegment;
+                }
+                else
+                {
+                    _tail!.SetNext(newSegment);
+                    _tail = newSegment;
+                }
+
+                _tailBytesBuffered = 0;
             }
         }
     }
