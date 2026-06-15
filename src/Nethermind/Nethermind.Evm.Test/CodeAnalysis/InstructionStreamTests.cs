@@ -84,6 +84,20 @@ public class InstructionStreamTests
         Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
     }
 
+    [Test]
+    public void TryBuild_Push2JumpToPushImmediate_RefusesToStream()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH3, 0xAA, 0x5B, 0xBB,  // 0x5B at pc 2 is an immediate, not a JUMPDEST
+            (byte)Instruction.PUSH2, 0x00, 0x02,        // targets pc 2
+            (byte)Instruction.JUMP,
+        ];
+
+        Assert.That(InstructionStream.TryBuild(code), Is.Null,
+            "a static jump whose target is a PUSH immediate is not a real JUMPDEST; the code must run on the bytecode loop");
+    }
+
     [TestCaseSource(nameof(BoundaryFallbackCases))]
     public void TryBuild_OpThatCannotBePrecharged_StaysBoundary(byte[] code)
         => Assert.That(InstructionStream.TryBuild(code)!.Ops[0].Kind, Is.EqualTo(StreamOpKind.Boundary),

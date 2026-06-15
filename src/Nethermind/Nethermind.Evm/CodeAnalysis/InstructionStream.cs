@@ -258,15 +258,21 @@ public sealed class InstructionStream
 
         pcToEntry[code.Length] = (ushort)ops.Count;
 
-        // Static jump targets were recorded as destination pcs; resolve them to entry
-        // indexes now that every entry exists (forward jumps included). A JUMPDEST is never
-        // merged into a pair, so its pc always maps to a real entry.
+        // Static jump targets were recorded as destination pcs; resolve them to entry indexes
+        // now that every entry exists (forward jumps included).
         for (int i = 0; i < ops.Count; i++)
         {
             StreamOp op = ops[i];
             if (op.Kind is StreamOpKind.StaticJump or StreamOpKind.StaticJumpI)
             {
-                ops[i] = new StreamOp(op.Opcode, op.Kind, op.Pc, op.BlockIndex, op.Advance, pcToEntry[(int)op.Operand]);
+                ushort targetEntry = pcToEntry[(int)op.Operand];
+                // The raw byte at the target was 0x5B, but a JUMPDEST is always a solo block, so a
+                // real one maps to an entry. InvalidEntry means the target is a PUSH immediate (or
+                // other non-entry pc) — not a valid jump. Refuse to stream this code so the bytecode
+                // loop's ValidateJump produces the correct InvalidJumpDestination / fall-through.
+                if (targetEntry == InvalidEntry)
+                    return null;
+                ops[i] = new StreamOp(op.Opcode, op.Kind, op.Pc, op.BlockIndex, op.Advance, targetEntry);
             }
         }
 
