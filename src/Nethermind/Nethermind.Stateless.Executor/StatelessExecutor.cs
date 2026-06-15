@@ -19,12 +19,28 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
+    /// <remarks>
+    /// As there's no exception unwinding in zkVM runtimes, an exception thrown during execution
+    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>
+    /// — the runtime invokes the guest's <c>ZkvmThrow</c> callback instead.
+    /// Therefore, the execution output is stored here for the error handler to access.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> Output { get; private set; }
+
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
         StatelessPayload payload = InputDecoder.Decode(data);
         ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
         Transaction[] transactions = payload.Block.Transactions;
+        StatelessValidationResult result = new()
+        {
+            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
+            IsSuccess = false,
+            ChainConfig = payload.ChainConfig
+        };
+        byte[] output = StatelessValidationResult.Encode(result);
         bool success = false;
+        Output = output;
 
         if (transactions.Length == publicKeys.Length)
         {
@@ -49,14 +65,11 @@ public static class StatelessExecutor
             }
         }
 
-        StatelessValidationResult result = new()
-        {
-            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
-            IsSuccess = success,
-            ChainConfig = payload.ChainConfig
-        };
+        if (success)
+            // Flip the success flag in SSZ instead of re-encoding the entire output (not future-proof)
+            output[32] = 1;
 
-        return StatelessValidationResult.Encode(result);
+        return output;
     }
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
