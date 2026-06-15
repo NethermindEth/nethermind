@@ -1079,7 +1079,7 @@ public class PersistedSnapshotCompactorTests
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config, scheduleOffset: 3);
 
             // 45 base snapshots, blocks 1..45. No intermediate compactions so
-            // AssembleSnapshotsForCompaction sees only bases.
+            // AssemblePersistedSnapshotsForCompaction sees only bases.
             StateId prev = new(0, Keccak.EmptyTreeHash);
             StateId tip = prev;
             for (int i = 1; i <= 45; i++)

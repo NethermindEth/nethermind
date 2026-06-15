@@ -62,7 +62,7 @@ public interface ISnapshotRepository : IDisposable
     /// down to <paramref name="minBlockNumber"/> (widest persisted edge first). Oldest-first; empty when
     /// fewer than two are found. Caller disposes the returned list.
     /// </summary>
-    PersistedSnapshotList AssembleSnapshotsForCompaction(in StateId toStateId, long minBlockNumber);
+    PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, long minBlockNumber);
     StateId? GetLastSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
     ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber);

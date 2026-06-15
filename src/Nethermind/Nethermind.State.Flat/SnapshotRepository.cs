@@ -514,7 +514,7 @@ public class SnapshotRepository : ISnapshotRepository
     /// candidate inspected is leased — overshooting ones are leased then disposed rather than
     /// peeked. That trades a little work for sharing the single edge-lease path with the other walks.
     /// </remarks>
-    public PersistedSnapshotList AssembleSnapshotsForCompaction(in StateId toStateId, long minBlockNumber)
+    public PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, long minBlockNumber)
     {
         PersistedSnapshotList result = new(0);
         StateId current = toStateId;

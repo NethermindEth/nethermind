@@ -242,7 +242,7 @@ public class PersistedSnapshotCompactor(
 
     private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
     {
-        using PersistedSnapshotList snapshots = snapshotRepository.AssembleSnapshotsForCompaction(snapshotTo, startingBlockNumber);
+        using PersistedSnapshotList snapshots = snapshotRepository.AssemblePersistedSnapshotsForCompaction(snapshotTo, startingBlockNumber);
         if (snapshots.Count < 2) return false;
 
         if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, persistable {isPersistable}");
