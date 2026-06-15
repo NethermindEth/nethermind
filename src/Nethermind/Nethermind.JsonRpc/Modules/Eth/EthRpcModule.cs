@@ -368,7 +368,7 @@ public partial class EthRpcModule(
         }
         catch (RlpException e)
         {
-            return ResultWrapper<Hash256>.Fail("Invalid RLP: " + e.Message, ErrorCodes.InvalidParams);
+            return ResultWrapper<Hash256>.Fail($"Invalid RLP: {e.Message}", ErrorCodes.InvalidParams);
         }
     }
 
