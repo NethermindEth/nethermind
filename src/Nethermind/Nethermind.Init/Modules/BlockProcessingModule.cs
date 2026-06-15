@@ -73,8 +73,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 ctx.ResolveOptional<PrewarmerEnvFactory>(),
                 ctx.ResolveOptional<PreBlockCaches>(),
                 ctx.ResolveOptional<IReadOnlyTxProcessingEnvFactory>(),
-                witnessMode: ctx.ResolveOptional<WitnessCapturingWorldStateProxy>() is not null,
-                witnessSession: ctx.ResolveOptional<WitnessCaptureSession>()))
+                // Present only in witness-capable scopes (main pipeline, debug_executionWitness sandbox);
+                isWitnessExecution: ctx.ResolveOptional<WitnessExecutionPredicate>()?.IsActive))
             .AddScoped<IProcessingStats, ProcessingStats>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))

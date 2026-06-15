@@ -87,6 +87,9 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            // The whole sandbox re-execution records a witness, so its BlockAccessListManager runs in
+            // witness mode unconditionally (sequential + non-caching code reads).
+            .AddScoped<WitnessExecutionPredicate>(new WitnessExecutionPredicate(static () => true))
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 

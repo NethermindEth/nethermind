@@ -29,6 +29,12 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
         // trie store's read-tap — constructed at root, before this child scope exists — shares the
         // same instance the decorators below consult. Re-registering it here would shadow it.
 
+        // Signals to this scope's BlockAccessListManager that it executes for witness capture; the
+        // predicate tracks the armed session, so BAL forces sequential + non-caching only for the
+        // block actually being witnessed.
+        builder.AddScoped<WitnessExecutionPredicate, WitnessCaptureSession>(
+            session => new WitnessExecutionPredicate(() => session.IsActive));
+
         builder.AddDecorator<IWorldState, WitnessCapturingWorldStateProxy>();
         // Expose the same proxy instance as a typed singleton so the block-processor decorator can
         // take it directly. Cast through IWorldState because Autofac doesn't model decorator chains
@@ -47,7 +53,15 @@ public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvi
         // lookup flows through IWorldState → proxy → recorder) and, when disarmed, routes back to
         // the cached repository registered at root. Other scopes (block production, RPC simulation,
         // the legacy debug_executionWitness sandbox) are untouched.
-        builder.AddDecorator<ICodeInfoRepository, CodeInfoRepositoryProxy>();
+        builder.AddDecorator<ICodeInfoRepository>((ctx, repository) =>
+        {
+            WitnessCaptureSession session = ctx.Resolve<WitnessCaptureSession>();
+            return new CodeInfoRepositoryProxy(
+                repository,
+                ctx.Resolve<IWorldState>(),
+                ctx.Resolve<IPrecompileProvider>(),
+                () => session.IsActive);
+        });
 
         // Typed-singleton bridge for the main-world trie store's read-tap (registered as the
         // ITrieStore decorator by the merge plugin at root), mirroring the proxy and header-finder

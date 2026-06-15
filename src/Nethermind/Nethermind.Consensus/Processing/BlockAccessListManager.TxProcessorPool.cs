@@ -20,6 +20,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -86,7 +87,7 @@ public partial class BlockAccessListManager
         private readonly ILogManager _logManager;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
-        private readonly bool _witnessMode;
+        private readonly Func<bool>? _isWitnessExecution;
 
         public ParallelTxProcessorWithWorldStateManager(
             IBlockhashProvider blockHashProvider,
@@ -96,13 +97,13 @@ public partial class BlockAccessListManager
             PrewarmerEnvFactory? prewarmerEnvFactory,
             PreBlockCaches? preBlockCaches,
             IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory,
-            bool witnessMode)
+            Func<bool>? isWitnessExecution)
         {
             _blockHashProvider = blockHashProvider;
             _specProvider = specProvider;
             _stateProvider = stateProvider;
             _logManager = logManager;
-            _witnessMode = witnessMode;
+            _isWitnessExecution = isWitnessExecution;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -226,7 +227,7 @@ public partial class BlockAccessListManager
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _witnessMode);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _isWitnessExecution);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -333,9 +334,9 @@ public partial class BlockAccessListManager
             ISpecProvider specProvider,
             IWorldState stateProvider,
             ILogManager logManager,
-            bool witnessMode)
+            Func<bool>? isWitnessExecution)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, witnessMode);
+            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, isWitnessExecution);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -377,7 +378,7 @@ public partial class BlockAccessListManager
             ISpecProvider specProvider,
             IWorldState stateProvider,
             ILogManager logManager,
-            bool witnessMode)
+            Func<bool>? isWitnessExecution)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -388,12 +389,14 @@ public partial class BlockAccessListManager
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
-            // Witness mode must record every code access, so it uses the non-caching CodeInfoRepository.
-            // EthereumCodeInfoRepository wraps a CacheCodeInfoRepository whose process-wide static code
-            // cache serves hits without reading through the (traced) WorldState, so cached code accesses
-            // would be missing from the generated witness.
-            ICodeInfoRepository codeInfoRepository = witnessMode
-                ? new CodeInfoRepository(WorldState, new EthereumPrecompileProvider())
+            // On witness-capable managers, route code lookups through CodeInfoRepositoryProxy: while a
+            // witness is being executed (predicate true) it uses the non-caching CodeInfoRepository so
+            // every code access flows through the (traced) WorldState; otherwise it uses the cached repo.
+            // The process-wide static code cache would otherwise serve hits without reading through the
+            // WorldState, dropping those accesses from the witness. Non-witness managers use the cached
+            // repo directly with no per-call indirection.
+            ICodeInfoRepository codeInfoRepository = isWitnessExecution is not null
+                ? new CodeInfoRepositoryProxy(new EthereumCodeInfoRepository(WorldState), WorldState, new EthereumPrecompileProvider(), isWitnessExecution)
                 : new EthereumCodeInfoRepository(WorldState);
             TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
             TxProcessorAdapter = new(TxProcessor);
