@@ -221,8 +221,10 @@ public class PersistedSnapshotCompactor(
 
         if (snapshotRepository.PersistedSnapshotCount < 2) return;
 
-        CompactionWindow window = _schedule.GetPersistableCompactionWindow(blockNumber);
-        CompactRange(snapshotTo, window.StartBlock, window.Size, isPersistable: true);
+        // The persistable is always CompactSize-wide; GetCompactSize returns exactly CompactSize at
+        // any boundary (it caps there), so the window is (blockNumber - CompactSize, blockNumber].
+        int compactSize = _schedule.GetCompactSize(blockNumber);
+        CompactRange(snapshotTo, blockNumber - compactSize, compactSize, isPersistable: true);
     }
 
     // Compact sizes are powers of 2; cache one StringLabel per sizeLabel so the
@@ -319,7 +321,7 @@ public class PersistedSnapshotCompactor(
             {
                 reservation.Dispose();
                 snapshotRepository.AddPersistedSnapshot(compacted, tier);
-                if (_schedule.IsIntermediateWindow(compactSize))
+                if (!_schedule.IsCompactSizeBoundary(snapshotTo.BlockNumber) && !_schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber))
                 {
                     // Sub-CompactSize intermediate. Drop its freshly-written pages from the
                     // cache + tracker; they would otherwise sit hot until the snapshot is
@@ -329,7 +331,7 @@ public class PersistedSnapshotCompactor(
                 else
                 {
                     // The persistable (== CompactSize) is scanned in full by
-                    // PersistPersistedSnapshot; wider hierarchical merges are queried as
+                    // PersistPersistedSnapshot; wider >CompactSize merges are queried as
                     // snapshot-bundle skip pointers. Pre-fault the address column index so
                     // the first query doesn't chain inline page faults.
                     WarmAddressColumnIndex(compacted);

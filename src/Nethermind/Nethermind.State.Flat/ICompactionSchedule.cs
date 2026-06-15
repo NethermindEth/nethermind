@@ -3,12 +3,6 @@
 
 namespace Nethermind.State.Flat;
 
-/// <summary>
-/// A half-open block window <c>(StartBlock, StartBlock + Size]</c> selected for compaction,
-/// together with its power-of-2 <see cref="Size"/>.
-/// </summary>
-public readonly record struct CompactionWindow(long StartBlock, int Size);
-
 public interface ICompactionSchedule
 {
     /// <summary>
@@ -52,19 +46,4 @@ public interface ICompactionSchedule
     /// on the wider merge windows (2×, 4×, …) above the persistence boundary.
     /// </summary>
     long GetPersistedSnapshotCompactSize(long blockNumber);
-
-    /// <summary>
-    /// The <c>CompactSize</c>-wide persistable window ending at the boundary block
-    /// <paramref name="blockNumber"/> — the window <c>PersistenceManager</c> writes to RocksDB.
-    /// Callers must first confirm the block is a persistence boundary via
-    /// <see cref="IsCompactSizeBoundary"/> or <see cref="IsLargeCompactionBoundary"/>.
-    /// </summary>
-    CompactionWindow GetPersistableCompactionWindow(long blockNumber);
-
-    /// <summary>
-    /// True if a produced window of <paramref name="windowSize"/> is a sub-<c>CompactSize</c>
-    /// intermediate (strictly smaller than the persistable window), as opposed to the persistable
-    /// window or a wider persisted-snapshot merge.
-    /// </summary>
-    bool IsIntermediateWindow(int windowSize);
 }

@@ -60,11 +60,6 @@ public sealed class CompactionSchedule : ICompactionSchedule
     public long GetPersistedSnapshotCompactSize(long blockNumber) =>
         blockNumber == 0 ? 1 : Math.Min(ShiftedAlignment(blockNumber), _maxCompactSize);
 
-    public CompactionWindow GetPersistableCompactionWindow(long blockNumber) =>
-        new(blockNumber - _compactSize, _compactSize);
-
-    public bool IsIntermediateWindow(int windowSize) => windowSize < _compactSize;
-
     // (blockNumber + _offset) & -(blockNumber + _offset) — the lowest power of 2 that
     // divides the offset-shifted block number. Common factor of every boundary check.
     private long ShiftedAlignment(long blockNumber)
