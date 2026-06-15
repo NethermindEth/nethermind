@@ -54,8 +54,11 @@ public partial class Bls12381G2MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        using ArrayPoolList<long> pointBuffer = new(nItems * G2.Sz, nItems * G2.Sz);
-        using ArrayPoolList<byte> scalarBuffer = new(nItems * 32, nItems * 32);
+        // skip clear as whole buffer is filled in point decoding
+        // dest) is fully written by Zero()+Decode() during point decoding, so the pool's zero-clear
+        // is wasted. Dead infinity slots are never read.
+        using ArrayPoolList<long> pointBuffer = new(SafeArrayPool<long>.Shared, nItems * G2.Sz, nItems * G2.Sz, clearFirst: false);
+        using ArrayPoolList<byte> scalarBuffer = new(SafeArrayPool<byte>.Shared, nItems * 32, nItems * 32, clearFirst: false);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
         // calculate where in rawPoints buffer decoded points should go
@@ -88,10 +91,11 @@ public partial class Bls12381G2MsmPrecompile
         }
         else
         {
-            Parallel.ForEach(pointDestinations, (dest, state, i) =>
+            Memory<long> pointMemory = pointBuffer.AsMemory();
+            Memory<byte> scalarMemory = scalarBuffer.AsMemory();
+            Parallel.For(0, pointDestinations.Count, (index, state) =>
             {
-                int index = (int)i;
-                Result local = Eip2537.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), dest, index);
+                Result local = Eip2537.TryDecodeG2ToBuffer(inputData, pointMemory, scalarMemory, pointDestinations[index], index);
                 if (!local)
                 {
                     result = local;
