@@ -1933,7 +1933,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTxHex);
 
         Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidParams}"));
-        Assert.That(serialized, Does.Contain("Invalid RLP."));
+        Assert.That(serialized, Does.Contain("Invalid RLP:"));
     }
 
     [TestCaseSource(nameof(SendRawTransactionSyncFailureCases))]
@@ -1951,7 +1951,7 @@ public partial class EthRpcModuleTests
 
     private static IEnumerable<TestCaseData> SendRawTransactionSyncFailureCases()
     {
-        yield return new TestCaseData("c0", null, ErrorCodes.InvalidParams, "Invalid RLP")")
+        yield return new TestCaseData("c0", null, ErrorCodes.InvalidParams, "Invalid RLP")
             .SetName("InvalidRlp");
 
         Transaction tx = Build.A.Transaction
