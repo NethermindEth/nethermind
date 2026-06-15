@@ -227,6 +227,12 @@ public class PersistenceManager(
                 break;
             }
         }
+
+        // Prune the in-memory tier for everything the now-advanced persisted state supersedes — the
+        // post-persist step that previously lived in FlatDbManager.PersistIfNeeded. The persisted
+        // tier is pruned per-persist above via PrunePersistedTierBefore.
+        if (_currentPersistedStateId != StateId.PreGenesis)
+            _snapshotRepository.RemoveStatesUntil(_currentPersistedStateId.BlockNumber);
     }
 
     /// <summary>

@@ -348,7 +348,8 @@ public class PersistenceManagerTests
         StateId to = CreateStateId(16);
         StateId latest = CreateStateId(100);
 
-        using Snapshot snapshot = CreateSnapshot(from, to, compacted: true);
+        // AddToPersistence persists then prunes this in-memory snapshot, so the repo owns its disposal.
+        _ = CreateSnapshot(from, to, compacted: true);
 
         // A persisted entry below the new persisted block must be pruned by the persist.
         StateId stale = CreateStateId(8);
@@ -601,7 +602,8 @@ public class PersistenceManagerTests
         StateId to = CreateStateId(16);
         StateId latest = CreateStateId(100);
 
-        using Snapshot snapshot = CreateSnapshot(from, to, compacted: true);
+        // AddToPersistence persists then prunes this in-memory snapshot, so the repo owns its disposal.
+        _ = CreateSnapshot(from, to, compacted: true);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
