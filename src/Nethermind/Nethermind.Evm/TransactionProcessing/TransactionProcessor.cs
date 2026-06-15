@@ -695,7 +695,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     bool hasDelegation = accountExists && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
                     bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
-                    if (!accountExists)
+                    if (WorldState.IsDeadAccount(authority))
                     {
                         WorldState.CreateAccount(authority, 0, 1);
                     }
