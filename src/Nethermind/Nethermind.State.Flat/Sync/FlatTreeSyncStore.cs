@@ -241,6 +241,14 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         StateId from = reader.CurrentState;
         StateId to = new(pivotHeader);
 
+        // Snap and heal writes use DisableWAL, so they only become crash-durable once flushed. Flush all of
+        // that data BEFORE advancing the persisted state pointer, so the (WAL-durable) pointer can never
+        // reference a state whose data is still in unflushed memtables. Otherwise an unclean shutdown in the
+        // window between the pointer write and the data flush leaves CurrentState pointing at a state with
+        // holes, which is then served as a complete state and corrupts block processing — deleting the
+        // canonical chain as "invalid" and stalling sync permanently. See issue #11457.
+        persistence.Flush();
+
         // Create and immediately dispose to increment state ID
         // This pattern is used by Importer - the from->to transition updates the current state pointer
         using (persistence.CreateWriteBatch(from, to))
