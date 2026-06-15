@@ -348,11 +348,24 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         TestState.InsertCode(SolidityExampleAddress, Core.Extensions.Bytes.FromHexString(SolidityExampleRuntime), Spec);
 
         bool enabledBefore = StreamInterpreter.Enabled;
+        int thresholdBefore = StreamInterpreter.BuildThreshold;
         StreamInterpreter.Enabled = useStream;
         try
         {
             // The base Execute helper caps gas at 100k; the CREATE-heavy cases need more.
             (Block block, Transaction transaction) = PrepareTx(Activation, 8_000_000, code);
+
+            if (useStream)
+            {
+                // Production builds the stream asynchronously past a threshold, which this
+                // single-execution differential would never reach. Lower the threshold and wait
+                // for the background build to publish on the very CodeInfo the run will use.
+                StreamInterpreter.BuildThreshold = 1;
+                CodeInfo codeInfo = CodeInfoRepository.GetCachedCodeInfo(Recipient, Spec);
+                if (!System.Threading.SpinWait.SpinUntil(() => codeInfo.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)))
+                    Assert.Fail("the stream did not build within the timeout");
+            }
+
             ReceiptCaptureTracer tracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
             return tracer;
@@ -360,6 +373,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         finally
         {
             StreamInterpreter.Enabled = enabledBefore;
+            StreamInterpreter.BuildThreshold = thresholdBefore;
         }
     }
 
