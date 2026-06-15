@@ -179,6 +179,15 @@ public static class BasePersistence
         using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
         {
+            if (column == FlatDbColumns.Metadata)
+            {
+                // Reset only the state metadata. The on-disk format markers (layout, slot encoding)
+                // and any other metadata are preserved, otherwise a re-synced DB would be read back
+                // with the wrong slot encoding (e.g. RLP-wrapped slots misread as legacy raw).
+                batch.GetColumnBatch(column).Remove(CurrentStateKey);
+                continue;
+            }
+
             IWriteBatch columnBatch = batch.GetColumnBatch(column);
             foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
             {

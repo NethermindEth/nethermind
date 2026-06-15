@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
@@ -97,9 +100,11 @@ public static class BaseFlatPersistence
                 value = ctx.DecodeByteArraySpan();
             }
 
-            // Bypass bounds check on the slice - the length is already validated by the if guard above.
-            // This writes the variable-length DB value into the end of the 32-byte struct.
             int len = value.Length;
+            if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
+
+            // len is now guaranteed <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
+            // This writes the variable-length DB value into the end of the 32-byte struct.
             if (len == SlotValue.ByteCount)
             {
                 outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
@@ -123,6 +128,13 @@ public static class BaseFlatPersistence
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
+            throw new InvalidConfigurationException(
+                $"Flat DB storage slot value is {length} bytes, exceeding the {SlotValue.ByteCount}-byte maximum " +
+                $"(rlpWrapSlots={rlpWrapSlots}). The slot-encoding metadata is likely missing or mismatched " +
+                $"(RLP-wrapped values read as raw). Re-sync the flat DB to recover.", -1);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
         {
