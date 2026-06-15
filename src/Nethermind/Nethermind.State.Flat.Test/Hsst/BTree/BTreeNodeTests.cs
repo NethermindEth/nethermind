@@ -38,53 +38,29 @@ public class BTreeNodeTests
 
     // ===== METADATA READING TESTS =====
 
-    [Test]
-    public void NodeMetadata_ReadFromEnd_MinimalNode()
-    {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) => { });
-
-        BTreeNodeReader index = ReadHsstRoot(data);
-        Assert.That(index.EntryCount, Is.EqualTo(0));
-        Assert.That(index.Metadata.KeyCount, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void NodeMetadata_WithBaseOffset_ParsedCorrectly()
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(10)]
+    public void RootNode_EntryCount_MatchesAddedKeys(int count)
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < count; i++)
             {
                 byte[] key = new byte[4];
-                key[3] = (byte)i;
+                BinaryPrimitives.WriteInt32BigEndian(key, i);
                 builder.Add(key, new byte[] { (byte)i });
             }
         });
 
-        BTreeNodeReader rootIndex = ReadHsstRoot(data);
-        Assert.That(rootIndex.EntryCount, Is.EqualTo(10));
-    }
-
-    [Test]
-    public void BTreeNode_EmptyIndex_HandlesCorrectly()
-    {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) => { });
-
         BTreeNodeReader index = ReadHsstRoot(data);
-        Assert.That(index.EntryCount, Is.EqualTo(0));
-        Assert.That(index.TryGetFloor("abc"u8, out _, out _), Is.False);
-    }
-
-    [Test]
-    public void BTreeNode_SingleLeafNode_StructureValid()
-    {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
+        Assert.That(index.EntryCount, Is.EqualTo(count));
+        if (count == 0)
         {
-            builder.Add([0x41, 0x42], [0x01, 0x02, 0x03]);
-        });
-
-        BTreeNodeReader rootIndex = ReadHsstRoot(data);
-        Assert.That(rootIndex.EntryCount, Is.EqualTo(1));
+            // Empty-node probes: KeyCount tracks EntryCount and floor lookups miss.
+            Assert.That(index.Metadata.KeyCount, Is.EqualTo(0));
+            Assert.That(index.TryGetFloor("abc"u8, out _, out _), Is.False);
+        }
     }
 
     // ===== HEX FIXTURE TESTS: UNIFORM KEYS =====

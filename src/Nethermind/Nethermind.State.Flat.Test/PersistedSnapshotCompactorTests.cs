@@ -653,6 +653,36 @@ public class PersistedSnapshotCompactorTests
                 }))
                 .SetName("Merge_SelfDestruct_StorageNodesKept");
         }
+
+        // Single-source, no-slot verbatim fast path: A (account-only EOA) and C (account +
+        // self-destruct flag) appear in only one source and carry no slots, so each is
+        // byte-copied verbatim through the outer builder; B keeps the second source non-empty.
+        {
+            SnapshotContent c0 = new();
+            c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
+            c0.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(300).TestObject;
+            c0.SelfDestructedStorageAddresses[TestItem.AddressC] = false;
+            SnapshotContent c1 = new();
+            c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+                    Assert.That(a!.Balance, Is.EqualTo((UInt256)100), "Account-only EOA copied verbatim");
+                    SlotValue slotA = default;
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slotA), Is.False, "EOA has no slots");
+
+                    Assert.That(s.TryGetAccount(TestItem.AddressC, out Account? c), Is.True);
+                    Assert.That(c!.Balance, Is.EqualTo((UInt256)300), "Account survives verbatim copy");
+                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressC), Is.False,
+                        "Self-destruct flag survives verbatim copy alongside the account sub-tag");
+
+                    Assert.That(s.TryGetAccount(TestItem.AddressB, out Account? b), Is.True);
+                    Assert.That(b!.Balance, Is.EqualTo((UInt256)200));
+                }))
+                .SetName("Merge_SingleSource_NoSlot_Verbatim");
+        }
     }
 
     [TestCaseSource(nameof(MergeValidationTestCases))]

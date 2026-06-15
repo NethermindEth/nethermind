@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
@@ -173,8 +174,41 @@ public class HsstTwoByteSlotValueTests
         }
     }
 
-    [Test]
-    public void WireFormat_KeysFirst_PinsBytes_U16()
+    private static IEnumerable<TestCaseData> WireFormatCases()
+    {
+        // U16 offsets. Expected wire format (total 19 bytes):
+        //   indextype:   05
+        //   keycount:    02 00                (N − 1 = 2)
+        //   keys:        10 00 20 00 30 00    (LE-stored: input 00:10 → 10 00, etc.)
+        //   offsets:     02 00 04 00          (Offset_1 = 2, Offset_2 = 4, relative to values start)
+        //   values:      aa bb cc dd ee ff
+        yield return new TestCaseData(false, new byte[]
+        {
+            0x05,
+            0x02, 0x00,
+            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
+            0x02, 0x00, 0x04, 0x00,
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+        }).SetName("U16");
+
+        // U24 offsets. Expected wire format (total 21 bytes):
+        //   indextype:   06                          (1)
+        //   keycount:    02 00                       (N − 1 = 2)
+        //   keys:        10 00 20 00 30 00           (LE-stored, 3·2)
+        //   offsets:     02 00 00 04 00 00           (2·3 = 6, Offset_1 = 2 u24 LE, Offset_2 = 4 u24 LE)
+        //   values:      aa bb cc dd ee ff           (6)
+        yield return new TestCaseData(true, new byte[]
+        {
+            0x06,
+            0x02, 0x00,
+            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
+            0x02, 0x00, 0x00, 0x04, 0x00, 0x00,
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+        }).SetName("U24");
+    }
+
+    [TestCaseSource(nameof(WireFormatCases))]
+    public void WireFormat_KeysFirst_PinsBytes(bool large, byte[] expected)
     {
         // Three entries, 2-byte values. Validate every byte of the keys-first layout:
         // leading IndexType byte + header (KeyCount) + keys + offsets + values.
@@ -191,63 +225,8 @@ public class HsstTwoByteSlotValueTests
             Bytes.FromHexString("eeff"),
         ];
 
-        byte[] data = Build(large: false, keys, vals);
+        byte[] data = Build(large, keys, vals);
 
-        // Expected wire format (total 19 bytes):
-        //   indextype:   05
-        //   keycount:    02 00                (N − 1 = 2)
-        //   keys:        10 00 20 00 30 00    (LE-stored: input 00:10 → 10 00, etc.)
-        //   offsets:     02 00 04 00          (Offset_1 = 2, Offset_2 = 4, relative to values start)
-        //   values:      aa bb cc dd ee ff
-        byte[] expected =
-        [
-            0x05,
-            0x02, 0x00,
-            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
-            0x02, 0x00, 0x04, 0x00,
-            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
-        ];
-        Assert.That(data, Is.EqualTo(expected));
-
-        for (int i = 0; i < keys.Length; i++)
-        {
-            Assert.That(TryGet(data, keys[i], out byte[] got), Is.True);
-            Assert.That(got, Is.EqualTo(vals[i]));
-        }
-    }
-
-    [Test]
-    public void WireFormat_KeysFirst_PinsBytes_U24()
-    {
-        byte[][] keys =
-        [
-            [0x00, 0x10],
-            [0x00, 0x20],
-            [0x00, 0x30],
-        ];
-        byte[][] vals =
-        [
-            Bytes.FromHexString("aabb"),
-            Bytes.FromHexString("ccdd"),
-            Bytes.FromHexString("eeff"),
-        ];
-
-        byte[] data = Build(large: true, keys, vals);
-
-        // Expected wire format (total 21 bytes):
-        //   indextype:   06                          (1)
-        //   keycount:    02 00                       (N − 1 = 2)
-        //   keys:        10 00 20 00 30 00           (LE-stored, 3·2)
-        //   offsets:     02 00 00 04 00 00           (2·3 = 6, Offset_1 = 2 u24 LE, Offset_2 = 4 u24 LE)
-        //   values:      aa bb cc dd ee ff           (6)
-        byte[] expected =
-        [
-            0x06,
-            0x02, 0x00,
-            0x10, 0x00, 0x20, 0x00, 0x30, 0x00,
-            0x02, 0x00, 0x00, 0x04, 0x00, 0x00,
-            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
-        ];
         Assert.That(data, Is.EqualTo(expected));
 
         for (int i = 0; i < keys.Length; i++)
