@@ -32,7 +32,8 @@ public class PersistenceManager(
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
     ILogManager logManager,
-    IPersistedSnapshotCompactor persistedSnapshotCompactor) : IPersistenceManager
+    IPersistedSnapshotCompactor persistedSnapshotCompactor,
+    IPersistedSnapshotConverter persistedSnapshotConverter) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
@@ -44,6 +45,7 @@ public class PersistenceManager(
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
     private readonly IPersistedSnapshotCompactor _compactor = persistedSnapshotCompactor;
+    private readonly IPersistedSnapshotConverter _converter = persistedSnapshotConverter;
     private readonly ICompactionSchedule _schedule = compactionSchedule;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // reused to presort trie-node keys before write
     private readonly Lock _persistenceLock = new();
@@ -153,12 +155,12 @@ public class PersistenceManager(
     /// </remarks>
     private ConversionCandidate? TryFindSnapshotToConvert(StateId currentPersistedState)
     {
-        using ArrayPoolList<StateId> ordered = _snapshotRepository.GetSnapshotBeforeStateId(long.MaxValue);
+        using ArrayPoolList<StateId> ordered = _snapshotRepository.GetStatesUpToBlock(long.MaxValue);
 
         // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A.
         foreach (StateId X in ordered)
         {
-            if (!_snapshotRepository.TryLeaseCompactedState(X, out Snapshot? compacted)) continue;
+            if (!_snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryCompacted, out Snapshot? compacted)) continue;
 
             if (compacted!.To.BlockNumber - compacted.From.BlockNumber == _compactSize
                 && IsOnDisk(compacted.From, currentPersistedState))
@@ -171,7 +173,7 @@ public class PersistenceManager(
         // Pass 2 (fallback): in-memory base → Branch B.
         foreach (StateId X in ordered)
         {
-            if (!_snapshotRepository.TryLeaseState(X, out Snapshot? baseSnap)) continue;
+            if (!_snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
 
             if (IsOnDisk(baseSnap!.From, currentPersistedState))
             {
@@ -225,6 +227,12 @@ public class PersistenceManager(
                 break;
             }
         }
+
+        // Prune the in-memory tier for everything the now-advanced persisted state supersedes — the
+        // post-persist step that previously lived in FlatDbManager.PersistIfNeeded. The persisted
+        // tier is pruned per-persist above via PrunePersistedTierBefore.
+        if (_currentPersistedStateId != StateId.PreGenesis)
+            _snapshotRepository.RemoveStatesUntil(_currentPersistedStateId.BlockNumber);
     }
 
     /// <summary>
@@ -264,12 +272,12 @@ public class PersistenceManager(
                     allStateIds,
                     state =>
                     {
-                        if (_snapshotRepository.TryLeaseState(state, out Snapshot? snap))
+                        if (_snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
                         {
                             long sw = Stopwatch.GetTimestamp();
                             // Pre-leased return — dispose the caller's lease immediately;
                             // the repository's dict entry holds its own lease.
-                            _snapshotRepository.ConvertSnapshotToPersistedSnapshot(snap).Dispose();
+                            _converter.Convert(snap).Dispose();
                             Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
                             snap.Dispose();
                         }
@@ -281,8 +289,9 @@ public class PersistenceManager(
                 // allStateIds and disposes it.
                 foreach (StateId state in allStateIds)
                 {
-                    _snapshotRepository.RemoveAndReleaseCompactedKnownState(state);
-                    _snapshotRepository.RemoveAndReleaseKnownState(state);
+                    // A To can exist in both in-memory tiers — remove from each.
+                    _snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryCompacted);
+                    _snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
                 }
 
                 _compactor.Enqueue(allStateIds);
@@ -302,13 +311,13 @@ public class PersistenceManager(
                 long sw = Stopwatch.GetTimestamp();
                 // Pre-leased return — dispose the caller's lease immediately;
                 // the repository's dict entry holds its own lease.
-                _snapshotRepository.ConvertSnapshotToPersistedSnapshot(baseSnap).Dispose();
+                _converter.Convert(baseSnap).Dispose();
                 Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw, _convertTimeBaseLabel);
 
                 ArrayPoolList<StateId> single = new(1) { baseSnap.To };
                 _compactor.Enqueue(single);
 
-                _snapshotRepository.RemoveAndReleaseKnownState(baseSnap.To);
+                _snapshotRepository.RemoveAndReleaseInMemoryKnownState(baseSnap.To, SnapshotTier.InMemoryBase);
             }
             finally
             {

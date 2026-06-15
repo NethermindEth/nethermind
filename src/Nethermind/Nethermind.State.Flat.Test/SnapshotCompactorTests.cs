@@ -50,7 +50,7 @@ public class SnapshotCompactorTests
             StateId to = CreateStateId(i + 1);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-            bool added = _snapshotRepository.TryAddSnapshot(snapshot);
+            bool added = _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             Assert.That(added, Is.True, $"Failed to add snapshot {i}->{i + 1}");
             _snapshotRepository.AddStateId(to);
         }
@@ -348,12 +348,12 @@ public class SnapshotCompactorTests
     }
 
     [Test]
-    public void Debug_AssembleSnapshotsUntil_Works()
+    public void Debug_AssembleInMemorySnapshotsForCompaction_Works()
     {
         BuildSnapshotChain(0, 4);
 
         StateId target = CreateStateId(4);
-        SnapshotPooledList assembled = _snapshotRepository.AssembleSnapshotsUntil(target, 0, 10);
+        SnapshotPooledList assembled = _snapshotRepository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(4));
 
@@ -410,7 +410,7 @@ public class SnapshotCompactorTests
         StateId targetFrom = CreateStateId(15);
         StateId targetTo = CreateStateId(16);
         Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        _snapshotRepository.TryAddSnapshot(targetSnapshot);
+        _snapshotRepository.TryAdd(targetSnapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(targetTo);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot);
@@ -426,7 +426,7 @@ public class SnapshotCompactorTests
         BuildSnapshotChain(0, blockNumber);
 
         StateId targetTo = CreateStateId(blockNumber);
-        _snapshotRepository.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
+        _snapshotRepository.TryLeaseInMemoryState(targetTo, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot!);
 
@@ -440,7 +440,7 @@ public class SnapshotCompactorTests
         StateId from = new(0, Keccak.Zero);
         StateId to = new(16, Keccak.Zero);
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        _snapshotRepository.TryAddSnapshot(snapshot);
+        _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(to);
 
         using Snapshot targetSnapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -459,7 +459,7 @@ public class SnapshotCompactorTests
             StateId from = new(i, Keccak.Zero);
             StateId to = new(i + 1, Keccak.Zero);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            _snapshotRepository.TryAddSnapshot(snapshot);
+            _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             _snapshotRepository.AddStateId(to);
         }
 
@@ -483,7 +483,7 @@ public class SnapshotCompactorTests
         StateId targetTo = CreateStateId(16);
         Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
         targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account((UInt256)20, (UInt256)2000);
-        _snapshotRepository.TryAddSnapshot(targetSnapshot);
+        _snapshotRepository.TryAdd(targetSnapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(targetTo);
 
         _compactor.DoCompactSnapshot(targetSnapshot.To);
@@ -508,12 +508,12 @@ public class SnapshotCompactorTests
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(snapshot);
+            repo.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             repo.AddStateId(to);
         }
 
         StateId target = CreateStateId(2);
-        repo.TryLeaseState(target, out Snapshot? targetSnapshot);
+        repo.TryLeaseInMemoryState(target, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
 
         using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
 
@@ -567,20 +567,20 @@ public class SnapshotCompactorTests
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
             Snapshot s = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(s);
+            repo.TryAdd(s, SnapshotTier.InMemoryBase);
             repo.AddStateId(to);
         }
 
         // Block 29: (29+3) & -(29+3) = 32 & -32 = 32, capped at CompactSize=16 -> full compaction
         StateId target29 = CreateStateId(29);
-        repo.TryLeaseState(target29, out Snapshot? targetSnapshot);
+        repo.TryLeaseInMemoryState(target29, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
         using SnapshotPooledList snapshots29 = compactor.GetSnapshotsToCompact(targetSnapshot!);
         Assert.That(snapshots29.Count, Is.EqualTo(16), "Block 29 should trigger full compaction with offset=3");
         targetSnapshot!.Dispose();
 
         // Block 16: (16+3) & -(16+3) = 19 & -19 = 1 -> caller sees compactSize<=1, no compaction
         StateId target16 = CreateStateId(16);
-        repo.TryLeaseState(target16, out targetSnapshot);
+        repo.TryLeaseInMemoryState(target16, SnapshotTier.InMemoryBase, out targetSnapshot);
         using SnapshotPooledList snapshots16 = compactor.GetSnapshotsToCompact(targetSnapshot!);
         Assert.That(snapshots16.Count, Is.EqualTo(0), "Block 16 should NOT trigger compaction with offset=3");
         targetSnapshot!.Dispose();

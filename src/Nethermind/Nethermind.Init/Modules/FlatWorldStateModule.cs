@@ -77,6 +77,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
+            // Owns the build half of in-memory -> persisted base conversion; resolves the same shared
+            // arena/blob singletons the repository reads through.
+            .AddSingleton<IPersistedSnapshotConverter, PersistedSnapshotConverter>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())

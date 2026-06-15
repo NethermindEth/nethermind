@@ -223,7 +223,7 @@ public class PersistedSnapshotCompactor(
 
     private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
     {
-        using PersistedSnapshotList snapshots = snapshotRepository.AssembleSnapshotsForCompaction(snapshotTo, startingBlockNumber);
+        using PersistedSnapshotList snapshots = snapshotRepository.AssemblePersistedSnapshotsForCompaction(snapshotTo, startingBlockNumber);
         if (snapshots.Count < 2) return false;
 
         if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, persistable {isPersistable}");
@@ -298,7 +298,8 @@ public class PersistedSnapshotCompactor(
             // file via a ref-struct iterator — no ushort[] materialisation here. The
             // returned snapshot is pre-leased; dispose it via `using` once we're done
             // with the post-write step.
-            using (PersistedSnapshot compacted = snapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom, isPersistable))
+            using (PersistedSnapshot compacted = snapshotRepository.AddPersistedSnapshot(from, to, location, reservation, mergedBloom,
+                isPersistable ? SnapshotTier.PersistedPersistable : SnapshotTier.PersistedCompacted))
             {
                 if (_schedule.IsIntermediateWindow(compactSize))
                 {

@@ -50,9 +50,7 @@ public class SnapshotRepository : ISnapshotRepository
     private readonly BlobArenaManager _blobs;
     private readonly SnapshotCatalog _catalog;
     private readonly int _compactSize;
-    private readonly bool _validatePersistedSnapshot;
     private readonly double _bloomBitsPerKey;
-    private readonly StringLabel _tierLabel = new("persisted");
     private readonly SnapshotBucket _base;
     private readonly SnapshotBucket _compacted;
     private readonly SnapshotBucket _persistable;
@@ -83,11 +81,10 @@ public class SnapshotRepository : ISnapshotRepository
         _arena = arenaManager;
         _blobs = blobArenaManager;
         _catalog = new(catalogDb);
-        _base = new SnapshotBucket(_catalog, SnapshotKind.Base);
-        _compacted = new SnapshotBucket(_catalog, SnapshotKind.Compacted);
-        _persistable = new SnapshotBucket(_catalog, SnapshotKind.Persistable);
+        _base = new SnapshotBucket(_catalog, SnapshotTier.PersistedBase);
+        _compacted = new SnapshotBucket(_catalog, SnapshotTier.PersistedCompacted);
+        _persistable = new SnapshotBucket(_catalog, SnapshotTier.PersistedPersistable);
         _compactSize = config.CompactSize;
-        _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
         _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
@@ -99,6 +96,11 @@ public class SnapshotRepository : ISnapshotRepository
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
     // Test-only observability; not part of ISnapshotRepository.
     internal int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
+
+    // Test-only: lets tests build a PersistedSnapshotConverter over the same shared arena/blob
+    // managers the repository reads through (see PersistedSnapshotConverterTestExtensions).
+    internal IArenaManager ArenaManager => _arena;
+    internal BlobArenaManager BlobArenaManager => _blobs;
 
     public int PersistedSnapshotCount => (int)(_base.Count + _compacted.Count + _persistable.Count);
 
@@ -124,80 +126,62 @@ public class SnapshotRepository : ISnapshotRepository
         _lastRegisteredState = stateId;
     }
 
+    // Dual-tier path BFS: each node has up to 4 edges (compacted/base × in-memory/persisted); once on a
+    // persisted edge further in-memory edges are not explored. The cursor's in-mem-base-before-persisted-
+    // base priority matters: a persisted-base win would lock the rest of the BFS into the persisted tier
+    // (via the enqueue), barring any wider in-mem compacted skip-pointer downstream.
+    private struct AssembleVisitor(StateId target, PooledSet<StateId> seen,
+        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited) : IParentWalkVisitor
+    {
+        public int WinnerIndex = -1;
+
+        public WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue)
+        {
+            if (from.BlockNumber < target.BlockNumber)
+            {
+                // In-memory snapshots are persistence-granular; overshoot means unusable edge. Persisted
+                // (especially compacted) snapshots can span past the target — accept as the terminal
+                // element without enqueuing further.
+                if (!viaPersisted) { snapshot.Dispose(); return WalkAction.Continue; }
+                WinnerIndex = visited.Count;
+                visited.Add((snapshot, parentIndex));
+                return WalkAction.Stop;
+            }
+
+            if (!seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; } // cycle
+
+            int idx = visited.Count;
+            visited.Add((snapshot, parentIndex));
+            if (from == target || from.BlockNumber == target.BlockNumber)
+            {
+                WinnerIndex = idx;
+                return WalkAction.Stop;
+            }
+            queue.Enqueue(new WalkNode(from, viaPersisted, idx));
+            return WalkAction.Continue;
+        }
+    }
+
     public AssembledSnapshotResult AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
     {
         if (baseBlock == targetState) return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
 
-        // BFS over the snapshot graph: each StateId node has up to 4 edges
-        // (compacted/base × in-memory/persisted). Once on a persisted edge,
-        // further in-memory edges are not explored.
         using ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = new(estimatedSize);
+        using PooledSet<StateId> seen = new();
+        using PooledQueue<WalkNode> queue = new();
         try
         {
-            Queue<(StateId current, bool isPersisted, int parentIndex)> queue = new();
-            HashSet<StateId> seen = [];
-            queue.Enqueue((baseBlock, false, -1));
             seen.Add(baseBlock);
-            int winnerIndex = -1;
+            AssembleVisitor visitor = new(targetState, seen, visited);
+            WalkParents(baseBlock, startViaPersisted: false, includePersisted: true, ref visitor, queue);
 
-            while (queue.Count > 0 && winnerIndex < 0)
-            {
-                (StateId current, bool currentPersisted, int parentIdx) = queue.Dequeue();
-
-                // The cursor's in-mem-base-before-persisted-base priority matters here: a
-                // persisted-base win would lock the rest of the BFS into the persisted tier
-                // (via the enqueue below), barring any wider in-mem compacted skip-pointer
-                // that might exist downstream.
-                ParentCursor edges = EnumerateParents(current, currentPersisted, includePersisted: true);
-                while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId from, out bool edgePersisted))
-                {
-                    if (from.BlockNumber < targetState.BlockNumber)
-                    {
-                        // In-memory snapshots are persistence-granular; overshoot means unusable edge.
-                        // Persisted (especially compacted) snapshots can span past the target — accept
-                        // as the terminal element without enqueuing further.
-                        if (!edgePersisted)
-                        {
-                            snapshot.Dispose();
-                            continue;
-                        }
-
-                        if (_logger.IsTrace) _logger.Trace($"BFS terminal persisted edge: {from} -> {current} spans below target {targetState} (persisted={edgePersisted})");
-                        int terminalIdx = visited.Count;
-                        visited.Add((snapshot, parentIdx));
-                        winnerIndex = terminalIdx;
-                        break;
-                    }
-
-                    // Cycle: already visited this node
-                    if (!seen.Add(from))
-                    {
-                        snapshot.Dispose();
-                        continue;
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace($"BFS edge: {from} -> {current} (persisted={edgePersisted})");
-
-                    int idx = visited.Count;
-                    visited.Add((snapshot, parentIdx));
-
-                    if (from == targetState || from.BlockNumber == targetState.BlockNumber)
-                    {
-                        winnerIndex = idx;
-                        break;
-                    }
-
-                    queue.Enqueue((from, edgePersisted, idx));
-                }
-            }
-
-            if (winnerIndex < 0)
+            if (visitor.WinnerIndex < 0)
                 return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
 
             // Reconstruct winning path and double-lease those snapshots so they
             // survive the finally block which disposes all visited entries.
             HashSet<int> pathIndices = [];
-            int walk = winnerIndex;
+            int walk = visitor.WinnerIndex;
             while (walk >= 0)
             {
                 pathIndices.Add(walk);
@@ -234,8 +218,8 @@ public class SnapshotRepository : ISnapshotRepository
         }
     }
 
-    public SnapshotPooledList AssembleSnapshotsUntil(in StateId baseBlock, long minBlockNumber, int estimatedSize)
-        => AssembleSnapshotsBfs(baseBlock, minBlockNumber, exactTarget: null, estimatedSize);
+    public SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId toStateId, long minBlockNumber, int estimatedSize)
+        => AssembleSnapshotsBfs(toStateId, minBlockNumber, exactTarget: null, estimatedSize);
 
     /// <summary>
     /// BFS over the snapshot graph from <paramref name="baseBlock"/> back toward
@@ -253,175 +237,171 @@ public class SnapshotRepository : ISnapshotRepository
     /// for compaction). `visited` owns a lease on every leased snapshot; the winning path is re-leased
     /// before the finally releases all of them.
     /// </remarks>
+    // In-memory-only path BFS: up to 2 edges per node, widest-jump first (in-memory compacted then base).
+    // Edges below minBlockNumber are pruned, so a wide compacted jump that overshoots is discarded for the
+    // narrower base edge. Wins at the first node reaching minBlockNumber (and equal to exactTarget when set).
+    // Holds an ArrayPoolListRef, so it must be a ref struct.
+    private ref struct AssembleBfsVisitor(long minBlockNumber, StateId? exactTarget, PooledSet<StateId> seen, int estimatedSize) : IParentWalkVisitor
+    {
+        public int WinnerIndex = -1;
+        public ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> Visited = new(estimatedSize);
+
+        public WalkAction Visit(IDisposable leased, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue)
+        {
+            // In-memory-only expansion — the lease is always a Snapshot.
+            Snapshot snapshot = (Snapshot)leased;
+
+            if (from.BlockNumber < minBlockNumber || !seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; }
+
+            int index = Visited.Count;
+            Visited.Add((snapshot, parentIndex));
+            if (from.BlockNumber == minBlockNumber && (exactTarget is not StateId target || from == target))
+            {
+                WinnerIndex = index;
+                return WalkAction.Stop;
+            }
+            queue.Enqueue(new WalkNode(from, viaPersisted, index)); // viaPersisted always false here
+            return WalkAction.Continue;
+        }
+    }
+
     private SnapshotPooledList AssembleSnapshotsBfs(in StateId baseBlock, long minBlockNumber, StateId? exactTarget, int estimatedSize)
     {
-        using ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> visited = new(estimatedSize);
-        using PooledQueue<(StateId Current, int ParentIndex)> queue = new();
+        using PooledQueue<WalkNode> queue = new();
         using PooledSet<StateId> seen = new();
+        AssembleBfsVisitor visitor = new(minBlockNumber, exactTarget, seen, estimatedSize);
         try
         {
-            queue.Enqueue((baseBlock, -1));
             seen.Add(baseBlock);
-            int winnerIndex = -1;
+            WalkParents(baseBlock, startViaPersisted: false, includePersisted: false, ref visitor, queue);
 
-            while (queue.Count > 0 && winnerIndex < 0)
-            {
-                (StateId current, int parentIndex) = queue.Dequeue();
-
-                ParentCursor edges = EnumerateParents(current, fromPersistedEdge: false, includePersisted: false);
-                while (edges.TryLeaseNext(out IDisposable? leased, out StateId from, out _))
-                {
-                    // In-memory-only expansion — the lease is always a Snapshot.
-                    Snapshot snapshot = (Snapshot)leased;
-
-                    if (from.BlockNumber < minBlockNumber || !seen.Add(from))
-                    {
-                        snapshot.Dispose();
-                        continue;
-                    }
-
-                    int index = visited.Count;
-                    visited.Add((snapshot, parentIndex));
-
-                    if (from.BlockNumber == minBlockNumber && (exactTarget is not StateId target || from == target))
-                    {
-                        winnerIndex = index;
-                        break;
-                    }
-
-                    queue.Enqueue((from, index));
-                }
-            }
-
-            if (winnerIndex < 0) return SnapshotPooledList.Empty();
+            if (visitor.WinnerIndex < 0) return SnapshotPooledList.Empty();
 
             // Walk winner -> root: yields ascending order directly (result[0].From == terminus,
             // result[^1].To == baseBlock).
             SnapshotPooledList result = new(estimatedSize);
-            for (int walk = winnerIndex; walk >= 0; walk = visited[walk].ParentIndex)
+            for (int walk = visitor.WinnerIndex; walk >= 0; walk = visitor.Visited[walk].ParentIndex)
             {
-                // `visited` still holds a lease, so re-acquire cannot fail; assert flags future
+                // `Visited` still holds a lease, so re-acquire cannot fail; assert flags future
                 // Snapshot lifecycle changes that could break this invariant.
-                bool acquired = visited[walk].Snapshot.TryAcquire();
+                bool acquired = visitor.Visited[walk].Snapshot.TryAcquire();
                 Debug.Assert(acquired, "TryAcquire failed despite held lease");
-                result.Add(visited[walk].Snapshot);
+                result.Add(visitor.Visited[walk].Snapshot);
             }
             return result;
         }
         finally
         {
-            for (int i = 0; i < visited.Count; i++)
-            {
-                visited[i].Snapshot.Dispose();
-            }
+            for (int i = 0; i < visitor.Visited.Count; i++)
+                visitor.Visited[i].Snapshot.Dispose();
+            visitor.Visited.Dispose();
         }
     }
 
-    /// <summary>
-    /// Parent-edge kinds of the two-tier snapshot DAG. The first four values are ordered by
-    /// <see cref="ParentCursor"/>'s expansion priority (in-RAM-tier-first / widest-first).
-    /// </summary>
-    private enum SnapshotEdge
+    /// <summary>Whether <paramref name="tier"/> is one of the persisted tiers (vs in-memory).</summary>
+    private static bool IsPersisted(SnapshotTier tier) => tier >= SnapshotTier.PersistedBase;
+
+    /// <summary>Guards the in-memory-only public methods: throws when <paramref name="tier"/> is persisted.</summary>
+    private static void EnsureInMemory(SnapshotTier tier)
     {
-        /// <summary>In-memory compacted — widest in-RAM hop, no disk read.</summary>
-        InMemoryCompacted,
-        /// <summary>In-memory base — narrow in-RAM hop, no disk read.</summary>
-        InMemoryBase,
-        /// <summary>Persisted compacted — &gt;CompactSize merges and the CompactSize persistable.</summary>
-        PersistedCompacted,
-        /// <summary>Persisted base — sub-CompactSize, narrowest persisted hop.</summary>
-        PersistedBase,
-        /// <summary>The CompactSize-wide persistable. Never expanded by <see cref="ParentCursor"/>;
-        /// only leased through explicit <see cref="TryLeaseParent"/> calls (see
-        /// <see cref="FindSnapshotToPersist"/>).</summary>
-        PersistedPersistable,
+        if (IsPersisted(tier))
+            throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only in-memory tiers are valid here.");
     }
 
     /// <summary>
     /// Edge seam over the two-tier snapshot DAG: given a node, leases the snapshot backing one of
-    /// its parent (<c>From</c>) edges. Callers own every lease and must dispose it on all paths.
+    /// its parent (<c>From</c>) edges in the given <paramref name="tier"/>. Callers own every lease
+    /// and must dispose it on all paths.
     /// </summary>
-    private bool TryLeaseParent(in StateId to, SnapshotEdge edge, [NotNullWhen(true)] out IDisposable? snapshot, out StateId from)
+    /// <remarks>The persisted-tier mapping is not 1:1 with the buckets: <see cref="SnapshotTier.PersistedCompacted"/>
+    /// leases from the compacted then the persistable bucket, so it doubles as the skip-pointer edge.</remarks>
+    private bool TryLeaseParent(in StateId to, SnapshotTier tier, [NotNullWhen(true)] out IDisposable? snapshot, out StateId from)
     {
-        switch (edge)
+        if (IsPersisted(tier))
         {
-            case SnapshotEdge.InMemoryCompacted:
-                if (TryLeaseCompactedState(to, out Snapshot? inMemoryCompacted))
-                {
-                    (snapshot, from) = (inMemoryCompacted, inMemoryCompacted.From);
-                    return true;
-                }
-                break;
-            case SnapshotEdge.InMemoryBase:
-                if (TryLeaseState(to, out Snapshot? inMemoryBase))
-                {
-                    (snapshot, from) = (inMemoryBase, inMemoryBase.From);
-                    return true;
-                }
-                break;
-            case SnapshotEdge.PersistedCompacted:
-                if (TryLeaseCompactedSnapshotTo(to, out PersistedSnapshot? persistedCompacted))
-                {
-                    (snapshot, from) = (persistedCompacted, persistedCompacted.From);
-                    return true;
-                }
-                break;
-            case SnapshotEdge.PersistedBase:
-                if (TryLeaseSnapshotTo(to, out PersistedSnapshot? persistedBase))
-                {
-                    (snapshot, from) = (persistedBase, persistedBase.From);
-                    return true;
-                }
-                break;
-            case SnapshotEdge.PersistedPersistable:
-                if (TryLeasePersistableCompactedSnapshotTo(to, out PersistedSnapshot? persistable))
-                {
-                    (snapshot, from) = (persistable, persistable.From);
-                    return true;
-                }
-                break;
+            if (TryLeasePersistedState(to, tier, out PersistedSnapshot? persisted))
+            {
+                (snapshot, from) = (persisted, persisted.From);
+                return true;
+            }
+        }
+        else if (TryLeaseInMemoryState(to, tier, out Snapshot? inMemory))
+        {
+            (snapshot, from) = (inMemory, inMemory.From);
+            return true;
         }
 
         (snapshot, from) = (null, default);
         return false;
     }
 
+    // Parent-edge expansion order for ParentCursor: in-RAM-tier-first, widest-first within a tier.
+    // PersistedPersistable is never expanded here (only leased explicitly via FindSnapshotToPersist).
+    // The order is explicit — it does NOT track SnapshotTier's numeric order.
+    private static readonly SnapshotTier[] FullExpansionPriority =
+    [
+        SnapshotTier.InMemoryCompacted,
+        SnapshotTier.InMemoryBase,
+        SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedBase,
+    ];
+
+    // includePersisted == false: only the in-memory edges.
+    private static readonly SnapshotTier[] InMemoryExpansionPriority =
+    [
+        SnapshotTier.InMemoryCompacted,
+        SnapshotTier.InMemoryBase,
+    ];
+
+    // fromPersistedEdge == true: `to` was reached over a persisted edge, so persisted snapshots only
+    // chain back to other persisted snapshots — the in-memory edges are guaranteed misses and skipped.
+    private static readonly SnapshotTier[] PersistedContinuationPriority =
+    [
+        SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedBase,
+    ];
+
     /// <summary>
-    /// Starts a priority-ordered expansion of <paramref name="to"/>'s parent edges:
-    /// <see cref="SnapshotEdge.InMemoryCompacted"/>, <see cref="SnapshotEdge.InMemoryBase"/>,
-    /// <see cref="SnapshotEdge.PersistedCompacted"/>, <see cref="SnapshotEdge.PersistedBase"/>.
+    /// Starts a priority-ordered expansion of <paramref name="to"/>'s parent edges
+    /// (see <see cref="FullExpansionPriority"/>).
     /// </summary>
     /// <param name="fromPersistedEdge">Whether <paramref name="to"/> was itself reached over a
     /// persisted edge. Persisted snapshots only chain back to other persisted snapshots, so the
     /// in-memory edges are guaranteed misses and are skipped.</param>
     /// <param name="includePersisted">When <see langword="false"/>, only the in-memory edges are expanded.</param>
-    private ParentCursor EnumerateParents(in StateId to, bool fromPersistedEdge, bool includePersisted) =>
-        new(this, to, fromPersistedEdge, includePersisted);
+    private ParentCursor EnumerateParents(in StateId to, bool fromPersistedEdge, bool includePersisted, bool compaction = false) =>
+        new(this, to, fromPersistedEdge, includePersisted, compaction);
 
     private struct ParentCursor
     {
         private readonly SnapshotRepository _repo;
         private readonly StateId _to;
-        private readonly SnapshotEdge _end; // Exclusive.
-        private SnapshotEdge _next;
+        private readonly SnapshotTier[] _priority;
+        private int _next;
 
-        internal ParentCursor(SnapshotRepository repo, in StateId to, bool fromPersistedEdge, bool includePersisted)
+        internal ParentCursor(SnapshotRepository repo, in StateId to, bool fromPersistedEdge, bool includePersisted, bool compaction)
         {
             _repo = repo;
             _to = to;
-            _next = fromPersistedEdge ? SnapshotEdge.PersistedCompacted : SnapshotEdge.InMemoryCompacted;
-            _end = includePersisted ? SnapshotEdge.PersistedPersistable : SnapshotEdge.PersistedCompacted;
+            // fromPersistedEdge is only ever passed together with includePersisted: true, so the
+            // persisted continuation always reaches the full persisted depth. The compaction mode is
+            // persisted-only and includes the CompactSize-wide persistable as a source.
+            _priority = compaction ? CompactionEdgePriority
+                : fromPersistedEdge ? PersistedContinuationPriority
+                : includePersisted ? FullExpansionPriority
+                : InMemoryExpansionPriority;
+            _next = 0;
         }
 
         /// <summary>Leases the next available parent edge in priority order. The caller owns the lease.</summary>
         public bool TryLeaseNext([NotNullWhen(true)] out IDisposable? snapshot, out StateId from, out bool viaPersistedEdge)
         {
-            while (_next < _end)
+            while (_next < _priority.Length)
             {
-                SnapshotEdge edge = _next++;
-                if (_repo.TryLeaseParent(_to, edge, out snapshot, out from))
+                SnapshotTier tier = _priority[_next++];
+                if (_repo.TryLeaseParent(_to, tier, out snapshot, out from))
                 {
-                    viaPersistedEdge = edge >= SnapshotEdge.PersistedCompacted;
+                    viaPersistedEdge = IsPersisted(tier);
                     return true;
                 }
             }
@@ -431,23 +411,69 @@ public class SnapshotRepository : ISnapshotRepository
         }
     }
 
+    private readonly struct WalkNode(in StateId current, bool viaPersisted, int parentIndex)
+    {
+        public readonly StateId Current = current;
+        public readonly bool ViaPersisted = viaPersisted;
+        public readonly int ParentIndex = parentIndex;
+    }
+
+    private enum WalkAction { Continue, Stop }
+
+    /// <summary>
+    /// Per-edge policy for <see cref="WalkParents{TVisitor}"/>. The visitor OWNS the lease handed to it:
+    /// dispose it and return <see cref="WalkAction.Continue"/> to skip the edge; retain it (e.g. in a
+    /// visited list) and enqueue the child via <paramref name="queue"/> to expand; or retain/dispose per
+    /// its own bookkeeping and return <see cref="WalkAction.Stop"/> to end the whole walk. The driver
+    /// never disposes a lease — there is exactly one owner at all times.
+    /// </summary>
+    private interface IParentWalkVisitor
+    {
+        WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue);
+    }
+
+    /// <summary>
+    /// Generic backward BFS over parent (<c>From</c>) edges via <see cref="EnumerateParents"/>. Owns only
+    /// the frontier and the edge-expansion loop; <typeparamref name="TVisitor"/> owns cycle detection,
+    /// pruning, the win condition, lease retention, and result building. <paramref name="queue"/> is
+    /// supplied by the caller (and cleared here) so a hot prune loop can reuse one instance.
+    /// </summary>
+    private void WalkParents<TVisitor>(in StateId start, bool startViaPersisted, bool includePersisted,
+            ref TVisitor visitor, PooledQueue<WalkNode> queue, bool compaction = false)
+        where TVisitor : struct, IParentWalkVisitor, allows ref struct
+    {
+        queue.Clear();
+        queue.Enqueue(new WalkNode(start, startViaPersisted, -1));
+
+        while (queue.Count > 0)
+        {
+            WalkNode node = queue.Dequeue();
+            ParentCursor edges = EnumerateParents(node.Current, node.ViaPersisted, includePersisted, compaction);
+            while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId from, out bool edgePersisted))
+            {
+                if (visitor.Visit(snapshot!, from, edgePersisted, node.ParentIndex, ref queue) == WalkAction.Stop)
+                    return;
+            }
+        }
+    }
+
     /// <summary>
     /// Phase 1 BFS — walks backward over the snapshot graph from <paramref name="seed"/> via
     /// <see cref="Snapshot.From"/> pointers, returning the first snapshot whose <c>From</c> equals
     /// <paramref name="currentPersistedState"/>. At each visited <c>StateId</c> the candidate
     /// sources are tried in the fixed <see cref="PersistEdgePriority"/> order:
     /// <list type="number">
-    ///   <item><see cref="SnapshotEdge.PersistedPersistable"/> — the CompactSize-wide
+    ///   <item><see cref="SnapshotTier.PersistedPersistable"/> — the CompactSize-wide
     ///   persistable (one persist covers the whole window)</item>
-    ///   <item><see cref="SnapshotEdge.PersistedBase"/> — a persisted base (fallback when the
+    ///   <item><see cref="SnapshotTier.PersistedBase"/> — a persisted base (fallback when the
     ///   persistable for this window has not been compacted yet)</item>
-    ///   <item><see cref="SnapshotEdge.InMemoryCompacted"/> filtered to depth == <paramref name="compactSize"/> —
+    ///   <item><see cref="SnapshotTier.InMemoryCompacted"/> filtered to depth == <paramref name="compactSize"/> —
     ///   in-memory boundary compacted</item>
-    ///   <item><see cref="SnapshotEdge.InMemoryBase"/> — in-memory base, depth == 1</item>
+    ///   <item><see cref="SnapshotTier.InMemoryBase"/> — in-memory base, depth == 1</item>
     /// </list>
     /// </summary>
     /// <remarks>
-    /// &gt;CompactSize compacted persisted entries (<see cref="SnapshotEdge.PersistedCompacted"/>,
+    /// &gt;CompactSize compacted persisted entries (<see cref="SnapshotTier.PersistedCompacted"/>,
     /// last in <see cref="PersistEdgePriority"/>) and non-boundary in-memory compacted entries
     /// are not returnable candidates; they are still traversed for navigation, acting as skip
     /// pointers that jump multiple blocks per hop and shorten the path to a candidate.
@@ -463,11 +489,11 @@ public class SnapshotRepository : ISnapshotRepository
 
         while (queue.TryDequeue(out StateId current))
         {
-            foreach (SnapshotEdge edge in PersistEdgePriority)
+            foreach (SnapshotTier tier in PersistEdgePriority)
             {
-                if (!TryLeaseParent(current, edge, out IDisposable? snapshot, out StateId from)) continue;
+                if (!TryLeaseParent(current, tier, out IDisposable? snapshot, out StateId from)) continue;
 
-                if (from == currentPersistedState && IsPersistCandidate(edge, current, from, compactSize))
+                if (from == currentPersistedState && IsPersistCandidate(tier, current, from, compactSize))
                 {
                     return snapshot is PersistedSnapshot persistedSnapshot
                         ? (persistedSnapshot, null)
@@ -482,19 +508,19 @@ public class SnapshotRepository : ISnapshotRepository
         return (null, null);
     }
 
-    private static readonly SnapshotEdge[] PersistEdgePriority =
+    private static readonly SnapshotTier[] PersistEdgePriority =
     [
-        SnapshotEdge.PersistedPersistable,
-        SnapshotEdge.PersistedBase,
-        SnapshotEdge.InMemoryCompacted,
-        SnapshotEdge.InMemoryBase,
-        SnapshotEdge.PersistedCompacted,
+        SnapshotTier.PersistedPersistable,
+        SnapshotTier.PersistedBase,
+        SnapshotTier.InMemoryCompacted,
+        SnapshotTier.InMemoryBase,
+        SnapshotTier.PersistedCompacted,
     ];
 
-    private static bool IsPersistCandidate(SnapshotEdge edge, in StateId to, in StateId from, int compactSize) => edge switch
+    private static bool IsPersistCandidate(SnapshotTier tier, in StateId to, in StateId from, int compactSize) => tier switch
     {
-        SnapshotEdge.PersistedCompacted => false,
-        SnapshotEdge.InMemoryCompacted => to.BlockNumber - from.BlockNumber == compactSize,
+        SnapshotTier.PersistedCompacted => false,
+        SnapshotTier.InMemoryCompacted => to.BlockNumber - from.BlockNumber == compactSize,
         _ => true,
     };
 
@@ -504,70 +530,96 @@ public class SnapshotRepository : ISnapshotRepository
             queue.Enqueue(from);
     }
 
-    /// <summary>
-    /// Assemble persisted snapshots for compaction, walking backward from <paramref name="toStateId"/>.
-    /// At each hop the widest persisted snapshot whose <c>From</c> does not span past
-    /// <paramref name="minBlockNumber"/> is chosen — compacted, then the CompactSize-wide
-    /// persistable, then base. Returns oldest-first, or empty if fewer than two are found.
-    /// </summary>
-    /// <remarks>
-    /// Per-edge selection reuses <see cref="TryLeaseParent"/> (persisted edges only), so each
-    /// candidate inspected is leased — overshooting ones are leased then disposed rather than
-    /// peeked. That trades a little work for sharing the single edge-lease path with the other walks.
-    /// </remarks>
-    public PersistedSnapshotList AssembleSnapshotsForCompaction(in StateId toStateId, long minBlockNumber)
-    {
-        PersistedSnapshotList result = new(0);
-        StateId current = toStateId;
-
-        while (true)
-        {
-            PersistedSnapshot? snapshot = SelectPersistedForCompaction(current, minBlockNumber);
-            if (snapshot is null) break;
-
-            result.Add(snapshot); // already leased by TryLeaseParent
-
-            if (snapshot.From == current) break;            // guard against a self-edge
-            if (snapshot.From.BlockNumber == minBlockNumber) break;
-            current = snapshot.From;
-        }
-
-        if (result.Count < 2)
-        {
-            result.Dispose();
-            return PersistedSnapshotList.Empty();
-        }
-
-        result.Reverse(); // oldest-first
-        return result;
-    }
-
-    // Widest-first persisted edge whose From does not span past minBlockNumber: compacted, then
-    // the CompactSize-wide persistable (the only source >CompactSize boundary compaction has),
-    // then base.
-    private static readonly SnapshotEdge[] CompactionEdgePriority =
+    // Persisted-only, widest-first compaction expansion: compacted, then the CompactSize-wide
+    // persistable (the only source >CompactSize boundary compaction has), then base. Used by the
+    // compaction mode of ParentCursor / WalkParents.
+    private static readonly SnapshotTier[] CompactionEdgePriority =
     [
-        SnapshotEdge.PersistedCompacted,
-        SnapshotEdge.PersistedPersistable,
-        SnapshotEdge.PersistedBase,
+        SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedPersistable,
+        SnapshotTier.PersistedBase,
     ];
 
-    private PersistedSnapshot? SelectPersistedForCompaction(in StateId current, long minBlockNumber)
+    // Best-effort persisted compaction tiling over the WalkParents driver (compaction edge set):
+    // prunes edges overshooting minBlockNumber, and tracks the deepest (lowest-block) node reached.
+    // Widest-first expansion + BFS means the first path to each depth is the widest one. The window
+    // need not be fully populated — a partial chain (whatever reaches the deepest block >= min) still
+    // merges, and a reachable full window wins immediately at min.
+    private ref struct PersistedCompactionVisitor(long minBlockNumber, PooledSet<StateId> seen, int estimatedSize) : IParentWalkVisitor
     {
-        foreach (SnapshotEdge edge in CompactionEdgePriority)
+        public ArrayPoolListRef<(PersistedSnapshot Snapshot, int ParentIndex)> Visited = new(estimatedSize);
+        public int WinnerIndex = -1;
+        private long _winnerBlock = long.MaxValue;
+
+        public WalkAction Visit(IDisposable leased, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue)
         {
-            if (!TryLeaseParent(current, edge, out IDisposable? leased, out StateId from)) continue;
-            PersistedSnapshot persisted = (PersistedSnapshot)leased;
-            if (from.BlockNumber >= minBlockNumber) return persisted;
-            persisted.Dispose(); // overshoots the window — release and try a narrower edge
+            // Compaction expansion is persisted-only — the lease is always a PersistedSnapshot.
+            PersistedSnapshot snapshot = (PersistedSnapshot)leased;
+            if (from.BlockNumber < minBlockNumber || !seen.Add(from)) { snapshot.Dispose(); return WalkAction.Continue; }
+
+            int index = Visited.Count;
+            Visited.Add((snapshot, parentIndex));
+            if (from.BlockNumber < _winnerBlock)
+            {
+                _winnerBlock = from.BlockNumber;
+                WinnerIndex = index;
+            }
+
+            if (from.BlockNumber == minBlockNumber) return WalkAction.Stop; // window start — deepest possible
+            queue.Enqueue(new WalkNode(from, viaPersisted, index));
+            return WalkAction.Continue;
         }
-        return null;
     }
 
-    public bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
+    /// <summary>
+    /// Best-effort backward BFS over the persisted tier from <paramref name="toStateId"/>, returning the
+    /// contiguous chain reaching the deepest block <c>&gt;= </c><paramref name="minBlockNumber"/>
+    /// (oldest-first). The window need not be fully populated; returns empty when fewer than two
+    /// snapshots are found.
+    /// </summary>
+    public PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, long minBlockNumber)
     {
+        int estimatedSize = (int)Math.Clamp(toStateId.BlockNumber - minBlockNumber, 4, 4096);
+        using PooledQueue<WalkNode> queue = new();
+        using PooledSet<StateId> seen = new();
+        PersistedCompactionVisitor visitor = new(minBlockNumber, seen, estimatedSize);
+        try
+        {
+            seen.Add(toStateId);
+            WalkParents(toStateId, startViaPersisted: true, includePersisted: true, ref visitor, queue, compaction: true);
+
+            if (visitor.WinnerIndex < 0) return PersistedSnapshotList.Empty();
+
+            // Walk winner -> root: oldest-first (result[0].From == deepest terminus, result[^1].To == toStateId).
+            PersistedSnapshotList result = new(estimatedSize);
+            for (int walk = visitor.WinnerIndex; walk >= 0; walk = visitor.Visited[walk].ParentIndex)
+            {
+                bool acquired = visitor.Visited[walk].Snapshot.TryAcquire();
+                Debug.Assert(acquired, "TryAcquire failed despite held lease");
+                result.Add(visitor.Visited[walk].Snapshot);
+            }
+
+            if (result.Count < 2)
+            {
+                result.Dispose();
+                return PersistedSnapshotList.Empty();
+            }
+            return result;
+        }
+        finally
+        {
+            for (int i = 0; i < visitor.Visited.Count; i++)
+                visitor.Visited[i].Snapshot.Dispose();
+            visitor.Visited.Dispose();
+        }
+    }
+
+    public bool TryLeaseInMemoryState(in StateId stateId, SnapshotTier tier, [NotNullWhen(true)] out Snapshot? entry)
+    {
+        EnsureInMemory(tier);
+        ConcurrentDictionary<StateId, Snapshot> snapshots = tier == SnapshotTier.InMemoryBase ? _snapshots : _compactedSnapshots;
         SpinWait sw = new();
-        while (_compactedSnapshots.TryGetValue(stateId, out entry))
+        while (snapshots.TryGetValue(stateId, out entry))
         {
             if (entry.TryAcquire()) return true;
 
@@ -576,20 +628,26 @@ public class SnapshotRepository : ISnapshotRepository
         return false;
     }
 
-    public bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
+    public bool TryAdd(Snapshot snapshot, SnapshotTier tier)
     {
-        SpinWait sw = new();
-        while (_snapshots.TryGetValue(stateId, out entry))
+        EnsureInMemory(tier);
+        if (tier == SnapshotTier.InMemoryBase)
         {
-            if (entry.TryAcquire()) return true;
+            if (_snapshots.TryAdd(snapshot.To, snapshot))
+            {
+                Interlocked.Increment(ref _snapshotCount);
+                Metrics.SnapshotCount++;
 
-            sw.SpinOnce();
+                long totalBytes = snapshot.EstimateMemory();
+                Metrics.SnapshotMemory += totalBytes;
+                Metrics.TotalSnapshotMemory += totalBytes;
+
+                return true;
+            }
+
+            return false;
         }
-        return false;
-    }
 
-    public bool TryAddCompactedSnapshot(Snapshot snapshot)
-    {
         if (_compactedSnapshots.TryAdd(snapshot.To, snapshot))
         {
             Interlocked.Increment(ref _compactedSnapshotCount);
@@ -598,23 +656,6 @@ public class SnapshotRepository : ISnapshotRepository
             long compactedBytes = snapshot.Content.EstimateCompactedMemory();
             Metrics.CompactedSnapshotMemory += compactedBytes;
             Metrics.TotalSnapshotMemory += compactedBytes;
-
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool TryAddSnapshot(Snapshot snapshot)
-    {
-        if (_snapshots.TryAdd(snapshot.To, snapshot))
-        {
-            Interlocked.Increment(ref _snapshotCount);
-            Metrics.SnapshotCount++;
-
-            long totalBytes = snapshot.EstimateMemory();
-            Metrics.SnapshotMemory += totalBytes;
-            Metrics.TotalSnapshotMemory += totalBytes;
 
             return true;
         }
@@ -648,28 +689,29 @@ public class SnapshotRepository : ISnapshotRepository
         return sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
     }
 
-    public bool RemoveAndReleaseCompactedKnownState(in StateId stateId)
+    public bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier)
     {
-        if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
+        EnsureInMemory(tier);
+        if (tier == SnapshotTier.InMemoryCompacted)
         {
-            Interlocked.Decrement(ref _compactedSnapshotCount);
-            Metrics.CompactedSnapshotCount--;
+            if (_compactedSnapshots.TryRemove(stateId, out Snapshot? existingState))
+            {
+                Interlocked.Decrement(ref _compactedSnapshotCount);
+                Metrics.CompactedSnapshotCount--;
 
-            long compactedBytes = existingState.Content.EstimateCompactedMemory();
-            Metrics.CompactedSnapshotMemory -= compactedBytes;
-            Metrics.TotalSnapshotMemory -= compactedBytes;
+                long compactedBytes = existingState.Content.EstimateCompactedMemory();
+                Metrics.CompactedSnapshotMemory -= compactedBytes;
+                Metrics.TotalSnapshotMemory -= compactedBytes;
 
-            existingState.Dispose();
+                existingState.Dispose();
 
-            return true;
+                return true;
+            }
+
+            return false;
         }
 
-        return false;
-    }
-
-    public void RemoveAndReleaseKnownState(in StateId stateId)
-    {
-        if (_snapshots.TryRemove(stateId, out Snapshot? existingState))
+        if (_snapshots.TryRemove(stateId, out Snapshot? existing))
         {
             Interlocked.Decrement(ref _snapshotCount);
             Metrics.SnapshotCount--;
@@ -681,12 +723,16 @@ public class SnapshotRepository : ISnapshotRepository
                     _lastRegisteredState = sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
             }
 
-            long totalBytes = existingState.EstimateMemory();
+            long totalBytes = existing.EstimateMemory();
             Metrics.SnapshotMemory -= totalBytes;
             Metrics.TotalSnapshotMemory -= totalBytes;
 
-            existingState.Dispose(); // After memory
+            existing.Dispose(); // After memory
+
+            return true;
         }
+
+        return false;
     }
 
     public bool HasState(in StateId stateId)
@@ -696,7 +742,7 @@ public class SnapshotRepository : ISnapshotRepository
         return false;
     }
 
-    public ArrayPoolList<StateId> GetSnapshotBeforeStateId(long blockNumber)
+    public ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber)
     {
         if (blockNumber < 0)
             return ArrayPoolList<StateId>.Empty();
@@ -710,11 +756,12 @@ public class SnapshotRepository : ISnapshotRepository
 
     public void RemoveStatesUntil(long blockNumber)
     {
-        using ArrayPoolList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(blockNumber);
-        foreach (StateId stateToRemove in statesBeforeStateId)
+        using ArrayPoolList<StateId> statesUpToBlock = GetStatesUpToBlock(blockNumber);
+        foreach (StateId stateToRemove in statesUpToBlock)
         {
-            RemoveAndReleaseCompactedKnownState(stateToRemove);
-            RemoveAndReleaseKnownState(stateToRemove);
+            // A To can exist in both in-memory tiers — remove from each.
+            RemoveAndReleaseInMemoryKnownState(stateToRemove, SnapshotTier.InMemoryCompacted);
+            RemoveAndReleaseInMemoryKnownState(stateToRemove, SnapshotTier.InMemoryBase);
         }
     }
 
@@ -738,7 +785,7 @@ public class SnapshotRepository : ISnapshotRepository
         long batchStart = canonicalBlock + 1;
         int totalPruned = 0;
 
-        using PooledStack<(StateId State, bool IsPersisted)> stack = new();
+        using PooledQueue<WalkNode> queue = new();
         using PooledSet<StateId> seen = new();
 
         while (batchStart <= maxBlock)
@@ -750,10 +797,11 @@ public class SnapshotRepository : ISnapshotRepository
             {
                 foreach (StateId stateId in inMemory)
                 {
-                    if (!CanReachState(stateId, canonicalStateId, stack, seen))
+                    if (!CanReachState(stateId, canonicalStateId, queue, seen))
                     {
-                        RemoveAndReleaseCompactedKnownState(stateId);
-                        RemoveAndReleaseKnownState(stateId);
+                        // A To can exist in both in-memory tiers — remove from each.
+                        RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryCompacted);
+                        RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryBase);
                         totalPruned++;
                     }
                 }
@@ -766,7 +814,7 @@ public class SnapshotRepository : ISnapshotRepository
             {
                 foreach (StateId stateId in persisted)
                 {
-                    if (!CanReachState(stateId, canonicalStateId, stack, seen)
+                    if (!CanReachState(stateId, canonicalStateId, queue, seen)
                         && RemovePersistedStateExact(stateId))
                     {
                         totalPruned++;
@@ -801,33 +849,33 @@ public class SnapshotRepository : ISnapshotRepository
     /// tier is required so a canonical in-memory state whose ancestry descends through a converted
     /// snapshot is not mistaken for an orphan.
     /// </remarks>
-    private bool CanReachState(in StateId from, in StateId target, PooledStack<(StateId State, bool IsPersisted)> stack, PooledSet<StateId> seen)
+    // Reachability only reads each parent's From, never retains a lease. BFS (the order is irrelevant
+    // for a boolean reachability result).
+    private struct CanReachVisitor(StateId target, PooledSet<StateId> seen) : IParentWalkVisitor
+    {
+        public bool Reached = false;
+
+        public WalkAction Visit(IDisposable snapshot, in StateId from, bool viaPersisted, int parentIndex, ref PooledQueue<WalkNode> queue)
+        {
+            snapshot.Dispose();
+
+            if (from == target) { Reached = true; return WalkAction.Stop; }
+            if (from.BlockNumber > target.BlockNumber && seen.Add(from))
+                queue.Enqueue(new WalkNode(from, viaPersisted, parentIndex));
+            return WalkAction.Continue;
+        }
+    }
+
+    private bool CanReachState(in StateId from, in StateId target, PooledQueue<WalkNode> queue, PooledSet<StateId> seen)
     {
         if (from == target) return true;
         if (from.BlockNumber <= target.BlockNumber) return false;
 
-        stack.Clear();
         seen.Clear();
-        stack.Push((from, false));
         seen.Add(from);
-
-        while (stack.Count > 0)
-        {
-            (StateId current, bool currentPersisted) = stack.Pop();
-
-            ParentCursor edges = EnumerateParents(current, currentPersisted, includePersisted: true);
-            while (edges.TryLeaseNext(out IDisposable? snapshot, out StateId parent, out bool edgePersisted))
-            {
-                snapshot.Dispose();
-
-                if (parent == target) return true;
-                if (parent.BlockNumber > target.BlockNumber && seen.Add(parent))
-                {
-                    stack.Push((parent, edgePersisted));
-                }
-            }
-        }
-        return false;
+        CanReachVisitor visitor = new(target, seen);
+        WalkParents(from, startViaPersisted: false, includePersisted: true, ref visitor, queue);
+        return visitor.Reached;
     }
 
     private ArrayPoolListRef<StateId> GetStatesInRange(long blockStartInclusive, long blockEndInclusive)
@@ -847,7 +895,7 @@ public class SnapshotRepository : ISnapshotRepository
 
     /// <summary>
     /// Load the persisted snapshots from the catalog at construction, routing each into its bucket
-    /// by the stored <see cref="SnapshotKind"/> (range alone cannot tell a base from a
+    /// by the stored <see cref="SnapshotTier"/> (range alone cannot tell a base from a
     /// sub-<c>CompactSize</c> compacted snapshot apart). For catalogs above
     /// <see cref="ParallelLoadThreshold"/> entries, the per-entry arena/blob lease work
     /// runs on <see cref="Parallel.ForEach"/> with a heartbeat <see cref="ProgressLogger"/>;
@@ -869,13 +917,7 @@ public class SnapshotRepository : ISnapshotRepository
         // Serial post-pass: build the ordered sets from the now-populated dicts.
         foreach (SnapshotCatalog.CatalogEntry entry in entries)
         {
-            SnapshotBucket bucket = entry.Kind switch
-            {
-                SnapshotKind.Compacted => _compacted,
-                SnapshotKind.Persistable => _persistable,
-                _ => _base,
-            };
-            bucket.RegisterOrdered(entry.To);
+            BucketFor(entry.Tier).RegisterOrdered(entry.To);
         }
 
         // Delete any blob arena file no loaded snapshot referenced — recoverable
@@ -939,133 +981,64 @@ public class SnapshotRepository : ISnapshotRepository
         // AlwaysTrue placeholder (correct, but unfiltered). LoadFromCatalog's ReconstructBloom
         // pass replaces it with the snapshot's real bloom once every snapshot is in place.
 
-        // Route by the stored Kind, not by the To-From distance: a base and a sub-CompactSize
+        // Route by the stored tier, not by the To-From distance: a base and a sub-CompactSize
         // compacted snapshot can span the same number of blocks, so range alone cannot tell
         // them apart.
-        SnapshotBucket bucket = entry.Kind switch
-        {
-            SnapshotKind.Compacted => _compacted,
-            SnapshotKind.Persistable => _persistable,
-            _ => _base,
-        };
-        bucket.Set(entry.To, snapshot);
+        BucketFor(entry.Tier).Set(entry.To, snapshot);
     }
 
     /// <summary>
-    /// Persist an in-memory snapshot as a base input: write its HSST metadata + a contiguous
-    /// trie-RLP region into the arena / blob pools (the region is recorded in the metadata
-    /// HSST's <c>blob_range</c> key by the builder), and insert it into <see cref="_base"/>.
+    /// Store a pre-built persisted snapshot with a pre-computed location and reservation into the
+    /// bucket selected by <paramref name="tier"/>. The snapshot's referenced blob arena ids are read
+    /// off its own metadata HSST by the <see cref="PersistedSnapshot"/> ctor, which leases each one
+    /// and rolls back on partial failure.
     /// </summary>
-    public PersistedSnapshot ConvertSnapshotToPersistedSnapshot(Snapshot snapshot)
-    {
-        // One unified bloom covering account/slot/SD keys + state-trie + storage-trie paths.
-        // Sized as the union of both expected key counts at the configured bits-per-key.
-        BloomFilter bloom;
-        if (BloomEnabled)
-        {
-            long capacity = (long)snapshot.AccountsCount
-                          + snapshot.Content.SelfDestructedStorageAddresses.Count
-                          + 2L * snapshot.StoragesCount
-                          + snapshot.StateNodesCount
-                          + snapshot.StorageNodesCount;
-            bloom = new BloomFilter(Math.Max(capacity, 1), _bloomBitsPerKey);
-        }
-        else
-        {
-            bloom = BloomFilter.AlwaysTrue();
-        }
-
-        long estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
-
-        SnapshotLocation location;
-        ArenaReservation reservation;
-        using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize);
-        using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize))
-        {
-            PersistedSnapshotBuilder.Build<ArenaBufferWriter>(
-                snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
-            Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written, _tierLabel);
-            (location, reservation) = arenaWriter.Complete();
-        }
-        blobWriter.Complete();
-
-        // Durability barrier — fsync both the metadata arena and the blob arena before the
-        // catalog records the new entry. A crash between this point and the next persistence
-        // checkpoint would otherwise leave the catalog pointing at unsynced pages whose
-        // contents are not yet guaranteed to be on disk.
-        reservation.Fsync();
-        blobWriter.Fsync();
-
-        // PersistedSnapshot's ctor reads its own ref_ids metadata and leases each blob
-        // arena file, and reads its contiguous blob run from the blob_range metadata key the
-        // builder wrote. The single id written above (blobWriter.BlobArenaId) is the only
-        // entry the new metadata carries, so the ctor's iterator yields exactly that id.
-        PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs, bloom);
-        if (_validatePersistedSnapshot)
-            PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
-        // Add records the catalog entry, indexes the snapshot, and pre-acquires the caller's
-        // lease under the bucket's lock so a racing RemovePersistedStatesUntil can't dispose the
-        // entry between insert and the caller seeing the return.
-        _base.Add(snapshot.From, snapshot.To, location, persisted);
-
-        // Release the metadata writer's creation lease (PersistedSnapshot took its own in
-        // the ctor). The blob writer's creation lease is dropped automatically when its
-        // `using` scope exits — BlobArenaWriter.Dispose calls BlobArenaFile.Dispose.
-        reservation.Dispose();
-        return persisted;
-    }
-
-    /// <summary>
-    /// Store a compacted snapshot with a pre-computed location and reservation. The
-    /// snapshot's referenced blob arena ids are read off its own metadata HSST by the
-    /// <see cref="PersistedSnapshot"/> ctor, which leases each one and rolls back on
-    /// partial failure. <paramref name="isPersistable"/> routes a <c>CompactSize</c>-wide
-    /// merge into <see cref="_persistable"/> (the RocksDB-bound bucket);
-    /// otherwise it lands in <see cref="_compacted"/>.
-    /// </summary>
-    public PersistedSnapshot AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, bool isPersistable = false)
+    public PersistedSnapshot AddPersistedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter bloom, SnapshotTier tier)
     {
         PersistedSnapshot snapshot = new(from, to, reservation, _blobs, bloom: bloom);
-        // Add records the catalog entry (with the bucket's own SnapshotKind), indexes the
+        // Add records the catalog entry (with the bucket's own SnapshotTier), indexes the
         // snapshot, and pre-acquires the caller's lease under the bucket's lock so a racing
         // RemovePersistedStatesUntil on a background compactor thread can't dispose it between
         // insert and the caller seeing the return.
-        (isPersistable ? _persistable : _compacted).Add(from, to, location, snapshot);
+        BucketFor(tier).Add(from, to, location, snapshot);
 
-        // Release the caller's "creation" lease — see ConvertSnapshotToPersistedSnapshot.
+        // Release the caller's "creation" lease — the bucket pre-acquired its own above.
         reservation.Dispose();
         return snapshot;
     }
 
-    public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
-    {
-        if (_base.TryGet(toState, out snapshot) && snapshot.TryAcquire())
-            return true;
-        snapshot = null;
-        return false;
-    }
-
-    public bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
-    {
-        if (_compacted.TryGet(toState, out snapshot) && snapshot.TryAcquire())
-            return true;
-        if (_persistable.TryGet(toState, out snapshot) && snapshot.TryAcquire())
-            return true;
-        snapshot = null;
-        return false;
-    }
-
     /// <summary>
-    /// Lease the <c>CompactSize</c>-wide persistable snapshot ending at <paramref name="toState"/>
-    /// — the candidate <c>PersistenceManager</c> writes to RocksDB.
+    /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket(s) backing
+    /// <paramref name="tier"/>. <see cref="SnapshotTier.PersistedCompacted"/> spans both the compacted
+    /// and persistable buckets (it doubles as the skip-pointer edge); the other two map to a single
+    /// bucket. <paramref name="tier"/> must be a <c>Persisted*</c> value. Caller disposes the lease.
     /// </summary>
-    public bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    public bool TryLeasePersistedState(in StateId toState, SnapshotTier tier, [NotNullWhen(true)] out PersistedSnapshot? snapshot) => tier switch
     {
-        if (_persistable.TryGet(toState, out snapshot) && snapshot.TryAcquire())
+        SnapshotTier.PersistedBase => TryLeaseFrom(_base, toState, out snapshot),
+        SnapshotTier.PersistedCompacted => TryLeaseFrom(_compacted, toState, out snapshot) || TryLeaseFrom(_persistable, toState, out snapshot),
+        SnapshotTier.PersistedPersistable => TryLeaseFrom(_persistable, toState, out snapshot),
+        _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
+    };
+
+    private static bool TryLeaseFrom(SnapshotBucket bucket, in StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    {
+        if (bucket.TryGet(toState, out snapshot) && snapshot.TryAcquire())
             return true;
         snapshot = null;
         return false;
     }
+
+    /// <summary>The single bucket owning a persisted-tier catalog entry. Each entry carries exactly
+    /// one <c>Persisted*</c> tier, so this is a 1:1 map (unlike leasing, where the compacted edge
+    /// spans two buckets).</summary>
+    private SnapshotBucket BucketFor(SnapshotTier tier) => tier switch
+    {
+        SnapshotTier.PersistedBase => _base,
+        SnapshotTier.PersistedCompacted => _compacted,
+        SnapshotTier.PersistedPersistable => _persistable,
+        _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
+    };
 
     /// <summary>
     /// Lease every base snapshot tiling <c>(from, to]</c>, walking <c>From</c> pointers back
@@ -1226,7 +1199,7 @@ public class SnapshotRepository : ISnapshotRepository
     }
 
     /// <summary>
-    /// One self-contained snapshot bucket for a single <see cref="SnapshotKind"/>: a <c>To</c>-keyed
+    /// One self-contained snapshot bucket for a single persisted <see cref="SnapshotTier"/>: a <c>To</c>-keyed
     /// <see cref="ConcurrentDictionary{TKey,TValue}"/> for lock-free point lookups, a block-ordered
     /// <see cref="SortedSet{T}"/> of its <c>To</c>s, and running memory/count totals — all guarded by
     /// the bucket's own <see cref="Lock"/>. The bucket owns its share of the shared catalog and the
@@ -1237,7 +1210,7 @@ public class SnapshotRepository : ISnapshotRepository
     /// point lookups lock-free. The lock only serialises ordered-set mutation, catalog writes, and
     /// the lease/dispose handoff so a racing prune cannot dispose an entry between insert and return.
     /// </remarks>
-    private sealed class SnapshotBucket(SnapshotCatalog catalog, SnapshotKind kind)
+    private sealed class SnapshotBucket(SnapshotCatalog catalog, SnapshotTier tier)
     {
         private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _byTo = new();
         private readonly SortedSet<StateId> _ordered = [];
@@ -1250,7 +1223,7 @@ public class SnapshotRepository : ISnapshotRepository
 
         // The process-wide memory gauge for this bucket's tier: base snapshots and the
         // compacted/persistable tiers are tracked under separate aggregates.
-        private ref long GlobalMemory => ref (kind == SnapshotKind.Base
+        private ref long GlobalMemory => ref (tier == SnapshotTier.PersistedBase
             ? ref Metrics._persistedSnapshotMemory
             : ref Metrics._compactedPersistedSnapshotMemory);
 
@@ -1293,7 +1266,7 @@ public class SnapshotRepository : ISnapshotRepository
 
         /// <summary>
         /// Runtime insert of a freshly persisted snapshot: write its catalog entry (tagged with this
-        /// bucket's <see cref="SnapshotKind"/>), index it (dictionary + ordered set + totals), and
+        /// bucket's <see cref="SnapshotTier"/>), index it (dictionary + ordered set + totals), and
         /// pre-acquire the caller's lease — all under this bucket's lock so a racing prune cannot
         /// dispose the entry between insert and the caller seeing the return.
         /// </summary>
@@ -1301,7 +1274,7 @@ public class SnapshotRepository : ISnapshotRepository
         {
             lock (_lock)
             {
-                catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, kind));
+                catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
                 Set(to, snapshot);
                 _ordered.Add(to);
                 snapshot.AcquireLease();

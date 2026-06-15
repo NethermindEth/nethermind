@@ -31,6 +31,7 @@ public class PersistenceManagerTests
     private SnapshotRepository _snapshotRepository = null!;
     private IPersistence _persistence = null!;
     private IPersistedSnapshotCompactor _persistedSnapshotCompactor = null!;
+    private IPersistedSnapshotConverter _converter = null!;
     private ResourcePool _resourcePool = null!;
     private StateId Block0 = new(0, Keccak.EmptyTreeHash);
 
@@ -50,6 +51,8 @@ public class PersistenceManagerTests
         _finalizedStateProvider = new TestFinalizedStateProvider();
         // SnapshotRepository now owns both tiers over a real temp-dir-backed persisted store.
         _snapshotRepository = SnapshotRepositoryTestFactory.Create();
+        _converter = new PersistedSnapshotConverter(
+            _snapshotRepository.ArenaManager, _snapshotRepository.BlobArenaManager, _config, _snapshotRepository);
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -65,7 +68,8 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            _persistedSnapshotCompactor);
+            _persistedSnapshotCompactor,
+            _converter);
     }
 
     [TearDown]
@@ -90,11 +94,11 @@ public class PersistenceManagerTests
 
         if (compacted)
         {
-            _snapshotRepository.TryAddCompactedSnapshot(snapshot);
+            _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryCompacted);
         }
         else
         {
-            _snapshotRepository.TryAddSnapshot(snapshot);
+            _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
         }
 
         // AddStateId is needed for GetStatesAtBlockNumber to work
@@ -108,7 +112,7 @@ public class PersistenceManagerTests
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
-        _snapshotRepository.ConvertSnapshotToPersistedSnapshot(snapshot).Dispose();
+        _snapshotRepository.ConvertToPersistedBase(snapshot).Dispose();
     }
 
     private Snapshot CreateSnapshotWithSelfDestruct(StateId from, StateId to)
@@ -181,7 +185,7 @@ public class PersistenceManagerTests
     public async Task DetermineSnapshotAction_LongFinalityDisabled_SkipsConversionPath()
     {
         // In-memory depth ~301, finality stalled at block 10. With EnableLongFinality off, the
-        // conversion path must not fire and we must not call ConvertSnapshotToPersistedSnapshot.
+        // conversion path must not fire and we must not invoke the converter.
         await _persistenceManager.DisposeAsync();
         _config.EnableLongFinality = false;
         _persistenceManager = new PersistenceManager(
@@ -191,7 +195,8 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            _persistedSnapshotCompactor);
+            _persistedSnapshotCompactor,
+            _converter);
 
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);
@@ -319,17 +324,17 @@ public class PersistenceManagerTests
 
         Assert.That(_snapshotRepository.HasState(outsider), Is.True);
 
-        _snapshotRepository.TryLeaseCompactedState(compactedTo, out Snapshot? compactedForConvert);
+        _snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out Snapshot? compactedForConvert);
         InvokeDoConvert(new PersistenceManager.ConversionCandidate(compactedForConvert!, Base: null));
 
         Assert.Multiple(() =>
         {
             Assert.That(_snapshotRepository.HasState(outsider), Is.True, "state below `start` must survive");
             // Gathered states are converted into the persisted tier (so HasState still sees them) but
-            // must be dropped from the in-memory tier — check in-memory presence via TryLeaseState.
-            Assert.That(_snapshotRepository.TryLeaseState(baseA, out _), Is.False, "baseA removed from the in-memory tier");
-            Assert.That(_snapshotRepository.TryLeaseState(baseB, out _), Is.False, "baseB removed from the in-memory tier");
-            Assert.That(_snapshotRepository.TryLeaseCompactedState(compactedTo, out _), Is.False, "boundary compacted removed");
+            // must be dropped from the in-memory tier — check in-memory presence via TryLeaseInMemoryState.
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseA, SnapshotTier.InMemoryBase, out _), Is.False, "baseA removed from the in-memory tier");
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseB, SnapshotTier.InMemoryBase, out _), Is.False, "baseB removed from the in-memory tier");
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out _), Is.False, "boundary compacted removed");
         });
     }
 
@@ -343,7 +348,8 @@ public class PersistenceManagerTests
         StateId to = CreateStateId(16);
         StateId latest = CreateStateId(100);
 
-        using Snapshot snapshot = CreateSnapshot(from, to, compacted: true);
+        // AddToPersistence persists then prunes this in-memory snapshot, so the repo owns its disposal.
+        _ = CreateSnapshot(from, to, compacted: true);
 
         // A persisted entry below the new persisted block must be pruned by the persist.
         StateId stale = CreateStateId(8);
@@ -596,7 +602,8 @@ public class PersistenceManagerTests
         StateId to = CreateStateId(16);
         StateId latest = CreateStateId(100);
 
-        using Snapshot snapshot = CreateSnapshot(from, to, compacted: true);
+        // AddToPersistence persists then prunes this in-memory snapshot, so the repo owns its disposal.
+        _ = CreateSnapshot(from, to, compacted: true);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));

@@ -75,13 +75,13 @@ public class PersistedSnapshotCompactorTests
                 // and the slot merge sees N inputs with N unique slot keys.
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
                 c.Storages[(TestItem.AddressA, (UInt256)i)] = new SlotValue(new byte[] { (byte)i });
-                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
                 prev = next;
             }
 
             compactor.DoCompactSnapshot(prev);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             try
             {
                 Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
@@ -154,14 +154,14 @@ public class PersistedSnapshotCompactorTests
                 SnapshotContent c = new();
                 TestFixtureHelpers.AddSequentialSlots(c, TestItem.AddressA,
                     firstSlot: (i - 1) * slotsPerSnapshot + 1, count: slotsPerSnapshot);
-                repo.ConvertSnapshotToPersistedSnapshot(
+                repo.ConvertToPersistedBase(
                     new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
                 prev = next;
             }
 
             compactor.DoCompactSnapshot(prev);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             try
             {
                 int totalSlots = snapshotCount * slotsPerSnapshot;
@@ -227,12 +227,12 @@ public class PersistedSnapshotCompactorTests
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("s1"));
             StateId s2 = new(2, Keccak.Compute("s2"));
-            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
             compactor.DoCompactSnapshot(s2);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 BloomFilter bloom = compacted!.Bloom;
@@ -309,12 +309,12 @@ public class PersistedSnapshotCompactorTests
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("p1"));
             StateId s2 = new(2, Keccak.Compute("p2"));
-            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
             compactor.DoCompactSnapshot(s2);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 Assert.Multiple(() =>
@@ -379,13 +379,13 @@ public class PersistedSnapshotCompactorTests
                 SnapshotContent c = new();
                 c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
                 c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [(byte)(0xC1), (byte)i]);
-                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                repo.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
                 prev = states[i];
             }
 
             for (int i = 1; i <= 8; i++)
             {
-                Assert.That(repo.TryLeaseSnapshotTo(states[i], out PersistedSnapshot? baseSnap), Is.True);
+                Assert.That(repo.TryLeasePersistedState(states[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseSnap), Is.True);
                 using (baseSnap)
                 {
                     using WholeReadSession session = baseSnap!.BeginWholeReadSession();
@@ -399,7 +399,7 @@ public class PersistedSnapshotCompactorTests
 
             compactor.DoCompactSnapshot(states[8]);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 using WholeReadSession session = compacted!.BeginWholeReadSession();
@@ -706,13 +706,13 @@ public class PersistedSnapshotCompactorTests
             for (int i = 0; i < contents.Length; i++)
             {
                 states[i + 1] = new StateId(i + 1, Keccak.Compute($"{i + 1}"));
-                repo.ConvertSnapshotToPersistedSnapshot(
+                repo.ConvertToPersistedBase(
                     new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             }
 
             compactor.DoCompactSnapshot(states[contents.Length]);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(states[contents.Length], out PersistedSnapshot? compacted), Is.True,
+            Assert.That(repo.TryLeasePersistedState(states[contents.Length], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
                 "Expected a compacted snapshot to exist after DoCompactSnapshot");
             using (compacted)
             {
@@ -783,20 +783,20 @@ public class PersistedSnapshotCompactorTests
             {
                 SnapshotContent content = new();
                 content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
-                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                repo.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             }
 
             compactor.DoCompactSnapshot(states[8]);
 
             if (!expectCompacted)
             {
-                Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? none), Is.False,
+                Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? none), Is.False,
                     "Expected no compacted snapshot");
                 _ = none;
             }
             else
             {
-                Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? compacted), Is.True,
+                Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
                     "Expected a compacted snapshot");
                 Assert.That(compacted!.From.BlockNumber, Is.EqualTo(expectedFromBlock));
                 Assert.That(compacted.To.BlockNumber, Is.EqualTo(expectedToBlock));
@@ -865,13 +865,13 @@ public class PersistedSnapshotCompactorTests
                 {
                     c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
                 }
-                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
                 prev = next;
             }
 
             compactor.DoCompactSnapshot(prev);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
@@ -936,9 +936,9 @@ public class PersistedSnapshotCompactorTests
 
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("p1"));
-            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            repo.ConvertToPersistedBase(new Snapshot(s0, s1, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
-            Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? built), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? built), Is.True);
             using (built)
             {
                 Assert.Multiple(() =>
@@ -1017,12 +1017,12 @@ public class PersistedSnapshotCompactorTests
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("p1"));
             StateId s2 = new(2, Keccak.Compute("p2"));
-            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
-            repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            repo.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            repo.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
             compactor.DoCompactSnapshot(s2);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(s2, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             using (compacted)
             {
                 Assert.Multiple(() =>
@@ -1079,7 +1079,7 @@ public class PersistedSnapshotCompactorTests
             PersistedSnapshotCompactor compactor = CompactorTestFactory.Create(repo, smallArena, config, scheduleOffset: 3);
 
             // 45 base snapshots, blocks 1..45. No intermediate compactions so
-            // AssembleSnapshotsForCompaction sees only bases.
+            // AssemblePersistedSnapshotsForCompaction sees only bases.
             StateId prev = new(0, Keccak.EmptyTreeHash);
             StateId tip = prev;
             for (int i = 1; i <= 45; i++)
@@ -1087,7 +1087,7 @@ public class PersistedSnapshotCompactorTests
                 StateId next = new(i, Keccak.Compute($"s{i}"));
                 SnapshotContent c = new();
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+                repo.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
                 prev = next;
                 if (i == 45) tip = next;
             }
@@ -1095,7 +1095,7 @@ public class PersistedSnapshotCompactorTests
             // At block 45 with offset=3, alignment=16. Window must be (29, 45].
             compactor.DoCompactSnapshot(tip);
 
-            Assert.That(repo.TryLeaseCompactedSnapshotTo(tip, out PersistedSnapshot? compacted), Is.True);
+            Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
             try
             {
                 Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),

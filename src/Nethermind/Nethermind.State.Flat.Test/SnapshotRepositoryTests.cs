@@ -59,9 +59,7 @@ public class SnapshotRepositoryTests
     {
         Snapshot snapshot = CreateSnapshot(from, to, withData);
 
-        bool added = compacted
-            ? _repository.TryAddCompactedSnapshot(snapshot)
-            : _repository.TryAddSnapshot(snapshot);
+        bool added = _repository.TryAdd(snapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
 
         Assert.That(added, Is.True, $"Failed to add snapshot {from}->{to}");
 
@@ -74,9 +72,7 @@ public class SnapshotRepositoryTests
     }
 
     private bool TryLease(StateId state, bool compacted, out Snapshot? snapshot)
-        => compacted
-            ? _repository.TryLeaseCompactedState(state, out snapshot)
-            : _repository.TryLeaseState(state, out snapshot);
+        => _repository.TryLeaseInMemoryState(state, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase, out snapshot);
 
     private List<Snapshot> BuildSnapshotChain(long startBlock, long endBlock)
     {
@@ -109,8 +105,9 @@ public class SnapshotRepositoryTests
         Snapshot snapshot1 = CreateSnapshot(from, to);
         Snapshot snapshot2 = CreateSnapshot(from, to);
 
-        bool added1 = compacted ? _repository.TryAddCompactedSnapshot(snapshot1) : _repository.TryAddSnapshot(snapshot1);
-        bool added2 = compacted ? _repository.TryAddCompactedSnapshot(snapshot2) : _repository.TryAddSnapshot(snapshot2);
+        SnapshotTier tier = compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase;
+        bool added1 = _repository.TryAdd(snapshot1, tier);
+        bool added2 = _repository.TryAdd(snapshot2, tier);
 
         Assert.That(added1, Is.True);
         Assert.That(added2, Is.False);
@@ -126,12 +123,12 @@ public class SnapshotRepositoryTests
         Snapshot snapshot = CreateSnapshot(from, to);
         _repository.AddStateId(to);
 
-        _repository.TryAddSnapshot(snapshot);
-        bool leasedBefore = _repository.TryLeaseState(to, out Snapshot? leasedSnapshot);
+        _repository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
+        bool leasedBefore = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? leasedSnapshot);
         leasedSnapshot?.Dispose();
 
-        _repository.RemoveAndReleaseKnownState(to);
-        bool leasedAfter = _repository.TryLeaseState(to, out _);
+        _repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase);
+        bool leasedAfter = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out _);
 
         Assert.That(leasedBefore, Is.True);
         Assert.That(leasedAfter, Is.False);
@@ -143,18 +140,18 @@ public class SnapshotRepositoryTests
         AddSnapshotToRepository(0, 1);
         StateId to = CreateStateId(1);
 
-        bool leased1 = _repository.TryLeaseState(to, out Snapshot? snapshot1);
-        bool leased2 = _repository.TryLeaseState(to, out Snapshot? snapshot2);
+        bool leased1 = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? snapshot1);
+        bool leased2 = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? snapshot2);
 
         Assert.That(leased1, Is.True);
         Assert.That(leased2, Is.True);
 
-        _repository.RemoveAndReleaseKnownState(to);
+        _repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase);
 
         snapshot1!.Dispose();
         snapshot2!.Dispose();
 
-        bool leasedAfter = _repository.TryLeaseState(to, out _);
+        bool leasedAfter = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out _);
         Assert.That(leasedAfter, Is.False);
     }
 
@@ -218,31 +215,31 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
-    public void GetSnapshotBeforeStateId_EmptyRepository()
+    public void GetStatesUpToBlock_EmptyRepository()
     {
         StateId target = CreateStateId(10);
 
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
+        ArrayPoolList<StateId> states = _repository.GetStatesUpToBlock(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
     }
 
     [Test]
-    public void GetSnapshotBeforeStateId_NoStatesBeforeTarget()
+    public void GetStatesUpToBlock_NoStatesBeforeTarget()
     {
         StateId state10 = CreateStateId(10);
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(5);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
+        ArrayPoolList<StateId> states = _repository.GetStatesUpToBlock(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
     }
 
     [Test]
-    public void GetSnapshotBeforeStateId_StatesBeforeTarget()
+    public void GetStatesUpToBlock_StatesBeforeTarget()
     {
         StateId state1 = CreateStateId(1);
         StateId state3 = CreateStateId(3);
@@ -257,7 +254,7 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(6);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
+        ArrayPoolList<StateId> states = _repository.GetStatesUpToBlock(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(3));
         states.Dispose();
@@ -265,11 +262,11 @@ public class SnapshotRepositoryTests
 
     [TestCase(-1)]
     [TestCase(long.MinValue)]
-    public void GetSnapshotBeforeStateId_NegativeBlockNumber_ReturnsEmpty(long blockNumber)
+    public void GetStatesUpToBlock_NegativeBlockNumber_ReturnsEmpty(long blockNumber)
     {
         _repository.AddStateId(CreateStateId(1));
 
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(blockNumber);
+        ArrayPoolList<StateId> states = _repository.GetStatesUpToBlock(blockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
@@ -288,76 +285,76 @@ public class SnapshotRepositoryTests
         Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(2)));
 
         // Removing a non-tip state leaves the tip alone.
-        _repository.RemoveAndReleaseKnownState(CreateStateId(1));
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(1), SnapshotTier.InMemoryBase);
         Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(2)));
 
         // Removing the tip falls back to the next-highest (3).
-        _repository.RemoveAndReleaseKnownState(CreateStateId(2));
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(2), SnapshotTier.InMemoryBase);
         Assert.That(_repository.LastRegisteredState, Is.EqualTo(CreateStateId(3)));
 
         // Removing every remaining state clears the tip.
-        _repository.RemoveAndReleaseKnownState(CreateStateId(3));
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(3), SnapshotTier.InMemoryBase);
         Assert.That(_repository.LastRegisteredState, Is.Null);
     }
 
     #endregion
 
-    #region AssembleSnapshotsUntil
+    #region AssembleInMemorySnapshotsForCompaction
 
     [Test]
-    public void AssembleSnapshotsUntil_EmptyRepository()
+    public void AssembleInMemorySnapshotsForCompaction_EmptyRepository()
     {
         StateId target = CreateStateId(10);
 
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(target, 0, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(0));
     }
 
     [Test]
-    public void AssembleSnapshotsUntil_SingleSnapshot()
+    public void AssembleInMemorySnapshotsForCompaction_SingleSnapshot()
     {
         AddSnapshotToRepository(0, 1);
 
         StateId target = CreateStateId(1);
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(target, 0, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(1));
         Assert.That(assembled[0].To, Is.EqualTo(target));
     }
 
     [Test]
-    public void AssembleSnapshotsUntil_LinearChain()
+    public void AssembleInMemorySnapshotsForCompaction_LinearChain()
     {
         BuildSnapshotChain(0, 4);
 
         StateId target = CreateStateId(4);
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(target, 0, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(4));
     }
 
     [Test]
-    public void AssembleSnapshotsUntil_StopsAtStartingBlock()
+    public void AssembleInMemorySnapshotsForCompaction_StopsAtStartingBlock()
     {
         BuildSnapshotChain(0, 5);
 
         StateId target = CreateStateId(4);
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(target, 2, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(target, 2, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(2));
     }
 
     [Test]
-    public void AssembleSnapshotsUntil_PrefersCompacted()
+    public void AssembleInMemorySnapshotsForCompaction_PrefersCompacted()
     {
         StateId from = CreateStateId(0);
         StateId to = CreateStateId(1);
 
         Snapshot compacted = CreateSnapshot(from, to);
-        _repository.TryAddCompactedSnapshot(compacted);
+        _repository.TryAdd(compacted, SnapshotTier.InMemoryCompacted);
 
-        using SnapshotPooledList assembled = _repository.AssembleSnapshotsUntil(to, 0, 10);
+        using SnapshotPooledList assembled = _repository.AssembleInMemorySnapshotsForCompaction(to, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(1));
     }
@@ -374,7 +371,7 @@ public class SnapshotRepositoryTests
         StateId s5 = CreateStateId(5);
 
         // A persisted base spanning (s0, s5] — its From is below the target s2.
-        _repository.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s0, s5)).Dispose();
+        _repository.ConvertToPersistedBase(CreateSnapshot(s0, s5)).Dispose();
 
         using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
 
@@ -403,7 +400,7 @@ public class SnapshotRepositoryTests
         StateId s5 = CreateStateId(5);
 
         // A persisted base whose From is exactly the target s2.
-        _repository.ConvertSnapshotToPersistedSnapshot(CreateSnapshot(s2, s5)).Dispose();
+        _repository.ConvertToPersistedBase(CreateSnapshot(s2, s5)).Dispose();
 
         using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
 

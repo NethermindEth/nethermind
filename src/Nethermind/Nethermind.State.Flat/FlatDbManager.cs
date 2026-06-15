@@ -163,7 +163,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        _snapshotRepository.RemoveStatesUntil(currentPersistedStateId.BlockNumber);
+        // AddToPersistence now prunes the in-memory tier for the advanced persisted state.
         ClearReadOnlyBundleCache();
         ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
@@ -359,7 +359,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
-        if (!_snapshotRepository.TryAddSnapshot(snapshot))
+        if (!_snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase))
         {
             if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
             _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
