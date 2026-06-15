@@ -109,11 +109,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
 
         BlockReward[] finalRewards = rewards.ToArray();
-        _rewardsStore.SaveEpochRewards((ulong)xdcHeader.Number, finalRewards);
-        if (rpcRewards.Count > 0)
-        {
-            _rewardsStore.SaveEpochRewardsRpc((ulong)xdcHeader.Number, rpcRewards);
-        }
+        _rewardsStore.SaveEpochRewards((ulong)xdcHeader.Number, rpcRewards);
 
         return finalRewards;
     }
@@ -343,9 +339,9 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         List<BlockReward> rewards,
         ref UInt256 totalFoundationWalletReward,
         ref UInt256 totalMintedInEpoch,
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rpcRewards = null,
-        string? rpcSectionKey = null,
-        Address foundationWalletAddr = default)
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> rpcRewards,
+        string rpcSectionKey,
+        Address foundationWalletAddr)
     {
         foreach ((Address signer, UInt256 reward) in rewardSigners)
         {
@@ -353,11 +349,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             totalFoundationWalletReward += foundationWalletReward;
             totalMintedInEpoch += holderReward.Value + foundationWalletReward;
             rewards.Add(holderReward);
-
-            if (rpcRewards is null || rpcSectionKey is null)
-            {
-                continue;
-            }
 
             if (!rpcRewards.TryGetValue(rpcSectionKey, out Dictionary<string, Dictionary<string, string>>? signersMap))
             {

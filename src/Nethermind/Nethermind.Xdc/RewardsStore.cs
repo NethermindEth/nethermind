@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Db;
 using Nethermind.Int256;
 using System;
@@ -21,29 +20,17 @@ internal sealed class RewardsStore(
     private readonly int _rewardHistoryEpochRetention = rewardHistoryEpochRetention;
 
     private const byte EpochRewardsPrefix = 0x10;
-    private const byte EpochRewardsRpcPrefix = 0x13;
     private const byte SequenceToEpochPrefix = 0x11;
     private const byte EpochToSequencePrefix = 0x12;
     private static readonly byte[] OldestSequenceKey = [0x01];
     private static readonly byte[] NewestSequenceKey = [0x02];
     private static readonly byte[] RetainedCountKey = [0x03];
-    private const int AddressByteLength = 20;
-    private const int UInt256ByteLength = 32;
 
-    public void SaveEpochRewards(ulong epochBlockNumber, BlockReward[] rewards)
+    public void SaveEpochRewards(ulong epochBlockNumber, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
     {
-        Dictionary<Address, UInt256> rewardsByAccount = [];
-        foreach (BlockReward reward in rewards)
-        {
-            if (!rewardsByAccount.TryAdd(reward.Address, reward.Value))
-            {
-                rewardsByAccount[reward.Address] += reward.Value;
-            }
-        }
-
         using IWriteBatch batch = _rewardsDb.StartWriteBatch();
         byte[] epochRewardsKey = BuildEpochRewardsKey(epochBlockNumber);
-        byte[] rewardBytes = SerializeEpochRewards(rewardsByAccount);
+        byte[] rewardBytes = JsonSerializer.SerializeToUtf8Bytes(rewards);
         batch[epochRewardsKey] = rewardBytes;
 
         ulong oldestSequence = TryReadUInt64(OldestSequenceKey, out ulong oldestSequenceValue) ? oldestSequenceValue : 0;
@@ -77,18 +64,11 @@ internal sealed class RewardsStore(
         batch[RetainedCountKey] = ToBigEndian(retainedCount);
     }
 
-    public void SaveEpochRewardsRpc(ulong epochBlockNumber, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
-    {
-        byte[] key = BuildEpochRewardsRpcKey(epochBlockNumber);
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(rewards);
-        _rewardsDb.Set(key, bytes);
-    }
-
     public bool HasEpochRewards(ulong epochBlockNumber) => _rewardsDb.KeyExists(BuildEpochRewardsKey(epochBlockNumber));
 
     public bool TryGetEpochRewards(ulong epochBlockNumber, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards)
     {
-        byte[]? bytes = _rewardsDb.Get(BuildEpochRewardsRpcKey(epochBlockNumber));
+        byte[]? bytes = _rewardsDb.Get(BuildEpochRewardsKey(epochBlockNumber));
         if (bytes is null)
         {
             rewards = null;
@@ -101,15 +81,15 @@ internal sealed class RewardsStore(
 
     public bool TryGetAccountReward(Address account, ulong epochBlockNumber, out UInt256 reward)
     {
-        byte[]? epochRewardsBytes = _rewardsDb.Get(BuildEpochRewardsKey(epochBlockNumber));
-        if (epochRewardsBytes is null)
+        if (!TryGetEpochRewards(epochBlockNumber, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? breakdown)
+            || breakdown is null)
         {
             reward = UInt256.Zero;
             return false;
         }
 
-        Dictionary<Address, UInt256> rewards = DeserializeEpochRewards(epochRewardsBytes);
-        return rewards.TryGetValue(account, out reward);
+        reward = SumAccountReward(breakdown, account);
+        return reward > UInt256.Zero;
     }
 
     public bool TryGetRetainedRange(out ulong oldestEpochBlockNumber, out ulong newestEpochBlockNumber)
@@ -152,7 +132,6 @@ internal sealed class RewardsStore(
             ulong oldestEpoch = BinaryPrimitives.ReadUInt64BigEndian(oldestEpochBytes);
 
             batch.Remove(BuildEpochRewardsKey(oldestEpoch));
-            batch.Remove(BuildEpochRewardsRpcKey(oldestEpoch));
             batch.Remove(BuildEpochToSequenceKey(oldestEpoch));
             batch.Remove(BuildSequenceToEpochKey(oldestSequence));
 
@@ -161,18 +140,32 @@ internal sealed class RewardsStore(
         }
     }
 
+    private static UInt256 SumAccountReward(
+        Dictionary<string, Dictionary<string, Dictionary<string, string>>> breakdown,
+        Address account)
+    {
+        string accountKey = account.ToString();
+        UInt256 total = UInt256.Zero;
+
+        foreach (Dictionary<string, Dictionary<string, string>> section in breakdown.Values)
+        {
+            foreach (Dictionary<string, string> holdersBySigner in section.Values)
+            {
+                if (holdersBySigner.TryGetValue(accountKey, out string? valueStr)
+                    && UInt256.TryParse(valueStr, out UInt256 value))
+                {
+                    total += value;
+                }
+            }
+        }
+
+        return total;
+    }
+
     private static byte[] BuildEpochRewardsKey(ulong epochBlockNumber)
     {
         byte[] key = new byte[1 + sizeof(ulong)];
         key[0] = EpochRewardsPrefix;
-        BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), epochBlockNumber);
-        return key;
-    }
-
-    private static byte[] BuildEpochRewardsRpcKey(ulong epochBlockNumber)
-    {
-        byte[] key = new byte[1 + sizeof(ulong)];
-        key[0] = EpochRewardsRpcPrefix;
         BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), epochBlockNumber);
         return key;
     }
@@ -231,46 +224,5 @@ internal sealed class RewardsStore(
         byte[] bytes = new byte[sizeof(int)];
         BinaryPrimitives.WriteInt32BigEndian(bytes, value);
         return bytes;
-    }
-
-    private static byte[] SerializeEpochRewards(Dictionary<Address, UInt256> rewardsByAccount)
-    {
-        int entryLength = AddressByteLength + UInt256ByteLength;
-        byte[] bytes = new byte[sizeof(int) + rewardsByAccount.Count * entryLength];
-        Span<byte> span = bytes;
-        BinaryPrimitives.WriteInt32BigEndian(span, rewardsByAccount.Count);
-
-        int offset = sizeof(int);
-        foreach ((Address account, UInt256 reward) in rewardsByAccount)
-        {
-            account.Bytes.CopyTo(span.Slice(offset, AddressByteLength));
-            offset += AddressByteLength;
-
-            reward.ToBigEndian(span.Slice(offset, UInt256ByteLength));
-            offset += UInt256ByteLength;
-        }
-
-        return bytes;
-    }
-
-    private static Dictionary<Address, UInt256> DeserializeEpochRewards(byte[] bytes)
-    {
-        ReadOnlySpan<byte> span = bytes;
-        int count = BinaryPrimitives.ReadInt32BigEndian(span);
-        Dictionary<Address, UInt256> rewardsByAccount = new(count);
-
-        int offset = sizeof(int);
-        for (int i = 0; i < count; i++)
-        {
-            Address address = new(span.Slice(offset, AddressByteLength));
-            offset += AddressByteLength;
-
-            UInt256 reward = new(span.Slice(offset, UInt256ByteLength), isBigEndian: true);
-            offset += UInt256ByteLength;
-
-            rewardsByAccount[address] = reward;
-        }
-
-        return rewardsByAccount;
     }
 }
