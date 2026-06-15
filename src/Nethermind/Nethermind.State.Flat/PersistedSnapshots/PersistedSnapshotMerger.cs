@@ -174,6 +174,20 @@ public static class PersistedSnapshotMerger
             Span<Bound> subTagBounds = stackalloc Bound[matchCount * SubTagCount];
             ResolvePerAddrAndSubTagBounds(in cursor, perAddrBounds, subTagBounds, SubTagCount);
 
+            // Single-source, no-slot fast path: slots are the only per-address sub-tag re-emitted
+            // (through a page-aligning inner BTree) on rebuild; with none present a lone source's
+            // DenseByteIndex blob is byte-identical to a rebuild, so copy it verbatim through the
+            // outer builder's Add — which page-aligns and leaf-wraps the entry — instead of
+            // rebuilding via the streaming BeginValueWrite path.
+            int slotTag = PersistedSnapshotTags.SlotSubTag[0];
+            if (matchCount == 1 && subTagBounds[slotTag].Length == 0) // matchCount==1 => source 0 at index slotTag
+            {
+                TReader reader = cursor.Sources[matchingSources[0]].CreateReader();
+                using TPin pin = reader.PinBuffer(perAddrBounds[0]);
+                builder.Add(key, pin.Buffer);
+                return;
+            }
+
             // Open the outer BTree entry's value write; the per-address DenseByteIndex streams into it.
             ref TWriter writer = ref builder.BeginValueWrite();
             long valueStart = writer.Written;
