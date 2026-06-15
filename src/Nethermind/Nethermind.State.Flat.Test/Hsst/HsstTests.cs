@@ -456,6 +456,7 @@ public class HsstTests
     }
 
     [TestCase(100, 32, 32, 42)]
+    [TestCase(300, 32, 32, 77)]
     [TestCase(200, 20, 64, 55)]
     [TestCase(500, 52, 32, 101)]
     public void Binary_Keys_RoundTrip_VariedShapes(int count, int keyLen, int maxValLen, int seed)
@@ -504,65 +505,6 @@ public class HsstTests
             if (existingKeys.Contains(randomKey)) continue;
             Assert.That(TryGet(data, randomKey, out _), Is.False,
                 $"Non-existent key {BitConverter.ToString(randomKey)} falsely found");
-            negChecked++;
-        }
-
-        List<(byte[] Key, byte[] Value)> actual = Materialize(data);
-        Assert.That(actual.Count, Is.EqualTo(deduped.Count));
-        for (int i = 0; i < deduped.Count; i++)
-        {
-            Assert.That(actual[i].Key.AsSpan().SequenceEqual(deduped[i].Key), Is.True);
-            Assert.That(actual[i].Value.AsSpan().SequenceEqual(deduped[i].Value), Is.True);
-        }
-    }
-
-    [TestCase(100, 32, 32, 42)]
-    [TestCase(300, 32, 32, 77)]
-    public void Binary_Keys_MultiLevel_RoundTrip(int count, int keyLen, int maxValLen, int seed)
-    {
-        Random rng = new(seed);
-        (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
-        for (int i = 0; i < count; i++)
-        {
-            entries[i].Key = new byte[keyLen];
-            entries[i].Value = new byte[rng.Next(0, maxValLen + 1)];
-            rng.NextBytes(entries[i].Key);
-            rng.NextBytes(entries[i].Value);
-        }
-        Array.Sort(entries, (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
-
-        List<(byte[] Key, byte[] Value)> deduped = new(count);
-        for (int i = 0; i < entries.Length; i++)
-        {
-            if (i + 1 < entries.Length && entries[i].Key.AsSpan().SequenceEqual(entries[i + 1].Key))
-                continue;
-            deduped.Add(entries[i]);
-        }
-
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
-        {
-            foreach ((byte[] key, byte[] value) in deduped)
-                builder.Add(key, value);
-        });
-
-        Assert.That(CountEntries(data), Is.EqualTo(deduped.Count));
-
-        foreach ((byte[] key, byte[] value) in deduped)
-        {
-            Assert.That(TryGet(data, key, out byte[] val), Is.True,
-                $"Key {BitConverter.ToString(key)} not found");
-            Assert.That(val.AsSpan().SequenceEqual(value), Is.True);
-        }
-
-        HashSet<byte[]> existingKeys = new(deduped.ConvertAll(e => e.Key), new ByteArrayComparer());
-        Random negRng = new(seed + 9999);
-        int negChecked = 0;
-        while (negChecked < 50)
-        {
-            byte[] randomKey = new byte[keyLen];
-            negRng.NextBytes(randomKey);
-            if (existingKeys.Contains(randomKey)) continue;
-            Assert.That(TryGet(data, randomKey, out _), Is.False);
             negChecked++;
         }
 
