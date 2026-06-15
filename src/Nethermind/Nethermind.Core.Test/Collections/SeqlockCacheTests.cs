@@ -595,4 +595,72 @@ public class SeqlockCacheTests
             Assert.That(isValid, Is.True, "cached value should be one of the written values");
         }
     }
+
+    [TestCase(1)]
+    [TestCase(SeqlockCache<StorageCell, byte[]>.DefaultSetsBits)]
+    [TestCase(SeqlockCache<StorageCell, byte[]>.MaxSetsBits)]
+    public void Custom_size_set_then_get_returns_value(int setsBits)
+    {
+        SeqlockCache<StorageCell, byte[]> cache = new(setsBits);
+
+        for (int i = 0; i < 100; i++)
+        {
+            StorageCell key = CreateKey(i);
+            cache.Set(in key, CreateValue(i));
+        }
+
+        int hits = 0;
+        for (int i = 0; i < 100; i++)
+        {
+            StorageCell key = CreateKey(i);
+            if (cache.TryGetValue(in key, out byte[]? value))
+            {
+                hits++;
+                Assert.That(value, Is.EqualTo(CreateValue(i)));
+            }
+        }
+
+        // 2-way associativity allows conflict evictions at tiny sizes, but every surviving
+        // entry must round-trip; at realistic sizes all 100 keys must survive.
+        if (setsBits >= SeqlockCache<StorageCell, byte[]>.DefaultSetsBits)
+        {
+            Assert.That(hits, Is.EqualTo(100));
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(-1)]
+    [TestCase(SeqlockCache<StorageCell, byte[]>.MaxSetsBits + 1)]
+    public void Invalid_size_throws(int setsBits)
+        => Assert.Throws<ArgumentOutOfRangeException>(() => _ = new SeqlockCache<StorageCell, byte[]>(setsBits));
+
+    [Test]
+    public void Larger_cache_retains_working_set_that_overflows_default_capacity()
+    {
+        // ~1.5x the default 32K-entry capacity: the default cache must evict, the larger one retain.
+        const int workingSet = 48_000;
+
+        SeqlockCache<StorageCell, byte[]> defaultCache = new();
+        SeqlockCache<StorageCell, byte[]> largeCache = new(17);
+        byte[] value = CreateValue(0);
+
+        for (int i = 0; i < workingSet; i++)
+        {
+            StorageCell key = CreateKey(i);
+            defaultCache.Set(in key, value);
+            largeCache.Set(in key, value);
+        }
+
+        int defaultHits = 0;
+        int largeHits = 0;
+        for (int i = 0; i < workingSet; i++)
+        {
+            StorageCell key = CreateKey(i);
+            if (defaultCache.TryGetValue(in key, out _)) defaultHits++;
+            if (largeCache.TryGetValue(in key, out _)) largeHits++;
+        }
+
+        Assert.That(largeHits, Is.GreaterThan((int)(workingSet * 0.95)));
+        Assert.That(largeHits, Is.GreaterThan(defaultHits));
+    }
 }
