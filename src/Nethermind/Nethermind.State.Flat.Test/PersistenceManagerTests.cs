@@ -719,6 +719,29 @@ public class PersistenceManagerTests
         });
     }
 
+    [Test]
+    public void FlushToPersistence_PersistedOnlyTier_WalksAndPrunes()
+    {
+        // No in-memory snapshot above the persisted point and nothing finalized: the flush must
+        // still reach the persisted-tier backlog via the tier-aware latest tip (GetLastSnapshotId
+        // folds in the persisted maxes) and prune entries the persist supersedes. Regression for
+        // FlushToPersistence early-returning on a persisted-only tier and never pruning it.
+        StateId target = CreateStateId(16);
+        StateId stale = CreateStateId(8);
+
+        PersistBase(Block0, stale);
+        PersistBase(Block0, target);
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        Assert.That(result, Is.EqualTo(target));
+        _persistence.Received().CreateWriteBatch(Block0, target);
+        Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
+    }
+
     private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
     {
         // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the

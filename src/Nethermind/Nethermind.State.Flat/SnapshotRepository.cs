@@ -645,9 +645,22 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public StateId? GetLastSnapshotId()
     {
-        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
-        return sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
+        StateId? max;
+        using (_sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots))
+            max = sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
+
+        // Persisted-tier entries are not tracked in `_sortedSnapshotStateIds` (converting an in-memory
+        // snapshot removes its id from that set), so fold their tips in here to keep callers — the
+        // flush bound and the orphan-walk bound — tier-aware even when the in-memory tier is drained
+        // below an unpersisted persisted backlog.
+        max = MaxState(max, _base.Max);
+        max = MaxState(max, _compacted.Max);
+        max = MaxState(max, _persistable.Max);
+        return max;
     }
+
+    private static StateId? MaxState(StateId? a, StateId? b) =>
+        a is null ? b : b is null ? a : a.Value.CompareTo(b.Value) >= 0 ? a : b;
 
     public bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier)
     {
@@ -1031,6 +1044,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public long MemoryBytes => Interlocked.Read(ref _memoryBytes);
         public long Count => Interlocked.Read(ref _count);
+
+        /// <summary>The greatest <c>To</c> held by this bucket, or <c>null</c> when empty.</summary>
+        public StateId? Max
+        {
+            get { lock (_lock) return _ordered.Count == 0 ? null : _ordered.Max; }
+        }
 
         // The process-wide memory gauge for this bucket's tier: base snapshots and the
         // compacted/persistable tiers are tracked under separate aggregates.

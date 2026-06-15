@@ -345,7 +345,8 @@ public class PersistenceManager(
         // Persist all snapshots from current persisted state to latest. Flush ignores the
         // finality gate but still prefers the finalized state as the BFS seed when one is
         // available — that biases the walk onto the canonical chain. Falls back to the in-memory
-        // tip when no finalized state root is exposed for the current finalized block.
+        // tip, then to the tier-aware latest tip, when no finalized state root is exposed —
+        // the latter covers a persisted-only backlog after the in-memory tier has been drained.
         while (currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
         {
             StateId? seed = null;
@@ -357,6 +358,9 @@ public class PersistenceManager(
                     seed = new StateId(finalizedBlockNumber, finalizedStateRoot);
             }
             seed ??= _snapshotRepository.LastRegisteredState;
+            // Fall back to the (tier-aware) latest tip so a persisted-only backlog — where the
+            // in-memory tier is drained and LastRegisteredState is null — still seeds the walk.
+            seed ??= latestStateId;
             if (seed is null) break;
 
             (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
@@ -369,6 +373,7 @@ public class PersistenceManager(
                 PersistPersistedSnapshot(persisted);
                 _currentPersistedStateId = persisted.To;
                 currentPersistedState = _currentPersistedStateId;
+                PrunePersistedTierBefore(persisted.To);
                 continue;
             }
 
@@ -380,6 +385,7 @@ public class PersistenceManager(
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;
+            PrunePersistedTierBefore(snapshotToPersist.To);
         }
 
         return currentPersistedState;
