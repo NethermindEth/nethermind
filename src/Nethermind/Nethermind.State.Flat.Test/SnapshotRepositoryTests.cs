@@ -218,31 +218,31 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
-    public void GetSnapshotBeforeStateId_EmptyRepository()
+    public void GetStatesUpToBlock_EmptyRepository()
     {
         StateId target = CreateStateId(10);
 
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
+        ArrayPoolList<StateId> states = _repository.GetStatesUpToBlock(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
     }
 
     [Test]
-    public void GetSnapshotBeforeStateId_NoStatesBeforeTarget()
+    public void GetStatesUpToBlock_NoStatesBeforeTarget()
     {
         StateId state10 = CreateStateId(10);
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(5);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
+        ArrayPoolList<StateId> states = _repository.GetStatesUpToBlock(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();
     }
 
     [Test]
-    public void GetSnapshotBeforeStateId_StatesBeforeTarget()
+    public void GetStatesUpToBlock_StatesBeforeTarget()
     {
         StateId state1 = CreateStateId(1);
         StateId state3 = CreateStateId(3);
@@ -257,7 +257,7 @@ public class SnapshotRepositoryTests
         _repository.AddStateId(state10);
 
         StateId target = CreateStateId(6);
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target.BlockNumber);
+        ArrayPoolList<StateId> states = _repository.GetStatesUpToBlock(target.BlockNumber);
 
         Assert.That(states.Count, Is.EqualTo(3));
         states.Dispose();
@@ -265,11 +265,11 @@ public class SnapshotRepositoryTests
 
     [TestCase(-1)]
     [TestCase(long.MinValue)]
-    public void GetSnapshotBeforeStateId_NegativeBlockNumber_ReturnsEmpty(long blockNumber)
+    public void GetStatesUpToBlock_NegativeBlockNumber_ReturnsEmpty(long blockNumber)
     {
         _repository.AddStateId(CreateStateId(1));
 
-        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(blockNumber);
+        ArrayPoolList<StateId> states = _repository.GetStatesUpToBlock(blockNumber);
 
         Assert.That(states.Count, Is.EqualTo(0));
         states.Dispose();

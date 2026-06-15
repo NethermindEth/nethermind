@@ -60,7 +60,7 @@ public interface ISnapshotRepository : IDisposable
     PersistedSnapshotList AssembleSnapshotsForCompaction(in StateId toStateId, long minBlockNumber);
     StateId? GetLastSnapshotId();
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
-    ArrayPoolList<StateId> GetSnapshotBeforeStateId(long blockNumber);
+    ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber);
     void RemoveStatesUntil(long blockNumber);
     void RemoveAndReleaseKnownState(in StateId stateId);
 

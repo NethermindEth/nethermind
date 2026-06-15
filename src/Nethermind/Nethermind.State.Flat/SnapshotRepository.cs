@@ -696,7 +696,7 @@ public class SnapshotRepository : ISnapshotRepository
         return false;
     }
 
-    public ArrayPoolList<StateId> GetSnapshotBeforeStateId(long blockNumber)
+    public ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber)
     {
         if (blockNumber < 0)
             return ArrayPoolList<StateId>.Empty();
@@ -710,8 +710,8 @@ public class SnapshotRepository : ISnapshotRepository
 
     public void RemoveStatesUntil(long blockNumber)
     {
-        using ArrayPoolList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(blockNumber);
-        foreach (StateId stateToRemove in statesBeforeStateId)
+        using ArrayPoolList<StateId> statesUpToBlock = GetStatesUpToBlock(blockNumber);
+        foreach (StateId stateToRemove in statesUpToBlock)
         {
             RemoveAndReleaseCompactedKnownState(stateToRemove);
             RemoveAndReleaseKnownState(stateToRemove);

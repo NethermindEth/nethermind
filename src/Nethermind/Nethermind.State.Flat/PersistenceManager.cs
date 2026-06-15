@@ -153,7 +153,7 @@ public class PersistenceManager(
     /// </remarks>
     private ConversionCandidate? TryFindSnapshotToConvert(StateId currentPersistedState)
     {
-        using ArrayPoolList<StateId> ordered = _snapshotRepository.GetSnapshotBeforeStateId(long.MaxValue);
+        using ArrayPoolList<StateId> ordered = _snapshotRepository.GetStatesUpToBlock(long.MaxValue);
 
         // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A.
         foreach (StateId X in ordered)
