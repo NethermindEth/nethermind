@@ -977,7 +977,7 @@ public class PersistedSnapshotCompactorTests
         // At block 45 with offset=3, alignment=16. Window must be (29, 45].
         compactor.DoCompactSnapshot(tip);
 
-        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
+        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
             Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),
@@ -1072,7 +1072,7 @@ public class PersistedSnapshotCompactorTests
 
         compactor.DoCompactSnapshot(tip); // block 2 is a CompactSize=2 boundary → WarmAddressColumnIndex path
 
-        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
+        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
             Assert.That(compacted!.To.BlockNumber, Is.EqualTo(2));
@@ -1083,7 +1083,7 @@ public class PersistedSnapshotCompactorTests
     }
 
     /// <summary>
-    /// A sub-<c>CompactSize</c> intermediate merge lands in the <see cref="SnapshotTier.PersistedCompacted"/>
+    /// A sub-<c>CompactSize</c> intermediate merge lands in the <see cref="SnapshotTier.PersistedSmallCompacted"/>
     /// tier; a <c>&gt;CompactSize</c> large-boundary merge lands in <see cref="SnapshotTier.PersistedLargeCompacted"/>.
     /// Each tier resolves only from its own bucket — a lease for the other tier at the same <c>To</c> misses.
     /// </summary>
@@ -1112,18 +1112,18 @@ public class PersistedSnapshotCompactorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True,
-                "sub-CompactSize window must be a PersistedCompacted snapshot");
+            Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? compacted), Is.True,
+                "sub-CompactSize window must be a PersistedSmallCompacted snapshot");
             using (compacted) Assert.That(compacted!.To.BlockNumber, Is.EqualTo(2));
 
             Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedLargeCompacted, out _), Is.False,
-                "PersistedCompacted must not resolve from the large-compacted bucket");
+                "PersistedSmallCompacted must not resolve from the large-compacted bucket");
 
             Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? large), Is.True,
                 ">CompactSize window must be a PersistedLargeCompacted snapshot");
             using (large) Assert.That(large!.To.BlockNumber, Is.EqualTo(8));
 
-            Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedCompacted, out _), Is.False,
+            Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedSmallCompacted, out _), Is.False,
                 "PersistedLargeCompacted must not resolve from the compacted bucket");
         });
     }

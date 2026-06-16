@@ -310,7 +310,7 @@ public class PersistedSnapshotCompactor(
                 ? SnapshotTier.PersistedCompactSized
                 : _schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber)
                     ? SnapshotTier.PersistedLargeCompacted
-                    : SnapshotTier.PersistedCompacted;
+                    : SnapshotTier.PersistedSmallCompacted;
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
             using (PersistedSnapshot compacted = new(from, to, reservation, blobs, tier, mergedBloom))
             {

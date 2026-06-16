@@ -29,8 +29,8 @@ public enum SnapshotTier
     /// <summary>Persisted base — sub-<c>CompactSize</c>, narrowest persisted hop. Owns a contiguous blob region.</summary>
     PersistedBase,
 
-    /// <summary>Persisted compacted — sub-<c>CompactSize</c> intermediate merges. References base blob arenas.</summary>
-    PersistedCompacted,
+    /// <summary>Persisted small compacted — sub-<c>CompactSize</c> intermediate merges. References base blob arenas.</summary>
+    PersistedSmallCompacted,
 
     /// <summary>The <c>CompactSize</c>-wide snapshot written to RocksDB.</summary>
     PersistedCompactSized,
@@ -44,12 +44,12 @@ public static class SnapshotTierExtensions
 {
     public static bool IsPersisted(this SnapshotTier tier) => tier >= SnapshotTier.PersistedBase;
 
-    /// <summary>The metric "tier" label (<c>base</c>/<c>compacted</c>/<c>CompactSized</c>) for a persisted
+    /// <summary>The metric "tier" label (<c>base</c>/<c>smallcompacted</c>/<c>compactsized</c>/<c>largecompacted</c>) for a persisted
     /// <paramref name="tier"/>. Throws for in-memory tiers, which have no persisted-snapshot metrics.</summary>
     public static string MetricTierLabel(this SnapshotTier tier) => tier switch
     {
         SnapshotTier.PersistedBase => "base",
-        SnapshotTier.PersistedCompacted => "compacted",
+        SnapshotTier.PersistedSmallCompacted => "smallcompacted",
         SnapshotTier.PersistedCompactSized => "compactsized",
         SnapshotTier.PersistedLargeCompacted => "largecompacted",
         _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Not a persisted tier."),

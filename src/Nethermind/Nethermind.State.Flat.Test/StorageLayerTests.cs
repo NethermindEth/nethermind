@@ -75,7 +75,7 @@ public class StorageLayerTests
 
         SnapshotCatalog catalog = new(catalogDb);
         catalog.Add(new(s_base_from, sharedTo, new(0, 0, 1024), SnapshotTier.PersistedBase));
-        catalog.Add(new(s_compacted_from, sharedTo, new(0, 1024, 2048), SnapshotTier.PersistedCompacted));
+        catalog.Add(new(s_compacted_from, sharedTo, new(0, 1024, 2048), SnapshotTier.PersistedSmallCompacted));
         catalog.Add(new(s_compactSized_from, sharedTo, new(0, 3072, 4096), SnapshotTier.PersistedCompactSized));
         catalog.Add(new(sharedTo, s2, new(0, 7168, 2048), SnapshotTier.PersistedCompactSized));
 
@@ -93,7 +93,7 @@ public class StorageLayerTests
         Assert.That(loadedCompacted, Is.Not.Null);
         Assert.That(loadedCompacted!.From, Is.EqualTo(s_compacted_from));
         Assert.That(loadedCompacted.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
-        Assert.That(loadedCompacted.Tier, Is.EqualTo(SnapshotTier.PersistedCompacted));
+        Assert.That(loadedCompacted.Tier, Is.EqualTo(SnapshotTier.PersistedSmallCompacted));
         Assert.That(loadedCompactSized, Is.Not.Null);
         Assert.That(loadedCompactSized!.From, Is.EqualTo(s_compactSized_from));
         Assert.That(loadedCompactSized.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
@@ -119,7 +119,7 @@ public class StorageLayerTests
         catalog.Add(new(s0, s1, new(0, 0, 100), SnapshotTier.PersistedBase));
         catalog.Add(new(s1, s2, new(0, 100, 200), SnapshotTier.PersistedBase));
         // Same To (s2), different depth (s_compactedFrom→s2 has depth=2 vs s1→s2 depth=1).
-        catalog.Add(new(s_compactedFrom, s2, new(0, 200, 100), SnapshotTier.PersistedCompacted));
+        catalog.Add(new(s_compactedFrom, s2, new(0, 200, 100), SnapshotTier.PersistedSmallCompacted));
 
         Assert.That(FindEntry(catalog, s1, depth: 1), Is.Not.Null);
         Assert.That(catalog.Remove(s1, depth: 1), Is.True);
