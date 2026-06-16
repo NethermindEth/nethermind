@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -137,76 +138,100 @@ public class DebugModuleTests
     [Test]
     public async Task Get_raw_header()
     {
-        HeaderDecoder decoder = new();
-        Block blk = Build.A.Block.WithNumber(0).TestObject;
-        Rlp rlp = decoder.Encode(blk.Header);
-        _debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
+        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        Rlp expected = new HeaderDecoder().Encode(block.Header);
+        debugBridge.GetBlock(new BlockParameter(0L)).Returns(block);
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", "0x0");
-        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray(), Is.EqualTo(expected.Bytes));
     }
 
-    [Test]
-    public async Task Get_raw_block_by_number()
+    private static IEnumerable<TestCaseData> RawBlockCases()
     {
-        BlockDecoder decoder = new();
-        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
-        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
-
-        DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1");
-
-        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
+        yield return new TestCaseData("0x1", new BlockParameter(1L)) { TestName = "Get_raw_block_by_number" };
+        yield return new TestCaseData(Keccak.Zero, new BlockParameter(Keccak.Zero)) { TestName = "Get_raw_block_by_hash" };
+        yield return new TestCaseData("latest", BlockParameter.Latest) { TestName = "Get_raw_block_by_name" };
     }
 
-    [Test]
-    public async Task Get_raw_block_by_hash()
+    [TestCaseSource(nameof(RawBlockCases))]
+    public async Task Get_raw_block(object requestParameter, BlockParameter blockParameter)
     {
-        BlockDecoder decoder = new();
-        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
+        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        Rlp expected = new BlockDecoder().Encode(block);
+        debugBridge.GetBlock(blockParameter).Returns(block);
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero);
-        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", requestParameter);
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray(), Is.EqualTo(expected.Bytes));
     }
 
-    [Test]
-    public async Task Get_raw_block_by_name()
+    private static IEnumerable<TestCaseData> RawBlockMissingCases()
     {
-        BlockDecoder decoder = new();
-        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
-        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        localDebugBridge.GetBlockRlp(BlockParameter.Latest).Returns(rlp.Bytes);
-
-        DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "latest");
-
-        Assert.That(RpcTest.AssertSuccess<byte[]>(response), Is.EqualTo(rlp.Bytes));
+        yield return new TestCaseData("0x1", new BlockParameter(1L)) { TestName = "Get_raw_block_by_number_when_missing" };
+        yield return new TestCaseData(Keccak.Zero, new BlockParameter(Keccak.Zero)) { TestName = "Get_raw_block_by_hash_when_missing" };
     }
 
-    [TestCase("debug_getRawBlock", "0x1")]
-    public async Task Get_block_rlp_when_missing(string method, object parameter)
+    [TestCaseSource(nameof(RawBlockMissingCases))]
+    public async Task Get_raw_block_when_missing(object requestParameter, BlockParameter blockParameter)
     {
-        _debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
+        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        debugBridge.GetBlock(blockParameter).ReturnsNull();
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, method, parameter);
-
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", requestParameter);
         Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 
     [Test]
-    public async Task Get_raw_block_by_hash_when_missing()
+    public async Task Get_raw_transaction()
     {
-        _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
+        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        string expected = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        debugBridge.GetTransactionFromHash(transaction.Hash!).Returns(transaction);
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero);
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        string serialized = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_getRawTransaction", transaction.Hash!);
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
+    }
 
+    [Test]
+    public async Task Get_raw_transaction_when_missing()
+    {
+        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        debugBridge.GetTransactionFromHash(Keccak.Zero).ReturnsNull();
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        using JsonRpcResponse response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawTransaction", Keccak.Zero);
         Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+    }
+
+    [Test]
+    public async Task Get_raw_receipts()
+    {
+        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        TxReceipt[] receipts = [Build.A.Receipt.TestObject, Build.A.Receipt.TestObject];
+        debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns(receipts);
+        RlpBehaviors behavior = (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
+        string expected = $"[\"{Rlp.Encode(receipts[0], behavior).Bytes.ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).Bytes.ToHexString(true)}\"]";
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        string serialized = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_getRawReceipts", "0x1");
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expected},\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Get_raw_receipts_when_empty()
+    {
+        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns([]);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
+        string serialized = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_getRawReceipts", "0x1");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
     }
 
     [Test]

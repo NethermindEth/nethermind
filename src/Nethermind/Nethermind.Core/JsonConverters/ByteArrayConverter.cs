@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
@@ -230,6 +231,40 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (outPos != outLen)
             ThrowInvalidOperationException();
 
+        return result;
+    }
+
+    /// <summary>
+    /// Reads a hex string directly into a pool-rented <see cref="ArrayPoolList{T}"/> of bytes, with no
+    /// intermediate <c>byte[]</c>. Ownership transfers to the caller, which MUST dispose the result.
+    /// Returns <c>null</c> for JSON null or an empty string.
+    /// </summary>
+    [SkipLocalsInit]
+    public static ArrayPoolList<byte>? ConvertToArrayPoolList(ref Utf8JsonReader reader)
+    {
+        JsonTokenType tokenType = reader.TokenType;
+        if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
+            return null;
+        if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
+            ThrowInvalidOperationException();
+
+        // Cross-segment value: fall back to the byte[] path (unreachable for the contiguous RPC param buffer).
+        if (reader.HasValueSequence)
+        {
+            byte[]? sequenceBytes = ConvertValueSequence(ref reader, strictHexFormat: false);
+            return sequenceBytes is null ? null : new ArrayPoolList<byte>(sequenceBytes);
+        }
+
+        ReadOnlySpan<byte> raw = reader.ValueSpan;
+        if (raw.Length == 0) return null;
+
+        ReadOnlySpan<byte> hex = GetHexValueSpan(raw, strictHexFormat: false, requireEvenLength: false);
+        int byteLength = (hex.Length >> 1) + (hex.Length & 1);
+        ArrayPoolList<byte> result = new(byteLength, byteLength);
+        if (byteLength != 0)
+        {
+            Bytes.FromUtf8HexString(hex, result.AsSpan());
+        }
         return result;
     }
 
