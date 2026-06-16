@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -19,7 +20,7 @@ public class TrieNodeCacheTests
     [SetUp]
     public void SetUp()
     {
-        _config = new FlatDbConfig { TrieCacheMemoryBudget = 1024 * 1024 };
+        _config = new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB };
         _cache = new TrieNodeCache(_config, LimboLogs.Instance);
         _resourcePool = new ResourcePool(_config);
     }

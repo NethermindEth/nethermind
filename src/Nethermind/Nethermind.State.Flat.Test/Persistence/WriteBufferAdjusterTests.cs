@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
@@ -13,11 +15,13 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class WriteBufferAdjusterTests
 {
-    private const long MinWriteBufferSize = 16L * 1024 * 1024;
-    private const long MaxWriteBufferSize = 256L * 1024 * 1024;
+    private const long MinWriteBufferSize = 16 * MemorySizes.MiB;
+    private const long AccountMaxWriteBufferSize = 32 * MemorySizes.MiB;
+    private const long StorageMaxWriteBufferSize = 64 * MemorySizes.MiB;
 
     private IColumnsDb<FlatDbColumns> _db = null!;
     private IDb _columnDb = null!;
+    private Dictionary<FlatDbColumns, IDb> _columnDbs = null!;
     private StubColumnsWriteBatch _batch = null!;
     private WriteBufferAdjuster _sut = null!;
 
@@ -25,8 +29,9 @@ public class WriteBufferAdjusterTests
     public void SetUp()
     {
         _db = Substitute.For<IColumnsDb<FlatDbColumns>>();
-        _columnDb = Substitute.For<IDb>();
-        _db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(_columnDb);
+        _columnDbs = Enum.GetValues<FlatDbColumns>().ToDictionary(c => c, _ => Substitute.For<IDb>());
+        _db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => _columnDbs[call.Arg<FlatDbColumns>()]);
+        _columnDb = _columnDbs[FlatDbColumns.Account];
 
         _batch = new StubColumnsWriteBatch();
 
@@ -37,7 +42,7 @@ public class WriteBufferAdjusterTests
     public void TearDown()
     {
         _batch.Dispose();
-        _columnDb.Dispose();
+        foreach (IDb db in _columnDbs.Values) db.Dispose();
         _db.Dispose();
     }
 
@@ -61,8 +66,8 @@ public class WriteBufferAdjusterTests
     }
 
     [TestCase(20, 0, 1)]
-    [TestCase(200 * 1024 * 1024, 0, 1)]
-    [TestCase(20 * 1024 * 1024, 21 * 1024 * 1024, 1)]
+    [TestCase(200 * MemorySizes.MiB, 0, 1)]
+    [TestCase(20 * MemorySizes.MiB, 21 * MemorySizes.MiB, 1)]
     public void OnBatchDisposed_AdjustsWriteBuffer(long firstWriteBytes, long secondWriteBytes, int expectedSetWriteBufferCallCount)
     {
         WriteBufferAdjuster.CountingWriteBatch store = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
@@ -77,6 +82,60 @@ public class WriteBufferAdjusterTests
         }
 
         _columnDb.Received(expectedSetWriteBufferCallCount).SetWriteBuffer(Arg.Any<long>());
+    }
+
+    [Test]
+    public void AdjustWriteBuffer_RespectsPerColumnCap()
+    {
+        WriteBufferAdjuster.CountingWriteBatch store =
+            (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        store.Set(new byte[200 * MemorySizes.MiB], null);
+        _sut.OnBatchDisposed();
+
+        _columnDb.Received(1).SetWriteBuffer(AccountMaxWriteBufferSize);
+    }
+
+    [Test]
+    public void Wrap_WithDisableWAL_UsesPerColumnCaps()
+    {
+        _sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.DisableWAL);
+
+        _columnDbs[FlatDbColumns.Account].Received(1).SetWriteBuffer(AccountMaxWriteBufferSize);
+        _columnDbs[FlatDbColumns.Storage].Received(1).SetWriteBuffer(StorageMaxWriteBufferSize);
+        _columnDbs[FlatDbColumns.StateNodes].Received(1).SetWriteBuffer(StorageMaxWriteBufferSize);
+        _columnDbs[FlatDbColumns.StorageNodes].Received(1).SetWriteBuffer(StorageMaxWriteBufferSize);
+        _columnDbs[FlatDbColumns.StateTopNodes].DidNotReceive().SetWriteBuffer(Arg.Any<long>());
+        _columnDbs[FlatDbColumns.Metadata].DidNotReceive().SetWriteBuffer(Arg.Any<long>());
+        _columnDbs[FlatDbColumns.FallbackNodes].DidNotReceive().SetWriteBuffer(Arg.Any<long>());
+    }
+
+    [Test]
+    public void OnBatchDisposed_WithRaisedFloor_DoesNotShrinkBelowFloor()
+    {
+        const long floor = 128 * MemorySizes.MiB;
+        WriteBufferAdjuster sut = new(_db, floor);
+
+        // A tiny batch would normally be clamped down to the 16 MB default floor; the configured floor wins.
+        WriteBufferAdjuster.CountingWriteBatch store = (WriteBufferAdjuster.CountingWriteBatch)sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        store.Set(new byte[20], null);
+        sut.OnBatchDisposed();
+
+        _columnDb.Received(1).SetWriteBuffer(floor);
+    }
+
+    [Test]
+    public void OnBatchDisposed_WithFloorAboveCap_AllowsGrowthUpToFloor()
+    {
+        const long floor = 512 * MemorySizes.MiB; // above every per-column cap
+        WriteBufferAdjuster sut = new(_db, floor);
+
+        // With floor above the per-column cap, the effective range collapses to [floor, floor]; any write must not
+        // throw (Math.Clamp requires min <= max) and must resolve to the floor.
+        WriteBufferAdjuster.CountingWriteBatch store = (WriteBufferAdjuster.CountingWriteBatch)sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        store.Set(new byte[64], null);
+        sut.OnBatchDisposed();
+
+        _columnDb.Received(1).SetWriteBuffer(floor);
     }
 
     private sealed class StubWriteBatch : IWriteBatch
