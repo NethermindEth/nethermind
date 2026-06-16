@@ -7,7 +7,15 @@ public unsafe interface IArenaManager : IDisposable
 {
     void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
 
-    ArenaWriter CreateWriter(long estimatedSize);
+    /// <summary>
+    /// Create an <see cref="ArenaWriter"/> for a new snapshot slice.
+    /// </summary>
+    /// <param name="estimatedSize">Estimated byte size of the slice; drives the shared-vs-dedicated arena choice.</param>
+    /// <param name="small">
+    /// <c>true</c> for sub-CompactSize snapshots (<c>PersistedBase</c> / <c>PersistedSmallCompacted</c>),
+    /// which are packed into their own arena files separate from the larger tiers.
+    /// </param>
+    ArenaWriter CreateWriter(long estimatedSize, bool small = false);
     ArenaReservation Open(in SnapshotLocation location);
 
     /// <summary>

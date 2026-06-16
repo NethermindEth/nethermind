@@ -171,8 +171,11 @@ public class StorageLayerTests
         Assert.That(location.Size, Is.EqualTo(data.Length));
     }
 
-    [Test]
-    public void ArenaManager_CancelWrite_AllowsReuse()
+    // Both pools (non-small and small) share the same reserve / cancel / re-add lifecycle, so the
+    // cancelled-write reuse must hold for each independently.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ArenaManager_CancelWrite_AllowsReuse(bool small)
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
@@ -185,7 +188,7 @@ public class StorageLayerTests
 
         byte[] baseline = [0xAA];
         SnapshotLocation baselineLoc;
-        using (ArenaWriter bw = manager.CreateWriter(baseline.Length))
+        using (ArenaWriter bw = manager.CreateWriter(baseline.Length, small))
         {
             Span<byte> span = bw.GetWriter().GetSpan(baseline.Length);
             baseline.CopyTo(span);
@@ -193,21 +196,23 @@ public class StorageLayerTests
             (baselineLoc, _) = bw.Complete();
         }
 
-        using (ArenaWriter arenaWriter = manager.CreateWriter(0))
+        using (ArenaWriter arenaWriter = manager.CreateWriter(0, small))
         {
-            // Don't call Complete — Dispose will call CancelWrite
+            // Don't call Complete — Dispose will cancel the write and return the file to its pool.
         }
 
         byte[] data = new byte[50];
         SnapshotLocation loc;
-        using (ArenaWriter w = manager.CreateWriter(data.Length))
+        using (ArenaWriter w = manager.CreateWriter(data.Length, small))
         {
             Span<byte> span = w.GetWriter().GetSpan(data.Length);
             data.CopyTo(span);
             w.GetWriter().Advance(data.Length);
             (loc, _) = w.Complete();
         }
-        // The reused write starts at the page-aligned frontier after the baseline reservation.
+        // The reused write starts at the page-aligned frontier after the baseline reservation —
+        // i.e. it landed in the same file, proving the cancelled write returned to the right pool.
+        Assert.That(loc.ArenaId, Is.EqualTo(baselineLoc.ArenaId));
         Assert.That(loc.Offset, Is.EqualTo(PageLayout.RoundUpToOsPage(baselineLoc.Offset + baselineLoc.Size)));
     }
 
@@ -305,5 +310,75 @@ public class StorageLayerTests
         (SnapshotLocation loc2, _) = w2.Complete();
 
         Assert.That(loc1.ArenaId, Is.Not.EqualTo(loc2.ArenaId));
+    }
+
+    [Test]
+    public void ArenaManager_SmallAndNonSmallWrites_UseSeparateFiles()
+    {
+        string arenaDir = Path.Combine(_testDir, "arenas");
+        // Ample headroom: without pool separation all three writes would pack into one file.
+        using ArenaManager manager = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 64 * 1024,
+        }, LimboLogs.Instance);
+        manager.Initialize([]);
+
+        byte[] data = [1, 2, 3];
+        SnapshotLocation large = Write(manager, data, small: false);
+        SnapshotLocation small = Write(manager, data, small: true);
+        SnapshotLocation small2 = Write(manager, data, small: true);
+
+        Assert.That(small.ArenaId, Is.Not.EqualTo(large.ArenaId), "small and non-small writes must not share a file");
+        Assert.That(small2.ArenaId, Is.EqualTo(small.ArenaId), "consecutive small writes pack into the small pool's file");
+        // The "arena_*" glob is prefix-anchored, so it must not catch the "small_arena_*" file.
+        Assert.That(Directory.GetFiles(arenaDir, "small_arena_*.bin"), Has.Length.EqualTo(1));
+        Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void ArenaManager_SmallArenaFile_SurvivesCatalogRoundTrip()
+    {
+        string arenaDir = Path.Combine(_testDir, "arenas");
+        FlatDbConfig config = new()
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 64 * 1024,
+        };
+        byte[] data = [9, 8, 7, 6, 5];
+        StateId from = new(0, Keccak.Compute("from"));
+        StateId to = new(1, Keccak.Compute("to"));
+
+        SnapshotLocation location;
+        using (ArenaManager first = new(arenaDir, config, LimboLogs.Instance))
+        {
+            first.Initialize([]);
+            using ArenaWriter writer = first.CreateWriter(data.Length, small: true);
+            data.CopyTo(writer.GetWriter().GetSpan(data.Length));
+            writer.GetWriter().Advance(data.Length);
+            (location, ArenaReservation reservation) = writer.Complete();
+            // Keep the small_arena_ file on disk past Dispose so the next session can reload it.
+            reservation.PersistOnShutdown();
+            reservation.Dispose();
+        }
+
+        // Fresh manager over the same dir, primed with the catalog entry referencing the small file.
+        // Open succeeds only if Initialize recognized the small_arena_ prefix and loaded the file;
+        // otherwise the entry is dropped and the arena left unregistered.
+        SnapshotCatalog.CatalogEntry entry = new(from, to, location, SnapshotTier.PersistedBase);
+        using ArenaManager second = new(arenaDir, config, LimboLogs.Instance);
+        second.Initialize([entry]);
+
+        using WholeReadSession session = second.Open(location).BeginWholeReadSession();
+        Assert.That(TestFixtureHelpers.ReadAll(session), Is.EqualTo(data));
+    }
+
+    private static SnapshotLocation Write(ArenaManager manager, byte[] data, bool small)
+    {
+        using ArenaWriter writer = manager.CreateWriter(data.Length, small);
+        data.CopyTo(writer.GetWriter().GetSpan(data.Length));
+        writer.GetWriter().Advance(data.Length);
+        (SnapshotLocation location, _) = writer.Complete();
+        return location;
     }
 }

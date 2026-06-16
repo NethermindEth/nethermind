@@ -162,7 +162,8 @@ public class LongFinalityIntegrationTests
         // Split assertions so a missing flag on one side fingerprints which side regressed.
         string arenaDir = Path.Combine(_testDir, "persisted_snapshot", "arena");
         string blobDir = Path.Combine(_testDir, "persisted_snapshot", "blob");
-        Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Is.Not.Empty,
+        // PersistedBase metadata lives in the small-arena pool (sub-CompactSize tier).
+        Assert.That(Directory.GetFiles(arenaDir, "small_arena_*.bin"), Is.Not.Empty,
             "arena files were deleted on Dispose — PersistOnShutdown flag did not propagate to ArenaFile");
         string[] blobFiles = Directory.GetFiles(blobDir, "blob_*.bin");
         Assert.That(blobFiles, Is.Not.Empty,

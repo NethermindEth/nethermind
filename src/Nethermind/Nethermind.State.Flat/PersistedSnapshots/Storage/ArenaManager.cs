@@ -17,6 +17,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 public sealed class ArenaManager : IArenaManager
 {
     private const string ArenaFilePrefix = "arena_";
+    private const string SmallArenaFilePrefix = "small_arena_";
     private const string DedicatedArenaFilePrefix = "dedicated_";
     private const string ArenaFileExtension = ".bin";
 
@@ -30,6 +31,9 @@ public sealed class ArenaManager : IArenaManager
     // reserves a file by removing it from this set; its Complete / Cancel re-adds it if room
     // remains. Same pattern as BlobArenaManager.
     private readonly HashSet<int> _mutableArenas = [];
+    // Same pool, but for sub-CompactSize (Small) arenas. Keeping the two tiers in disjoint files
+    // segregates the cold, write-heavy small snapshots from the hot, long-lived large ones.
+    private readonly HashSet<int> _mutableSmallArenas = [];
     private readonly Lock _lock = new();
     private readonly PageResidencyTracker _pageTracker;
     private readonly PageResidencyAdvisor? _pageAdvisor;
@@ -82,17 +86,22 @@ public sealed class ArenaManager : IArenaManager
         foreach (string file in Directory.GetFiles(_basePath, $"*{ArenaFileExtension}"))
         {
             string fileName = Path.GetFileName(file);
-            bool isDedicated = fileName.StartsWith(DedicatedArenaFilePrefix, StringComparison.Ordinal);
-            bool isArena = fileName.StartsWith(ArenaFilePrefix, StringComparison.Ordinal);
-            if (!isDedicated && !isArena) continue;
+            // Order matters: "small_arena_" does not start with "arena_", but check the longer/more
+            // specific prefixes first to keep the classification unambiguous.
+            string? prefix =
+                fileName.StartsWith(DedicatedArenaFilePrefix, StringComparison.Ordinal) ? DedicatedArenaFilePrefix
+                : fileName.StartsWith(SmallArenaFilePrefix, StringComparison.Ordinal) ? SmallArenaFilePrefix
+                : fileName.StartsWith(ArenaFilePrefix, StringComparison.Ordinal) ? ArenaFilePrefix
+                : null;
+            if (prefix is null) continue;
 
-            int arenaId = ParseArenaId(file, isDedicated);
+            int arenaId = ParseArenaId(file, prefix);
             if (arenaId < 0) continue;
 
             long fileLength = new FileInfo(file).Length;
             long mappedSize = fileLength > 0 ? fileLength : _maxArenaSize;
 
-            ArenaFile arena = new(arenaId, file, mappedSize);
+            ArenaFile arena = new(arenaId, file, mappedSize, small: prefix == SmallArenaFilePrefix);
             _arenas[arenaId] = arena;
             _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
         }
@@ -137,21 +146,25 @@ public sealed class ArenaManager : IArenaManager
     /// duration of the write and signals back via <see cref="OnWriteCompleted"/> /
     /// <see cref="OnWriteCancelledShared"/> / <see cref="OnWriteCancelledDedicated"/>.
     /// </summary>
-    public ArenaWriter CreateWriter(long estimatedSize)
+    public ArenaWriter CreateWriter(long estimatedSize, bool small = false)
     {
         using Lock.Scope scope = _lock.EnterScope();
         bool dedicated = estimatedSize >= _dedicatedArenaThreshold;
         ArenaFile file = dedicated
-            ? CreateArenaFile(estimatedSize, dedicated: true)
-            : GetOrCreateArena(estimatedSize);
+            ? CreateArenaFile(estimatedSize, dedicated: true, small: small)
+            : GetOrCreateArena(estimatedSize, small);
         long offset = file.Frontier;
         // Reserve: remove from the mutable pool so no concurrent CreateWriter picks the same
         // file. OnWriteCompleted / OnWriteCancelledShared re-adds the id if room remains.
-        // Dedicated files never enter the mutable pool.
-        if (!dedicated) _mutableArenas.Remove(file.Id);
+        // Dedicated files never enter the mutable pool. Route off file.Small (not the small
+        // arg) so the remove always targets the same pool the file was scanned from.
+        if (!dedicated) PoolFor(file).Remove(file.Id);
         FileStream stream = file.CreateWriteStream(offset);
         return new ArenaWriter(this, file, dedicated, offset, stream);
     }
+
+    // The mutable pool a shared arena belongs to, chosen by its tier.
+    private HashSet<int> PoolFor(ArenaFile file) => file.Small ? _mutableSmallArenas : _mutableArenas;
 
     /// <summary>
     /// Bookkeeping after <see cref="ArenaWriter.Complete"/>. The writer has already set
@@ -162,7 +175,7 @@ public sealed class ArenaManager : IArenaManager
     internal void OnWriteCompleted(ArenaFile file, bool hasHeadroom)
     {
         using Lock.Scope scope = _lock.EnterScope();
-        if (hasHeadroom) _mutableArenas.Add(file.Id);
+        if (hasHeadroom) PoolFor(file).Add(file.Id);
         // Ratchet ArenaAllocatedBytes up to file.Frontier (post-write high-water): push the
         // delta since the last report and bring file.ReportedFrontier in sync.
         long delta = file.Frontier - file.ReportedFrontier;
@@ -178,10 +191,10 @@ public sealed class ArenaManager : IArenaManager
     /// to the mutable pool (the writer didn't advance the frontier, so by construction it
     /// still has the same headroom it had when picked).
     /// </summary>
-    internal void OnWriteCancelledShared(int arenaId)
+    internal void OnWriteCancelledShared(ArenaFile file)
     {
         using Lock.Scope scope = _lock.EnterScope();
-        _mutableArenas.Add(arenaId);
+        PoolFor(file).Add(file.Id);
     }
 
     /// <summary>
@@ -234,7 +247,7 @@ public sealed class ArenaManager : IArenaManager
         if (_disposed) return false;
         file.DeadBytes += deadSize;
         if (file.DeadBytes < file.Frontier) return true;
-        _mutableArenas.Remove(file.Id);
+        PoolFor(file).Remove(file.Id);
         if (_arenas.TryRemove(file.Id, out _))
         {
             file.ReportRemoved();
@@ -283,13 +296,14 @@ public sealed class ArenaManager : IArenaManager
 
     public void QueueEviction(int arenaId, int pageIdx) => _pageAdvisor?.Queue(arenaId, pageIdx);
 
-    private ArenaFile GetOrCreateArena(long requiredSize)
+    private ArenaFile GetOrCreateArena(long requiredSize, bool small)
     {
-        // Scan mutable arenas (none currently held by a writer). Files that can't fit are pruned
-        // (they become permanently read-only from the manager's POV).
+        // Scan the matching mutable pool (none currently held by a writer). Files that can't fit
+        // are pruned (they become permanently read-only from the manager's POV).
+        HashSet<int> pool = small ? _mutableSmallArenas : _mutableArenas;
         List<int>? toRemove = null;
         ArenaFile? result = null;
-        foreach (int id in _mutableArenas)
+        foreach (int id in pool)
         {
             ArenaFile candidate = _arenas[id];
             if (candidate.Frontier + requiredSize <= candidate.MappedSize)
@@ -304,19 +318,19 @@ public sealed class ArenaManager : IArenaManager
         if (toRemove is not null)
         {
             foreach (int id in toRemove)
-                _mutableArenas.Remove(id);
+                pool.Remove(id);
         }
 
-        return result ?? CreateArenaFile();
+        return result ?? CreateArenaFile(small: small);
     }
 
-    private ArenaFile CreateArenaFile(long mappedSize = 0, bool dedicated = false)
+    private ArenaFile CreateArenaFile(long mappedSize = 0, bool dedicated = false, bool small = false)
     {
         if (mappedSize == 0) mappedSize = _maxArenaSize;
         int id = _nextArenaId++;
-        string prefix = dedicated ? DedicatedArenaFilePrefix : ArenaFilePrefix;
+        string prefix = dedicated ? DedicatedArenaFilePrefix : small ? SmallArenaFilePrefix : ArenaFilePrefix;
         string path = Path.Combine(_basePath, $"{prefix}{id:D4}{ArenaFileExtension}");
-        ArenaFile arena = new(id, path, mappedSize);
+        ArenaFile arena = new(id, path, mappedSize, small);
         _arenas[id] = arena;
         // Fresh shared file isn't added to _mutableArenas — the writer that just took it
         // is its "owner". The writer's Complete / Cancel adds it (if room remains).
@@ -324,10 +338,9 @@ public sealed class ArenaManager : IArenaManager
         return arena;
     }
 
-    private static int ParseArenaId(string filePath, bool dedicated)
+    private static int ParseArenaId(string filePath, string prefix)
     {
         string fileName = Path.GetFileNameWithoutExtension(filePath);
-        string prefix = dedicated ? DedicatedArenaFilePrefix : ArenaFilePrefix;
         if (!fileName.StartsWith(prefix, StringComparison.Ordinal)) return -1;
         return int.TryParse(fileName.AsSpan(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out int id) ? id : -1;
     }

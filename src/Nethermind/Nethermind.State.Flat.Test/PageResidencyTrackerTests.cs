@@ -69,7 +69,7 @@ public class PageResidencyTrackerTests
 
         public PageResidencyTracker PageTracker => tracker;
         public void QueueEviction(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
-        public ArenaWriter CreateWriter(long estimatedSize) => throw new NotSupportedException();
+        public ArenaWriter CreateWriter(long estimatedSize, bool small = false) => throw new NotSupportedException();
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location) => throw new NotSupportedException();
         // No-op so reservation disposal doesn't blow up in tests.

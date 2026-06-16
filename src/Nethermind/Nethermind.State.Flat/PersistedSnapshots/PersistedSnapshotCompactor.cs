@@ -279,9 +279,18 @@ public class PersistedSnapshotCompactor(
             BloomFilter mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
                 ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
                 : BloomFilter.AlwaysTrue();
+            // A non-CompactSized merge at a large-compaction boundary spans >CompactSize — its own tier
+            // so the assemble walk can prefer it as the widest skip-pointer. Computed up front so the
+            // sub-CompactSize tier (PersistedSmallCompacted) lands in the separate small-arena pool.
+            SnapshotTier tier = isCompactSized
+                ? SnapshotTier.PersistedCompactSized
+                : _schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber)
+                    ? SnapshotTier.PersistedLargeCompacted
+                    : SnapshotTier.PersistedSmallCompacted;
+
             SnapshotLocation location;
             ArenaReservation reservation;
-            using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize))
+            using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, small: tier == SnapshotTier.PersistedSmallCompacted))
             {
                 long sw = Stopwatch.GetTimestamp();
                 PersistedSnapshotMerger.NWayMergeSnapshots<ArenaBufferWriter, WholeReadSession, WholeReadSessionReader, NoOpPin>(
@@ -304,13 +313,6 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             reservation.Fsync();
 
-            // A non-CompactSized merge at a large-compaction boundary spans >CompactSize — its own tier
-            // so the assemble walk can prefer it as the widest skip-pointer.
-            SnapshotTier tier = isCompactSized
-                ? SnapshotTier.PersistedCompactSized
-                : _schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber)
-                    ? SnapshotTier.PersistedLargeCompacted
-                    : SnapshotTier.PersistedSmallCompacted;
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
             using (PersistedSnapshot compacted = new(from, to, reservation, blobs, tier, mergedBloom))
             {

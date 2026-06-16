@@ -200,7 +200,9 @@ public sealed class PersistedSnapshotLoader(
         SnapshotLocation location;
         ArenaReservation reservation;
         using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
-        using (ArenaWriter arenaWriter = arena.CreateWriter(estimatedSize))
+        // Base snapshots are always sub-CompactSize (single-block window) and read-cold after
+        // compaction — pack their metadata into the separate small-arena pool.
+        using (ArenaWriter arenaWriter = arena.CreateWriter(estimatedSize, small: true))
         {
             PersistedSnapshotBuilder.Build<ArenaBufferWriter>(
                 snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
