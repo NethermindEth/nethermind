@@ -89,7 +89,6 @@ public readonly record struct BlobCellMask(UInt128 Value)
     public ref struct SetBitEnumerator(UInt128 value)
     {
         private UInt128 _value = value;
-        private int _index;
 
         public int Current { get; private set; }
 
@@ -97,20 +96,19 @@ public readonly record struct BlobCellMask(UInt128 Value)
 
         public bool MoveNext()
         {
-            while (_index < CellCount && _value != UInt128.Zero)
+            if (_value == UInt128.Zero)
             {
-                bool isSet = (_value & UInt128.One) != 0;
-                _value >>= 1;
-                if (isSet)
-                {
-                    Current = _index++;
-                    return true;
-                }
-
-                _index++;
+                return false;
             }
 
-            return false;
+            ulong low = (ulong)_value;
+            Current = low != 0
+                ? BitOperations.TrailingZeroCount(low)
+                : 64 + BitOperations.TrailingZeroCount((ulong)(_value >> 64));
+
+            // Clear the lowest set bit.
+            _value &= _value - UInt128.One;
+            return true;
         }
     }
 }

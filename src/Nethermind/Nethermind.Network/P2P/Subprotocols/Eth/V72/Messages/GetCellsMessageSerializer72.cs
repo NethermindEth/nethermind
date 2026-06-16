@@ -25,7 +25,7 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         int payloadContentLength = GetPayloadContentLength(message);
         rlpStream.StartSequence(payloadContentLength);
 
-        int hashesLength = GetHashesContentLength(message.Hashes);
+        int hashesLength = Rlp.LengthOf(message.Hashes);
         rlpStream.StartSequence(hashesLength);
 
         foreach (Hash256 hash in message.Hashes)
@@ -61,17 +61,5 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
     }
 
     private static int GetPayloadContentLength(GetCellsMessage72 message) =>
-        Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes)) + Rlp.LengthOf(message.CellMask);
-
-    private static int GetHashesContentLength(Hash256[] hashes)
-    {
-        int contentLength = 0;
-
-        for (int i = 0; i < hashes.Length; i++)
-        {
-            contentLength += Rlp.LengthOf(hashes[i]);
-        }
-
-        return contentLength;
-    }
+        Rlp.LengthOfSequence(Rlp.LengthOf(message.Hashes)) + Rlp.LengthOf(message.CellMask);
 }
