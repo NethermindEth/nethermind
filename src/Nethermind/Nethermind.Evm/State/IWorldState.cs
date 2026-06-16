@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -23,6 +25,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     const BlockHeader? PreGenesis = null;
 
     IDisposable BeginScope(BlockHeader? baseBlock);
+    Task HintBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
@@ -30,11 +33,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
-    /// Return the original persistent storage value from the storage cell
+    /// Return the original persistent storage value from the storage cell.
+    /// Span is valid until the next call on this <see cref="IWorldState"/> instance.
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    byte[] GetOriginal(in StorageCell storageCell);
+    ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell
@@ -98,6 +102,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
+    // used by Arbitrum
     void CreateEmptyAccountIfDeleted(Address address);
 
     /// <summary>
@@ -113,17 +118,15 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Note: This is different from whether the account has its hash updated</returns>
     bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
-    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    void IncrementNonce(Address address, UInt256 delta);
+    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce);
 
     void DecrementNonce(Address address, UInt256 delta);
-
-    void IncrementNonce(Address address) => IncrementNonce(address, UInt256.One);
 
     void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
@@ -141,4 +144,18 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
     void ResetTransient();
+
+    public void AddAccountRead(Address address) { }
+
+    public void RecordBytecodeAccess(Address address) { }
+
+    public IDisposable? BeginSystemAccountReadSuppression() => null;
+
+    // See https://eips.ethereum.org/EIPS/eip-7610
+    bool IsNonZeroAccount(Address address, out bool accountExists)
+    {
+        accountExists = AccountExists(address);
+        return accountExists
+            && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
+    }
 }

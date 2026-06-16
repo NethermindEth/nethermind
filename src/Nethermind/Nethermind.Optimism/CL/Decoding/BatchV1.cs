@@ -78,14 +78,14 @@ public sealed class BatchV1
         ulong tosFrom,
         ulong legacyTxFrom)
     {
-        var userTransactions = new Transaction[txCount];
+        Transaction[] userTransactions = new Transaction[txCount];
         ulong tosIdx = tosFrom;
         ulong legacyTxIdx = legacyTxFrom;
         for (ulong i = 0; i < txCount; i++)
         {
             ulong txIdx = from + i;
             bool parityBit = ((Txs.YParityBits >> (int)txIdx) & 1) == 1;
-            var tx = new Transaction
+            Transaction tx = new()
             {
                 ChainId = chainId,
                 Type = Txs.Types[(int)txIdx],

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -10,6 +9,7 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class TransactionExtensionsTests
     {
         [Test]
@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Test
             tx.DecodedMaxFeePerGas = test.FeeCap;
 
             UInt256 payableGasPrice = tx.CalculateAffordableGasPrice(test.IsEip1559Enabled, test.BaseFee, test.AccountBalance);
-            payableGasPrice.Should().Be(test.ExpectedPayableGasPriceResult);
+            Assert.That(payableGasPrice, Is.EqualTo(test.ExpectedPayableGasPriceResult));
         }
 
         public class TransactionPayableGasPrice

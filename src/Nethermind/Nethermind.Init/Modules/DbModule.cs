@@ -65,11 +65,12 @@ public class DbModule(
             .AddDatabase(DbNames.Blocks)
             .AddDatabase(DbNames.Headers)
             .AddDatabase(DbNames.BlockInfos)
-            .AddDatabase(DbNames.Bloom)
-            .AddDatabase(DbNames.BlobTransactions)
+            .AddDatabase(DbNames.BlockAccessLists)
 
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)
+
+            .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize))
             ;
 
         switch (initConfig.DiagnosticMode)
@@ -114,14 +115,8 @@ public class DbModule(
 
     private class ReadOnlyDbFactory(IDbFactory baseDbFactory) : IDbFactory
     {
-        public IDb CreateDb(DbSettings dbSettings)
-        {
-            return baseDbFactory.CreateDb(dbSettings).AsReadOnly(true);
-        }
+        public IDb CreateDb(DbSettings dbSettings) => baseDbFactory.CreateDb(dbSettings).AsReadOnly(true);
 
-        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
-        {
-            return baseDbFactory.CreateColumnsDb<T>(dbSettings).CreateReadOnly(true);
-        }
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => baseDbFactory.CreateColumnsDb<T>(dbSettings).CreateReadOnly(true);
     }
 }

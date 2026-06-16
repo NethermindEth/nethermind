@@ -3,7 +3,6 @@
 
 using System.Linq;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -20,10 +19,7 @@ public class ReceiptsMessageSerializerTests
 {
     private class EmptyTxReceipt : TxReceipt
     {
-        public EmptyTxReceipt()
-        {
-            Logs = []; // Logs are always assumed non-null in decoders
-        }
+        public EmptyTxReceipt() => Logs = []; // Logs are always assumed non-null in decoders
     }
 
     private static readonly object[] TestData =
@@ -162,9 +158,9 @@ public class ReceiptsMessageSerializerTests
             receipts
         }));
 
-        var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
+        ReceiptsMessageSerializer69 serializer = new(new TestSpecProvider(Prague.Instance));
 
-        var x = PooledByteBufferAllocator.Default.Buffer(1024);
+        IByteBuffer x = PooledByteBufferAllocator.Default.Buffer(1024);
         serializer.Serialize(x, message);
 
         SerializerTester.TestZero(
@@ -185,12 +181,12 @@ public class ReceiptsMessageSerializerTests
             }
         }));
 
-        var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
+        ReceiptsMessageSerializer69 serializer = new(new TestSpecProvider(Prague.Instance));
         byte[] encoded = serializer.Serialize(message);
 
         message.EthMessage.TxReceipts[0]![0].Bloom = length.HasValue
             ? new(Enumerable.Range(0, length.Value).Select(i => (byte)i).ToArray())
             : null;
-        serializer.Serialize(message).Should().Equal(encoded);
+        Assert.That(serializer.Serialize(message), Is.EqualTo(encoded));
     }
 }

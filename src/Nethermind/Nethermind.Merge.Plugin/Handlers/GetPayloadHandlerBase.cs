@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -24,7 +23,10 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     : IAsyncHandler<byte[], TGetPayloadResult?>
     where TGetPayloadResult : IForkValidator
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadHandlerBase<>));
+
+    /// <summary>The spec provider passed to this handler.</summary>
+    protected ISpecProvider SpecProvider => specProvider;
 
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
     {

@@ -7,13 +7,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Processing
 {
-    public class BlocksProcessingEventArgs : EventArgs
+    public class BlocksProcessingEventArgs(IReadOnlyList<Block> blocks) : EventArgs
     {
-        public IReadOnlyList<Block> Blocks { get; }
-
-        public BlocksProcessingEventArgs(IReadOnlyList<Block> blocks)
-        {
-            Blocks = blocks;
-        }
+        public IReadOnlyList<Block> Blocks { get; } = blocks;
     }
 }

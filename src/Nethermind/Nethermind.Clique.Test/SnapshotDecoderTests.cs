@@ -31,39 +31,48 @@ namespace Nethermind.Clique.Test
             RlpStream stream = new(decoder.GetLength(expected, RlpBehaviors.None));
             decoder.Encode(stream, expected);
             // Decode snapshot
-            Snapshot actual = decoder.Decode(stream.Data.AsRlpStream());
+            Snapshot actual = decoder.Decode(stream.Data.AsSpan());
             // Validate fields
-            Assert.That(actual.Number, Is.EqualTo(expected.Number));
-            Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
-            Assert.That(actual.Signers, Is.EqualTo(expected.Signers));
-            Assert.That(actual.Votes.Count, Is.EqualTo(expected.Votes.Count));
-            for (int i = 0; i < expected.Votes.Count; i++)
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(actual.Votes[i].Signer, Is.EqualTo(expected.Votes[i].Signer));
-                Assert.That(actual.Votes[i].Block, Is.EqualTo(expected.Votes[i].Block));
-                Assert.That(actual.Votes[i].Address, Is.EqualTo(expected.Votes[i].Address));
-                Assert.That(actual.Votes[i].Authorize, Is.EqualTo(expected.Votes[i].Authorize));
-            }
-            Assert.That(actual.Tally.Count, Is.EqualTo(expected.Tally.Count));
-            foreach (Address address in expected.Tally.Keys)
-            {
-                Assert.That(actual.Tally[address].Votes, Is.EqualTo(expected.Tally[address].Votes));
-                Assert.That(actual.Tally[address].Authorize, Is.EqualTo(expected.Tally[address].Authorize));
+                Assert.That(actual.Number, Is.EqualTo(expected.Number));
+                Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+                Assert.That(actual.Signers, Is.EqualTo(expected.Signers));
+                Assert.That(actual.Votes.Count, Is.EqualTo(expected.Votes.Count));
+                for (int i = 0; i < expected.Votes.Count; i++)
+                {
+                    Assert.That(actual.Votes[i].Signer, Is.EqualTo(expected.Votes[i].Signer));
+                    Assert.That(actual.Votes[i].Block, Is.EqualTo(expected.Votes[i].Block));
+                    Assert.That(actual.Votes[i].Address, Is.EqualTo(expected.Votes[i].Address));
+                    Assert.That(actual.Votes[i].Authorize, Is.EqualTo(expected.Votes[i].Authorize));
+                }
+                Assert.That(actual.Tally.Count, Is.EqualTo(expected.Tally.Count));
+                foreach (Address address in expected.Tally.Keys)
+                {
+                    Assert.That(actual.Tally[address].Votes, Is.EqualTo(expected.Tally[address].Votes));
+                    Assert.That(actual.Tally[address].Authorize, Is.EqualTo(expected.Tally[address].Authorize));
+                }
             }
         }
 
         private Snapshot GenerateSnapshot(Hash256 hash, long number, Address candidate)
         {
-            SortedList<Address, long> signers = new(AddressComparer.Instance);
-            signers.Add(_signer1, number - 2);
-            signers.Add(_signer2, number - 1);
-            signers.Add(_signer3, number - 3);
-            List<Vote> votes = new();
-            votes.Add(new Vote(_signer1, number - 2, candidate, true));
-            votes.Add(new Vote(_signer3, number - 3, candidate, true));
-            votes.Add(new Vote(_signer3, number - 6, _signer2, false));
-            Dictionary<Address, Tally> tally = new();
-            tally[candidate] = new Tally(true);
+            SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>())
+            {
+                { _signer1, number - 2 },
+                { _signer2, number - 1 },
+                { _signer3, number - 3 }
+            };
+            List<Vote> votes =
+            [
+                new Vote(_signer1, number - 2, candidate, true),
+                new Vote(_signer3, number - 3, candidate, true),
+                new Vote(_signer3, number - 6, _signer2, false),
+            ];
+            Dictionary<Address, Tally> tally = new()
+            {
+                [candidate] = new Tally(true)
+            };
             tally[candidate].Votes = 2;
             tally[_signer2] = new Tally(false);
             tally[_signer2].Votes = 1;

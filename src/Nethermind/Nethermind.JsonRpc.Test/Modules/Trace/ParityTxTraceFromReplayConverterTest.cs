@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -38,7 +39,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0, 0 }
             };
@@ -49,7 +50,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0 }
             };
@@ -95,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
-            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether());
+            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether);
             blockTracer.EndTxTrace();
             blockTracer.ReportReward(TestItem.AddressA, "block", UInt256.One);
 
@@ -115,7 +116,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = [],
+                Input = CappedArray<byte>.Empty,
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0 }
             };
@@ -160,7 +161,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff);
             blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
-            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether());
+            txTracer.ReportBalanceChange(TestItem.AddressA, 0, 3.Ether);
             blockTracer.EndTxTrace();
             blockTracer.ReportReward(TestItem.AddressA, "block", UInt256.One);
 

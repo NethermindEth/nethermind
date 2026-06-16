@@ -1,23 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
+using System;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -33,9 +35,9 @@ namespace Nethermind.Network.Discovery.Test
     {
         private readonly PrivateKey _privateKey = new("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
         private readonly PrivateKey _privateKey2 = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
-        private List<IChannel> _channels = new();
-        private List<NettyDiscoveryHandler> _discoveryHandlers = new();
-        private List<IDiscoveryManager> _discoveryManagersMocks = new();
+        private List<IChannel> _channels = [];
+        private List<NettyDiscoveryHandler> _discoveryHandlers = [];
+        private List<IKademliaDiscv4Adapter> _kademliaAdaptersMocks = [];
         private readonly IPEndPoint _address = new(IPAddress.Loopback, 10001);
         private readonly IPEndPoint _address2 = new(IPAddress.Loopback, 10002);
         private int _channelActivatedCounter;
@@ -44,21 +46,23 @@ namespace Nethermind.Network.Discovery.Test
         [SetUp]
         public async Task Initialize()
         {
-            _channels = new List<IChannel>();
-            _discoveryHandlers = new List<NettyDiscoveryHandler>();
-            _discoveryManagersMocks = new List<IDiscoveryManager>();
+            _channels = [];
+            _discoveryHandlers = [];
+            _kademliaAdaptersMocks = [];
             _channelActivatedCounter = 0;
-            IDiscoveryManager? discoveryManagerMock = Substitute.For<IDiscoveryManager>();
+            IKademliaDiscv4Adapter? kademliaAdapterMock = Substitute.For<IKademliaDiscv4Adapter>();
+            kademliaAdapterMock.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
             IMessageSerializationService? messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
 
-            IDiscoveryManager? discoveryManagerMock2 = Substitute.For<IDiscoveryManager>();
+            IKademliaDiscv4Adapter? kademliaAdapterMock2 = Substitute.For<IKademliaDiscv4Adapter>();
+            kademliaAdapterMock2.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
             IMessageSerializationService? messageSerializationService2 = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
 
-            await StartUdpChannel("127.0.0.1", 10001, discoveryManagerMock, messageSerializationService);
-            await StartUdpChannel("127.0.0.1", 10002, discoveryManagerMock2, messageSerializationService2);
+            await StartUdpChannel("127.0.0.1", 10001, kademliaAdapterMock, messageSerializationService);
+            await StartUdpChannel("127.0.0.1", 10002, kademliaAdapterMock2, messageSerializationService2);
 
-            _discoveryManagersMocks.Add(discoveryManagerMock);
-            _discoveryManagersMocks.Add(discoveryManagerMock2);
+            _kademliaAdaptersMocks.Add(kademliaAdapterMock);
+            _kademliaAdaptersMocks.Add(kademliaAdapterMock2);
 
             Assert.That(() => _channelActivatedCounter, Is.EqualTo(2).After(1000, 100));
         }
@@ -80,7 +84,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Ping));
+            await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Ping));
 
             PingMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address2, _address, new byte[32])
             {
@@ -89,7 +93,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Ping));
+            await _kademliaAdaptersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Ping));
         }
 
         [Test]
@@ -102,7 +106,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Pong));
+            await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Pong));
 
             PongMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
             {
@@ -110,7 +114,7 @@ namespace Nethermind.Network.Discovery.Test
             };
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Pong));
+            await _kademliaAdaptersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Pong));
         }
 
         [Test]
@@ -123,7 +127,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.FindNode));
+            await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.FindNode));
 
             FindNodeMsg msg2 = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
             {
@@ -132,7 +136,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.FindNode));
+            await _kademliaAdaptersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.FindNode));
         }
 
         [Test]
@@ -145,7 +149,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
+            await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
 
             NeighborsMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, Array.Empty<Node>())
             {
@@ -154,16 +158,42 @@ namespace Nethermind.Network.Discovery.Test
 
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
+            await _kademliaAdaptersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
+        }
+
+        private (IKademliaDiscv4Adapter Adapter, NettyDiscoveryHandler Handler, IChannelHandlerContext Ctx, IMessageSerializationService Service) CreateHandler(NodeFilter? nodeFilter = null)
+        {
+            IKademliaDiscv4Adapter adapter = Substitute.For<IKademliaDiscv4Adapter>();
+            adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
+            IMessageSerializationService service = Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;
+            IChannel channel = Substitute.For<IChannel>();
+            NettyDiscoveryHandler handler = nodeFilter is not null
+                ? new(adapter, channel, service, Timestamper.Default, LimboLogs.Instance, nodeFilter)
+                : new(adapter, channel, service, Timestamper.Default, LimboLogs.Instance);
+            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
+            return (adapter, handler, ctx, service);
+        }
+
+        [Test]
+        public void UndersizedPacketIsNotForwardedToDiscoveryManager()
+        {
+            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService _) = CreateHandler();
+
+            byte[] data = new byte[50];
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10003");
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
+
+            _ = adapter.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
         }
 
         [Test]
         public void ForwardsUnrecognizedMessageToNextHandler()
         {
             byte[] data = [1, 2, 3];
-            var from = IPEndPoint.Parse("127.0.0.1:10000");
-            var to = IPEndPoint.Parse("127.0.0.1:10003");
-            var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), from, to);
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10003");
+            DatagramPacket packet = new(Unpooled.WrappedBuffer(data), from, to);
 
             IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
             _discoveryHandlers[0].ChannelRead(ctx, packet);
@@ -173,7 +203,84 @@ namespace Nethermind.Network.Discovery.Test
             ));
         }
 
-        private async Task StartUdpChannel(string address, int port, IDiscoveryManager discoveryManager, IMessageSerializationService service)
+        [Test]
+        public async Task FarFutureMessagesAreRejected()
+        {
+            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + (long)TimeSpan.FromHours(2).TotalSeconds, _address, _address2, new byte[32])
+            {
+                FarAddress = _address2
+            };
+
+            await _discoveryHandlers[0].SendMsg(msg);
+            await SleepWhileWaiting();
+
+            _ = _kademliaAdaptersMocks[1].DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public async Task RateLimitedMessagesAreIgnored()
+        {
+            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler(NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1)));
+            using SemaphoreSlim called = new(0);
+            adapter.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => called.Release());
+
+            byte[] data = SerializePing(service);
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+
+            Assert.That(await called.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            await Task.Delay(50);
+
+            await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public async Task DefaultInboundRateLimiter_Allows_ShortBurstFromSameIp()
+        {
+            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
+
+            byte[] data = SerializePing(service);
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+
+            await SleepWhileWaiting();
+
+            await adapter.Received(2).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public async Task DefaultInboundRateLimiter_Drops_Message_AboveBurstLimit()
+        {
+            (IKademliaDiscv4Adapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
+
+            byte[] data = SerializePing(service);
+
+            for (int i = 0; i < 5; i++)
+            {
+                handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+            }
+
+            await SleepWhileWaiting();
+
+            await adapter.Received(4).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        private byte[] SerializePing(IMessageSerializationService service)
+        {
+            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address2, _address, new byte[32])
+            {
+                FarAddress = _address
+            };
+
+            IByteBuffer serialized = service.ZeroSerialize(msg);
+            byte[] data = serialized.ReadAllBytesAsArray();
+            serialized.SafeRelease();
+            return data;
+        }
+
+        private async Task StartUdpChannel(string address, int port, IKademliaDiscv4Adapter kademliaAdapter, IMessageSerializationService service)
         {
             MultithreadEventLoopGroup group = new(1);
 
@@ -181,28 +288,26 @@ namespace Nethermind.Network.Discovery.Test
             bootstrap
                 .Group(group)
                 .ChannelFactory(() => _channelFactory.CreateDatagramChannel())
-                .Handler(new ActionChannelInitializer<IDatagramChannel>(x => InitializeChannel(x, discoveryManager, service)));
+                .Handler(new ActionChannelInitializer<IDatagramChannel>(x => InitializeChannel(x, kademliaAdapter, service)));
 
             _channels.Add(await bootstrap.BindAsync(IPAddress.Parse(address), port));
         }
 
-        private void InitializeChannel(IDatagramChannel channel, IDiscoveryManager discoveryManager, IMessageSerializationService service)
+        private void InitializeChannel(IDatagramChannel channel, IKademliaDiscv4Adapter kademliaAdapter, IMessageSerializationService service)
         {
-            NettyDiscoveryHandler handler = new(discoveryManager, channel, service, new Timestamper(), LimboLogs.Instance);
+            NettyDiscoveryHandler handler = new(kademliaAdapter, channel, service, new Timestamper(), LimboLogs.Instance);
             handler.OnChannelActivated += (_, _) =>
             {
                 _channelActivatedCounter++;
             };
             _discoveryHandlers.Add(handler);
-            discoveryManager.MsgSender = handler;
+            kademliaAdapter.MsgSender = handler;
             channel.Pipeline
                 .AddLast(new LoggingHandler(DotNetty.Handlers.Logging.LogLevel.TRACE))
                 .AddLast(handler);
         }
 
-        private static async Task SleepWhileWaiting()
-        {
+        private static async Task SleepWhileWaiting() =>
             await Task.Delay((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
-        }
     }
 }

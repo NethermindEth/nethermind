@@ -3,11 +3,14 @@
 
 using Autofac;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.History;
+using Nethermind.Synchronization;
+using NSubstitute;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -26,6 +29,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db.LogIndex;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -34,6 +38,7 @@ namespace Nethermind.JsonRpc.Benchmark
     {
         private EthRpcModule _ethModule;
         private IContainer _container;
+        private HeadBlockSignal _headBlockSignal;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -44,7 +49,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 .Build();
 
             IWorldState stateProvider = _container.Resolve<IMainProcessingContext>().WorldState;
-            stateProvider.CreateAccount(Address.Zero, 1000.Ether());
+            stateProvider.CreateAccount(Address.Zero, 1000.Ether);
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
@@ -65,9 +70,11 @@ namespace Nethermind.JsonRpc.Benchmark
             ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
             FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
 
+            _headBlockSignal = new HeadBlockSignal(blockTree);
             _ethModule = new EthRpcModule(
                 _container.Resolve<IJsonRpcConfig>(),
                 bridge,
+                blockTree,
                 blockTree,
                 _container.Resolve<IReceiptFinder>(),
                 _container.Resolve<IStateReader>(),
@@ -81,12 +88,22 @@ namespace Nethermind.JsonRpc.Benchmark
                 feeHistoryOracle,
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
-                new BlocksConfig().SecondsPerSlot);
+                new LogIndexConfig(),
+                new BlocksConfig().SecondsPerSlot,
+                _headBlockSignal,
+                new EthCapabilitiesProvider(
+                    blockTree.AsReadOnly(),
+                    _container.Resolve<IWorldStateManager>(),
+                    _container.Resolve<ISyncConfig>(),
+                    Substitute.For<ISyncPointers>(),
+                    Substitute.For<IHistoryConfig>(),
+                    Substitute.For<IHistoryPruner>()));
         }
 
         [GlobalCleanup]
         public void TearDown()
         {
+            _headBlockSignal.Dispose();
             _container.Dispose();
         }
 

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.102-noble@sha256:25d14b400b75fa4e89d5bd4487a92a604a4e409ab65becb91821e7dc4ac7f81f AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.301-resolute@sha256:196f61c6262aa890f41dd654ff52d3b995187124a37778fb990ed0c31c26da44 AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -13,6 +13,7 @@ WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
+COPY Directory.Build.targets .
 COPY global.json .
 COPY nuget.config .
 
@@ -25,7 +26,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.2-noble@sha256:1aacc8154bc3071349907dae26849df301188be1a2e1f4560b903fb6275e481a
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.9-resolute@sha256:0aa8645b7e7c83630bdb5ca096a91e2e4a356e9236ec1c01bb471a7410bb18a9
 
 WORKDIR /nethermind
 
@@ -36,5 +37,6 @@ VOLUME /nethermind/nethermind_db
 EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
+COPY scripts/entrypoint.sh .
 
-ENTRYPOINT ["./nethermind"]
+ENTRYPOINT ["./entrypoint.sh"]

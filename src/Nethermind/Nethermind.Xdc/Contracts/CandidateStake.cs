@@ -3,9 +3,11 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using System.Diagnostics;
 
 namespace Nethermind.Xdc.Contracts;
 
+[DebuggerDisplay("{Address} {Stake}")]
 internal struct CandidateStake
 {
     public Address Address;

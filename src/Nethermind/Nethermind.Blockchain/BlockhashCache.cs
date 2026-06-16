@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain;
 
 public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) : IDisposable, IBlockhashCache
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockhashCache>();
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
     private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
     private readonly Lock _lock = new();
@@ -124,47 +124,44 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
     private static int FlatCacheLength(BlockHeader blockHeader) => (int)Math.Min(MaxDepth, blockHeader.Number);
 
-    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default)
+    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken = default) => Task.Run(() =>
     {
-        return Task.Run(() =>
+        Hash256[]? hashes = null;
+        try
         {
-            Hash256[]? hashes = null;
-            try
+            if (!cancellationToken.IsCancellationRequested)
             {
-                if (!cancellationToken.IsCancellationRequested)
-                {
-                    bool emptyHash = blockHeader.Hash is null;
+                bool emptyHash = blockHeader.Hash is null;
 
-                    if (emptyHash || !_flatCache.TryGet(blockHeader.Hash, out hashes))
+                if (emptyHash || !_flatCache.TryGet(blockHeader.Hash, out hashes))
+                {
+                    if (_flatCache.TryGet(blockHeader.ParentHash, out Hash256[] parentHashes))
                     {
-                        if (_flatCache.TryGet(blockHeader.ParentHash, out Hash256[] parentHashes))
+                        int length = FlatCacheLength(blockHeader);
+                        hashes = new Hash256[length];
+                        hashes[0] = blockHeader.ParentHash;
+                        Array.Copy(parentHashes, 0, hashes, 1, length - 1);
+                        if (!emptyHash)
                         {
-                            int length = FlatCacheLength(blockHeader);
-                            hashes = new Hash256[length];
-                            hashes[0] = blockHeader.ParentHash;
-                            Array.Copy(parentHashes, 0, hashes, 1, length - 1);
-                            if (!emptyHash)
-                            {
-                                _flatCache.Set(blockHeader.Hash, hashes);
-                            }
-                        }
-                        else
-                        {
-                            Load(blockHeader, MaxDepth, out hashes, cancellationToken);
+                            _flatCache.Set(blockHeader.Hash, hashes);
                         }
                     }
+                    else
+                    {
+                        Load(blockHeader, MaxDepth, out hashes, cancellationToken);
+                    }
                 }
-
-                PruneInBackground(blockHeader);
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Background fetch failed for block {blockHeader.Number}: {e.Message}");
             }
 
-            return hashes;
-        });
-    }
+            PruneInBackground(blockHeader);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Background fetch failed for block {blockHeader.Number}: {e.Message}");
+        }
+
+        return hashes;
+    });
 
     private void PruneInBackground(BlockHeader blockHeader)
     {
@@ -230,20 +227,36 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
     public void Clear()
     {
+        // Wait for an in-flight background pruning task (from a prior tenant of the
+        // WitnessGeneratingBlockProcessingEnvFactory pool) to complete before clearing, so its
+        // PruneBefore doesn't clobber the reset _minBlock after the clear.
+        Task pruneTask = _pruningTask;
+        if (!pruneTask.IsCompleted)
+        {
+            try
+            {
+                pruneTask.GetAwaiter().GetResult();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Background pruning task ended with error during Clear: {e.Message}");
+            }
+        }
+
         _blocks.Clear();
+        _flatCache.Clear();
+        Interlocked.Exchange(ref _minBlock, int.MaxValue);
     }
 
-    public void Dispose()
-    {
-        Clear();
-    }
+    public void Dispose() => Clear();
 
     public Stats GetStats()
     {
-        Dictionary<CacheNode, int> parents = new();
+        Dictionary<CacheNode, int> parents = [];
         int nodes = 0;
-        foreach (CacheNode node in _blocks.Values)
+        foreach (KeyValuePair<Hash256AsKey, CacheNode> kvp in _blocks)
         {
+            CacheNode node = kvp.Value;
             parents.GetOrAdd(node, static _ => 0);
             if (node.Parent is not null)
             {

@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -48,7 +46,7 @@ public class MergeFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
-        result.Should().Be(expectedBlockNumber);
+        Assert.That(result, Is.EqualTo(expectedBlockNumber));
         _ = _baseFinalizedStateProvider.Received(1).FinalizedBlockNumber;
         _blockTree.DidNotReceive().FindHeader(Arg.Any<BlockParameter>());
     }
@@ -68,7 +66,7 @@ public class MergeFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
-        result.Should().Be(expectedBlockNumber);
+        Assert.That(result, Is.EqualTo(expectedBlockNumber));
         _blockTree.Received(1).FindHeader(finalizedHash, BlockTreeLookupOptions.None);
     }
 
@@ -88,7 +86,7 @@ public class MergeFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
-        result.Should().Be(expectedBlockNumber);
+        Assert.That(result, Is.EqualTo(expectedBlockNumber));
         _blockTree.Received(1).FindHeader(finalizedHash);
     }
 
@@ -113,7 +111,7 @@ public class MergeFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
-        result.Should().Be(blockCacheBlockNumber);
+        Assert.That(result, Is.EqualTo(blockCacheBlockNumber));
     }
 
     [Test]
@@ -137,7 +135,7 @@ public class MergeFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
-        result.Should().Be(blockTreeBlockNumber);
+        Assert.That(result, Is.EqualTo(blockTreeBlockNumber));
     }
 
     [Test]
@@ -159,7 +157,7 @@ public class MergeFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
-        result.Should().Be(expectedBlockNumber);
+        Assert.That(result, Is.EqualTo(expectedBlockNumber));
     }
 
     [Test]
@@ -176,7 +174,7 @@ public class MergeFinalizedStateProviderTests
         long result = _provider.FinalizedBlockNumber;
 
         // Assert
-        result.Should().Be(expectedBlockNumber);
+        Assert.That(result, Is.EqualTo(expectedBlockNumber));
         _ = _baseFinalizedStateProvider.Received(1).FinalizedBlockNumber;
     }
 
@@ -193,7 +191,7 @@ public class MergeFinalizedStateProviderTests
         Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
 
         // Assert
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
         _baseFinalizedStateProvider.DidNotReceive().GetFinalizedStateRootAt(Arg.Any<long>());
     }
 
@@ -212,7 +210,7 @@ public class MergeFinalizedStateProviderTests
         Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
 
         // Assert
-        result.Should().Be(expectedStateRoot);
+        Assert.That(result, Is.EqualTo(expectedStateRoot));
         _baseFinalizedStateProvider.Received(1).GetFinalizedStateRootAt(blockNumber);
     }
 }

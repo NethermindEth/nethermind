@@ -3,12 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json;
@@ -45,14 +44,11 @@ namespace Nethermind.Test.Runner
             Setup(null);
         }
 
-        private void WriteOut(List<EthereumTestResult> testResult)
-        {
-            Console.Out.Write(_serializer.Serialize(testResult, true));
-        }
+        private void WriteOut(List<EthereumTestResult> testResult) => Console.Out.Write(_serializer.Serialize(testResult, true));
 
         private void WriteErr(StateTestTxTrace txTrace)
         {
-            foreach (var entry in txTrace.Entries)
+            foreach (StateTestTxTraceEntry entry in txTrace.Entries)
             {
                 Console.Error.WriteLine(_serializer.Serialize(entry));
             }
@@ -63,7 +59,7 @@ namespace Nethermind.Test.Runner
 
         public IEnumerable<EthereumTestResult> RunTests()
         {
-            List<EthereumTestResult> results = new();
+            List<EthereumTestResult> results = [];
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             foreach (GeneralStateTest test in tests)
             {
@@ -96,10 +92,18 @@ namespace Nethermind.Test.Runner
                     txTracer.IsTracingStack = _traceStack;
                     result = RunTest(test, txTracer);
 
-                    var txTrace = txTracer.BuildResult();
+                    StateTestTxTrace txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
-                    txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
+
+                    try
+                    {
+                        txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
+                    }
+                    catch (InvalidDataException e)
+                    {
+                        _logger.Info($"Skipping intrinsic-gas trace adjustment for {test.Name}: {e.Message}");
+                    }
                     WriteErr(txTrace);
                 }
 

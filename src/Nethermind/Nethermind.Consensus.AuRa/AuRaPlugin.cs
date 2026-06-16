@@ -25,7 +25,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -40,7 +39,6 @@ namespace Nethermind.Consensus.AuRa
     /// </summary>
     public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
-        private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus Engine";
@@ -49,29 +47,9 @@ namespace Nethermind.Consensus.AuRa
 
         public string SealEngineType => Core.SealEngineType.AuRa;
 
-        private StartBlockProducerAuRa? _blockProducerStarter;
-
-        private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
-
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-        public Task Init(INethermindApi nethermindApi)
-        {
-            _nethermindApi = nethermindApi as AuRaNethermindApi;
-            return Task.CompletedTask;
-        }
 
-        public IBlockProducer InitBlockProducer()
-        {
-            return BlockProducerStarter!.BuildProducer();
-        }
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            return new StandardBlockProducerRunner(
-                BlockProducerStarter.CreateTrigger(),
-                _nethermindApi.BlockTree,
-                blockProducer);
-        }
+        public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
         public IModule Module => new AuRaModule(chainSpec);
 
@@ -88,10 +66,12 @@ namespace Nethermind.Consensus.AuRa
 
             builder
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
-                .AddDecorator<ISpecProvider, AuRaSpecProvider>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
                 .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
+                .AddSingleton<AuRaBlockProducerFactory>()
+                .Bind<IBlockProducerFactory, AuRaBlockProducerFactory>()
+                .Bind<IBlockProducerRunnerFactory, AuRaBlockProducerFactory>()
                 .AddSingleton<AuraStatefulComponents>()
                 .AddSingleton<TxAuRaFilterBuilders>()
                 .AddSingleton<PermissionBasedTxFilter.Cache>()
@@ -131,7 +111,7 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
-            if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+            if (Rlp.GetDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
         /// <summary>

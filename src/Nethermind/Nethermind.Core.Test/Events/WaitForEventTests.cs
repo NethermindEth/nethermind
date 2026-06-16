@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Events;
 using NSubstitute;
 using NUnit.Framework;
@@ -32,18 +31,21 @@ public class WaitForEventTests
             });
 
         await Task.Delay(100);
-        awaitingEvent.IsCompleted.Should().BeFalse();
-        condCalled.Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(awaitingEvent.IsCompleted, Is.False);
+            Assert.That(condCalled, Is.False);
+        }
 
         stubObj.TestEvent += Raise.Event<EventHandler<bool>>(this, false);
 
-        condCalled.Should().BeTrue();
+        Assert.That(condCalled, Is.True);
         await Task.Delay(100);
-        awaitingEvent.IsCompleted.Should().BeFalse();
+        Assert.That(awaitingEvent.IsCompleted, Is.False);
 
         stubObj.TestEvent += Raise.Event<EventHandler<bool>>(this, true);
         await Task.Delay(100);
-        awaitingEvent.IsCompleted.Should().BeTrue();
+        Assert.That(awaitingEvent.IsCompleted, Is.True);
     }
 
 
@@ -52,7 +54,7 @@ public class WaitForEventTests
     {
         ITestObj stubObj = Substitute.For<ITestObj>();
 
-        CancellationTokenSource cts = new CancellationTokenSource();
+        CancellationTokenSource cts = new();
         Task awaitingEvent = Wait.ForEventCondition<bool>(
             cts.Token,
             (e) => stubObj.TestEvent += e,
@@ -60,12 +62,12 @@ public class WaitForEventTests
             (cond) => cond);
 
         await Task.Delay(100);
-        awaitingEvent.IsCompleted.Should().BeFalse();
+        Assert.That(awaitingEvent.IsCompleted, Is.False);
 
         cts.Cancel();
 
         await Task.Delay(100);
-        awaitingEvent.IsCanceled.Should().BeTrue();
+        Assert.That(awaitingEvent.IsCanceled, Is.True);
     }
 
     public interface ITestObj

@@ -22,10 +22,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
     public bool SnappyEnabled { get; private set; }
 
-    public void Init(IPacketSender packetSender, IChannelHandlerContext context)
-    {
-        _session.Init(5, context, packetSender);
-    }
+    public void Init(IPacketSender packetSender, IChannelHandlerContext context) => _session.Init(5, context, packetSender);
 
     public override void ChannelRegistered(IChannelHandlerContext context)
     {
@@ -121,7 +118,12 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else if (_session?.Node?.IsStatic != true)
         {
-            _session.InitiateDisconnect(DisconnectReason.Exception, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
+            DisconnectReason reason =
+                exception is SocketException socketException &&
+                socketException.SocketErrorCode == SocketError.ConnectionReset
+                    ? DisconnectReason.ConnectionReset
+                    : DisconnectReason.Exception;
+            _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
         }
         else
         {
@@ -132,8 +134,5 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     private static string GetClientId(ISession? session) =>
         session?.Node?.ToString(Node.Format.Console) ?? $"unknown {session?.RemoteHost}";
 
-    public void EnableSnappy()
-    {
-        SnappyEnabled = true;
-    }
+    public void EnableSnappy() => SnappyEnabled = true;
 }

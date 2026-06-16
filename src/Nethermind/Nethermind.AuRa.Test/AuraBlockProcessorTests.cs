@@ -3,13 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -159,31 +160,34 @@ namespace Nethermind.AuRa.Test
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
+            using (Assert.EnterMultipleScope())
             {
-                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Array.Empty<byte>());
-                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Array.Empty<byte>());
-                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Array.Empty<byte>());
-                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Array.Empty<byte>());
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Array.Empty<byte>()));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Array.Empty<byte>()));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
+            using (Assert.EnterMultipleScope())
             {
-                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
-                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
-                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Bytes.FromHexString("0x123"));
-                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Bytes.FromHexString("0x321"));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Bytes.FromHexString("0x321")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Bytes.FromHexString("0x123")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x321")));
             }
 
             currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
 
             using (stateProvider.BeginScope(currentBlock))
+            using (Assert.EnterMultipleScope())
             {
-                stateProvider.GetCode(TestItem.AddressA).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
-                stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
-                stateProvider.GetCode(TestItem.AddressC).Should().BeEquivalentTo(Bytes.FromHexString("0x456"));
-                stateProvider.GetCode(TestItem.AddressD).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
+                Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressB), Is.EqualTo(Bytes.FromHexString("0x654")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressC), Is.EqualTo(Bytes.FromHexString("0x456")));
+                Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x654")));
             }
         }
 
@@ -192,11 +196,18 @@ namespace Nethermind.AuRa.Test
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
+            BlockAccessListManager balManager = new(stateProvider, GnosisSpecProvider.Instance, blockhashProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
+            ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
+                new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
+                stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
             AuRaBlockProcessor processor = new(
                 GnosisSpecProvider.Instance,
+                new AuRaChainSpecEngineParameters(),
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+                transactionsExecutor,
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -204,6 +215,7 @@ namespace Nethermind.AuRa.Test
                 blockTree,
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
+                balManager,
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
@@ -213,7 +225,7 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                Substitute.For<IBlockhashProvider>(),
+                blockhashProvider,
                 LimboLogs.Instance);
 
             return (branchProcessor, stateProvider, blockTree);

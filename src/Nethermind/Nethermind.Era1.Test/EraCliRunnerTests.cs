@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Config;
 using Nethermind.Logging;
 using NSubstitute;
 
@@ -19,7 +18,7 @@ public class EraCliRunnerTests
             From = 99,
             To = 999
         };
-        EraCliRunner cliRunner = new EraCliRunner(eraConfig, eraImporter, Substitute.For<IEraExporter>(), LimboLogs.Instance);
+        EraCliRunner cliRunner = new(eraConfig, eraImporter, Substitute.For<IEraExporter>(), LimboLogs.Instance);
 
         _ = cliRunner.Run(default);
 
@@ -36,7 +35,7 @@ public class EraCliRunnerTests
             From = 99,
             To = 999
         };
-        EraCliRunner cliRunner = new EraCliRunner(eraConfig, Substitute.For<IEraImporter>(), eraExporter, LimboLogs.Instance);
+        EraCliRunner cliRunner = new(eraConfig, Substitute.For<IEraImporter>(), eraExporter, LimboLogs.Instance);
 
         _ = cliRunner.Run(default);
 

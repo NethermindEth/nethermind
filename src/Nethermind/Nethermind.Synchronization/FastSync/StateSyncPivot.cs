@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager)
+    public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager) : IStateSyncPivot
     {
         private BlockHeader? _bestHeader;
-        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ILogger _logger = logManager?.GetClassLogger<StateSyncPivot>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public long Diff => (blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
 
@@ -46,7 +44,9 @@ namespace Nethermind.Synchronization.FastSync
             // The new pivot must be at least one block after the sync pivot as the forward downloader does not
             // download the block at the sync pivot which may cause state not found error if state was downloaded
             // at exactly sync pivot.
-            targetBlockNumber = Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1);
+            targetBlockNumber = syncConfig.StaticSnapPivot
+                ? blockTree.SyncPivot.BlockNumber
+                : Math.Max(targetBlockNumber, blockTree.SyncPivot.BlockNumber + 1);
 
             BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
@@ -54,8 +54,14 @@ namespace Nethermind.Synchronization.FastSync
                 if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
                 _bestHeader = bestHeader;
             }
+            else if (syncConfig.StaticSnapPivot && _logger.IsDebug)
+            {
+                _logger.Debug($"Snap - static pivot header {targetBlockNumber} not yet available in the block tree; waiting for fast headers.");
+            }
         }
 
-        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new();
+        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
+
+        public bool CanFinalize(BlockHeader pivot) => true;
     }
 }

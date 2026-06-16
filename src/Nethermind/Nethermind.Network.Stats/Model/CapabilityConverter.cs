@@ -10,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Network.Contract.P2P;
 
 #nullable enable
 

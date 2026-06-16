@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -16,105 +17,43 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Test.Modules.Simulate;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.JsonRpc.Test.Modules.Eth;
+using Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
-namespace Nethermind.JsonRpc.Test.Modules.Eth;
+namespace Nethermind.JsonRpc.Test.Modules;
 
-public class DebugSimulateTestsBlocksAndTransactions
+public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<GethLikeTxTrace>
 {
-    [Test]
-    public async Task Test_debug_simulate_serialization()
+    protected override ISimulateBlockTracerFactory<GethLikeTxTrace> CreateTracerFactory() =>
+        new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default);
+
+    protected override void AssertSerializationBlockResult(SimulateBlockResult<GethLikeTxTrace> blockResult) =>
+        Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EqualTo(new[] { false, false }));
+
+    [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
+    public async Task Test_debug_simulate_respects_gas_cap(long gasCap, long? requestGas, bool expectCapped)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        chain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
 
-        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateSerializationPayload(chain);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(
+            EthRpcSimulateTestsBase.CreateGasProbePayload(requestGas),
+            BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
-        //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+        GethLikeTxTrace trace = result.Data.First().Traces.First();
+        Assert.That(trace.Failed, Is.False);
 
-        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<GethLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = result.Data;
-        Assert.That(data, Has.Count.EqualTo(7));
+        UInt256 gasAvailable = new(trace.ReturnValue, isBigEndian: true);
+        if (expectCapped)
+        {
+            Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        }
 
-        SimulateBlockResult<GethLikeTxTrace> blockResult = data.Last();
-
-        Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EquivalentTo([false, false]));
-    }
-
-    [Test(Description = """
-        Verifies that a temporary forked blockchain can make transactions, blocks and report on them.
-        We test on blocks before current head and after it.
-        Note that if we get blocks before head, we set simulation start state to one of that first block.
-        """)]
-    public async Task Test_debug_simulate_eth_moved()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        Transaction txMainnetAtoB = EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
-
-        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateEthMovedPayload(chain, nonceA);
-
-        //Test that transfer tx works on mainchain
-        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(txMainnetAtoB);
-        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        Assert.That(after, Is.LessThan(before));
-
-        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
-
-        //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
-
-        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<GethLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = result.Data;
-
-        Assert.That(data, Has.Count.EqualTo(9));
-
-        SimulateBlockResult<GethLikeTxTrace> blockResult = data[0];
-        Assert.That(blockResult.Traces, Has.Count.EqualTo(2));
-        blockResult = data.Last();
-        Assert.That(blockResult.Traces, Has.Count.EqualTo(2));
-    }
-
-    [Test(Description = "Verifies that a temporary forked blockchain can make transactions, blocks and report on them")]
-    public async Task Test_debug_simulate_transactions_forced_fail()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
-
-        Transaction txMainnetAtoB =
-            EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
-
-        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransactionsForcedFail(chain, nonceA);
-
-        //Test that transfer tx works on mainchain
-        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(txMainnetAtoB);
-        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        Assert.That(after, Is.LessThan(before));
-
-        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
-
-        //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
-
-        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<GethLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error!, Does.Contain("insufficient sender balance"));
+        Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
     }
 
     [Test]
@@ -123,7 +62,7 @@ public class DebugSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
-        var result = chain.DebugRpcModule.debug_simulateV1(payload!, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = chain.DebugRpcModule.debug_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Data.First().Traces.First().TxHash, Is.EqualTo(new Core.Crypto.Hash256("0xe690a6e09e13d163bc8b92c725202e9633770b14c8541a0ee48794ae014351f0")));
     }
 
@@ -133,9 +72,7 @@ public class DebugSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_simulateV1", payload!, "latest");
-        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
-        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
-        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = (IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>)successResponse.Result!;
+        IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>> data = RpcTest.AssertSuccess<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>(response);
         Assert.That(data.First().Traces.First().TxHash, Is.EqualTo(new Core.Crypto.Hash256("0xe690a6e09e13d163bc8b92c725202e9633770b14c8541a0ee48794ae014351f0")));
     }
 
@@ -163,16 +100,16 @@ public class DebugSimulateTestsBlocksAndTransactions
                 {
                     From = TestItem.AddressA,
                     To = TestItem.AddressB,
-                    Value = 1000.Ether()
+                    Value = 1000.Ether
                 }]
             }]
         };
 
         // Mock the blockchain bridge to return false for HasStateForBlock
-        var mockBridge = Substitute.For<IBlockchainBridge>();
+        IBlockchainBridge mockBridge = Substitute.For<IBlockchainBridge>();
         mockBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(false);
 
-        SimulateTxExecutor<GethLikeTxTrace> executor = new(mockBridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
+        SimulateTxExecutor<GethLikeTxTrace> executor = new(mockBridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
 
         // Execute and verify the error message includes block number
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);

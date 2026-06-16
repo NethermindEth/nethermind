@@ -6,6 +6,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Discv5\discv5-bootnodes.json" />
+    <EmbeddedResource Include="Discv5\discv5-bootnodes.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />

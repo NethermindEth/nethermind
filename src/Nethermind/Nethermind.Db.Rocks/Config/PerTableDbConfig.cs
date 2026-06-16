@@ -18,7 +18,7 @@ public class PerTableDbConfig : IRocksDbConfig
     private readonly string[] _prefixes;
     private readonly string[] _reversedPrefixes;
 
-    public PerTableDbConfig(IDbConfig dbConfig, string dbName, string? columnName = null)
+    public PerTableDbConfig(IDbConfig dbConfig, string dbName, string? columnName = null, bool validate = true)
     {
         _dbConfig = dbConfig;
         _tableName = dbName;
@@ -27,15 +27,18 @@ public class PerTableDbConfig : IRocksDbConfig
         _reversedPrefixes = _prefixes.Reverse().ToArray();
 
 #if DEBUG
-        EnsureConfigIsAvailable(nameof(RocksDbOptions));
-        EnsureConfigIsAvailable(nameof(AdditionalRocksDbOptions));
+        if (validate)
+        {
+            EnsureConfigIsAvailable(nameof(RocksDbOptions));
+            EnsureConfigIsAvailable(nameof(AdditionalRocksDbOptions));
+        }
 #endif
     }
 
     private void EnsureConfigIsAvailable(string propertyName)
     {
         Type type = typeof(IDbConfig);
-        foreach (var prefix in _prefixes)
+        foreach (string prefix in _prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
             if (GetProperty(type, prefixed) is null)
@@ -61,11 +64,9 @@ public class PerTableDbConfig : IRocksDbConfig
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
     public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
     public bool FlushOnExit => ReadConfig<bool?>(nameof(FlushOnExit)) ?? true;
+    public IntPtr? BlockCache => null;
 
-    private T? ReadConfig<T>(string propertyName)
-    {
-        return ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
-    }
+    private T? ReadConfig<T>(string propertyName) => ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
 
     private string[] GetPrefixes()
     {
@@ -92,7 +93,7 @@ public class PerTableDbConfig : IRocksDbConfig
 
         string val = (string)GetProperty(type, propertyName)!.GetValue(dbConfig)!;
 
-        foreach (var prefix in prefixes)
+        foreach (string prefix in prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
 
@@ -118,7 +119,7 @@ public class PerTableDbConfig : IRocksDbConfig
             Type type = dbConfig.GetType();
             PropertyInfo? propertyInfo;
 
-            foreach (var prefix in prefixes)
+            foreach (string prefix in prefixes)
             {
                 string prefixed = string.Concat(prefix, propertyName);
 

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
-using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -19,9 +17,7 @@ public class Eip2930Tests
 {
     private readonly EthereumJsonSerializer _serializer = new();
 
-    private AccessList GetTestAccessList()
-    {
-        return new AccessList.Builder()
+    private AccessList GetTestAccessList() => new AccessList.Builder()
             .AddAddress(TestItem.AddressA)
             .AddStorage(1)
             .AddStorage(2)
@@ -31,7 +27,6 @@ public class Eip2930Tests
             .AddAddress(TestItem.AddressB)
             .AddStorage(42)
             .Build();
-    }
 
     [TestCase(TxType.AccessList, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x1","chainId":"0x1","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003","0x0000000000000000000000000000000000000000000000000000000000000005","0x0000000000000000000000000000000000000000000000000000000000000008"]},{"address":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","storageKeys":["0x000000000000000000000000000000000000000000000000000000000000002a"]}]}""")]
     [TestCase(TxType.EIP1559, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","maxPriorityFeePerGas":"0x0","maxFeePerGas":"0x0","gas":"0x0","input":null,"type":"0x2","chainId":"0x1","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003","0x0000000000000000000000000000000000000000000000000000000000000005","0x0000000000000000000000000000000000000000000000000000000000000008"]},{"address":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","storageKeys":["0x000000000000000000000000000000000000000000000000000000000000002a"]}]}""")]
@@ -45,25 +40,25 @@ public class Eip2930Tests
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        var actual = JObject.Parse(serialized).Property("accessList");
-        var expected = JObject.Parse(txJson).Property("accessList");
-        actual.Should().BeEquivalentTo(expected);
+        JProperty? actual = JObject.Parse(serialized).Property("accessList");
+        JProperty? expected = JObject.Parse(txJson).Property("accessList");
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [TestCase(TxType.AccessList, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","chainId":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1","0x2","0x3","0x5","0x8"]},{"address":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","storageKeys":["0x2a"]}]}""")]
     [TestCase(TxType.EIP1559, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","gas":"0x0","input":null,"type":"0x02","chainId":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1","0x2","0x3","0x5","0x8"]},{"address":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","storageKeys":["0x2a"]}]}""")]
     public void can_deserialize_valid_accessList(TxType txType, string txJson)
     {
-        Transaction transaction = new()
-        {
-            Type = txType,
-            AccessList = GetTestAccessList(),
-        };
-        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
-
         TransactionForRpc deserializedTxForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
 
-        deserializedTxForRpc.Should().BeEquivalentTo(transactionForRpc);
+        Assert.That(deserializedTxForRpc.Type, Is.EqualTo(txType));
+        AccessList actual = txType switch
+        {
+            TxType.AccessList => ((AccessListTransactionForRpc)deserializedTxForRpc).AccessList!.ToAccessList(),
+            TxType.EIP1559 => ((EIP1559TransactionForRpc)deserializedTxForRpc).AccessList!.ToAccessList(),
+            _ => throw new ArgumentOutOfRangeException(nameof(txType), txType, "Unsupported access-list transaction type.")
+        };
+        Assert.That(actual, Is.EqualTo(GetTestAccessList()));
     }
 
     [TestCase(TxType.Legacy)]
@@ -73,11 +68,11 @@ public class Eip2930Tests
         {
             Type = txType,
         };
-        var rpc = TransactionForRpc.FromTransaction(transaction);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(transaction);
 
         string serialized = _serializer.Serialize(rpc);
 
-        JObject.Parse(serialized).Should().NotHaveElement("accessList");
+        Assert.That(JObject.Parse(serialized).ContainsKey("accessList"), Is.False);
     }
 
     [TestCase(TxType.AccessList)]
@@ -88,11 +83,11 @@ public class Eip2930Tests
         {
             Type = txType,
         };
-        var rpc = TransactionForRpc.FromTransaction(transaction);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(transaction);
 
         string serialized = _serializer.Serialize(rpc);
 
-        JObject.Parse(serialized).GetValue("accessList").Should().BeEquivalentTo(new JArray());
+        Assert.That(JObject.Parse(serialized).GetValue("accessList"), Is.EqualTo(new JArray()));
     }
 
     [Test]
@@ -100,22 +95,24 @@ public class Eip2930Tests
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gas":"0x0","input":null,"accessList":null}""";
 
-        var transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
-        transactionForRpc.Type.Should().Be(TxType.AccessList);
-        ((AccessListTransactionForRpc)transactionForRpc).AccessList.Should().BeNull();
+        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
+        Assert.That(((AccessListTransactionForRpc)transactionForRpc).AccessList, Is.Null);
     }
 
     [Test]
     public void can_deserialize_no_accessList()
     {
-        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null}""";
+        string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":"0x00"}""";
 
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
-        var transaction = transactionForRpc.ToTransaction();
+        Result<Transaction> txResult = transactionForRpc.ToTransaction();
+        Assert.That(txResult.ResultType, Is.EqualTo(ResultType.Success));
 
-        transaction.Type.Should().Be(TxType.Legacy);
-        transaction.AccessList.Should().BeNull();
+        Transaction transaction = (Transaction)txResult;
+        Assert.That(transaction.Type, Is.EqualTo(TxType.Legacy));
+        Assert.That(transaction.AccessList, Is.Null);
     }
 
     [TestCase(TxType.AccessList, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x1","chainId":"0x1","accessList":[]}""")]
@@ -127,12 +124,12 @@ public class Eip2930Tests
             Type = txType,
             AccessList = AccessList.Empty,
         };
-        var transactionForRpc = TransactionForRpc.FromTransaction(transaction);
+        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        var actual = JObject.Parse(serialized).Property("accessList");
-        var expected = JObject.Parse(txJson).Property("accessList");
-        actual.Should().BeEquivalentTo(expected);
+        JProperty? actual = JObject.Parse(serialized).Property("accessList");
+        JProperty? expected = JObject.Parse(txJson).Property("accessList");
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]
@@ -141,11 +138,11 @@ public class Eip2930Tests
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gas":"0x0","input":null,"accessList":[]}""";
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
-        transactionForRpc.Type.Should().Be(TxType.AccessList);
+        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
 
-        var expected = AccessList.Empty;
-        var actual = ((AccessListTransactionForRpc)transactionForRpc).AccessList!.ToAccessList();
-        actual.Should().BeEquivalentTo(expected);
+        AccessList expected = AccessList.Empty;
+        AccessList actual = ((AccessListTransactionForRpc)transactionForRpc).AccessList!.ToAccessList();
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [TestCase(TxType.AccessList, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x1","chainId":"0x1","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]}""")]
@@ -161,12 +158,12 @@ public class Eip2930Tests
             AccessList = accessList,
         };
 
-        var transactionForRpc = TransactionForRpc.FromTransaction(transaction);
+        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        var actual = JObject.Parse(serialized).Property("accessList");
-        var expected = JObject.Parse(txJson).Property("accessList");
-        actual.Should().BeEquivalentTo(expected);
+        JProperty? actual = JObject.Parse(serialized).Property("accessList");
+        JProperty? expected = JObject.Parse(txJson).Property("accessList");
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]
@@ -175,11 +172,11 @@ public class Eip2930Tests
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]}""";
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
-        transactionForRpc.Type.Should().Be(TxType.AccessList);
+        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
 
         AccessList expected = new AccessList.Builder().AddAddress(TestItem.AddressA).Build();
         AccessList actual = ((AccessListTransactionForRpc)transactionForRpc).AccessList!.ToAccessList();
-        expected.Should().BeEquivalentTo(actual);
+        Assert.That(expected, Is.EqualTo(actual));
     }
 
     [Test]
@@ -188,11 +185,11 @@ public class Eip2930Tests
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
-        transactionForRpc.Type.Should().Be(TxType.AccessList);
+        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.AccessList));
 
         AccessList expected = new AccessList.Builder().AddAddress(TestItem.AddressA).Build();
         AccessList actual = ((AccessListTransactionForRpc)transactionForRpc).AccessList!.ToAccessList();
-        expected.Should().BeEquivalentTo(actual);
+        Assert.That(expected, Is.EqualTo(actual));
     }
 
     [Test]
@@ -201,11 +198,11 @@ public class Eip2930Tests
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","maxFeePerGas":"0x10","gas":"0x0","input":null,"accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
-        transactionForRpc.Type.Should().Be(TxType.EIP1559);
+        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.EIP1559));
 
         AccessList expected = new AccessList.Builder().AddAddress(TestItem.AddressA).Build();
         AccessList actual = ((EIP1559TransactionForRpc)transactionForRpc).AccessList!.ToAccessList();
-        expected.Should().BeEquivalentTo(actual);
+        Assert.That(expected, Is.EqualTo(actual));
     }
 
     [Test]
@@ -216,7 +213,7 @@ public class Eip2930Tests
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(json);
 
         // If there is not `TxType` provided, default value should be `TxType.Legacy`
-        transactionForRpc.Type.Should().Be(TxType.Legacy);
+        Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.Legacy));
     }
 
     [TestCase(TxType.AccessList)]
@@ -229,13 +226,16 @@ public class Eip2930Tests
             AccessList = GetTestAccessList(),
             ChainId = BlockchainIds.Mainnet,
             SenderAddress = Address.SystemUser,
+            To = TestItem.AddressA,
             Data = Memory<byte>.Empty,
         };
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
 
-        Transaction afterConversion = transactionForRpc.ToTransaction();
+        Result<Transaction> txResult = transactionForRpc.ToTransaction();
+        Assert.That(txResult.ResultType, Is.EqualTo(ResultType.Success));
+        Transaction afterConversion = (Transaction)txResult;
 
-        afterConversion.Should().BeEquivalentTo(transaction, static option => option.ComparingByMembers<Transaction>().Excluding(static tx => tx.Data));
-        afterConversion.Data.AsArray().Should().BeEquivalentTo(transaction.Data.AsArray());
+        Assert.That(_serializer.Serialize(TransactionForRpc.FromTransaction(afterConversion)), Is.EqualTo(_serializer.Serialize(transactionForRpc)));
+        Assert.That(afterConversion.Data.AsArray(), Is.EqualTo(transaction.Data.AsArray()));
     }
 }

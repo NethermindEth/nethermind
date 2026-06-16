@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -18,16 +19,15 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Int256;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Builders
 {
     public class BlockTreeBuilder(Block genesisBlock, ISpecProvider specProvider) : BuilderBase<BlockTree>
     {
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
         private ISpecProvider _specProvider = specProvider;
         private IReceiptStorage? _receiptStorage;
         private IEthereumEcdsa? _ecdsa;
@@ -71,9 +71,9 @@ namespace Nethermind.Core.Test.Builders
                         BlockInfoDb,
                         MetadataDb,
                         BadBlockStore,
+                        BlockAccessListStore,
                         ChainLevelInfoRepository,
                         _specProvider,
-                        BloomStorage,
                         SyncConfig,
                         LimboLogs.Instance);
                 }
@@ -88,8 +88,6 @@ namespace Nethermind.Core.Test.Builders
 
             TestObjectInternal ??= BlockTree;
         }
-
-        public IBloomStorage BloomStorage { get; set; } = Substitute.For<IBloomStorage>();
 
         public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
 
@@ -111,6 +109,7 @@ namespace Nethermind.Core.Test.Builders
 
         public IDb HeadersDb { get; set; } = new TestMemDb();
         public IDb BlockNumbersDb { get; set; } = new TestMemDb();
+        public IDb BlockAccessListsDb { get; set; } = new TestMemDb();
 
         private IHeaderStore? _headerStore;
         public IHeaderStore HeaderStore
@@ -122,6 +121,19 @@ namespace Nethermind.Core.Test.Builders
             set
             {
                 _headerStore = value;
+            }
+        }
+
+        private IBlockAccessListStore? _balStore;
+        public IBlockAccessListStore BlockAccessListStore
+        {
+            get
+            {
+                return _balStore ??= new BlockAccessListStore(BlockAccessListsDb);
+            }
+            set
+            {
+                _balStore = value;
             }
         }
 
@@ -172,14 +184,6 @@ namespace Nethermind.Core.Test.Builders
 
         public bool PostMergeBlockTree { get; set; }
 
-        public BlockTreeBuilder WithRealBloom
-        {
-            get
-            {
-                BloomStorage = new BloomStorage(new BloomConfig(), HeadersDb, new InMemoryDictionaryFileStoreFactory());
-                return this;
-            }
-        }
 
         public BlockTreeBuilder WithStateRoot(Hash256 stateRoot)
         {
@@ -321,7 +325,7 @@ namespace Nethermind.Core.Test.Builders
                     .WithBloom(new Bloom())
                     .TestObject;
 
-                List<TxReceipt> receipts = new();
+                List<TxReceipt> receipts = [];
                 foreach (Transaction transaction in currentBlock.Transactions)
                 {
                     LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? [];
@@ -341,7 +345,7 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot =
-                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, ReceiptDecoder);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
@@ -496,12 +500,6 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithMetadataDb(IDb metadataDb)
         {
             MetadataDb = metadataDb;
-            return this;
-        }
-
-        public BlockTreeBuilder WithBloomStorage(IBloomStorage bloomStorage)
-        {
-            BloomStorage = bloomStorage;
             return this;
         }
 

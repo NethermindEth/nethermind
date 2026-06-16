@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class ReadOnlyBlockTreeTests
 {
     private IBlockTree _innerBlockTree = null!;
@@ -25,7 +26,7 @@ public class ReadOnlyBlockTreeTests
     public void DeleteChainSlice_throws_when_endNumber_other_than_bestKnownNumber()
     {
         Action action = () => _blockTree.DeleteChainSlice(0, 10);
-        action.Should().Throw<InvalidOperationException>();
+        Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -52,11 +53,11 @@ public class ReadOnlyBlockTreeTests
 
         if (throws)
         {
-            action.Should().Throw<InvalidOperationException>();
+            Assert.That(action, Throws.TypeOf<InvalidOperationException>());
         }
         else
         {
-            action.Should().NotThrow<InvalidOperationException>();
+            Assert.That(action, Throws.Nothing);
         }
     }
 }

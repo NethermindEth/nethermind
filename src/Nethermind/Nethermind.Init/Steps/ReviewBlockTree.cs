@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -22,20 +23,33 @@ namespace Nethermind.Init.Steps
         ISyncConfig syncConfig,
         IBlockProcessingQueue blockProcessingQueue,
         IBlockTree blockTree,
+        IBlockTreeHealer blockTreeHealer,
         ILogManager logManager
     ) : IStep
     {
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (initConfig.ProcessingEnabled)
+            HealCanonicalChainIfEnabled();
+            return initConfig.ProcessingEnabled
+                ? RunBlockTreeInitTasks(cancellationToken)
+                : Task.CompletedTask;
+        }
+
+        private void HealCanonicalChainIfEnabled()
+        {
+            if (!initConfig.HealCanonicalChain) return;
+
+            Hash256? startHash = blockTree.Head?.Hash;
+            if (startHash is not null)
             {
-                return RunBlockTreeInitTasks(cancellationToken);
+                if (_logger.IsInfo) _logger.Info($"Healing canonical chain from head {startHash} (depth {initConfig.HealCanonicalChainDepth})...");
+                blockTreeHealer.HealCanonicalChain(startHash, initConfig.HealCanonicalChainDepth);
             }
             else
             {
-                return Task.CompletedTask;
+                if (_logger.IsWarn) _logger.Warn("HealCanonicalChain requested but no head block found — skipping.");
             }
         }
 
@@ -43,7 +57,7 @@ namespace Nethermind.Init.Steps
         {
             if (!syncConfig.FastSync)
             {
-                using DbBlocksLoader loader = new(blockTree, _logger);
+                using DbBlocksLoader loader = new(blockTree, logManager);
                 await blockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -58,7 +72,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, _logger!);
+                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, logManager);
                 await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -80,11 +94,8 @@ namespace Nethermind.Init.Steps
             blockProcessingQueue.ProcessingQueueEmpty -= OnProcessingQueueEmpty;
         }
 
-        private readonly TaskCompletionSource _blocksProcessedTaskSource = new();
+        private readonly TaskCompletionSource _blocksProcessedTaskSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        private void OnProcessingQueueEmpty(object? sender, EventArgs e)
-        {
-            _blocksProcessedTaskSource.SetResult();
-        }
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.SetResult();
     }
 }

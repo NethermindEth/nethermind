@@ -6,7 +6,6 @@ using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using Nethermind.Logging;
 
 namespace Nethermind.Taiko.Tdx;
 
@@ -14,9 +13,8 @@ namespace Nethermind.Taiko.Tdx;
 /// Client for communicating with the tdxs daemon via Unix socket.
 /// Protocol: JSON request/response over Unix socket.
 /// </summary>
-public class TdxsClient(ISurgeTdxConfig config, ILogManager logManager) : ITdxsClient
+public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public byte[] Issue(byte[] userData, byte[] nonce)
     {
@@ -75,10 +73,10 @@ public class TdxsClient(ISurgeTdxConfig config, ILogManager logManager) : ITdxsC
         if (!File.Exists(socketPath))
             throw new TdxException($"TDX socket not found at {socketPath}");
 
-        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        using Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         socket.Connect(new UnixDomainSocketEndPoint(socketPath));
 
-        using var stream = new NetworkStream(socket, ownsSocket: false);
+        using NetworkStream stream = new(socket, ownsSocket: false);
 
         string requestJson = JsonSerializer.Serialize(request);
         socket.Send(Encoding.UTF8.GetBytes(requestJson));

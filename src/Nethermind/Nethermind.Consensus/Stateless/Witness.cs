@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -12,67 +11,90 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
-public struct Witness
+public class Witness : IDisposable
 {
-    [JsonPropertyName("codes")]
-    public byte[][] Codes;
-    [JsonPropertyName("state")]
-    public byte[][] State;
-    [JsonPropertyName("keys")]
-    public byte[][] Keys;
-    [JsonPropertyName("headers")]
-    public byte[][] Headers;
+    public required IOwnedReadOnlyList<byte[]> Codes { get; init; }
+    public required IOwnedReadOnlyList<byte[]> State { get; init; }
+    public required IOwnedReadOnlyList<byte[]> Keys { get; init; }
+    public required IOwnedReadOnlyList<byte[]> Headers { get; init; }
 
-    [JsonIgnore]
-    public IReadOnlyCollection<BlockHeader> DecodedHeaders => _decodedHeaders ??= DecodeHeaders();
-
-    [JsonIgnore]
-    public INodeStorage NodeStorage => _nodeStorage ??= CreateNodeStorage();
-
-    [JsonIgnore]
-    public IKeyValueStoreWithBatching CodeDb => _codeDb ??= CreateCodeDb();
-
-    private INodeStorage CreateNodeStorage()
+    public void Dispose()
     {
-        IKeyValueStore db = new MemDb();
-        foreach (var stateElement in State)
+        Codes.Dispose();
+        State.Dispose();
+        Keys.Dispose();
+        Headers.Dispose();
+    }
+}
+
+public static class WitnessExtensions
+{
+    private static readonly IRlpDecoder<BlockHeader> _decoder =
+        Rlp.GetDecoder<BlockHeader>() ?? new HeaderDecoder();
+
+    extension(Witness witness)
+    {
+        public INodeStorage CreateNodeStorage()
         {
-            var hash = ValueKeccak.Compute(stateElement).Bytes;
-            db.PutSpan(hash, stateElement);
+            IKeyValueStore db = new MemDb();
+            foreach (byte[] stateElement in witness.State)
+            {
+                ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
+                db.PutSpan(hash, stateElement);
+            }
+
+            return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
         }
 
-        return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
-    }
-
-    private IKeyValueStoreWithBatching CreateCodeDb()
-    {
-        IKeyValueStoreWithBatching db = new MemDb();
-        foreach (var code in Codes)
+        public IKeyValueStoreWithBatching CreateCodeDb()
         {
-            var hash = ValueKeccak.Compute(code).Bytes;
-            db.PutSpan(hash, code);
-        }
-        return db;
-    }
+            IKeyValueStoreWithBatching db = new MemDb();
+            foreach (byte[] code in witness.Codes)
+            {
+                ReadOnlySpan<byte> hash = ValueKeccak.Compute(code).Bytes;
+                db.PutSpan(hash, code);
+            }
 
-    private IReadOnlyCollection<BlockHeader> DecodeHeaders()
-    {
-        List<BlockHeader> headers = new(Headers.Length);
-        HeaderDecoder decoder = new();
-        foreach (var encodedHeader in Headers)
+            return db;
+        }
+
+        public ArrayPoolList<BlockHeader> DecodeHeaders()
         {
-            Rlp.ValueDecoderContext stream = new(encodedHeader);
-            headers.Add(decoder.Decode(ref stream) ?? throw new ArgumentException());
+            IOwnedReadOnlyList<byte[]> headers = witness.Headers;
+            ReadOnlySpan<byte[]> headersSpan = headers.AsSpan();
+            ArrayPoolList<BlockHeader> decodedHeaders = new(headersSpan.Length, headersSpan.Length);
+
+            // Witness headers must form a contiguous chain: each header's parent hash must equal the
+            // hash (keccak of the RLP) of the preceding header. Linkage is by parent hash, not a
+            // block-number comparison (that check lives in the header validator), though a well-formed
+            // chain is thereby ordered by ascending block number. This mirrors the stateless verifier's
+            // rule in EELS (validate_headers) and rejects witnesses whose headers were reordered or are
+            // otherwise non-contiguous. The previous header's hash is carried across iterations so each
+            // keccak is computed once.
+            try
+            {
+                ValueHash256 previousHeaderHash = default;
+
+                for (int i = 0; i < headersSpan.Length; i++)
+                {
+                    Rlp.ValueDecoderContext stream = new(headersSpan[i]);
+
+                    decodedHeaders[i] = _decoder.Decode(ref stream)
+                        ?? throw new InvalidOperationException($"No header decoded at index {i}");
+
+                    if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
+                        throw new InvalidOperationException("Witness headers are not contiguous");
+
+                    previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                }
+
+                return decodedHeaders;
+            }
+            catch
+            {
+                decodedHeaders.Dispose();
+                throw;
+            }
         }
-        return headers;
     }
-
-    [JsonIgnore]
-    private IReadOnlyCollection<BlockHeader>? _decodedHeaders;
-
-    [JsonIgnore]
-    private INodeStorage? _nodeStorage;
-
-    [JsonIgnore]
-    private IKeyValueStoreWithBatching _codeDb;
 }

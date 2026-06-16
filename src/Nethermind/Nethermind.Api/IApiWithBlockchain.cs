@@ -11,7 +11,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Facade;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -21,7 +20,6 @@ namespace Nethermind.Api
     {
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
-        (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
 
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue BlockProcessingQueue { get; }
@@ -40,7 +38,7 @@ namespace Nethermind.Api
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
-        CompositeTxGossipPolicy TxGossipPolicy { get; }
+
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
         [SkipServiceCollection]

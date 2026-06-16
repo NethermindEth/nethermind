@@ -2,20 +2,31 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
-    [Parallelizable(ParallelScope.Self)]
+    [NonParallelizable]
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
+        private bool _previousStrictHexFormat;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+            EthereumJsonSerializer.StrictHexFormat = false;
+        }
+
+        [TearDown]
+        public void TearDown() =>
+            EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
+
         [TestCase("0", 0)]
         [TestCase("100", 100)]
         [TestCase("\"0x0\"", 0)]
@@ -35,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
         [TestCase("0", true)]
         [TestCase("100", true)]
-        [TestCase("\"0x\"", false)]
+        [TestCase("\"0x\"", true)]
         [TestCase("\"0x0\"", false)]
         [TestCase("\"0xA\"", false)]
         [TestCase("\"0xa\"", false)]
@@ -45,15 +56,23 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"100\" }", true)]
         public void Cant_read_block_number_when_strict_hex_format_is_enabled(string input, bool throws)
         {
-            EthereumJsonSerializer.StrictHexFormat = true;
-            IJsonSerializer serializer = new EthereumJsonSerializer();
+            bool original = EthereumJsonSerializer.StrictHexFormat;
+            try
+            {
+                EthereumJsonSerializer.StrictHexFormat = true;
+                IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
+                Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
 
-            if (throws)
-                action.Should().Throw<FormatException>();
-            else
-                action.Should().NotThrow();
+                if (throws)
+                    Assert.That(action, Throws.InstanceOf<FormatException>());
+                else
+                    Assert.That(action, Throws.Nothing);
+            }
+            finally
+            {
+                EthereumJsonSerializer.StrictHexFormat = original;
+            }
         }
 
         [TestCase("null", BlockParameterType.Latest)]
@@ -101,6 +120,20 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(blockParameter.RequireCanonical, Is.EqualTo(requireCanonical));
         }
 
+        [Test]
+        public void Cannot_read_object_with_both_block_hash_and_block_number()
+        {
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+
+            Action action = () => serializer.Deserialize<BlockParameter>(
+                """{ "blockNumber": "0xa", "blockHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3" }""");
+
+            Assert.That(
+                action,
+                Throws.InstanceOf<FormatException>()
+                    .With.Message.EqualTo("cannot specify both BlockHash and BlockNumber, choose one or the other"));
+        }
+
         [TestCase("\"latest\"", BlockParameterType.Latest)]
         [TestCase("\"earliest\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
@@ -112,7 +145,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            var result = serializer.Serialize(blockParameter);
+            string result = serializer.Serialize(blockParameter);
 
             Assert.That(result, Is.EqualTo(output));
         }
@@ -125,7 +158,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            var result = serializer.Serialize(blockParameter);
+            string result = serializer.Serialize(blockParameter);
 
             Assert.That(result, Is.EqualTo(output));
         }

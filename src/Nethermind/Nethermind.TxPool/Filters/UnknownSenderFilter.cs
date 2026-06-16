@@ -10,16 +10,10 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions with the sender address not resolved properly.
     /// </summary>
-    internal sealed class UnknownSenderFilter : IIncomingTxFilter
+    internal sealed class UnknownSenderFilter(IEthereumEcdsa ecdsa, ILogger logger) : IIncomingTxFilter
     {
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly ILogger _logger;
-
-        public UnknownSenderFilter(IEthereumEcdsa ecdsa, ILogger logger)
-        {
-            _ecdsa = ecdsa;
-            _logger = logger;
-        }
+        private readonly IEthereumEcdsa _ecdsa = ecdsa;
+        private readonly ILogger _logger = logger;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {

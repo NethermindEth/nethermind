@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
@@ -16,9 +17,9 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Flat;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using NSubstitute;
 using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
@@ -35,6 +36,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
     protected override void Load(ContainerBuilder builder)
     {
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        initConfig.AutoDump = DumpOptions.None;
 
         base.Load(builder);
         builder
@@ -54,9 +56,19 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Crypto
             .AddSingleton<ISignerStore>(NullSigner.Instance)
-            .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
+            .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
+            .AddSingleton<ITxSender>(NullTxSender.Instance)
+
+            // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
+            .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
+            .AddDecorator<IFlatDbManager, FlatDbManagerTestCompat>()
+            .Intercept<IFlatDbConfig>((flatDbConfig) =>
+            {
+                // Dont want to make it very slow
+                flatDbConfig.TrieWarmerWorkerCount = 0;
+                flatDbConfig.WarmReadConcurrency = 2;
+            })
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()

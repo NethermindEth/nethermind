@@ -7,18 +7,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeUnclesValidator : IUnclesValidator
+public class MergeUnclesValidator(
+    IPoSSwitcher poSSwitcher,
+    IUnclesValidator preMergeUnclesValidator) : IUnclesValidator
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IUnclesValidator _preMergeUnclesValidator;
-
-    public MergeUnclesValidator(
-        IPoSSwitcher poSSwitcher,
-        IUnclesValidator preMergeUnclesValidator)
-    {
-        _poSSwitcher = poSSwitcher;
-        _preMergeUnclesValidator = preMergeUnclesValidator;
-    }
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
+    private readonly IUnclesValidator _preMergeUnclesValidator = preMergeUnclesValidator;
 
     public bool Validate(BlockHeader header, BlockHeader[] uncles)
     {

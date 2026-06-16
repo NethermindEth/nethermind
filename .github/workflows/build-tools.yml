@@ -8,6 +8,10 @@ on:
   push:
     branches: [master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build
@@ -21,11 +25,14 @@ jobs:
           - Evm/Evm.slnx
           - HiveCompare/HiveCompare.slnx
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
+          - JitAsm/JitAsm.slnx
           - Kute/Kute.slnx
           # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx
-          - StatelessExecution/StatelessExecution.slnx
+          - StatelessInputGen/StatelessInputGen.slnx
+          - StatsAnalyzer/StatsAnalyzer.slnx
           - TxParser/TxParser.slnx
+          - RpcTests/RpcTests.slnx
     steps:
       - name: Check out repository
         uses: actions/checkout@v6

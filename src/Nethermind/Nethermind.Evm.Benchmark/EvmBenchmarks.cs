@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
-using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -16,8 +15,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.Blockchain;
 
 namespace Nethermind.Evm.Benchmark
@@ -31,7 +28,7 @@ namespace Nethermind.Evm.Benchmark
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
-        private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
+        private BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private VmState<EthereumGasPolicy> _evmState;
         private IWorldState _stateProvider;
@@ -43,7 +40,7 @@ namespace Nethermind.Evm.Benchmark
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
 
             _stateProvider = TestWorldStateFactory.CreateForTest();
-            _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
+            _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
             _stateProvider.Commit(_spec);
             EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
             _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
@@ -57,7 +54,6 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(ByteCode),
                 callDepth: 0,
                 value: 0,
-                transferValue: 0,
                 inputData: default
             );
 

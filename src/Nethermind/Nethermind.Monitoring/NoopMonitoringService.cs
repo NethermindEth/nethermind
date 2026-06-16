@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Autofac;
 
 namespace Nethermind.Monitoring;
 
@@ -11,10 +10,7 @@ public class NoopMonitoringService : IMonitoringService
 {
     public static IMonitoringService Instance = new NoopMonitoringService();
 
-    public Task StartAsync()
-    {
-        return Task.CompletedTask;
-    }
+    public Task StartAsync() => Task.CompletedTask;
 
     public void AddMetricsUpdateAction(Action callback)
     {

@@ -5,9 +5,6 @@ namespace Nethermind.Db
 {
     public static class DbProviderExtensions
     {
-        public static ReadOnlyDbProvider AsReadOnly(this IDbProvider dbProvider, bool createInMemoryWriteStore)
-        {
-            return new(dbProvider, createInMemoryWriteStore);
-        }
+        public static ReadOnlyDbProvider AsReadOnly(this IDbProvider dbProvider, bool createInMemoryWriteStore) => new(dbProvider, createInMemoryWriteStore);
     }
 }

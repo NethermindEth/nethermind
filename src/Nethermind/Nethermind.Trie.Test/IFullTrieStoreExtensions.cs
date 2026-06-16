@@ -29,9 +29,6 @@ internal static class IFullTrieStoreExtensions
             blockCommitter.Dispose();
         }
 
-        public TrieNode CommitNode(ref TreePath path, TrieNode node)
-        {
-            return baseCommitter.CommitNode(ref path, node);
-        }
+        public TrieNode CommitNode(ref TreePath path, TrieNode node) => baseCommitter.CommitNode(ref path, node);
     }
 }

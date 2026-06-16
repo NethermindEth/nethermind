@@ -84,17 +84,14 @@ public class TransactionsMessageSerializerTests
     {
         SerializerTester.TestZero(
             new TransactionsMessageSerializer(),
-            transactionsMessage,
-            additionallyExcluding: static (o) =>
-                o.For(static msg => msg.Transactions)
-                    .Exclude(static tx => tx.SenderAddress));
+            transactionsMessage);
         transactionsMessage.Dispose();
     }
 
     [TestCaseSource(nameof(GetTransactionMessages))]
     public void Should_contain_network_form_tx_wrapper(TransactionsMessage transactionsMessage)
     {
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130);
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
         TransactionsMessageSerializer serializer = new();
         serializer.Serialize(buffer, transactionsMessage);
         transactionsMessage.Dispose();

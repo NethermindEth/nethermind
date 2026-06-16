@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Headers;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System.Collections.Generic;
 

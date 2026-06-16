@@ -16,6 +16,7 @@ namespace Nethermind.Blockchain.Visitors
     {
         private readonly IReceiptStorage _receiptStorage;
         protected readonly ILogger _logger;
+        private readonly ProgressReporter _progress;
         private int _good = 0;
         private int _bad = 0;
         private ChainLevelInfo _currentLevel;
@@ -25,10 +26,11 @@ namespace Nethermind.Blockchain.Visitors
         public ReceiptsVerificationVisitor(long startLevel, long endLevel, IReceiptStorage receiptStorage, ILogManager logManager)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ReceiptsVerificationVisitor>() ?? throw new ArgumentNullException(nameof(logManager));
             EndLevelExclusive = endLevel;
             StartLevelInclusive = startLevel; // we should start post-pivot
             _toCheck = EndLevelExclusive - StartLevelInclusive;
+            _progress = new ProgressReporter("Receipts verify", logManager, _toCheck);
         }
 
         public bool PreventsAcceptingNewBlocks => false;
@@ -85,7 +87,7 @@ namespace Nethermind.Blockchain.Visitors
             if (useIterator)
             {
                 int txReceiptsLength = 0;
-                if (_receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash, out var iterator))
+                if (_receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash, out ReceiptsIterator iterator))
                 {
                     try
                     {
@@ -111,11 +113,10 @@ namespace Nethermind.Blockchain.Visitors
         public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
         {
             _checked++;
-            if (_checked % 1000 == 0)
-            {
-                if (_logger.IsInfo) _logger.Info($"Checking receipts {_checked}/{_toCheck}");
-            }
+            _progress.Update(_checked);
             return Task.FromResult(LevelVisitOutcome.None);
         }
+
+        public virtual void Dispose() => _progress.Dispose();
     }
 }

@@ -26,7 +26,7 @@ public static class IReleaseSpecExtensions
         public bool ModExpEnabled => spec.IsEip198Enabled;
         public bool BN254Enabled => spec.IsEip196Enabled && spec.IsEip197Enabled;
         public bool BlakeEnabled => spec.IsEip152Enabled;
-        public bool Bls381Enabled => spec.IsEip2537Enabled;
+        public bool Bls12381Enabled => spec.IsEip2537Enabled;
         public bool ChargeForTopLevelCreate => spec.IsEip2Enabled;
         public bool FailOnOutOfGasCodeDeposit => spec.IsEip2Enabled;
         public bool UseShanghaiDDosProtection => spec.IsEip150Enabled;
@@ -66,5 +66,12 @@ public static class IReleaseSpecExtensions
         public bool IsPrecompile(Address address) => spec.Precompiles.Contains(address);
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
+        public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
+        /// <summary>
+        /// Returns a spec with EIP-158 disabled, preventing empty-account deletion on commit.
+        /// Used when applying state overrides to preserve EIP-7610 CREATE collision detection.
+        /// </summary>
+        public IReleaseSpec WithoutEip158() =>
+            spec.IsEip158Enabled ? new NoEip158Spec(spec) : spec;
     }
 }

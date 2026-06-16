@@ -21,6 +21,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             ITxSource innerSource = Substitute.For<ITxSource>();
             ITxSealer txSealer = Substitute.For<ITxSealer>();
+            txSealer.TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(true);
             IStateReader stateReader = Substitute.For<IStateReader>();
 
             BlockHeader parent = Build.A.BlockHeader.TestObject;
@@ -33,8 +34,8 @@ namespace Nethermind.AuRa.Test.Transactions
 
             txSource.GetTransactions(parent, gasLimit).ToArray();
 
-            txSealer.Received().Seal(generatedTx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
-            txSealer.DidNotReceive().Seal(poolTx, Arg.Any<TxHandlingOptions>());
+            txSealer.Received().TrySeal(generatedTx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
+            txSealer.DidNotReceive().TrySeal(poolTx, Arg.Any<TxHandlingOptions>());
         }
     }
 }

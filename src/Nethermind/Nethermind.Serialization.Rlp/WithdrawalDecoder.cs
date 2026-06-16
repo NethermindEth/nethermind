@@ -2,49 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
+[method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
+public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
-    protected override Withdrawal? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-        {
-            rlpStream.ReadByte();
-
-            return null;
-        }
-
-        rlpStream.ReadSequenceLength();
-
-        return new()
-        {
-            Index = rlpStream.DecodeULong(),
-            ValidatorIndex = rlpStream.DecodeULong(),
-            Address = rlpStream.DecodeAddress(),
-            AmountInGwei = rlpStream.DecodeULong()
-        };
-    }
-
     protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-
             return null;
         }
 
-        decoderContext.ReadSequenceLength();
+        int sequenceLength = decoderContext.ReadSequenceLength();
+        int checkPosition = decoderContext.Position + sequenceLength;
 
-        return new()
+        Withdrawal withdrawal = new()
         {
             Index = decoderContext.DecodeULong(),
             ValidatorIndex = decoderContext.DecodeULong(),
             Address = decoderContext.DecodeAddress(),
             AmountInGwei = decoderContext.DecodeULong()
         };
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            decoderContext.Check(checkPosition);
+        }
+
+        return withdrawal;
     }
 
     public override void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -55,7 +44,7 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
             return;
         }
 
-        var contentLength = GetContentLength(item);
+        int contentLength = GetContentLength(item);
 
         stream.StartSequence(contentLength);
         stream.Encode(item.Index);
@@ -64,9 +53,9 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
         stream.Encode(item.AmountInGwei);
     }
 
-    public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        var stream = new RlpStream(GetLength(item, rlpBehaviors));
+        RlpStream stream = new(GetLength(item, rlpBehaviors));
 
         Encode(stream, item, rlpBehaviors);
 

@@ -9,17 +9,16 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
-using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Test;
@@ -45,7 +44,9 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             // These two don't use the DB provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
+            .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryV5Nodes, (_) => new MemDb())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
+            .AddSingleton(NodeFilter.AcceptAll) // Disable inbound rate limiting for in-memory channels
 
             .AddSingleton<PseudoNethermindRunner>()
             .AddSingleton<TestBlockchainUtil>()
@@ -64,7 +65,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 return new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
             })
             .AddKeyedSingleton(NodeKey, nodeKey)
-            .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), (_) => new InMemoryDictionaryFileStoreFactory())
 
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {
@@ -109,6 +109,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
                 return blocksConfig;
             })
+            .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = SeqlockCache<StorageCell, byte[]>.DefaultSetsBits })
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
             {
                 networkConfig.DiscoveryDns = null;
@@ -125,7 +126,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 return pruningConfig;
             })
 
-            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB()))
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
             ;
     }
 }
