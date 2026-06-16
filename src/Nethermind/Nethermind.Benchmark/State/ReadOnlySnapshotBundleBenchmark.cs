@@ -81,6 +81,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 prevSnapshots.Add(s);
             }
 
+            // Build ReadOnlySnapshotBundle from previously captured snapshots
             ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
                 PersistedSnapshotStack.Empty());
@@ -162,6 +163,7 @@ public class ReadOnlySnapshotBundleBenchmark
             finalSnapshots.Add(s);
         }
 
+        // Build final ReadOnlySnapshotBundle with all 8 snapshots
         _bundle = new ReadOnlySnapshotBundle(
             finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());

@@ -34,13 +34,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 
-    [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth.", DefaultValue = "128")]
-    int MaxInMemoryBaseSnapshotCount { get; set; }
-
-    [ConfigItem(Description = "Total max reorg depth in blocks (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
+    [ConfigItem(Description = "Max reorg depth", DefaultValue = "90000")]
     int MaxReorgDepth { get; set; }
 
-    [ConfigItem(Description = "Minimum number of blocks kept in the in-memory reorg buffer before any are eligible for persistence.", DefaultValue = "128")]
+    [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
 
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
@@ -54,6 +51,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth.", DefaultValue = "128")]
+    int MaxInMemoryBaseSnapshotCount { get; set; }
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "false")]
     bool EnableLongFinality { get; set; }

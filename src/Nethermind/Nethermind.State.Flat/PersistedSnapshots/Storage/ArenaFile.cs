@@ -237,7 +237,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// returned view applies <c>MADV_DONTNEED</c> to the range before releasing the
     /// mapping; when false the disposer just unmaps.
     /// </summary>
-    internal IArenaWholeView OpenWholeView(long offset, long size, bool adviseDontNeedOnDispose)
+    internal MmapWholeView OpenWholeView(long offset, long size, bool adviseDontNeedOnDispose)
     {
         MemoryMappedViewAccessor accessor = _mmf.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
         byte* ptr = null;
@@ -250,9 +250,20 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
         return new MmapWholeView(accessor, dataPtr, size, adviseDontNeedOnDispose);
     }
 
-    private sealed unsafe class MmapWholeView(
-        MemoryMappedViewAccessor accessor, byte* dataPtr, long size, bool adviseDontNeedOnDispose) : IArenaWholeView
+    /// <summary>
+    /// A scoped read-only mmap view over a reservation's bytes: a fresh per-reservation accessor with the
+    /// <c>MADV_NORMAL</c> hint, distinct from the global random-access view used by point queries. When
+    /// <c>adviseDontNeedOnDispose</c> is set, disposing applies <c>MADV_DONTNEED</c> to the range so the
+    /// kernel can reclaim those pages from the page cache.
+    /// </summary>
+    internal sealed unsafe class MmapWholeView(
+        MemoryMappedViewAccessor accessor, byte* dataPtr, long size, bool adviseDontNeedOnDispose) : IDisposable
     {
+        /// <summary>
+        /// Raw pointer to the first byte of the view. Long-offset arithmetic is valid for the entire
+        /// <see cref="Size"/> range; the mapping is kept alive until <see cref="Dispose"/>. Reservations may
+        /// exceed <see cref="int.MaxValue"/>, so consume via a pointer-backed reader, not a single Span.
+        /// </summary>
         public byte* DataPtr => dataPtr;
         public long Size => size;
 

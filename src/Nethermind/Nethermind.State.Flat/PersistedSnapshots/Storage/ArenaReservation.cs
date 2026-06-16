@@ -113,7 +113,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true) =>
         new(this, adviseDontNeedOnDispose);
 
-    internal IArenaWholeView OpenWholeView(bool adviseDontNeedOnDispose) =>
+    internal ArenaFile.MmapWholeView OpenWholeView(bool adviseDontNeedOnDispose) =>
         _arenaFile.OpenWholeView(Offset, Size, adviseDontNeedOnDispose);
 
     /// <summary>

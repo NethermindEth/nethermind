@@ -17,8 +17,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// </summary>
 /// <remarks>
 /// Also serves as the <see cref="IHsstReaderSource{TReader,TPin}"/> for the reservation:
-/// the mmap base pointer is captured once at construction (one interface call on the
-/// underlying <see cref="IArenaWholeView"/>) so <see cref="CreateReader"/> mints fresh
+/// the mmap base pointer is captured once at construction (one call on the underlying
+/// <see cref="ArenaFile.MmapWholeView"/>) so <see cref="CreateReader"/> mints fresh
 /// pointer-backed readers on the merge/scan hot path with no per-call indirection or
 /// dispose check. Callers must keep the session alive while any reader derived from it
 /// is in use.
@@ -26,7 +26,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 public sealed unsafe class WholeReadSession : IDisposable, IHsstReaderSource<WholeReadSessionReader, NoOpPin>
 {
     private readonly ArenaReservation _reservation;
-    private readonly IArenaWholeView _view;
+    private readonly ArenaFile.MmapWholeView _view;
     private readonly byte* _basePtr;
     private readonly long _size;
     private readonly bool _adviseDontNeedOnDispose;

@@ -41,6 +41,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Stub out the pruning trie store admin RPC with a disabled response.
             .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
+
+            // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
