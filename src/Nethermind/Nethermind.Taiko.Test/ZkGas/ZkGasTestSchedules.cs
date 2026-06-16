@@ -10,10 +10,10 @@ using Nethermind.Taiko.ZkGas;
 namespace Nethermind.Taiko.Test.ZkGas;
 
 /// <summary>
-/// Mirrors the recalibrated Unzen ZK gas multiplier tables that the production chainspec
-/// (<c>Chains/taiko-alethia.json</c>) ships under <c>unzenZkGasSchedules</c>. Production code
-/// no longer carries any in-code defaults; tests pin against these test-owned copies so failing
-/// assertions surface schedule drift the same way they did before the chainspec migration.
+/// Test-owned mirror of the Unzen ZK gas multiplier tables shipped in
+/// <c>Chains/taiko-alethia.json</c> and <c>Chains/taiko-hoodi.json</c> under
+/// <c>unzenZkGasSchedules</c>. Tests pin against these copies so a chainspec edit must also
+/// update this file — drift surfaces as a failing assertion.
 /// </summary>
 public static class ZkGasTestSchedules
 {
@@ -58,6 +58,7 @@ public static class ZkGasTestSchedules
         a[0x1b] = 24;
         a[0x1c] = 22;
         a[0x1d] = 21;
+        a[0x1e] = 14;
         a[0x20] = 31;
         a[0x30] = 19;
         a[0x31] = 4;
@@ -193,7 +194,7 @@ public static class ZkGasTestSchedules
             [Address.FromNumber(0x02)] = 10,
             [Address.FromNumber(0x03)] = 4,
             [Address.FromNumber(0x04)] = 6,
-            [Address.FromNumber(0x05)] = 923,
+            [Address.FromNumber(0x05)] = 154,
             [Address.FromNumber(0x06)] = 19,
             [Address.FromNumber(0x07)] = 58,
             [Address.FromNumber(0x08)] = 54,
@@ -201,11 +202,12 @@ public static class ZkGasTestSchedules
             [Address.FromNumber(0x0a)] = 859,
             [Address.FromNumber(0x0b)] = 201,
             [Address.FromNumber(0x0c)] = 93,
-            [Address.FromNumber(0x0e)] = 230,
-            [Address.FromNumber(0x0f)] = 71,
-            [Address.FromNumber(0x11)] = 365,
-            [Address.FromNumber(0x12)] = 246,
-            [Address.FromNumber(0x13)] = 208,
+            [Address.FromNumber(0x0d)] = 230,
+            [Address.FromNumber(0x0e)] = 71,
+            [Address.FromNumber(0x0f)] = 365,
+            [Address.FromNumber(0x10)] = 246,
+            [Address.FromNumber(0x11)] = 208,
+            [Address.FromNumber(0x100)] = 163,
         };
         return d.ToFrozenDictionary();
     }

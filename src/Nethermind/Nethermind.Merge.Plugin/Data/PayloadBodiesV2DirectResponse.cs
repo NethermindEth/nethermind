@@ -9,6 +9,7 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -67,7 +68,22 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
         catch
         {
-            (blockAccessList as IDisposable)?.Dispose();
+            blockAccessList?.TryDispose();
+            throw;
+        }
+    }
+
+    internal static PayloadBody CreatePayloadBody(
+        byte[] blockRlp,
+        MemoryManager<byte>? blockAccessList)
+    {
+        try
+        {
+            return new PayloadBody(blockRlp, blockAccessList);
+        }
+        catch
+        {
+            blockAccessList?.TryDispose();
             throw;
         }
     }
@@ -95,17 +111,56 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal readonly struct PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList) : IDisposable
+    internal readonly struct PayloadBody : IDisposable
     {
-        public void WriteTo(PipeWriter writer) =>
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, transactions, withdrawals, blockAccessList);
+        private readonly Transaction[]? _transactions;
+        private readonly byte[]? _blockRlp;
+        private readonly Withdrawal[]? _withdrawals;
+        private readonly MemoryManager<byte>? _blockAccessList;
 
-        public ExecutionPayloadBodyV2Result ToResult() =>
-            new(
-                transactions,
-                withdrawals,
-                blockAccessList?.Memory.ToArray());
+        public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList)
+        {
+            _transactions = transactions;
+            _blockRlp = null;
+            _withdrawals = withdrawals;
+            _blockAccessList = blockAccessList;
+        }
 
-        public void Dispose() => (blockAccessList as IDisposable)?.Dispose();
+        public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList)
+        {
+            _transactions = null;
+            _blockRlp = blockRlp;
+            _withdrawals = null;
+            _blockAccessList = blockAccessList;
+        }
+
+        public void WriteTo(PipeWriter writer)
+        {
+            if (_blockRlp is { } blockRlp)
+            {
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList);
+            }
+            else
+            {
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList);
+            }
+        }
+
+        public ExecutionPayloadBodyV2Result ToResult()
+        {
+            if (_blockRlp is { } blockRlp)
+            {
+                (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
+                ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.Memory.ToArray())
+                {
+                    Transactions = transactions
+                };
+                return result;
+            }
+
+            return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.Memory.ToArray());
+        }
+
+        public void Dispose() => _blockAccessList?.TryDispose();
     }
 }

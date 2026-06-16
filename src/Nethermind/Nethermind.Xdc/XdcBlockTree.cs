@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Xdc.Types;
@@ -27,10 +26,9 @@ internal class XdcBlockTree(
     IBlockAccessListStore? balStore,
     IChainLevelInfoRepository? chainLevelInfoRepository,
     ISpecProvider? specProvider,
-    IBloomStorage? bloomStorage,
     ISyncConfig? syncConfig,
     ILogManager? logManager,
-    long genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+    long genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, syncConfig, logManager, genesisBlockNumber)
 {
     private readonly IXdcConsensusContext _xdcConsensus = xdcConsensus;
 

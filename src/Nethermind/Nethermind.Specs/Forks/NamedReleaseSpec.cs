@@ -35,6 +35,33 @@ public abstract class NamedReleaseSpec : ReleaseSpec
     /// </summary>
     public bool IsPostMerge { get; set; }
 
+    /// <summary>
+    /// Engine API method versions surfaced by this fork. <c>null</c> on forks that don't expose the
+    /// corresponding endpoint (e.g. pre-merge forks have no <c>engine_*</c> at all; Paris has no
+    /// <c>getPayloadBodies*</c>). Set inside <see cref="Apply"/> only when this fork *changes* the
+    /// value — values flow forward through the <see cref="ReplayAncestors"/> chain.
+    /// </summary>
+    public int? EngineApiNewPayloadVersion { get; set; }
+
+    /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
+    public int? EngineApiGetPayloadVersion { get; set; }
+
+    /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
+    public int? EngineApiForkchoiceVersion { get; set; }
+
+    /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
+    public int? EngineApiPayloadBodiesByHashVersion { get; set; }
+
+    /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
+    public int? EngineApiPayloadBodiesByRangeVersion { get; set; }
+
+    /// <summary>
+    /// URL <c>{fork}</c> segment for the SSZ-REST Engine API surface — the lowercase fork class name
+    /// (e.g. <c>"paris"</c>). Whether the segment is actually routable is decided by the engine-API
+    /// layer's supported-fork set, not here.
+    /// </summary>
+    public string? EngineApiUrlSegment => Name?.ToLowerInvariant();
+
     protected NamedReleaseSpec(NamedReleaseSpec? parent)
     {
         Parent = parent;
@@ -69,4 +96,19 @@ public abstract class NamedReleaseSpec<TSelf>(NamedReleaseSpec? parent) : NamedR
     where TSelf : NamedReleaseSpec<TSelf>, new()
 {
     public static NamedReleaseSpec Instance { get; } = new TSelf();
+}
+
+public static class NamedReleaseSpecExtensions
+{
+    /// <summary>
+    /// True iff this fork changes at least one engine-API method version vs. its
+    /// <see cref="NamedReleaseSpec.Parent"/>. Used to filter forks that only tweak per-fork
+    /// constants (blob-parameter overrides etc.) and reuse the parent's engine-API surface.
+    /// </summary>
+    public static bool IntroducesEngineApiChange(this NamedReleaseSpec spec) =>
+        spec.EngineApiNewPayloadVersion != spec.Parent?.EngineApiNewPayloadVersion
+        || spec.EngineApiGetPayloadVersion != spec.Parent?.EngineApiGetPayloadVersion
+        || spec.EngineApiForkchoiceVersion != spec.Parent?.EngineApiForkchoiceVersion
+        || spec.EngineApiPayloadBodiesByHashVersion != spec.Parent?.EngineApiPayloadBodiesByHashVersion
+        || spec.EngineApiPayloadBodiesByRangeVersion != spec.Parent?.EngineApiPayloadBodiesByRangeVersion;
 }

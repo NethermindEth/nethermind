@@ -20,5 +20,7 @@
     "src/Nethermind/TestResults/**",
     "src/tests"
   ],
-  "words": []
+  "words": [
+    "Expresso"
+  ]
 }

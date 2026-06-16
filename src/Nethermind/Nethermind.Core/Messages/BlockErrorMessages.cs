@@ -175,8 +175,6 @@ public static class BlockErrorMessages
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 
     public const string MissingSlotNumber = "MissingSlotNumber: Must be present in block header.";
-    public const string InvalidSlotNumber =
-        "InvalidSlotNumber: Slot number in header must exceed parent.";
 
     public const string SlotNumberNotEnabled =
         "SlotNumberNotEnabled: Block header cannot have slot number.";

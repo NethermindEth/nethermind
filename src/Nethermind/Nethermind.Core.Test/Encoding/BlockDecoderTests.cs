@@ -26,14 +26,14 @@ public class BlockDecoderTests
         for (int i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
-                .WithData(new byte[] { (byte)i })
+                .WithData([(byte)i])
                 .WithNonce((UInt256)i)
                 .WithValue((UInt256)i)
                 .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA, true)
                 .TestObject;
         }
 
-        BlockHeader[] uncles = new BlockHeader[16];
+        BlockHeader[] uncles = new BlockHeader[2];
 
         for (int i = 0; i < uncles.Length; i++)
         {

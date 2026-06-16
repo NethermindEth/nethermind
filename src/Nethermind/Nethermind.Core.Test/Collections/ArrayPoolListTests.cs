@@ -18,9 +18,12 @@ public class ArrayPoolListTests
     public void Empty_list()
     {
         using ArrayPoolList<int> list = new(1024);
-        Assert.That(list, Is.EqualTo(Array.Empty<int>()));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Capacity, Is.EqualTo(1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(1024));
+        }
     }
 
     [Test]
@@ -49,9 +52,12 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
-        Assert.That(list, Is.EqualTo(Enumerable.Range(0, 50)));
-        Assert.That(list.Count, Is.EqualTo(50));
-        Assert.That(list.Capacity, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Enumerable.Range(0, 50)));
+            Assert.That(list.Count, Is.EqualTo(50));
+            Assert.That(list.Capacity, Is.EqualTo(64));
+        }
     }
 
     [Test]
@@ -60,9 +66,12 @@ public class ArrayPoolListTests
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         list.Clear();
-        Assert.That(list, Is.EqualTo(Array.Empty<int>()));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Capacity, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(64));
+        }
     }
 
     [TestCase(0, ExpectedResult = true)]
@@ -285,11 +294,14 @@ public class ArrayPoolListTests
         IList list = (IList)arrayPoolList;
         list.Add(1);
 
-        Assert.That(list.Contains(value), Is.False);
-        Assert.That(list.IndexOf(value), Is.EqualTo(-1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Contains(value), Is.False);
+            Assert.That(list.IndexOf(value), Is.EqualTo(-1));
 
-        Action action = () => list.Remove(value);
-        Assert.That(action, Throws.Nothing);
+            Action action = () => list.Remove(value);
+            Assert.That(action, Throws.Nothing);
+        }
     }
 
     [Test]
@@ -297,11 +309,14 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(1024);
 
-        Assert.That(((ICollection<int>)list).IsReadOnly, Is.False);
-        Assert.That(((IList)list).IsReadOnly, Is.False);
-        Assert.That(((IList)list).IsFixedSize, Is.False);
-        Assert.That(((IList)list).IsSynchronized, Is.False);
-        Assert.That(((IList)list).SyncRoot, Is.EqualTo(list));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((ICollection<int>)list).IsReadOnly, Is.False);
+            Assert.That(((IList)list).IsReadOnly, Is.False);
+            Assert.That(((IList)list).IsFixedSize, Is.False);
+            Assert.That(((IList)list).IsSynchronized, Is.False);
+            Assert.That(((IList)list).SyncRoot, Is.EqualTo(list));
+        }
     }
 
     [Test]
@@ -360,6 +375,40 @@ public class ArrayPoolListTests
         public override void Return(T[] array, bool clearArray = false)
         {
         }
+    }
+
+    [Test]
+    public void Uninitialized_exposes_requested_count_and_capacity()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 10, 10, clearFirst: false);
+
+        Assert.That(list.Count, Is.EqualTo(10));
+        Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
+        Assert.That(list.AsSpan().Length, Is.EqualTo(10));
+        Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+    }
+
+    [Test]
+    public void Uninitialized_is_fully_writable_through_span()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 8, 8, clearFirst: false);
+
+        Span<int> span = list.AsSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            span[i] = i * 7;
+        }
+
+        Assert.That(list, Is.EqualTo(Enumerable.Range(0, 8).Select(i => i * 7)));
+    }
+
+    [Test]
+    public void Uninitialized_with_zero_count_is_empty()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 0, 0, clearFirst: false);
+
+        Assert.That(list.Count, Is.EqualTo(0));
+        Assert.That(list.AsSpan().Length, Is.EqualTo(0));
     }
 
 #if DEBUG

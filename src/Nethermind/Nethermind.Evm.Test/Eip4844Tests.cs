@@ -4,7 +4,6 @@
 using Nethermind.Specs;
 using NUnit.Framework;
 using Nethermind.Int256;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Evm.Test;
@@ -46,7 +45,7 @@ public class Eip4844Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(Activation, 50000, code, blobVersionedHashes: hashes);
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(result.ReturnValue.SequenceEqual(expectedOutput), Is.True);
+        Assert.That(result.ReturnValue, Is.EqualTo(expectedOutput));
         AssertGas(result, gasCostOfCallingWrapper + GasCostOf.BlobHash);
     }
 

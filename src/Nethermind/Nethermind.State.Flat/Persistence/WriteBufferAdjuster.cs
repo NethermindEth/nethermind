@@ -7,19 +7,25 @@ using Nethermind.Db;
 
 namespace Nethermind.State.Flat.Persistence;
 
-internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
+internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db, long writeBufferFloor = WriteBufferAdjuster.DefaultWriteBufferFloor)
 {
     internal const int ColumnCount = 7;
-    private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
+    private const long MB = 1024L * 1024L;
+    internal const long DefaultWriteBufferFloor = 16L * MB;  // 16 MB floor
+
     private static long MaxWriteBufferSize(FlatDbColumns column) => column switch
     {
-        FlatDbColumns.Account => 32L * 1024 * 1024,        // 32 MB
-        FlatDbColumns.Storage => 64L * 1024 * 1024,        // 64 MB
-        FlatDbColumns.StateNodes => 64L * 1024 * 1024,     // 64 MB
-        FlatDbColumns.StateTopNodes => 64L * 1024 * 1024,  // 64 MB
-        FlatDbColumns.StorageNodes => 64L * 1024 * 1024,   // 64 MB
-        _ => 16L * 1024 * 1024,                            // 16 MB (Metadata, FallbackNodes)
+        FlatDbColumns.Account => 32L * MB,
+        FlatDbColumns.Storage => 64L * MB,
+        FlatDbColumns.StateNodes => 64L * MB,
+        FlatDbColumns.StateTopNodes => 64L * MB,
+        FlatDbColumns.StorageNodes => 64L * MB,
+        _ => 16L * MB,                            // Metadata, FallbackNodes
     };
+
+    // Lower bound applied per column. Frequent small persistence batches (small CompactSize) would otherwise
+    // shrink the memtable to the floor and churn L0; raising the floor lets them coalesce in the memtable instead.
+    private readonly long _writeBufferFloor = writeBufferFloor <= 0 ? DefaultWriteBufferFloor : writeBufferFloor;
 
     private bool _syncBufferSet;
 
@@ -92,7 +98,7 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
         if (_syncBufferSet) return;
         if (bytesWritten == 0) return;
         int idx = (int)column;
-        long target = Math.Clamp((long)(bytesWritten * 1.5), MinWriteBufferSize, MaxWriteBufferSize(column));
+        long target = Math.Clamp((long)(bytesWritten * 1.5), _writeBufferFloor, Math.Max(_writeBufferFloor, MaxWriteBufferSize(column)));
         long lastSize = _lastWriteBufferSize[idx];
         if (lastSize != 0 && Math.Abs(target - lastSize) <= (long)(lastSize * 0.2))
             return;
