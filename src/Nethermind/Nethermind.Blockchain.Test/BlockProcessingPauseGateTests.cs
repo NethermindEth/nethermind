@@ -11,31 +11,21 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessingPauseGateTests
 {
-    [Test]
-    public void Pause_whenRunning_transitionsToPausedAndIsIdempotent()
+    [TestCase(false, true, true, true, TestName = "Pause from running transitions to paused")]
+    [TestCase(true, true, false, true, TestName = "Pause while already paused is a no-op")]
+    [TestCase(true, false, true, false, TestName = "Resume from paused transitions to running")]
+    [TestCase(false, false, false, false, TestName = "Resume while already running is a no-op")]
+    public void Transition_reportsWhetherStateChanged(bool startPaused, bool pause, bool expectedTransitioned, bool expectedPausedAfter)
     {
         BlockProcessingPauseGate gate = new();
+        if (startPaused) gate.Pause();
+
+        bool transitioned = pause ? gate.Pause() : gate.Resume();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(gate.IsPaused, Is.False, "a fresh gate starts running");
-            Assert.That(gate.Pause(), Is.True, "the first pause transitions from running to paused");
-            Assert.That(gate.Pause(), Is.False, "pausing an already-paused gate reports no transition");
-            Assert.That(gate.IsPaused, Is.True, "the gate remains paused");
-        }
-    }
-
-    [Test]
-    public void Resume_whenPaused_transitionsToRunningAndIsIdempotent()
-    {
-        BlockProcessingPauseGate gate = new();
-        gate.Pause();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Resume(), Is.True, "resuming a paused gate transitions to running");
-            Assert.That(gate.Resume(), Is.False, "resuming an already-running gate reports no transition");
-            Assert.That(gate.IsPaused, Is.False, "the gate remains running");
+            Assert.That(transitioned, Is.EqualTo(expectedTransitioned), "the call reports whether it changed the state");
+            Assert.That(gate.IsPaused, Is.EqualTo(expectedPausedAfter), "the resulting paused state");
         }
     }
 
