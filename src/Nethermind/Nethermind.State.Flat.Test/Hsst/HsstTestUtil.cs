@@ -13,11 +13,8 @@ internal static class HsstTestUtil
 
     /// <summary>
     /// Test helper: create a builder, execute <paramref name="buildAction"/>, dispose, and return the
-    /// built HSST bytes. Defaults <paramref name="keyLength"/> to -1 ("infer from first key") — production
-    /// code must pass an explicit key length to <see cref="HsstBTreeBuilder{TWriter}"/>; tests
-    /// using this helper rely on the builder picking up the length from the first
-    /// <see cref="HsstBTreeBuilder{TWriter}.Add"/> call and validating that every subsequent
-    /// key matches.
+    /// built HSST bytes. Defaults <paramref name="keyLength"/> to -1 ("infer from first key") so tests
+    /// don't need to specify the length up front; production code should pass an explicit length.
     /// </summary>
     public static byte[] BuildToArray(BuildAction buildAction, int keyLength = -1, bool keyFirst = false)
     {
@@ -36,7 +33,7 @@ internal static class HsstTestUtil
         }
     }
 
-    /// <summary>Test helper: dispatcher-style lookup over an HSST byte blob via <see cref="HsstReader{TReader,TPin}"/>.</summary>
+    /// <summary>Test helper: exact-match lookup over an HSST byte blob via <see cref="HsstReader{TReader,TPin}"/>.</summary>
     public static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value) =>
         TryGetCore(data, key, twoByteSlot: false, floor: false, out value);
 
@@ -45,9 +42,9 @@ internal static class HsstTestUtil
         TryGetCore(data, key, twoByteSlot: false, floor: true, out value);
 
     /// <summary>
-    /// Test helper: front-dispatch lookup over a keys-first two-byte-slot HSST blob
+    /// Test helper: exact-match lookup over a keys-first two-byte-slot HSST blob
     /// (<see cref="IndexType.TwoByteSlotValue"/> / <see cref="IndexType.TwoByteSlotValueLarge"/>),
-    /// whose IndexType byte leads the blob at byte 0.
+    /// whose <see cref="IndexType"/> byte leads at byte 0 (unlike the standard tail-indexed blobs).
     /// </summary>
     public static bool TryGetTwoByteSlot(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value) =>
         TryGetCore(data, key, twoByteSlot: true, floor: false, out value);
@@ -73,11 +70,11 @@ internal static class HsstTestUtil
         return true;
     }
 
-    /// <summary>Test helper: single-byte-key overload for the dense-byte-index format.</summary>
+    /// <summary>Test helper: single-byte-key convenience overload; delegates to <see cref="TryGet(ReadOnlySpan{byte},ReadOnlySpan{byte},out byte[])"/>.</summary>
     public static bool TryGet(ReadOnlySpan<byte> data, byte key, out byte[] value) =>
         TryGet(data, [key], out value);
 
-    /// <summary>Test helper: floor-seek single-byte-key overload for the dense-byte-index format.</summary>
+    /// <summary>Test helper: floor-seek single-byte-key convenience overload; delegates to <see cref="TryGetFloor(ReadOnlySpan{byte},ReadOnlySpan{byte},out byte[])"/>.</summary>
     public static bool TryGetFloor(ReadOnlySpan<byte> data, byte key, out byte[] value) =>
         TryGetFloor(data, [key], out value);
 }

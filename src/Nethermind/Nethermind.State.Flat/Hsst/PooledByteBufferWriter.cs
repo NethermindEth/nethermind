@@ -12,11 +12,7 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
     public ref Writer GetWriter() => ref _writer;
     public ReadOnlySpan<byte> WrittenSpan => _writer.WrittenSpan;
 
-    /// <summary>
-    /// Reset the writer cursor to byte 0 without releasing the backing buffer. Use when
-    /// the same pooled buffer is reused across iterations (e.g. per-prefix sub-slot
-    /// staging) so the underlying allocation amortizes across the loop.
-    /// </summary>
+    /// <summary>Resets the write cursor to 0 without releasing the backing buffer.</summary>
     public void Reset() => _writer.Reset();
 
     public void Dispose() => _writer.ReturnBuffer();
@@ -53,7 +49,6 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
         private void Grow(int sizeHint)
         {
             int needed = _written + sizeHint;
-            // Math.Max already guarantees newSize >= needed, so no further doubling is required.
             int newSize = Math.Max(needed, _capacity == 0 ? 1 : _capacity * 2);
 
             byte* newBuffer = (byte*)NativeMemory.Alloc((nuint)newSize);

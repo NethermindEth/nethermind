@@ -95,7 +95,6 @@ public class SnapshotCompactor(
                 return SnapshotPooledList.Empty();
             }
 
-            // Nothing to combine if it's just one
             if (snapshots.Count == 1)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at block {blockNumber}: got only 1 of expected {compactSize} snapshots from start {startingBlockNumber}.");
@@ -128,7 +127,6 @@ public class SnapshotCompactor(
 
         using ArrayPoolListRef<Task> compactTask = new(2);
 
-        // Accounts
         compactTask.Add(Task.Run(() =>
         {
             for (int i = 0; i < snapshots.Count; i++)
@@ -138,7 +136,6 @@ public class SnapshotCompactor(
             }
         }));
 
-        // Slots and Selfdestruct
         compactTask.Add(Task.Run(() =>
         {
             using PooledSet<Address> addressToClear = new();
@@ -164,7 +161,6 @@ public class SnapshotCompactor(
 
                 if (addressToClear.Count > 0)
                 {
-                    // Clear
                     foreach ((HashedKey<(Address, UInt256)> key, SlotValue? _) in storages)
                     {
                         if (addressToClear.Contains(key.Key.Item1))
@@ -178,11 +174,9 @@ public class SnapshotCompactor(
             }
         }));
 
-        // State tries
         for (int i = 0; i < snapshots.Count; i++)
             stateNodes.AddOrUpdateRange(snapshots[i].StateNodes);
 
-        // Storage tries
         for (int i = 0; i < snapshots.Count; i++)
         {
             // Clear storage nodes for self-destructed accounts

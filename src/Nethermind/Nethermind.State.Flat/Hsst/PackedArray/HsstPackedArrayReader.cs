@@ -16,7 +16,7 @@ internal static class HsstPackedArrayReader
     /// <summary>
     /// Parsed footer of a PackedArray HSST: scalar geometry only. Per-level record counts
     /// and absolute level start offsets are NOT stored on Layout — the descent recomputes
-    /// them via <see cref="ComputeLevelGeometry"/> (≤ <see cref="HsstPackedArrayLayout.MaxSummaryDepth"/>
+    /// them via <see cref="ComputeLevelCounts"/> (≤ <see cref="HsstPackedArrayLayout.MaxSummaryDepth"/>
     /// integer ops).
     ///
     /// On disk, <see cref="EntryCount"/> is a fixed <c>u32 LE</c> (the builder caps
@@ -87,8 +87,8 @@ internal static class HsstPackedArrayReader
         if (bound.Length < 3) return false;
 
         // Tail window covers the trailing IndexType byte, MetadataLength byte, and (almost
-        // always) the entire LEB128 metadata block. Real metadata is ~13–25 B; 64 B fits
-        // virtually every PackedArray emitted by the builder.
+        // always) the entire metadata block. Real metadata is 10 B; 64 B fits every
+        // PackedArray emitted by the builder.
         int tailLen = (int)Math.Min(TailWindowSize, bound.Length);
         long tailAbsStart = hsstEnd - tailLen;
 
@@ -104,13 +104,12 @@ internal static class HsstPackedArrayReader
 
             if (metaLen + 2 <= tailLen)
             {
-                // Hot path: metadata fits in the same pinned window.
                 ReadOnlySpan<byte> metaSpan = tail.Slice(tailLen - 2 - metaLen, metaLen);
                 return ParseMetadata(metaSpan, hsstStart, metaAbsStart, ref layout);
             }
         }
 
-        // Cold path: metadata exceeds the tail window. Re-pin precisely.
+        // Metadata exceeds the tail window; re-pin precisely.
         using (TPin metaPin = reader.PinBuffer(new Bound(metaAbsStart, metaLen)))
         {
             return ParseMetadata(metaPin.Buffer, hsstStart, metaAbsStart, ref layout);
@@ -250,8 +249,7 @@ internal static class HsstPackedArrayReader
 
         // Floor scan over the data slab [rangeStart, rangeEnd]: pin once and run a per-size
         // floor lookup over the interleaved (key+value) entries via UniformKeySearch. Returns
-        // the largest local index whose stored key is ≤ search (or -1 if none). Equality at
-        // the floor → exact match; otherwise the floor is the answer for the floor-lookup path.
+        // the largest local index whose stored key is ≤ search (or -1 if none).
         long count = rangeEnd - rangeStart + 1;
         if (count <= 0) return false;
         using (TPin dataPin = reader.PinBuffer(new Bound(L.EntryAbsStart(rangeStart), count * L.EntryStride)))

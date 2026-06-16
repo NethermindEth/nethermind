@@ -43,15 +43,13 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 {
     private enum VariantKind : byte { Empty, PackedArray, BTree, BTreeKeyFirst, TwoByteSlot }
 
-    // Struct envelope: only thing that needs to live on the value is the
-    // discriminator and the variant references. All mutable
-    // iteration state lives on the heap-allocated variant objects, so copies
+    // All mutable iteration state lives on the heap-allocated variant objects, so copies
     // of this struct (e.g. via ArrayPoolList<T>'s by-value indexer) still
     // observe / advance the same underlying cursor.
     //
     // default(HsstEnumerator) has _kind == Empty, so MoveNext returns false and
-    // Current is empty. Callers like PersistedSnapshotScanner's enumerators rely on
-    // this when they reset a field to `default` between nested scopes.
+    // Current is empty — callers that reset a field to `default` between nested scopes
+    // get safe no-op behaviour without a separate null check.
     private readonly VariantKind _kind;
     private readonly HsstPackedArrayEnumerator<TReader, TPin>? _packed;
     private readonly HsstBTreeEnumerator<TReader, TPin>? _btree;
@@ -65,7 +63,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             return;
         }
 
-        // Last byte of the HSST is the IndexType byte.
         IndexType tag;
         using (TPin tagPin = reader.PinBuffer(new Bound(scope.Offset + scope.Length - 1, 1)))
         {
@@ -92,8 +89,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             // than via this enumerator. TwoByteSlotValue / TwoByteSlotValueLarge lead
             // with their IndexType byte (byte 0), never the tail — they are nested-only
             // and opened via CreateTwoByteSlot, so this last-byte dispatch never resolves
-            // them. Defensive empty enumeration: never invoked in production paths but
-            // avoids crashing the BTree parser if the trailer ever reaches this constructor.
+            // them. Defensive empty enumeration for any future unknown tag.
             default:
                 _kind = VariantKind.Empty;
                 break;

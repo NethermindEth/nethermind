@@ -5,7 +5,7 @@ namespace Nethermind.State.Flat.Hsst.PackedArray;
 
 /// <summary>
 /// N-way merge driver that emits a single <see cref="IndexType.PackedArray"/> HSST from N
-/// pre-positioned source enumerators. Drives a <see cref="NWayMergeCursor{TReader,TPin,TSource}"/>
+/// pre-positioned source enumerators. Drives a <see cref="NWayMergeCursor{TReader,TPin,TSource,TFactory}"/>
 /// over the sources, pins each winner's value through the corresponding source's reader, and
 /// writes the (key, value) pair into an <see cref="HsstPackedArrayBuilder{TWriter}"/>. Newest
 /// source wins on key collision (the cursor's hardcoded tie-break).
@@ -19,8 +19,7 @@ internal static class HsstPackedArrayMerger
     /// <param name="writer">Destination writer; receives one PackedArray HSST.</param>
     /// <param name="valueSize">Per-entry value length, in bytes. All merged values must match.</param>
     /// <param name="cursor">Caller-constructed merge cursor over N pre-positioned sources.
-    /// The merger drives it to exhaustion; the key length is read from <see cref="NWayMergeCursor{TReader,TPin,TSource}.KeyLen"/>.</param>
-    /// <param name="callback">Per-emitted-key hook.</param>
+    /// The merger drives it to exhaustion; the key length is read from <see cref="NWayMergeCursor{TReader,TPin,TSource,TFactory}.KeyLen"/>.</param>
     internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TCallback>(
         ref TWriter writer,
         int valueSize,

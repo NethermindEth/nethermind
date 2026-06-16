@@ -38,7 +38,7 @@ public class ArenaMetricsTests
     {
         // Use a delta from the baseline so parallel-running tests don't interfere.
         const long maxArenaSize = 64 * 1024;  // 64 KiB sparse arena file
-        const int payloadBytes = 4096;        // write 4 KiB into it
+        const int payloadBytes = 4096;
 
         long arenaBytesBefore = Metrics.ArenaAllocatedBytes;
         long arenaCountBefore = Metrics.ArenaFileCount;
@@ -74,7 +74,6 @@ public class ArenaMetricsTests
         // payload size, NOT the 64 KiB sparse MaxSize.
         Assert.That((Metrics.ArenaAllocatedBytes - arenaBytesBefore), Is.EqualTo(payloadBytes));
 
-        // Reservation gauge tracks the live reservation we're holding.
         Assert.That((Metrics.ArenaReservationBytes - resvBytesBefore), Is.EqualTo(payloadBytes));
 
         // Arena and blob gauges are independent — no blob activity here.

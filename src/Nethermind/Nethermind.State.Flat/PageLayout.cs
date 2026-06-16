@@ -12,7 +12,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public static class PageLayout
 {
-    /// <summary>4 KiB page size used for blob-arena and HSST index alignment.</summary>
+    /// <summary>Logical page size for blob-arena and HSST index alignment.</summary>
     public const int PageSize = 4096;
 
     /// <summary>
@@ -39,6 +39,5 @@ public static class PageLayout
     /// </summary>
     public static readonly int OsPageSize = Environment.SystemPageSize;
 
-    /// <summary>Rounds <paramref name="value"/> up to the next <see cref="OsPageSize"/> multiple.</summary>
     public static long RoundUpToOsPage(long value) => (value + OsPageSize - 1) & ~((long)OsPageSize - 1);
 }

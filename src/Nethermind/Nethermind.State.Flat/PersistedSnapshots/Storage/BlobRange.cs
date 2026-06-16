@@ -22,7 +22,6 @@ public readonly record struct BlobRange(ushort BlobArenaId, long Offset, long Le
     /// <summary>Sentinel for snapshots with no contiguous blob region.</summary>
     public static readonly BlobRange None = default;
 
-    /// <summary>True when there is no region to prefetch.</summary>
     public bool IsEmpty => Length == 0;
 
     /// <summary>Fixed serialized width of a range: BlobArenaId(2) + Offset(8) + Length(8).</summary>

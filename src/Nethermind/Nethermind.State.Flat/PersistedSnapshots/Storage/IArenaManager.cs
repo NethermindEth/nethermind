@@ -61,8 +61,9 @@ public unsafe interface IArenaManager : IDisposable
     /// <summary>
     /// Per-arena page residency tracker. Reservations call
     /// <see cref="PageResidencyTracker.TryTouch"/> directly to record per-page accesses; the
-    /// manager owns the tracker and disposes it. Implementations with nothing to track (e.g.
-    /// the in-memory test arena) return a 0-capacity tracker whose <c>TryTouch</c> is a no-op.
+    /// manager owns the tracker and disposes it. Implementations configured with zero cache
+    /// bytes (e.g. <c>TempDirArenaManager</c> in tests) return a 0-capacity tracker whose
+    /// <c>TryTouch</c> is a no-op.
     /// </summary>
     PageResidencyTracker PageTracker { get; }
 }

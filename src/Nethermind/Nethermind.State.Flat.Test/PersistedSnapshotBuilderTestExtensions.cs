@@ -10,17 +10,15 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 namespace Nethermind.State.Flat.Test;
 
 /// <summary>
-/// Test-only convenience methods for <see cref="PersistedSnapshotBuilder"/>.
-/// These allocate output buffers internally, which production code avoids.
+/// Allocates output buffers internally, which production code avoids.
 /// </summary>
 internal static class PersistedSnapshotBuilderTestExtensions
 {
     /// <summary>
-    /// Build a snapshot's HSST bytes, writing trie-node RLPs into <paramref name="blobs"/>.
-    /// The caller owns <paramref name="blobs"/> across the test fixture so the
-    /// <see cref="PersistedSnapshot"/> constructed from the returned bytes can lease the
-    /// resulting blob file via the same manager — matching how production wires
-    /// <c>BlobArenaManager</c> as a long-lived shared component.
+    /// The caller must keep <paramref name="blobs"/> alive across the test fixture so that a
+    /// <see cref="PersistedSnapshot"/> constructed from the returned bytes can lease the blob
+    /// file via the same manager — mirroring how production wires <c>BlobArenaManager</c> as
+    /// a long-lived shared component.
     /// </summary>
     public static byte[] Build(Snapshot snapshot, BlobArenaManager blobs)
     {

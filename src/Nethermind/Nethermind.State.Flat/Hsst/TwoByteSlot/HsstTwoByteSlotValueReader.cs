@@ -59,7 +59,6 @@ internal static class HsstTwoByteSlotValueReader
         if (!reader.TryRead(bound.Offset + 1, MemoryMarshal.AsBytes(new Span<ushort>(ref countLE)))) return false;
         int count = countLE + 1;
 
-        // IndexType + KeyCount + keys + offsets; reject if it exceeds the blob.
         long overhead = 3L + (long)KeyLength * count + (long)offsetSize * (count - 1);
         if (overhead > bound.Length) return false;
 

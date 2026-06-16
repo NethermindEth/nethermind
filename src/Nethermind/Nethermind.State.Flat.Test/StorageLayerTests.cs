@@ -46,7 +46,6 @@ public class StorageLayerTests
 
         using ArenaFile arena = new(0, path, 1024 * 1024);
 
-        // Write via FileStream, read via mmap
         using (FileStream fs = new(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
         {
             fs.Write(data1);
@@ -54,7 +53,7 @@ public class StorageLayerTests
             fs.Flush();
         }
 
-        // Read back through the mmap base pointer (the same primitive ArenaByteReader uses).
+        // Read back via the raw mmap pointer — the same access path ArenaByteReader uses.
         Assert.That(new ReadOnlySpan<byte>(arena.BasePtr, data1.Length).ToArray(), Is.EqualTo(data1));
         Assert.That(new ReadOnlySpan<byte>(arena.BasePtr + data1.Length, data2.Length).ToArray(), Is.EqualTo(data2));
         Assert.That(arena.MappedSize, Is.EqualTo(1024 * 1024));
@@ -80,12 +79,10 @@ public class StorageLayerTests
         catalog.Add(new(s_persistable_from, sharedTo, new(0, 3072, 4096), SnapshotTier.PersistedPersistable));
         catalog.Add(new(sharedTo, s2, new(0, 7168, 2048), SnapshotTier.PersistedPersistable));
 
-        // Load in new instance
         SnapshotCatalog loaded = new(catalogDb);
 
         Assert.That(loaded.Load().Count, Is.EqualTo(4));
 
-        // All three entries at sharedTo must survive distinct.
         SnapshotCatalog.CatalogEntry? loadedBase = FindEntry(loaded, sharedTo, depth: 1);
         SnapshotCatalog.CatalogEntry? loadedCompacted = FindEntry(loaded, sharedTo, depth: 2);
         SnapshotCatalog.CatalogEntry? loadedPersistable = FindEntry(loaded, sharedTo, depth: 4);
@@ -169,7 +166,6 @@ public class StorageLayerTests
             (location, _) = arenaWriter.Complete();
         }
 
-        // Read back and verify
         using (WholeReadSession session = manager.Open(location).BeginWholeReadSession())
             Assert.That(TestFixtureHelpers.ReadAll(session), Is.EqualTo(data));
         Assert.That(location.Size, Is.EqualTo(data.Length));
@@ -187,7 +183,6 @@ public class StorageLayerTests
         }, LimboLogs.Instance);
         manager.Initialize([]);
 
-        // First write some data to establish a baseline
         byte[] baseline = [0xAA];
         SnapshotLocation baselineLoc;
         using (ArenaWriter bw = manager.CreateWriter(baseline.Length))
@@ -198,13 +193,11 @@ public class StorageLayerTests
             (baselineLoc, _) = bw.Complete();
         }
 
-        // Create writer and then dispose without completing (cancel)
         using (ArenaWriter arenaWriter = manager.CreateWriter(0))
         {
             // Don't call Complete — Dispose will call CancelWrite
         }
 
-        // Write again — should reuse from the baseline offset
         byte[] data = new byte[50];
         SnapshotLocation loc;
         using (ArenaWriter w = manager.CreateWriter(data.Length))
@@ -230,7 +223,6 @@ public class StorageLayerTests
         }, LimboLogs.Instance);
         manager.Initialize([]);
 
-        // Write small data via ArenaWriter
         byte[] data = [1, 2, 3];
         SnapshotLocation location;
         using (ArenaWriter arenaWriter = manager.CreateWriter(data.Length))
@@ -299,12 +291,10 @@ public class StorageLayerTests
         }, LimboLogs.Instance);
         manager.Initialize([]);
 
-        // Write some data
         byte[] data = [1, 2, 3];
 
-        // First writer takes the arena
         using ArenaWriter w1 = manager.CreateWriter(data.Length);
-        // Second writer should use a different arena since the first arena is reserved
+        // w1 holds the first arena; w2 must be assigned a different one while w1 is open.
         using ArenaWriter w2 = manager.CreateWriter(data.Length);
         data.CopyTo(w1.GetWriter().GetSpan(data.Length));
         w1.GetWriter().Advance(data.Length);

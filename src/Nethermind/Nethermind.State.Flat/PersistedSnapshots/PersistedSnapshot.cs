@@ -50,8 +50,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private readonly ArenaReservation _reservation;
     // Metric label (tier + compact size) for the per-(tier, size) ActivePersistedSnapshotCount gauge.
     private readonly PersistedSnapshotLabel _label;
-    // Manager that owns the per-id blob arena slots. The repository acquires one lease per
-    // referenced id before this ctor runs and releases them in CleanUp / PersistOnShutdown.
     // Each id is resolved on demand via _blobManager.GetFile(id), a lock-free O(1) array read:
     // the manager keys files by a dense int id in a direct array, so the per-snapshot lookup
     // cost is negligible and there is no need to carry a Dictionary<int, BlobArenaFile> on every
@@ -145,15 +143,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         int acquired = 0;
         try
         {
-            // Resolve the metadata column's scope once; ReadBlobRange and every ref_ids walk
-            // (lease acquisition below, CleanUp, PersistOnShutdown) seek within it instead of
-            // each re-walking the HSST root.
             ArenaByteReader metaReader = _reservation.CreateReader();
             HsstReader<ArenaByteReader, NoOpPin> metaRoot = new(in metaReader, new Bound(0, metaReader.Length));
             _metadataScope = metaRoot.TrySeek(PersistedSnapshotTags.MetadataTag, out Bound metaScope) ? metaScope : default;
 
-            // Read this snapshot's contiguous blob run from its own metadata HSST. Absent on
-            // compacted / persistable snapshots, which resolve to BlobRange.None.
             BlobRange = ReadBlobRange(in metaReader);
 
             RefIdsEnumerator<ArenaByteReader, NoOpPin> e = GetRefIdsEnumerator();

@@ -330,7 +330,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             Metrics.SnapshotMemory -= totalBytes;
             Metrics.TotalSnapshotMemory -= totalBytes;
 
-            existing.Dispose(); // After memory
+            existing.Dispose();
 
             return true;
         }

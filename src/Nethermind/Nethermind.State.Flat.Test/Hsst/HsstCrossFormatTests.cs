@@ -76,7 +76,6 @@ public class HsstCrossFormatTests
             Assert.That(got, Is.EqualTo(values[i]), $"value mismatch at #{i} in {format}");
         }
 
-        // Probe a key not in the corpus; pick a value disjoint from any inserted key (and within format key range).
         byte[]? missing = TryMakeMissingKey(format, keySize, keys);
         if (missing is not null)
         {

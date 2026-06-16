@@ -76,8 +76,6 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     // The bytes gauge tracks **allocated** bytes (Frontier — what's been written), not the pre-extended
     // mmap region.
 
-    /// <summary>Bump the arena-file count and report this file's allocated bytes (its
-    /// <see cref="Frontier"/>), seeding <see cref="ReportedFrontier"/>.</summary>
     internal void ReportAdded()
     {
         Interlocked.Increment(ref Metrics._arenaFileCount);
@@ -87,7 +85,6 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
             Interlocked.Add(ref Metrics._arenaAllocatedBytes, frontier);
     }
 
-    /// <summary>Drop the arena-file count and back out this file's last reported allocated bytes.</summary>
     internal void ReportRemoved()
     {
         Interlocked.Decrement(ref Metrics._arenaFileCount);
@@ -114,12 +111,12 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
 
     /// <summary>
     /// Try to acquire a lease without throwing on a disposing file. Returns false when the
-    /// file is already in cleanup. Wraps the protected <see cref="RefCountingDisposable.TryAcquireLease"/>.
+    /// file is already in cleanup.
     /// </summary>
     internal new bool TryAcquireLease() => base.TryAcquireLease();
 
     /// <summary>
-    /// Create a write stream backed by a <see cref="FileStream"/> seeked to <paramref name="startOffset"/>.
+    /// Create a write stream seeked to <paramref name="startOffset"/>.
     /// The caller is responsible for disposing the returned stream.
     /// </summary>
     internal FileStream CreateWriteStream(long startOffset)

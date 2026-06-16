@@ -20,7 +20,7 @@ public interface IPersistence
     IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None);
     IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None);
 
-    // Note: RocksdbPersistence already flush WAL on writing batch dispose. You don't need this unless you are skipping WAL.
+    // No-op unless WAL is disabled: RocksDbPersistence flushes the WAL on write-batch dispose.
     void Flush();
     void Clear();
 
@@ -28,14 +28,12 @@ public interface IPersistence
     {
         Account? GetAccount(Address address);
 
-        // Note: It can return true while setting outValue to zero. This is because there is a distinction between
-        // zero and missing to conform to a potential verkle need.
+        // Can return true with outValue set to zero: zero and missing are distinct (verkle compatibility).
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
 
-        // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
         bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value);
 
@@ -66,9 +64,6 @@ public interface IPersistence
         void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
     }
 
-    /// <summary>
-    /// Iterator for iterating over flat storage key-value pairs. This is mainly used in verifytrie.
-    /// </summary>
     public interface IFlatIterator : IDisposable
     {
         bool MoveNext();

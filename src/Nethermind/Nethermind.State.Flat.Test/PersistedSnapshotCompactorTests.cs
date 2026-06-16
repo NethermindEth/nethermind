@@ -63,7 +63,6 @@ public class PersistedSnapshotCompactorTests
         {
             StateId next = new(i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
-            // Unique account per block (different address each time).
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             // Shared overlapping account: same AddressA every block, distinct balance and
             // a distinct slot — drives matchCount == N through NWayMergePerAddressHsst,
@@ -82,18 +81,15 @@ public class PersistedSnapshotCompactorTests
             Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
             Assert.That(compacted.To.BlockNumber, Is.EqualTo(n));
 
-            // Every unique account must survive.
             for (int i = 1; i <= n; i++)
             {
                 Assert.That(compacted.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True,
                     $"Account from block {i} missing");
             }
 
-            // Overlapping account: newest balance wins.
             Assert.That(compacted.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
             Assert.That(a!.Balance, Is.EqualTo((UInt256)n), "Newest balance must win on the overlapping account");
 
-            // Every per-block slot must survive (each block wrote a distinct slot index).
             for (int i = 1; i <= n; i++)
             {
                 SlotValue slot = default;
@@ -366,9 +362,6 @@ public class PersistedSnapshotCompactorTests
 
     private static IEnumerable<TestCaseData> MergeValidationTestCases()
     {
-        // Each case yields the input SnapshotContents plus an Action<PersistedSnapshot>
-        // that asserts the expected post-compaction read-back state.
-
         // Basic: two snapshots with overlapping accounts — newer balance wins.
         {
             SnapshotContent c0 = new();
@@ -1001,8 +994,6 @@ public class PersistedSnapshotCompactorTests
         blobFileSizeBytes: 4 * 1024 * 1024,
         configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = compactSize }, 0)));
 
-    // DoCompactSnapshot must no-op when the block's natural window is a single snapshot
-    // (size <= 1) or fewer than two persisted snapshots exist to merge.
     [Test]
     public void DoCompactSnapshot_NoOp_WhenWindowSizeOneOrTooFewSnapshots()
     {
@@ -1017,8 +1008,6 @@ public class PersistedSnapshotCompactorTests
         Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no compaction should have run");
     }
 
-    // DoCompactPersistable must no-op off a CompactSize boundary, and on a boundary with
-    // fewer than two persisted snapshots.
     [Test]
     public void DoCompactPersistable_NoOp_WhenNotBoundaryOrTooFewSnapshots()
     {
@@ -1031,8 +1020,6 @@ public class PersistedSnapshotCompactorTests
         Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no persistable should have been produced");
     }
 
-    // DoCompactPersistable at a boundary with enough sources produces a PersistedPersistable
-    // snapshot covering the whole CompactSize window (and warms its address column index).
     [Test]
     public void DoCompactPersistable_AtBoundary_ProducesPersistableSnapshot()
     {
@@ -1064,8 +1051,6 @@ public class PersistedSnapshotCompactorTests
         finally { persistable!.Dispose(); }
     }
 
-    // A boundary compaction of snapshots that carry only state-trie nodes (no address column)
-    // exercises WarmAddressColumnIndex's early-return when the address column is absent.
     [Test]
     public void DoCompactSnapshot_AtBoundary_NoAddressColumn_WarmsGracefully()
     {

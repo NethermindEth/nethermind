@@ -36,7 +36,6 @@ public class HsstBTreeBuilderBuffersTests
         // Sanity: deterministic across runs of the auto-owned path.
         Assert.That(auto2, Is.EqualTo(auto1));
 
-        // Shared-buffers path — two consecutive builds against one buffers struct.
         // The second build is the one that actually exercises buffer reuse.
         // Explicit arg invokes the primary ctor (running the field initializers);
         // `new()` would skip it and zero-init the class-typed list fields to null.

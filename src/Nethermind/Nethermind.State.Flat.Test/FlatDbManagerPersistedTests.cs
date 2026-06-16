@@ -78,7 +78,6 @@ public class FlatDbManagerPersistedTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        // Build a persisted snapshot with a known state trie node
         TreePath path = new(Keccak.Compute("path"), 4);
         byte[] nodeRlp = [0xC2, 0x80, 0x80];
         SnapshotContent content = new();
@@ -89,7 +88,7 @@ public class FlatDbManagerPersistedTests
         SnapshotRepository repo = tier.Repository;
         tier.ConvertToPersistedBase(snap).Dispose();
 
-        // Mock persistence manager at s0 — persisted snapshot fills gap s0→s1
+        // Persisted snapshot covers s0→s1; mock reader anchored at s0 so the manager sees it as the persisted base.
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.CurrentState.Returns(s0);
@@ -111,7 +110,6 @@ public class FlatDbManagerPersistedTests
 
         ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(s1);
 
-        // The bundle should find the trie node from the persisted snapshot
         byte[]? result = bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
         Assert.That(result, Is.EqualTo(nodeRlp));
 
@@ -124,7 +122,6 @@ public class FlatDbManagerPersistedTests
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
 
-        // Persist something to verify cleanup
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
         SnapshotContent content = new();
@@ -146,9 +143,6 @@ public class FlatDbManagerPersistedTests
 
         await manager.DisposeAsync();
 
-
-        // Repository should be disposed - accessing it should be safe
-        // (no crash, but data might not be accessible)
         Assert.Pass("Dispose completed without error");
     }
 }

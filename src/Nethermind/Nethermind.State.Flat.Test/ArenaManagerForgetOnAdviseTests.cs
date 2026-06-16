@@ -11,10 +11,9 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Test;
 
 /// <summary>
-/// Verifies that whole-range <c>madvise(MADV_DONTNEED)</c> paths driven from
-/// <see cref="ArenaReservation"/> (its <see cref="ArenaReservation.AdviseDontNeed"/> entry
-/// point and its disposal path through <see cref="ArenaManager.MarkDead(ArenaFile, long)"/>)
-/// clear the corresponding page entries from the per-arena
+/// Verifies that whole-range <c>madvise(MADV_DONTNEED)</c> paths on
+/// <see cref="ArenaReservation"/> — <see cref="ArenaReservation.AdviseDontNeed"/> and
+/// the disposal path — clear the corresponding entries from the per-arena
 /// <see cref="PageResidencyTracker"/>, keeping the tracker in sync with actual page
 /// residency after the kernel drops the pages.
 /// </summary>
@@ -43,11 +42,10 @@ public class ArenaManagerForgetOnAdviseTests
             ArenaFileSizeBytes = 1L << 20,
         }, LimboLogs.Instance);
 
-    // Throwaway file backing — the manager's `_arenas` dict still doesn't know about the
-    // synthesised reservation's id, so the file-level madvise path operates on the synthetic
-    // file directly and the manager's MarkDead path harmlessly fails to find the id in its
-    // dict (TryRemove returns false). The reservation just needs a non-null ArenaFile to
-    // satisfy the constructor.
+    // Throwaway file backing — the manager's `_arenas` dict doesn't know about this id,
+    // so ForgetTrackerRange runs on the tracker only; when the reservation is disposed the
+    // subsequent MarkDead TryRemove is a harmless no-op. The reservation requires a non-null
+    // ArenaFile to satisfy its constructor.
     private ArenaFile NewSyntheticFile(int id, long size) =>
         new(id, Path.Combine(_testDir, $"synthetic_{id}.bin"), size);
 
@@ -58,7 +56,6 @@ public class ArenaManagerForgetOnAdviseTests
         const int arenaId = 7;
         int pageSize = Environment.SystemPageSize;
 
-        // Populate tracker for pages 0..9 of arena 7.
         for (int p = 0; p < 10; p++)
             manager.PageTracker.TryTouch(arenaId, p, out _, out _);
         for (int p = 0; p < 10; p++)
@@ -82,7 +79,6 @@ public class ArenaManagerForgetOnAdviseTests
         const int arenaId = 7;
         int pageSize = Environment.SystemPageSize;
 
-        // Pages 0..4 in tracker.
         for (int p = 0; p < 5; p++)
             manager.PageTracker.TryTouch(arenaId, p, out _, out _);
 
@@ -122,8 +118,7 @@ public class ArenaManagerForgetOnAdviseTests
         for (int i = 0; i < pages; i++)
             manager.PageTracker.TryTouch(location.ArenaId, firstPage + i, out _, out _);
 
-        // Disposing the reservation runs its CleanUp path, which calls
-        // manager.ForgetTrackerRange(...) on the same byte range MarkDead used to handle.
+        // CleanUp calls ForgetTrackerRange over the reservation's footprint after MarkDead.
         reservation.Dispose();
 
         for (int i = 0; i < pages; i++)

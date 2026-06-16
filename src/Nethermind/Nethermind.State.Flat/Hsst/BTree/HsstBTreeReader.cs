@@ -131,7 +131,6 @@ internal static class HsstBTreeReader
             // floor-search is about to scan; overlaps with the separator copy below.
             reader.Prefetch(currentAbsStart);
 
-            // Leaf or Intermediate — parse as a BTreeNode node.
             if (!TryLoadNode<TReader, TPin>(in reader, currentAbsStart, parentSeparator, out BTreeNodeReader node, out TPin pin))
                 return false;
             using (pin)
@@ -208,10 +207,8 @@ internal static class HsstBTreeReader
 
         if (exactMatch)
         {
-            // trailerKeyLength == key.Length was enforced at the top of TrySeek; compare
-            // the stored key bytes against the input. Right-sized to the actual key
-            // length instead of the legacy 255-byte alloc — saves stack frame and skips
-            // zero-init under [SkipLocalsInit].
+            // trailerKeyLength == key.Length was enforced in TrySeekFromRoot; compare
+            // the stored key bytes against the input.
             Span<byte> stored = stackalloc byte[trailerKeyLength];
             if (!reader.TryRead(absLebStart_ + pos_, stored)) return false;
             if (!stored.SequenceEqual(key)) return false;
@@ -252,7 +249,6 @@ internal static class HsstBTreeReader
         node = default;
         pin = default;
 
-        // The reader's own end is always a safe upper bound for the pin window.
         long available = reader.Length - absStart;
         // 12 = fixed header bytes.
         if (available < 12) return false;

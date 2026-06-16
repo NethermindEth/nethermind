@@ -66,9 +66,7 @@ internal static class HsstDenseByteIndexReader
     /// index <c>≤ key[0]</c> whose entry length is non-zero (gap entries are skipped).
     ///
     /// Pins the entire <c>Ends</c> array once (≤ Count·OffsetSize bytes ≤ 1.5 KiB) and
-    /// resolves entry bounds locally. Avoids the previous per-entry <c>TryRead</c> for
-    /// gap-skipping floor walks, where sparse maps could pay one read per zero-length
-    /// entry.
+    /// resolves entry bounds locally via span slices, avoiding IO per gap entry.
     /// </summary>
     public static bool TrySeek<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
@@ -94,8 +92,7 @@ internal static class HsstDenseByteIndexReader
             return TryResolveLocal(L, ends, target, out resultBound);
         }
 
-        // Floor: walk back from min(target, Count − 1) and skip zero-length entries.
-        // Reads are now span slices — no IO per gap.
+        // Floor: walk back from min(target, Count − 1) and skip zero-length (gap) entries.
         int idx = target < L.Count ? target : L.Count - 1;
         while (idx >= 0)
         {
@@ -156,7 +153,6 @@ internal static class HsstDenseByteIndexReader
     /// <summary>
     /// Read a 1/2/4/6-byte LE end-offset from <paramref name="buf"/> at <paramref name="byteOffset"/>.
     /// Branchless per width: direct integer load for 1/2/4, masked 8-byte unaligned load for 6.
-    /// Replaces the prior <c>stackalloc → Clear → CopyTo → ReadUInt64LE</c> shape.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static long ReadEndFixed(ReadOnlySpan<byte> buf, int byteOffset, int offsetSize) => offsetSize switch

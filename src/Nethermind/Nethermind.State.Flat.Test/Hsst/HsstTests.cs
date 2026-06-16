@@ -14,9 +14,6 @@ namespace Nethermind.State.Flat.Test.Hsst;
 [TestFixture]
 public class HsstTests
 {
-    // ----- Helpers wrapping HsstReader/HsstEnumerator so the original test
-    //       bodies stay close to their pre-migration shape.
-
     /// <summary>Exact-match lookup. Returns false when <paramref name="key"/> isn't present.</summary>
     private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
     {
@@ -28,7 +25,6 @@ public class HsstTests
         return true;
     }
 
-    /// <summary>Walk the HSST and materialise every (key, value) pair as byte arrays.</summary>
     private static List<(byte[] Key, byte[] Value)> Materialize(ReadOnlySpan<byte> data)
     {
         List<(byte[] Key, byte[] Value)> entries = [];
@@ -202,7 +198,6 @@ public class HsstTests
             }
         });
 
-        // Enumerate via HsstEnumerator and verify count, ordering, and per-entry value bytes.
         List<(byte[] Key, byte[] Value)> actual = Materialize(data);
         Assert.That(actual.Count, Is.EqualTo(count));
 
@@ -626,7 +621,6 @@ public class HsstTests
             Span<byte> pad = w.GetSpan(padLen);
             pad[..padLen].Fill(0xCC);
             w.Advance(padLen);
-            // Real value bytes.
             Span<byte> dst = w.GetSpan(realValue.Length);
             realValue.AsSpan().CopyTo(dst);
             w.Advance(realValue.Length);
@@ -644,7 +638,6 @@ public class HsstTests
     [Test]
     public void NestedBuilder_TwoLevel_RoundTrips()
     {
-        // Outer HSST with one entry whose value is an inner HSST
         using PooledByteBufferWriter pooled = new(4096);
         ref PooledByteBufferWriter.Writer writer = ref pooled.GetWriter();
         using HsstBTreeBuilderBuffers.Container outerBuffers = new();
@@ -677,7 +670,6 @@ public class HsstTests
     [Test]
     public void NestedBuilder_MultipleColumns_SharedWriter_RoundTrips()
     {
-        // Outer HSST with 3 columns, each an inner HSST built via shared writer
         using PooledByteBufferWriter pooled = new(65536);
         ref PooledByteBufferWriter.Writer writer = ref pooled.GetWriter();
         using HsstBTreeBuilderBuffers.Container outerBuffers = new();

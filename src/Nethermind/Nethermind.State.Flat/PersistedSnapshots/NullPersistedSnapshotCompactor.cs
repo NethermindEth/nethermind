@@ -17,8 +17,7 @@ public sealed class NullPersistedSnapshotCompactor : IPersistedSnapshotCompactor
 
     private NullPersistedSnapshotCompactor() { }
 
-    // Owns the batch per the IPersistedSnapshotCompactor.Enqueue contract — dispose it so
-    // callers don't leak even though there is no compaction work to do.
+    // Dispose immediately — no compaction work, but ownership still transfers so callers don't leak.
     public void Enqueue(ArrayPoolList<StateId> batch) => batch.Dispose();
 
     // Shared singleton: disposal must be a safe no-op so a container or forwarding caller

@@ -35,14 +35,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
     {
         builder
 
-            // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
-
-            // Stub out the pruning trie store admin RPC with a disabled response.
             .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
-
-            // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
@@ -78,17 +73,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
-            // Owns the persisted tier's whole lifecycle: loads it from the catalog at startup (driven by
-            // FlatDbManager), converts in-memory snapshots into persisted bases, and tears it down.
-            // Depends on ISnapshotRepository so DI disposes it before the repository.
+            // Registered after ISnapshotRepository so DI disposes it first.
             .AddSingleton<IPersistedSnapshotLoader, PersistedSnapshotLoader>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())
             .AddSingleton<TrieWarmer>()
             .Add<FlatOverridableWorldScope>()
-
-            // Sync components
             .AddSingleton<FlatSnapTrieFactory>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
@@ -96,7 +87,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatTreeSyncStore>()
             .AddSingleton<FlatFullStateFinder>()
 
-            // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             // Persisted snapshot catalog: dedicated RocksDB co-located with the arena/blob files it
             // indexes under <BaseDbPath>/persisted_snapshot/catalog/. Wiping persisted_snapshot/

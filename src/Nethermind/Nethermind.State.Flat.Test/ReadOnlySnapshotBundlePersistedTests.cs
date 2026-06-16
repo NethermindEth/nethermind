@@ -51,7 +51,6 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath path = new(Keccak.Compute("path"), 4);
         byte[] nodeRlp = [0xC2, 0x80, 0x80];
 
-        // Build persisted snapshot with a state trie node
         SnapshotContent content = new();
         content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
@@ -60,7 +59,6 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        // Mock persistence reader that should NOT be called for this path
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
 
         using ReadOnlySnapshotBundle bundle = new(
@@ -85,7 +83,6 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath path = new(Keccak.Compute("path"), 6);
         byte[] nodeRlp = [0xC1, 0x80];
 
-        // Build persisted snapshot with a storage trie node
         SnapshotContent content = new();
         content.StorageNodes[(address, path)] = new TrieNode(NodeType.Branch, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
@@ -119,7 +116,6 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] nodeRlp = [0xC0];
         byte[] dbRlp = [0xC1, 0x80, 0x80];
 
-        // Build persisted snapshot with one path
         SnapshotContent content = new();
         content.StateNodes[storedPath] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
@@ -128,7 +124,6 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        // Mock persistence reader returns data for the missing path
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
@@ -153,7 +148,6 @@ public class ReadOnlySnapshotBundlePersistedTests
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
-        // Empty persisted snapshots list
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
             reader,

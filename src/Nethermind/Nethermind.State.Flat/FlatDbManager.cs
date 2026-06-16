@@ -15,9 +15,6 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
-/// <summary>
-/// The main top level FlatDb orchestrator.
-/// </summary>
 public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 {
     private static readonly TimeSpan GatherGiveUpDeadline = TimeSpan.FromSeconds(5);
@@ -29,24 +26,23 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
 
-    // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
-    // it save a decent amount of CPU.
+    // Assembling a ReadOnlySnapshotBundle is called ~1.8k/sec; caching saves meaningful CPU even though each
+    // individual assembly is fast.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
 
-    // First it go to here
+    // Pipeline stage 1: compaction. Runs concurrently with stage 2.
     private readonly Task _compactorTask;
     private readonly Channel<StateId> _compactorJobs;
 
-    // And here in parallel.
-    // The node cache is kinda important for performance, so we want it populated as quickly as possible.
+    // Pipeline stage 2 (parallel with stage 1): populate trie node cache as quickly as possible
+    // because it is critical for read performance.
     private readonly Task _populateTrieNodeCacheTask;
     private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
 
-    // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
+    // Pipeline stage 3: decide what to actually persist once a compacted snapshot is ready.
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
-    // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
     private readonly Task _clearBundleCacheTask;
 
     private readonly int _compactSize;
@@ -81,15 +77,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
-        // Populate the persisted tier from the catalog before any worker (or read) can touch it.
+        // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
 
         _compactSize = config.CompactSize;
 
-        // We assume that the state must be able to be persisted in half the slot time at the very
-        // least. If block processing is stalled for longer than this, persistence is simply too slow
-        // for the network. The timeout is 0.5 * blockTime * compactSize because persistence persists
-        // compactSize blocks at a time.
+        // Persistence must complete within half a slot time per compactSize blocks to keep up with the network.
+        // Timeout = 0.5 * slotTime * compactSize.
         _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
@@ -130,7 +124,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
-        // We do this async because of the lock
+        // AddStateId acquires a lock; running via async avoids blocking the caller.
         _snapshotRepository.AddStateId(stateId);
 
         if (_snapshotCompactor.DoCompactSnapshot(stateId))
@@ -138,7 +132,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             ClearReadOnlyBundleCache();
         }
 
-        // Trigger persistence job.
         await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
     }
 
@@ -251,13 +244,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
     {
-        // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
-        // hard to pull of due to the constantly moving chain making invalidation hard.
+        // A linked-list snapshot chain was considered but rejected: the constantly moving chain makes
+        // invalidation error-prone.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
 
         if (baseBlock == StateId.PreGenesis)
         {
-            // Special case for pregenesis. Note: nethermind always tries to generate genesis.
+            // PreGenesis is a sentinel; Nethermind always generates genesis, so this path is always transient.
             return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics));
         }
 
@@ -383,7 +376,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
-                if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
+                if (_cancelTokenSource.Token.IsCancellationRequested) return; // Channel is completed on cancellation; no point waiting
 
                 // This wait only occurs after several blocks have already entered the queue without blocking,
                 // so attempting to not block here to avoid blocking block processing is redundant.

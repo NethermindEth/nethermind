@@ -62,14 +62,14 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public static class BaseTriePersistence
 {
-    private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
+    private const int StorageHashPrefixLength = 20;
     private const int FullPathLength = 32;
     private const int PathLengthLength = 1;
 
     private const int ShortenedPathThreshold = 15; // Must be odd
     private const int ShortenedPathLength = 8; // ceil of ShortenedPathThreshold/2
 
-    // Note to self: Splitting the storage tree have been shown to not improve block cache hit rate
+    // Splitting the storage trie further (beyond the address prefix) has been benchmarked and does not improve block cache hit rate.
     private const int StateNodesTopThreshold = 5;
     private const int StateNodesTopPathLength = 3;
 
@@ -87,16 +87,12 @@ public static class BaseTriePersistence
 
     private static ReadOnlySpan<byte> EncodeShortenedStateNodeKey(Span<byte> buffer, in TreePath path)
     {
-        // Looks like this <8-byte-path>
-        // Last 4 bit of the path is the length
-
         path.EncodeWith8Byte(buffer);
         return buffer[..ShortenedPathLength];
     }
 
     private static ReadOnlySpan<byte> EncodeFullStateNodeKey(Span<byte> buffer, in TreePath path)
     {
-        // Looks like this <0-constant><32-byte-path><1-byte-length>
         buffer[0] = 0;
         path.Path.Bytes.CopyTo(buffer[1..]);
         buffer[(1 + FullPathLength)] = (byte)path.Length;
@@ -105,7 +101,6 @@ public static class BaseTriePersistence
 
     internal static ReadOnlySpan<byte> EncodeShortenedStorageNodeKey(Span<byte> buffer, Hash256 addr, in TreePath path)
     {
-        // Looks like this <4-byte-address-prefix><8-byte-path-portion><16-byte-remaining-address>
         addr.Bytes[..StoragePrefixPortion].CopyTo(buffer);
         path.EncodeWith8Byte(buffer[StoragePrefixPortion..]);
         addr.Bytes[StoragePrefixPortion..StorageHashPrefixLength].CopyTo(buffer[(StoragePrefixPortion + ShortenedPathLength)..]);
@@ -114,7 +109,6 @@ public static class BaseTriePersistence
 
     private static ReadOnlySpan<byte> EncodeFullStorageNodeKey(Span<byte> buffer, Hash256 address, in TreePath path)
     {
-        // Looks like this <1-constant><4-byte-address-prefix><32-byte-path><1-byte-length><16-byte-remaining-address>
         buffer[0] = 1;
         address.Bytes[..StoragePrefixPortion].CopyTo(buffer[1..]);
         path.Path.Bytes.CopyTo(buffer[(1 + StoragePrefixPortion)..]);
@@ -143,8 +137,7 @@ public static class BaseTriePersistence
             Span<byte> firstKey = stackalloc byte[1 + StoragePrefixPortion];
             Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
 
-            // Technically, this is kinda not needed for nodes as it's always traversed so orphaned trie just get skipped.
-            // Delete from StorageNodes
+            // Not strictly required — orphaned trie nodes are skipped on traversal — but avoids unbounded accumulation.
             BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)]);
             BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
                 firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
@@ -190,16 +183,10 @@ public static class BaseTriePersistence
         [SkipLocalsInit]
         public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath)
         {
-            // State trie nodes are stored across 3 columns based on path length:
-            // - StateNodesTop: path length 0-5 (3 byte keys)
-            // - StateNodes: path length 6-15 (8 byte keys)
-            // - FallbackNodes: path length 16+ (34 byte keys with 0x00 prefix)
-
             Span<byte> firstKeyBuf = stackalloc byte[FullStateNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStateNodesKeyLength + 1];
 
-            // Delete from StateNodesTop (path length 0-5)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
+            // Truncate toPath to max length for this column to ensure all keys in range are included.
             EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], fromPath);
             EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath.Truncate(StateNodesTopThreshold));
             lastKeyBuf[StateNodesTopPathLength] = 0;
@@ -207,8 +194,7 @@ public static class BaseTriePersistence
                 firstKeyBuf[..StateNodesTopPathLength], lastKeyBuf[..(StateNodesTopPathLength + 1)],
                 StateNodesTopPathLength);
 
-            // Delete from StateNodes (path length 6-15)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
+            // Truncate toPath to max length for this column to ensure all keys in range are included.
             EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], fromPath);
             EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath.Truncate(ShortenedPathThreshold));
             lastKeyBuf[ShortenedPathLength] = 0;
@@ -227,18 +213,13 @@ public static class BaseTriePersistence
         [SkipLocalsInit]
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath)
         {
-            // Storage trie nodes are stored across 2 columns based on path length:
-            // - StorageNodes: path length 0-15 (28 byte keys)
-            // - FallbackNodes: path length 16+ (54 byte keys with 0x01 prefix)
-
             Hash256 address = new(addressHash);
             ReadOnlySpan<byte> addressSuffix = addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength];
 
             Span<byte> firstKeyBuf = stackalloc byte[FullStorageNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStorageNodesKeyLength + 1];
 
-            // Delete from StorageNodes (path length 0-15)
-            // Truncate toPath to max length for this column to ensure all keys in range are included
+            // Truncate toPath to max length for this column to ensure all keys in range are included.
             EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, fromPath);
             EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath.Truncate(ShortenedPathThreshold));
             lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;

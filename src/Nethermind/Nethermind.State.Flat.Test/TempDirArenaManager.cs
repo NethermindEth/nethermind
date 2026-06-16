@@ -11,12 +11,10 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 namespace Nethermind.State.Flat.Test;
 
 /// <summary>
-/// Test-only convenience wrapper over <see cref="ArenaManager"/> backed by a fresh
-/// per-instance temporary directory. Provides the same surface as the production
-/// manager so tests can drop it in without further setup: disposing this wrapper
-/// closes the inner manager and recursively deletes the tempdir. Page tracker is
-/// disabled (no madvise / eviction queue) so tests stay deterministic and
-/// side-effect free.
+/// Test-only <see cref="IArenaManager"/> backed by a fresh per-instance temporary
+/// directory. Disposing closes the inner manager and recursively deletes the tempdir.
+/// Page tracker is disabled (<c>PersistedSnapshotArenaPageCacheBytes = 0</c>) so no
+/// madvise / eviction queue runs, keeping tests deterministic and side-effect free.
 /// </summary>
 public sealed class TempDirArenaManager : IArenaManager
 {
@@ -57,6 +55,6 @@ public sealed class TempDirArenaManager : IArenaManager
     public void Dispose()
     {
         _inner.Dispose();
-        try { Directory.Delete(_tempDir, recursive: true); } catch { /* best-effort cleanup */ }
+        try { Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 }

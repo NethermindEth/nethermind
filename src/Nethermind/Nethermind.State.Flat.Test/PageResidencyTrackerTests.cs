@@ -81,8 +81,7 @@ public class PageResidencyTrackerTests
         {
             if (_files.TryGetValue(arenaId, out ArenaFile? existing)) return existing;
             string path = Path.Combine(tempDir, $"stub_{arenaId:D4}.bin");
-            // Size to comfortably cover the widest test reservation (~16 pages); reads past
-            // file length via RandomAccess.Read just return 0 bytes, so this is a safety margin.
+            // Size to comfortably cover the widest test reservation (~16 pages).
             ArenaFile file = new(arenaId, path, Environment.SystemPageSize * 16);
             _files[arenaId] = file;
             return file;
@@ -97,8 +96,8 @@ public class PageResidencyTrackerTests
 
     /// <summary>
     /// Touch wrapper used by tests that exercise the tracker directly: pumps any displaced
-    /// key into <paramref name="handler"/>, mirroring what <see cref="ArenaByteReader"/>
-    /// does in production now that eviction dispatch lives at the call site.
+    /// key into <paramref name="handler"/>, mirroring what <see cref="ArenaReservation.TouchRangePopulate"/>
+    /// does in production via <see cref="IArenaManager.QueueEviction"/>.
     /// </summary>
     private static void Touch(PageResidencyTracker tracker, int arenaId, int pageIdx, IPageEvictionHandler? handler = null)
     {
@@ -146,13 +145,9 @@ public class PageResidencyTrackerTests
     {
         PageResidencyTracker tracker = new(OneSetCapacity);
 
-        // Empty set: Inserted, no displaced key.
         Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
-
-        // Re-touching the same key: Hit.
         Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
 
-        // Fill the remaining 7 ways — all Inserted.
         for (int i = 1; i < Ways; i++)
             Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
 
@@ -302,7 +297,6 @@ public class PageResidencyTrackerTests
     {
         long pageSize = Environment.SystemPageSize;
 
-        // Disabled tracker reports no metadata and no residency.
         using (PageResidencyTracker disabled = new(maxCapacity: 0))
         {
             Assert.That(disabled.MetadataBytes, Is.EqualTo(0));
@@ -315,15 +309,12 @@ public class PageResidencyTrackerTests
         Assert.That(tracker.MetadataBytes, Is.GreaterThan(0));
         Assert.That(tracker.ResidentBytes, Is.EqualTo(0));
 
-        // Inserted: +1 page.
         Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo(pageSize));
 
-        // Hit: unchanged.
         Assert.That(tracker.TryTouch(0, 0, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Hit));
         Assert.That(tracker.ResidentBytes, Is.EqualTo(pageSize));
 
-        // Fill the rest of the set.
         for (int i = 1; i < Ways; i++)
             Assert.That(tracker.TryTouch(0, i, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo((long)Ways * pageSize));
@@ -337,7 +328,6 @@ public class PageResidencyTrackerTests
             tracker.TryTouch(0, i, out _, out _);
         Assert.That(tracker.ResidentBytes, Is.LessThanOrEqualTo((long)tracker.MaxCapacity * pageSize));
 
-        // Forget on a present key drops occupancy by one page.
         int presentKey = -1;
         for (int i = 4 * Ways - 1; i >= 0 && presentKey < 0; i--)
             if (tracker.ContainsPage(0, i)) presentKey = i;
@@ -346,8 +336,8 @@ public class PageResidencyTrackerTests
         tracker.Forget(0, presentKey);
         Assert.That(tracker.ResidentBytes, Is.EqualTo(beforeForget - pageSize));
 
-        // Re-inserting into the freed slot restores occupancy without raising the GC-reported
-        // high-water mark — only the counter changes; pressure already covered this level.
+        // Re-inserting into the freed slot restores occupancy without raising GC pressure —
+        // the high-water mark already covers this level, so only the counter changes.
         Assert.That(tracker.TryTouch(0, presentKey, out _, out _), Is.EqualTo(PageResidencyTracker.TouchOutcome.Inserted));
         Assert.That(tracker.ResidentBytes, Is.EqualTo(beforeForget));
 
@@ -410,9 +400,7 @@ public class PageResidencyTrackerTests
     public unsafe void ArenaByteReader_DispatchesCrossArenaEvictionsToHandler()
     {
         // Fill the only set with 8 reads from arena 5, then read from arena 6 to force a clock
-        // eviction. The displaced key has arenaId=5, so it crosses arenas and surfaces through
-        // the handler (same-arena evictions go directly through the reservation's ArenaFile,
-        // which is null in tests and silently skipped).
+        // eviction. The displaced key (5, 0) surfaces through QueueEviction → handler.
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
         using StubArenaManager manager = new(tracker, handler, _tempDir);

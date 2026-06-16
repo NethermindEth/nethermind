@@ -74,13 +74,7 @@ public static class PersistedSnapshotBuilder
         // backing entry array is pool-rented rather than freshly allocated each block.
         NativeMemoryList<TreePath> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
         NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
-        // Slot entries sorted by raw 20-byte Address bytes (matching the column-0x01 outer
-        // key), then by big-endian slot. No address hashing during build — column 0x01 is
-        // keyed by raw Address, and slot bloom keys derive from raw address bytes too.
         NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = null!;
-        // Sorted list of unique raw 20-byte Addresses covering accounts / SD / storages.
-        // Drives the column-0x01 outer iteration; per-address slots are matched by raw
-        // address equality with sortedStorages.
         NativeMemoryList<ValueAddress> uniqueAddresses = null!;
 
         // Parallel extraction + sort: three independent jobs over disjoint dictionaries.
@@ -191,7 +185,6 @@ public static class PersistedSnapshotBuilder
             // 0x00..0x02 cover account RLP, self-destruct, and slots.
             WritePerAddressColumn<TWriter>(ref outer, snapshot, sortedStorages, uniqueAddresses, blobWriter, bloom);
 
-            // Column 0x00: Metadata
             WriteMetadataColumn<TWriter>(ref outer, snapshot, blobWriter);
 
             outer.Build();
@@ -273,7 +266,6 @@ public static class PersistedSnapshotBuilder
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 32 - slotPrefixLength;
 
-        // Address-level HSST keyed by raw 20-byte Address.
         ref TWriter addressWriter = ref outer.BeginValueWrite();
         using HsstBTreeBuilderBuffers.Container addressLevelBuffers = new(expectedKeyCount: uniqueAddresses.Count);
         using HsstBTreeBuilder<TWriter> addressLevel = new(ref addressWriter, ref addressLevelBuffers.Buffers, PersistedSnapshotTags.AddressKeyLength, expectedKeyCount: uniqueAddresses.Count);
@@ -363,11 +355,10 @@ public static class PersistedSnapshotBuilder
                     slotKey[..slotPrefixLength].CopyTo(currentPrefixBuf);
                     ReadOnlySpan<byte> currentPrefix = currentPrefixBuf;
 
-                    // Look ahead over the current prefix group to total its value bytes.
-                    // TwoByteSlotValue caps the data region at ushort.MaxValue; fall back to
-                    // BTree when a group's payload overflows. In practice, per-prefix groups
-                    // are tiny (a handful of slots) so the look-ahead is cheap and the
-                    // u16 cap is virtually never hit.
+                    // Look ahead over the current prefix group to total its value bytes so we
+                    // can pick offsetSize (2 = u16, 3 = u24) before writing the key-first entry.
+                    // In practice, per-prefix groups are tiny so the look-ahead is cheap and
+                    // the u16 cap is virtually never hit.
                     int groupStart = storageIdx;
                     int groupEnd = groupStart;
                     long groupValueBytes = 0;
@@ -413,18 +404,14 @@ public static class PersistedSnapshotBuilder
                 perAddr.FinishValueWrite(PersistedSnapshotTags.SlotSubTag);
             }
 
-            // Sub-tag 0x01: Self-destruct. Present-marker encoding: [0x00] destructed,
-            // [0x01] new account; length 0 = absent (gap-filled by DenseByteIndex).
             if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
             {
                 perAddr.Add(PersistedSnapshotTags.SelfDestructSubTag,
                     sdValue ? PersistedSnapshotTags.SelfDestructNewMarker : PersistedSnapshotTags.SelfDestructDestructedMarker);
             }
 
-            // Sub-tag 0x00: Account. Present-marker encoding: [0x00] deleted, RLP-bytes
-            // present; length 0 = absent (gap-filled). Slim account RLP starts with a
-            // list header (0xc0+) so 0x00 first-byte is unambiguous. Emitted last so the
-            // hot Account blob lands adjacent to the DenseByteIndex Ends[] trailer.
+            // Sub-tag 0x00: slim account RLP starts with a list header (0xc0+), so the
+            // [0x00] deleted-marker is unambiguous against any valid RLP encoding.
             if (snapshot.TryGetAccount(address, out Account? account))
             {
                 if (account is null)

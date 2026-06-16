@@ -12,7 +12,6 @@ namespace Nethermind.State.Flat.Test.Hsst;
 [TestFixture]
 public class HsstBTreeKeyFirstTests
 {
-    // Inner sub-slots are keys-first TwoByteSlotValue blobs — front-dispatched on byte 0.
     private static bool TryGet(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value) =>
         HsstTestUtil.TryGetTwoByteSlot(data, key, out value);
 
@@ -102,7 +101,6 @@ public class HsstBTreeKeyFirstTests
 
         Assert.That(outerBytes[^1], Is.EqualTo((byte)IndexType.BTreeKeyFirst));
 
-        // For each outer key, descend into the inner sub-slot and verify each entry.
         for (int o = 0; o < outerKeys.Length; o++)
         {
             SpanByteReader rdr = new(outerBytes);

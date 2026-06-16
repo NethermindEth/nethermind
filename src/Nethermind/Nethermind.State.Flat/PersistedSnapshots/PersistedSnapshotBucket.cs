@@ -38,7 +38,6 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
         get { using Lock.Scope scope = _lock.EnterScope(); return _ordered.Count == 0 ? null : _ordered.Max; }
     }
 
-    // The metric label for a snapshot: this bucket's tier plus the snapshot's block span (compact size).
     private PersistedSnapshotLabel LabelFor(PersistedSnapshot snapshot) =>
         new(_tierName, snapshot.To.BlockNumber - snapshot.From.BlockNumber);
 
@@ -59,9 +58,8 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
     public bool ContainsKey(in StateId to) => _byTo.ContainsKey(to);
 
     /// <summary>
-    /// Index a snapshot: insert the dictionary entry, record its block-ordered id, and bump this
-    /// bucket's + the global memory/count totals — all under this bucket's lock so the dictionary
-    /// and the ordered set stay consistent against a concurrent catalog load or a racing prune.
+    /// Insert or overwrite the snapshot at <paramref name="to"/>, under this bucket's lock so the
+    /// dictionary and the ordered set stay consistent against a concurrent catalog load or racing prune.
     /// </summary>
     public void Set(in StateId to, PersistedSnapshot snapshot)
     {
@@ -76,9 +74,9 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
     }
 
     /// <summary>
-    /// Index a snapshot (dictionary + ordered set + totals) and pre-acquire the caller's lease —
-    /// both under this bucket's lock so a racing prune cannot dispose the entry between insert and
-    /// the caller seeing the return. The catalog entry is written by the caller, not here.
+    /// Like <see cref="Set"/> but also pre-acquires the caller's lease under the same lock, so a
+    /// racing prune cannot dispose the entry between insert and return. The catalog entry is written
+    /// by the caller, not here.
     /// </summary>
     public void Add(in StateId to, PersistedSnapshot snapshot)
     {

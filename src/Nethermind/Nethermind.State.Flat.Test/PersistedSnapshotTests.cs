@@ -216,7 +216,7 @@ public class PersistedSnapshotTests
         SnapshotContent content = new();
         content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(small);
         content.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(high);
-        content.Storages[(TestItem.AddressA, (UInt256)3)] = null;          // deleted slot
+        content.Storages[(TestItem.AddressA, (UInt256)3)] = null;
         content.Storages[(TestItem.AddressB, (UInt256)4)] = new SlotValue(full);
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -253,17 +253,15 @@ public class PersistedSnapshotTests
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).WithNonce(3).TestObject;
         content.Accounts[TestItem.AddressC] = null;                          // deleted marker
         content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal);
-        content.Storages[(TestItem.AddressA, (UInt256)2)] = null;            // deleted slot
+        content.Storages[(TestItem.AddressA, (UInt256)2)] = null;
         content.SelfDestructedStorageAddresses[TestItem.AddressD] = false;   // 0x00 destructed
         content.SelfDestructedStorageAddresses[TestItem.AddressE] = true;    // 0x01 new-account
-        // State nodes across the three depth tiers.
         TreePath stTop = new(Keccak.Compute("st-top"), 3);
         TreePath stMid = new(Keccak.Compute("st-mid"), 8);
         TreePath stLong = new(Keccak.Compute("st-long"), 20);
         content.StateNodes[stTop] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
         content.StateNodes[stMid] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
         content.StateNodes[stLong] = new TrieNode(NodeType.Extension, [0xC2, 0x80, 0x81]);
-        // Storage nodes for one address across the three tiers.
         Hash256 storageAddr = Keccak.Compute("storage-addr");
         TreePath snTop = new(Keccak.Compute("sn-top"), 3);
         TreePath snMid = new(Keccak.Compute("sn-mid"), 6);
@@ -403,7 +401,6 @@ public class PersistedSnapshotTests
         Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, new TreePath(Keccak.Compute("absentSameTier"), 4), out _), Is.False);
         Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, new TreePath(Keccak.Compute("absentDeep"), 18), out _), Is.False);
 
-        // Sanity: the present entries still resolve.
         Assert.That(persisted.TryGetAccount(TestItem.AddressA, out _), Is.True);
         Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, storagePath, out _), Is.True);
     }
@@ -444,8 +441,6 @@ public class PersistedSnapshotTests
         byte[] v1 = new byte[32]; v1[31] = 0x11;
         byte[] v2 = new byte[32]; v2[31] = 0x22;
 
-        // Older snapshot: AddressA (bal 100) + slot 1, AddressD only here, self-destruct on A,
-        // a state node and a storage node.
         SnapshotContent older = new();
         older.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
         older.Accounts[TestItem.AddressD] = Build.An.Account.WithBalance(40).TestObject;
@@ -457,7 +452,6 @@ public class PersistedSnapshotTests
         TreePath storagePath = new(Keccak.Compute("st-sp"), 4);
         older.StorageNodes[(storageHashObj, storagePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
 
-        // Newer snapshot: AddressA overridden (bal 200), AddressB new, slot 2.
         SnapshotContent newer = new();
         newer.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(200).TestObject;
         newer.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(7).TestObject;
@@ -549,7 +543,6 @@ public class PersistedSnapshotTests
         inMem.Content.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
 
         long baselineBytes = Metrics.BlobAllocatedBytes;
-        // Build writes the trie-node RLPs into _blobs; afterBuild captures that growth.
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(inMem, _blobs);
         long afterBuild = Metrics.BlobAllocatedBytes;
         Assert.That(afterBuild, Is.GreaterThan(baselineBytes), "Building a snapshot with trie nodes should grow blob-allocated bytes");
@@ -620,7 +613,6 @@ public class PersistedSnapshotTests
             }
         }
 
-        // Should return the newest (p2) value
         Assert.That(found, Is.True);
         Assert.That(result, Is.EqualTo(rlp2));
     }
@@ -638,14 +630,12 @@ public class PersistedSnapshotTests
         byte[] val2 = new byte[32]; val2[31] = 0x02;
         byte[] val3 = new byte[32]; val3[31] = 0x03;
 
-        // Older: addrA slot 1 = val1, addrB slot 5 = val2
         SnapshotContent content1 = new();
         content1.Storages[(addrA, (UInt256)1)] = new SlotValue(val1);
         content1.Storages[(addrB, (UInt256)5)] = new SlotValue(val2);
         Snapshot snap1 = new(s0, s1, content1, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _blobs);
 
-        // Newer: addrA slot 1 = val3 (override), addrA slot 2 = val2 (new)
         SnapshotContent content2 = new();
         content2.Storages[(addrA, (UInt256)1)] = new SlotValue(val3);
         content2.Storages[(addrA, (UInt256)2)] = new SlotValue(val2);
@@ -656,17 +646,14 @@ public class PersistedSnapshotTests
         byte[] merged = PersistedSnapshotBuilderTestExtensions.NWayMergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
-        // addrA slot 1 should be overridden to val3
         SlotValue slot1 = default;
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, ref slot1), Is.True);
         Assert.That(slot1.ToEvmBytes()[0], Is.EqualTo(0x03));
 
-        // addrA slot 2 should be val2 (from newer)
         SlotValue slot2 = default;
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, ref slot2), Is.True);
         Assert.That(slot2.ToEvmBytes()[0], Is.EqualTo(0x02));
 
-        // addrB slot 5 should be val2 (from older, carried through)
         SlotValue slot5 = default;
         Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, ref slot5), Is.True);
         Assert.That(slot5.ToEvmBytes()[0], Is.EqualTo(0x02));

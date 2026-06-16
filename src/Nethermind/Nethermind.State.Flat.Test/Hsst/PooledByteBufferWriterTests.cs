@@ -9,8 +9,6 @@ namespace Nethermind.State.Flat.Test.Hsst;
 [TestFixture]
 public class PooledByteBufferWriterTests
 {
-    // A zero-capacity writer starts with no backing allocation; the first GetSpan must grow
-    // from the capacity==0 state to fit the request, then round-trip the written bytes.
     [TestCase(1)]
     [TestCase(5000)]
     public void ZeroCapacity_GrowsToFitFirstWrite(int size)
@@ -27,8 +25,7 @@ public class PooledByteBufferWriterTests
         for (int i = 0; i < size; i++) Assert.That(written[i], Is.EqualTo((byte)(i & 0xff)));
     }
 
-    // Growing an already-populated buffer preserves prior content (the MemoryCopy branch) and
-    // keeps appending across several grows.
+    // Exercises the Buffer.MemoryCopy branch inside Grow (_written > 0).
     [Test]
     public void Grow_PreservesExistingContentAcrossMultipleGrows()
     {

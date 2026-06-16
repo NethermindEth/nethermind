@@ -169,7 +169,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         int setIdx = (int)(Mix(key) & (uint)_setMask);
         long* setBase = _slots + ((nint)setIdx << WayShift);
 
-        // Hot path: lock-free scan. On a match, set the REF bit if it isn't already set.
+        // Hot path: lock-free scan. Arm REF only when not already set to avoid a spurious atomic on the common re-touch case.
         for (int w = 0; w < Ways; w++)
         {
             long s = Volatile.Read(ref setBase[w]);

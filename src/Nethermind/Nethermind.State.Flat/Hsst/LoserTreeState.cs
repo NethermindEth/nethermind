@@ -42,7 +42,6 @@ internal ref struct LoserTreeState : IDisposable
         _keyBuf = new NativeMemoryListRef<byte>(safeN * keyStride, safeN * keyStride);
         _matchingBuf = new NativeMemoryListRef<int>(safeN, safeN);
         _tree = new NativeMemoryListRef<int>(TreeLength(n), TreeLength(n));
-        // Caller's seed loop sets hasMore[i]=true per live source; start from false.
         _hasMore.AsSpan().Clear();
     }
 
@@ -75,7 +74,6 @@ internal ref struct LoserTreeState : IDisposable
         _tree.Dispose();
     }
 
-    /// <summary>Required <see cref="Tree"/> length for N sources: <c>2 × next-power-of-2(max(1, n))</c>.</summary>
     public static int TreeLength(int n)
         => 2 * (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, n));
 }

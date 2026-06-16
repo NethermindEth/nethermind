@@ -373,9 +373,6 @@ public class HsstDenseByteIndexTests
     [TestCase(20_000, 4)] // 4 entries × 20000 = 80000 > 65535 → OffsetSize 4
     public void OffsetSize_GrowsWithValuesTotal_AndRoundTripsCorrectly(int valLen, int expectedOffsetSize)
     {
-        // Build a small DenseByteIndex whose cumulative values total falls into the target
-        // OffsetSize regime; verify the trailer's OffsetSize byte and that lookups round-trip
-        // including gap-filled entries.
         // Tags 0, 2, 4, 6 — gaps at 1, 3, 5 must round-trip as empty values regardless of OffsetSize.
         byte[] tags = [0x00, 0x02, 0x04, 0x06];
         byte[][] vals = new byte[4][];
@@ -391,7 +388,6 @@ public class HsstDenseByteIndexTests
             $"valLen={valLen} expected OffsetSize {expectedOffsetSize} but trailer says {data[^2]}");
         Assert.That(data[^3], Is.EqualTo((byte)6)); // N - 1 where N = highestTag + 1 = 7
 
-        // Round-trip filled positions.
         for (int i = 0; i < 4; i++)
         {
             Assert.That(TryGet(data, tags[i], out byte[] got), Is.True);

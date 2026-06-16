@@ -22,7 +22,7 @@ internal interface IHsstMergeSource<TReader, TPin> : IHsstReaderSource<TReader, 
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    /// <summary>The scope this source is positioned over. The cursor uses this to build
-    /// the per-slot enumerator at construction time.</summary>
+    /// <summary>Passed to <see cref="IHsstEnumeratorFactory{TReader,TPin}"/> at cursor
+    /// construction time to position the per-slot enumerator.</summary>
     Bound Bound { get; }
 }

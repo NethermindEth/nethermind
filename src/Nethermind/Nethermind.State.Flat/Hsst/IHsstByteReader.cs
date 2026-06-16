@@ -11,7 +11,7 @@ public readonly record struct Bound(long Offset, long Length);
 /// <summary>
 /// Pin handle returned by <see cref="IHsstByteReader{TPin}.PinBuffer"/>: combines a
 /// disposable release primitive with the pinned <see cref="Buffer"/> span itself.
-/// Pin types are ref structs so the buffer's lifetime is tracked by the compiler.
+/// Implementations may be ref structs so the buffer's lifetime is tracked by the compiler.
 /// </summary>
 public interface IBufferPin : IDisposable
 {

@@ -8,7 +8,9 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// A reservation of space within an arena. Delegates span access to the owning <see cref="IArenaManager"/>.
+/// A reservation of space within an arena. Owns a lease on its <see cref="ArenaFile"/> and
+/// coordinates lifecycle (eviction, punch-hole, tracker bookkeeping) with the owning
+/// <see cref="IArenaManager"/> on disposal.
 /// </summary>
 public sealed class ArenaReservation : RefCountingDisposable
 {
@@ -96,9 +98,6 @@ public sealed class ArenaReservation : RefCountingDisposable
                 _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
         }
 
-        // A single cold page is cheaper to bring in via the reader's inline minor fault
-        // than via a madvise syscall, so only batch-populate when at least two pages
-        // are cold and the syscall overhead is actually amortized.
         if (missedCount > 1)
             _arenaFile.PopulateRead(firstPageBase, lastPageBaseExclusive - firstPageBase);
     }

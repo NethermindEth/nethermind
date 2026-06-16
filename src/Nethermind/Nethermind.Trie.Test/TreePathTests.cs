@@ -231,9 +231,9 @@ public class TreePathTests
 
     [TestCase("")]
     [TestCase("01")]
-    [TestCase("0001020304")]      // length 5
-    [TestCase("000102030405")]    // length 6
-    [TestCase("00010203040506")]  // length 7
+    [TestCase("0001020304")]
+    [TestCase("000102030405")]
+    [TestCase("00010203040506")]
     public void TestRoundtripWith4Byte(string nibbleHex)
     {
         byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);

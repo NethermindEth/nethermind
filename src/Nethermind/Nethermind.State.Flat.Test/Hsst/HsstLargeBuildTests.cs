@@ -75,7 +75,6 @@ public class HsstLargeBuildTests
         {
             long count = EntryCountFor(indexType);
 
-            // -------- write --------
             WriteLargeHsst(indexType, pathA, baseKey: 0L, count: count);
             WriteLargeHsst(indexType, pathB, baseKey: count, count: count);
 
@@ -86,11 +85,9 @@ public class HsstLargeBuildTests
             Assert.That(sizeB, Is.GreaterThan((long)int.MaxValue),
                 $"{indexType} HSST B is supposed to exceed the 2 GiB single-Span ceiling");
 
-            // -------- iterate each, verifying every key+value --------
             IterateAndVerify(indexType, pathA, baseKey: 0L, expectedCount: count);
             IterateAndVerify(indexType, pathB, baseKey: count, expectedCount: count);
 
-            // -------- merge --------
             MergeTwo(indexType, pathA, pathB, pathMerged);
 
             long sizeMerged = new FileInfo(pathMerged).Length;
@@ -129,8 +126,6 @@ public class HsstLargeBuildTests
             TryDelete(path);
         }
     }
-
-    // ---------------- writers ----------------
 
     private static void WriteLargeHsst(IndexType indexType, string path, long baseKey, long count)
     {
@@ -213,8 +208,6 @@ public class HsstLargeBuildTests
             writer.Dispose();
         }
     }
-
-    // ---------------- iterators ----------------
 
     private static unsafe void IterateAndVerify(IndexType indexType, string path, long baseKey, long expectedCount)
     {
@@ -312,8 +305,6 @@ public class HsstLargeBuildTests
             accessor.SafeMemoryMappedViewHandle.ReleasePointer();
         }
     }
-
-    // ---------------- merge ----------------
 
     private static unsafe void MergeTwo(IndexType indexType, string pathA, string pathB, string pathOut)
     {
@@ -441,8 +432,6 @@ public class HsstLargeBuildTests
         ReadOnlySpan<byte> kB = eB.CopyCurrentLogicalKey(in rB, bufB);
         return kA.SequenceCompareTo(kB);
     }
-
-    // ---------------- value patterns ----------------
 
     /// <summary>
     /// Deterministic per-entry value for the PackedArray case. Byte j of the value

@@ -12,7 +12,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// <summary>
 /// Non-span HSST reader generic over <typeparamref name="TReader"/>. Symmetric to
 /// <see cref="HsstBTreeBuilder{TWriter}"/>: any byte source that implements
-/// <see cref="IHsstByteReader"/> works — mmap, heap array, file handle, etc.
+/// <see cref="IHsstByteReader{TPin}"/> works — mmap, heap array, file handle, etc.
 ///
 /// Maintains an active <see cref="Bound"/> (absolute offset+length within the reader).
 /// <see cref="TrySeek"/> dispatches by the trailing <see cref="IndexType"/> byte into the
@@ -39,7 +39,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
     public readonly Bound GetBound() => _bound;
 
     /// <summary>
-    /// Exact-match B-tree lookup within the current <see cref="Bound"/>. On success sets
+    /// Exact-match lookup within the current <see cref="Bound"/>. On success sets
     /// <see cref="_bound"/> to the matched entry's value region and returns it via
     /// <paramref name="matched"/>. Returns false if no entry has exactly <paramref name="key"/>.
     /// Use <see cref="TrySeekFloor"/> for floor (largest entry ≤ key) semantics.
@@ -48,7 +48,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         TrySeekCore(key, exactMatch: true, out matched);
 
     /// <summary>
-    /// Floor B-tree lookup within the current <see cref="Bound"/>. On success sets
+    /// Floor lookup within the current <see cref="Bound"/>. On success sets
     /// <see cref="_bound"/> to the floor entry's value region (largest stored key ≤ <paramref name="key"/>)
     /// and returns it via <paramref name="matched"/>. Returns false if the HSST is empty
     /// or <paramref name="key"/> precedes every entry.

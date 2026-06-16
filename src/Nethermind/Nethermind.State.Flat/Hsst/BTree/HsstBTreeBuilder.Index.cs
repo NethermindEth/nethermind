@@ -18,8 +18,6 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 public ref partial struct HsstBTreeBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
-    // ─────────── Index-region construction ───────────
-    //
     // Builds the B-tree index region. Consumes the per-build state already prepared
     // by the data-region phase above (CurrentLevel / CurrentLevelFirstKeys descriptor
     // lists, CommonPrefixArr) and produces a complete index region where the root
@@ -170,9 +168,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         if (allSameLen || effMaxLen <= 8)
         {
             keyType = 1;
-            // Slot widening, applied AFTER the common-prefix strip: snap the post-strip
-            // residual up to a power-of-2 SIMD width when the remaining per-key budget allows
-            // (the writer pads each short slot from key data past its natural separator).
             keySlotSize = WidenedSlotWidth(effMaxLen, keyLength - lcp);
         }
         else
@@ -218,12 +213,10 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         long startWritten = _writer.Written;
         long firstOffset = _writer.FirstOffset;
 
-        // Root prefix tracking: the final node emitted is the root.
         _rootPrefixLen = 0;
         ref HsstBTreeBuilderBuffers bufs = ref _buffers;
         if (_entryCount == 0)
         {
-            // Empty index: write a single empty index node.
             return WriteEmptyIndexNode();
         }
 
@@ -253,7 +246,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             lastNodePrefixLen = only.PrefixLen;
         }
 
-        // Build internal levels until single root.
         while (currentNative.Count > 1)
         {
             nextNative.Clear();
@@ -295,7 +287,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
                     first.FirstEntry,
                     last.LastEntry,
                     intermediatePrefixLen));
-                // The intermediate's first-key = its leftmost child's first-key.
                 if (_keyLength > 0) nextFirstKeys.AddRange(childFirstKeys[.._keyLength]);
 
                 childIdx += childCount;
@@ -390,7 +381,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         int keySlotSize = plan.KeySlotSize;
         bool keyLittleEndian = plan.KeyLittleEndian;
 
-        // BaseOffset + per-entry value-slot width from child offsets.
         long minOff = children[0].ChildOffset;
         long maxOff = minOff;
         for (int i = 1; i < count; i++)
@@ -406,7 +396,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
         if (prefixLen > 0)
         {
-            // Leftmost child's first-key bytes live at the start of childFirstKeys.
             childFirstKeys[..prefixLen].CopyTo(commonPrefixBuf);
         }
 
@@ -505,7 +494,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         while (childCount < hardMax)
         {
-            // Index in `level` of the candidate child being considered for this group.
             int currentIdx = startIdx + childCount;
             HsstIndexNodeInfo curr = level[currentIdx];
             int sepLen = SeparatorLength(curr, commonPrefixArr);

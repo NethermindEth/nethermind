@@ -20,8 +20,7 @@ namespace Nethermind.State.Flat.Test.Hsst.BTree;
 [TestFixture]
 public class BTreeNodeTests
 {
-    // Read the root node from a full-HSST byte array.
-    // Trailer is [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
+    // Trailer layout: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8].
     private static BTreeNodeReader ReadHsstRoot(byte[] data)
     {
         int rootPrefixLen = data[data.Length - 5];
@@ -32,8 +31,6 @@ public class BTreeNodeTests
             : default;
         return BTreeNodeReader.ReadFromStart(data, rootStart, rootPrefix);
     }
-
-    // ===== METADATA READING TESTS =====
 
     [TestCase(0)]
     [TestCase(1)]
@@ -54,13 +51,10 @@ public class BTreeNodeTests
         Assert.That(index.EntryCount, Is.EqualTo(count));
         if (count == 0)
         {
-            // Empty-node probes: KeyCount tracks EntryCount and floor lookups miss.
             Assert.That(index.Metadata.KeyCount, Is.EqualTo(0));
             Assert.That(index.TryGetFloor("abc"u8, out _, out _), Is.False);
         }
     }
-
-    // ===== HEX FIXTURE TESTS: UNIFORM KEYS =====
 
     private static IEnumerable<TestCaseData> UniformKeysTestCases()
     {
@@ -112,7 +106,6 @@ public class BTreeNodeTests
         ReadOnlySpan<byte> output = pooled.WrittenSpan;
         Assert.That(Convert.ToHexString(output), Is.EqualTo(expectedHex));
 
-        // Also verify the reader parses the binary correctly
         BTreeNodeReader index = BTreeNodeReader.ReadFromStart(output, 0);
         Assert.That(index.EntryCount, Is.EqualTo(separatorHexes.Length));
         Span<byte> keyBufRead = stackalloc byte[64];
@@ -164,8 +157,6 @@ public class BTreeNodeTests
         Assert.That(index.GetUInt64Value(1), Is.EqualTo((ulong)200));
         Assert.That(index.GetUInt64Value(2), Is.EqualTo((ulong)300));
     }
-
-    // ===== HEX FIXTURE TESTS: VARIABLE KEYS =====
 
     private static IEnumerable<TestCaseData> VariableKeysTestCases()
     {
@@ -305,7 +296,6 @@ public class BTreeNodeTests
         Assert.That(reader.Metadata.KeyType, Is.EqualTo(0));
         Assert.That(reader.Metadata.IsKeyLittleEndian, Is.True, "Variable keys are always LE-stored");
 
-        // Round-trip via GetSeparatorBytes: lex-order bytes must match the original keys.
         Span<byte> dest = stackalloc byte[256];
         for (int i = 0; i < keys.Length; i++)
         {
@@ -313,7 +303,6 @@ public class BTreeNodeTests
             Assert.That(dest[..written].ToArray(), Is.EqualTo(keys[i]), $"Entry {i} key mismatch");
         }
 
-        // Floor lookup hits the right entry / value for every key.
         for (int i = 0; i < keys.Length; i++)
         {
             Assert.That(reader.TryGetFloor(keys[i], out _, out ReadOnlySpan<byte> v), Is.True, $"Floor missing for entry {i}");
@@ -333,8 +322,6 @@ public class BTreeNodeTests
         }
     }
 
-    // ===== LEB128 TESTS =====
-
     [Test]
     public void Leb128_EncodedSize_CorrectForOffsets()
     {
@@ -344,8 +331,6 @@ public class BTreeNodeTests
         Assert.That(Leb128.EncodedSize(16383), Is.EqualTo(2));
         Assert.That(Leb128.EncodedSize(16384), Is.EqualTo(3));
     }
-
-    // ===== MULTI-LEVEL TREE TESTS =====
 
     [Test]
     public void MultiLevel_Tree_RootHasNodeChildren()
@@ -404,7 +389,6 @@ public class BTreeNodeTests
             "corpus must build a multi-level tree so lookups traverse the index");
 
         SpanByteReader reader = new(data);
-        // Count entries via the enumerator and verify each key is reachable via TrySeek.
         int actualCount = 0;
         using (HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
         {
@@ -420,8 +404,6 @@ public class BTreeNodeTests
             Assert.That(r.TrySeek(key, out _), Is.True, $"Key {i} not found");
         }
     }
-
-    // ===== COMMON-KEY-PREFIX OPTIMIZATION =====
 
     /// <summary>
     /// Build a Variable-key node manually so we can pin the on-disk effects
@@ -487,7 +469,6 @@ public class BTreeNodeTests
             fullKeyLength: 5,
             values);
 
-        // Optimization paid off.
         Assert.That(written, Is.LessThan(cw.Written), "Common-prefix optimization should shrink the node");
 
         BTreeNodeReader reader = BTreeNodeReader.ReadFromStart(pooled.WrittenSpan, 0, commonPrefix);
@@ -505,7 +486,6 @@ public class BTreeNodeTests
                 Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
         }
 
-        // GetSeparatorBytes reconstructs the original key.
         Span<byte> reconstructed = stackalloc byte[16];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
@@ -526,7 +506,7 @@ public class BTreeNodeTests
         Assert.That(reader.TryGetFloor(Convert.FromHexString("FF"), out _, out ReadOnlySpan<byte> vLast), Is.True);
         Assert.That(BinaryPrimitives.ReadInt32LittleEndian(vLast), Is.EqualTo(80));
 
-        // Probe == prefix exactly → floor = first entry (smallest stored key starts with prefix).
+        // Probe == prefix exactly → no floor (empty suffix is less than every stored non-empty suffix).
         Assert.That(reader.TryGetFloor(Convert.FromHexString("DEADBEEF"), out _, out _), Is.False,
             "Empty suffix < every non-empty stored suffix → no floor");
 
@@ -567,8 +547,6 @@ public class BTreeNodeTests
         Assert.That(reader.CommonKeyPrefix.Length, Is.EqualTo(0));
     }
 
-    // ===== LITTLE-ENDIAN KEY STORAGE (Flags bit 5) =====
-
     /// <summary>
     /// Round-trip a Uniform LE-encoded leaf for keySize ∈ {2,4,8}: header bit 5 is set,
     /// raw on-disk slot bytes are byte-reversed, GetKey returns raw stored bytes,
@@ -603,7 +581,6 @@ public class BTreeNodeTests
         BTreeNodeReader beReader = BTreeNodeReader.ReadFromStart(beOut, 0);
         BTreeNodeReader leReader = BTreeNodeReader.ReadFromStart(leOut, 0);
 
-        // Header flag bit.
         Assert.That(beReader.Metadata.IsKeyLittleEndian, Is.False);
         Assert.That(leReader.Metadata.IsKeyLittleEndian, Is.True);
         Assert.That((leOut[0] & 0x40), Is.EqualTo(0x40));
@@ -619,7 +596,6 @@ public class BTreeNodeTests
             Assert.That(leSlot.ToArray(), Is.EqualTo(reversed), $"LE slot {i} should be byte-reversed BE slot");
         }
 
-        // GetSeparatorBytes under LE recovers original lex bytes.
         Span<byte> dest = stackalloc byte[keySize];
         for (int i = 0; i < n; i++)
         {
@@ -644,14 +620,12 @@ public class BTreeNodeTests
                     Assert.That(leIdx, Is.EqualTo(beIdx), $"Hit i={i} simd={simd}");
                     Assert.That(leIdx, Is.EqualTo(i));
                 }
-                // Below-first.
                 byte[] below = new byte[keySize]; // all zeros — strictly less than first iff first != 0
                 if (keys[0].AsSpan().SequenceCompareTo(below) > 0)
                 {
                     Assert.That(leReader.FindFloorIndex(below), Is.EqualTo(beReader.FindFloorIndex(below)));
                     Assert.That(leReader.FindFloorIndex(below), Is.EqualTo(-1));
                 }
-                // Above-last.
                 byte[] above = new byte[keySize];
                 Array.Fill(above, (byte)0xFF);
                 Assert.That(leReader.FindFloorIndex(above), Is.EqualTo(beReader.FindFloorIndex(above)));
@@ -697,7 +671,6 @@ public class BTreeNodeTests
         Assert.That(plan.KeyLittleEndian, Is.EqualTo(expectedLe));
     }
 
-    // Build a `lengths` span for a [firstLen, otherLen, otherLen, …] separator profile.
     private static int[] BuildLengthsProfile(int firstLen, int otherLen, int count)
     {
         int[] lens = new int[count];
@@ -858,7 +831,7 @@ public class BTreeNodeTests
 
     private static int HeaderSize(BTreeNodeReader r)
     {
-        // Fixed 12-byte header. ValueSize is packed into Flags bits 3-4 and the prefix
+        // Fixed 12-byte header. ValueSize is packed into Flags bits 4-5 and the prefix
         // bytes themselves are carried out-of-band via parentSeparator, not in the node.
         _ = r;
         return 12;

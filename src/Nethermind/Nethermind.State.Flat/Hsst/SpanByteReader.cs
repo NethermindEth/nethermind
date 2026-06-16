@@ -6,7 +6,6 @@ namespace Nethermind.State.Flat.Hsst;
 /// <summary>
 /// Span-backed <see cref="IHsstByteReader{TPin}"/>. Stored as a ref struct so the underlying
 /// span's lifetime is tracked by the compiler — no raw pointers, no GC pinning concerns.
-/// Returns <see cref="NoOpPin"/> from every <see cref="PinBuffer"/> call (zero-copy slice).
 /// </summary>
 public readonly ref struct SpanByteReader : IHsstByteReader<NoOpPin>
 {

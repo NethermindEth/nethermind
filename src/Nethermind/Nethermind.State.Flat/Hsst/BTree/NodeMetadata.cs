@@ -4,7 +4,7 @@
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// Metadata for a B-tree index block, parsed from the Metadata section.
+/// Parsed header of a B-tree index node (the leading 12-byte header block).
 /// </summary>
 public readonly struct NodeMetadata
 {
@@ -33,7 +33,7 @@ public readonly struct NodeMetadata
     public int KeySectionSize => KeyType switch
     {
         0 => KeySize,              // Variable: KeySize IS the section size
-        1 => KeyCount * KeySize,   // Uniform: count * fixed length
+        1 => KeyCount * KeySize,
         _ => throw new InvalidDataException()
     };
 

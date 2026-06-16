@@ -6,8 +6,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// <summary>
 /// A scoped read-only view over an <see cref="ArenaReservation"/>'s bytes. For mmap-backed
 /// arenas this is a fresh per-reservation accessor with normal-access madvise hints, distinct
-/// from the global random-access view used by point queries. Disposing applies MADV_DONTNEED
-/// to the range so the kernel can drop pages we don't need to keep resident.
+/// from the global random-access view used by point queries. When created with
+/// <c>adviseDontNeedOnDispose</c>, disposing applies <c>MADV_DONTNEED</c> to the range so the
+/// kernel can reclaim those pages from the page cache.
 /// </summary>
 public unsafe interface IArenaWholeView : IDisposable
 {
@@ -21,6 +22,5 @@ public unsafe interface IArenaWholeView : IDisposable
     /// </summary>
     byte* DataPtr { get; }
 
-    /// <summary>Total view length in bytes (long-typed).</summary>
     long Size { get; }
 }

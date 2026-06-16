@@ -90,8 +90,8 @@ internal readonly ref struct BTreeNodeVariableKeyReader(ReadOnlySpan<byte> keys,
     }
 
     /// <summary>
-    /// Resolve the tail bytes for entry <paramref name="index"/>. Tag &lt; 11 returns an
-    /// empty span. For tag 11 the tail spans <c>[tailOffset, nextTailOffset)</c> with the
+    /// Resolve the tail bytes for entry <paramref name="index"/>. Tag ≠ 0b11 returns an
+    /// empty span. For tag 0b11 the tail spans <c>[tailOffset, nextTailOffset)</c> with the
     /// sentinel for the last entry being <c>remainingkeys.Length</c>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

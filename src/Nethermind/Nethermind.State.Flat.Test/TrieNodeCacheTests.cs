@@ -246,7 +246,6 @@ public class TrieNodeCacheTests
     [Test]
     public void Clear_RemovesAllCachedNodes()
     {
-        // Add multiple nodes across different shards
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
 
         TreePath path1 = TreePath.FromHexString("1000");
@@ -262,14 +261,12 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        // Verify nodes are cached
         Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
         Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
         Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
 
         _cache.Clear();
 
-        // Verify all nodes are removed
         Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.False);
         Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.False);
         Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.False);
@@ -291,13 +288,11 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        // Verify nodes are cached
         Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
         Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
 
         _cache.Clear();
 
-        // Verify all nodes are removed
         Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.False);
         Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.False);
     }

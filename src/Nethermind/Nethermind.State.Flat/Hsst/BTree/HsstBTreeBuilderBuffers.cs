@@ -12,11 +12,11 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// <c>ref</c> to multiple builder constructions to skip the per-build rent/return of all
 /// internal buffers.
 ///
-/// Every buffer is a <see cref="NativeMemoryList{T}"/> that grows itself and retains its
-/// capacity across builds (cleared/refilled per build). Steady state after a few uses is zero
-/// allocation per build. <see cref="Dispose"/> releases everything; in the auto-owned
-/// constructor path of <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/> the builder owns
-/// and disposes an internal instance.
+/// Every buffer is a <see cref="NativeMemoryList{T}"/> that grows and retains its capacity
+/// across builds (cleared/refilled per build); steady state after a few uses is zero allocation
+/// per build. In the auto-owned constructor path of
+/// <see cref="HsstBTreeBuilder{TWriter, TReader, TPin}"/> the builder owns and disposes an
+/// internal instance.
 /// </summary>
 public struct HsstBTreeBuilderBuffers(int expectedKeyCount = 16)
 {

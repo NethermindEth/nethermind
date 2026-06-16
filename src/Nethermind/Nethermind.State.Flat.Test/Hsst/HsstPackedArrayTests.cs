@@ -129,7 +129,6 @@ public class HsstPackedArrayTests
             Assert.That(got, Is.EqualTo(values[i]));
         }
 
-        // Spot-check floor as well.
         Random rng = new(101);
         for (int t = 0; t < 32; t++)
         {
@@ -231,7 +230,6 @@ public class HsstPackedArrayTests
             (byte[][] keys, byte[][] values) = MakeUniqueAscendingKeys(count, keySize, valueSize, seed: keySize * 1000 + count);
             byte[] data = BuildFlatLe(keys, values, keySize, valueSize, strideBytes, isLE);
 
-            // Every stored key must round-trip via exact seek.
             for (int i = 0; i < count; i++)
             {
                 Assert.That(TryGetSpan(data, keys[i], out byte[] got), Is.True, $"missing key #{i} (keySize={keySize}, isLE={isLE}, simdOn={simdOn}, count={count})");
@@ -247,7 +245,6 @@ public class HsstPackedArrayTests
             CheckFloor(data, keys[0], keys, values);
             CheckFloor(data, keys[count - 1], keys, values);
 
-            // A handful of random in-between probes.
             Random rng = new(count * 7 + (isLE ? 1 : 0) + (simdOn ? 2 : 0));
             for (int t = 0; t < 32; t++)
             {
@@ -318,14 +315,11 @@ public class HsstPackedArrayTests
     [Test]
     public void StrideBytes_ChangesIndexCount()
     {
-        // 5000 entries × 24 bytes/entry = 120 000 data bytes. With 256-byte stride we get many
-        // more checkpoints than with 4096-byte stride.
         (byte[][] keys, byte[][] values) = MakeSortedKeys(5000, seed: 17);
 
         byte[] dense = BuildFlat(keys, values, strideBytes: 256);
         byte[] sparse = BuildFlat(keys, values, strideBytes: 4096);
 
-        // Both must remain functionally identical.
         Random rng = new(3);
         for (int t = 0; t < 16; t++)
         {

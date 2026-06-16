@@ -14,7 +14,7 @@ public interface IPersistedSnapshotCompactor : IAsyncDisposable
     /// <remarks>
     /// Takes ownership of <paramref name="batch"/> and disposes it once the batch has been
     /// processed (or drained on cancellation). Blocks the caller when the internal queue is
-    /// full — the same backpressure that throttles the block-processing thread today.
+    /// full, providing backpressure to the block-processing thread.
     /// </remarks>
     /// <param name="batch">The converted states to compact; ownership transfers to the compactor.</param>
     void Enqueue(ArrayPoolList<StateId> batch);

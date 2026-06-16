@@ -168,7 +168,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
         long entryLen = 1L + key.Length + lebSize + value.Length;
         // LCP vs the prior key, forwarded into EmitEntryBookkeeping so the LCP loop runs once.
         int lcp = MaybeFlushBeforeEntry(ref bufs, key, entryLen);
-        // Best-effort page alignment; the entry lands unaligned when it can't be padded.
         TryAlign(entryLen);
 
         if (_keyLength < 0)
@@ -270,7 +269,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
             if (sl > bufs.PendingMaxSepLen) bufs.PendingMaxSepLen = sl;
         }
 
-        // PrevKeyBuf seeds the next entry's LCP.
         if (_keyLength > 0 && key.Length == _keyLength)
         {
             bufs.PrevKeyBuf.Clear();
@@ -356,7 +354,6 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         int newSepLen = lcp >= 0 ? Math.Min(lcp + 1, _keyLength) : _keyLength;
 
-        // Max pending sep length is maintained incrementally by EmitEntryBookkeeping.
         int maxSepLen = bufs.PendingMaxSepLen;
         int maxSepWithNew = Math.Max(maxSepLen, newSepLen);
 

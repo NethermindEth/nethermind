@@ -16,8 +16,7 @@ namespace Nethermind.State.Flat.Persistence.BloomFilter;
 /// </summary>
 public sealed unsafe class BloomFilter : IDisposable
 {
-    // ---- constants ----
-    private const int CacheLineBytes = 64;      // 512 bits
+    private const int CacheLineBytes = 64;
 
     // RocksDB golden ratio constants
     private const uint Mul32 = 0x9E3779B9u;
@@ -94,12 +93,10 @@ public sealed unsafe class BloomFilter : IDisposable
                 Madvise(_data, _dataSize, MADV_HUGEPAGE);
             }
 
-            // zero init
-            // Note: For huge allocations, this loop will trigger the actual physical memory allocation.
+            // Touching memory triggers physical page allocation.
             new Span<byte>(_data, checked((int)Math.Min(totalBytes, int.MaxValue))).Clear();
             if (totalBytes > int.MaxValue)
             {
-                // chunk clear for huge allocations
                 long off = 0;
                 const int Chunk = 8 * 1024 * 1024;
                 while (off < totalBytes)
@@ -228,8 +225,6 @@ public sealed unsafe class BloomFilter : IDisposable
             _dataSize = 0;
         }
     }
-
-    // ----------------- internal helpers -----------------
 
     private static int ChooseNumProbesRocks(double bitsPerKey)
     {

@@ -83,11 +83,6 @@ public class PersistenceManager(
         long snapshotsDepth = latestSnapshot.BlockNumber - currentPersistedState.BlockNumber;
 
         // ---- Phase 1: persistence to RocksDB ----
-        // Single seed. Two sources, in priority order: the canonical state at the next
-        // boundary block (normal — anchors the canonical chain at a locally-synced block,
-        // robust to catch-up sync where the CL-reported finalized tip is beyond chain head),
-        // or the in-memory tier's latest registered state (backstop, only when in-memory has
-        // grown past MaxReorgDepth).
         StateId? seed = null;
         long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         long nextBoundary = schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
@@ -413,7 +408,6 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (_, TreePath path) = k;
@@ -442,7 +436,6 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long storageNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (Hash256 address, TreePath path) = k;

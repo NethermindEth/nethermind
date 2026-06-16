@@ -34,7 +34,6 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     // Fixed key length read from the BTree trailer. Every entry in the HSST has a
     // key of exactly this many bytes — the data-section entry no longer repeats it.
     private readonly int _keyLength;
-    // True for IndexType.BTreeKeyFirst, false for IndexType.BTree (entry layouts in FORMAT.md).
     private readonly bool _keyFirst;
     private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
 
@@ -43,7 +42,6 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
     // LoadCurrentEntry rather than stored.
     private int _depth = -1;
 
-    // Current entry — populated by LoadCurrentEntry after positioning at a leaf.
     private Bound _currentKey;
     private Bound _currentValue;
 
@@ -93,8 +91,7 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
         }
     }
 
-    // Streaming variant: total entry count is unknown without a full walk. Not used by
-    // any caller today — keep the property for variant-shape parity but return -1.
+    // Streaming variant: total entry count is unknown without a full walk.
     public long Count => -1;
 
     public bool MoveNext(scoped in TReader reader)
@@ -115,7 +112,6 @@ internal sealed class HsstBTreeEnumerator<TReader, TPin>
                 return false;
             }
         }
-        // Subsequent calls: ascend until we find the next sibling subtree.
         else if (!AscendAndDescend(in reader, out entryPos))
         {
             return false;

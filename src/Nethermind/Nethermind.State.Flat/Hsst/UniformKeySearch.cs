@@ -105,7 +105,6 @@ public static class UniformKeySearch
     //  stride == keySize is delegated to the contiguous fast path)
     // =====================================================================================
 
-    /// <summary>Floor index over 2-byte LE-stored keys with a strided layout.</summary>
     public static int Uniform2LEStrided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
     {
         if (count == 0) return -1;
@@ -115,7 +114,6 @@ public static class UniformKeySearch
         return BinarySearch2LEStrided(key, src, count, stride);
     }
 
-    /// <summary>Floor index over 4-byte LE-stored keys with a strided layout.</summary>
     public static int Uniform4LEStrided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
     {
         if (count == 0) return -1;
@@ -125,7 +123,6 @@ public static class UniformKeySearch
         return BinarySearch4LEStrided(key, src, count, stride);
     }
 
-    /// <summary>Floor index over 8-byte LE-stored keys with a strided layout.</summary>
     public static int Uniform8LEStrided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride)
     {
         if (count == 0) return -1;
@@ -216,16 +213,9 @@ public static class UniformKeySearch
         return count;
     }
 
-    /// <summary>
-    /// Read the i-th LE-stored 2-byte key as its BE-numeric <see cref="ushort"/> value.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ushort ReadKey2LE(ReadOnlySpan<byte> keys, int idx)
         => BinaryPrimitives.ReadUInt16LittleEndian(keys.Slice(idx * 2, 2));
-
-    // =====================================================================================
-    //  Storage equality helper (HsstPackedArrayReader).
-    // =====================================================================================
 
     /// <summary>
     /// True iff the stored bytes encode the same lex key as <paramref name="key"/>. Equality
@@ -256,7 +246,6 @@ public static class UniformKeySearch
 
         Vector512<ushort> searchVec = Vector512.Create(search);
         int i = 0;
-        // 32 keys per iteration.
         while (i + 32 <= count)
         {
             Vector512<ushort> lanes = Vector512.LoadUnsafe(ref src, (nuint)(i * 2)).AsUInt16();
@@ -283,7 +272,6 @@ public static class UniformKeySearch
 
         Vector512<uint> searchVec = Vector512.Create(search);
         int i = 0;
-        // 16 keys per iteration.
         while (i + 16 <= count)
         {
             Vector512<uint> lanes = Vector512.LoadUnsafe(ref src, (nuint)(i * 4)).AsUInt32();
@@ -310,7 +298,6 @@ public static class UniformKeySearch
 
         Vector512<ulong> searchVec = Vector512.Create(search);
         int i = 0;
-        // 8 keys per iteration.
         while (i + 8 <= count)
         {
             Vector512<ulong> lanes = Vector512.LoadUnsafe(ref src, (nuint)(i * 8)).AsUInt64();

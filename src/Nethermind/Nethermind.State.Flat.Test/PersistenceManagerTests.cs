@@ -125,7 +125,7 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_InsufficientInMemoryDepth_ReturnsNull()
     {
-        // Setup: persisted at Block0 (0), latest at 60, after persist would be < 64 minimum
+        // Gate passes (60+16=76 > 64) but GetFinalizedStateRootAt(16) is not configured → seed = null.
         StateId persisted = Block0;
         StateId latest = CreateStateId(60);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -167,9 +167,9 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_UnfinalizedButBelowForceLimit_ReturnsNull()
     {
-        // Setup: persisted at Block0, latest at 150, finalized at 10 (way behind)
-        // After persist would be at 16, which is > finalized
-        // But in-memory depth is 150 (< 256 forced boundary)
+        // Depth (150) is below MaxReorgDepth (90000), so the backstop doesn't fire.
+        // Finalized (10) < nextBoundary (16), so the normal-trigger gate also doesn't fire.
+        // Neither Phase 1 path activates; Phase 2 is below the SnapshotCount threshold.
         StateId persisted = Block0;
         StateId latest = CreateStateId(150);
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
@@ -284,7 +284,7 @@ public class PersistenceManagerTests
         StateId baseTo = CreateStateId(1);
         StateId compactedTo = CreateStateId(16);
 
-        // Base at state(1) — sub-CompactSize, would have triggered Branch B in the old code.
+        // Base at state(1) — sub-CompactSize; Branch B candidate.
         using Snapshot baseSnap = CreateSnapshot(persisted, baseTo, compacted: false);
         // 16-wide compacted from Block0 — boundary, should win under the two-pass form.
         using Snapshot compactedSnap = CreateSnapshot(persisted, compactedTo, compacted: true);
@@ -370,10 +370,8 @@ public class PersistenceManagerTests
     [Test]
     public void AddToPersistence_TierSourcePersist_PrunesPersistedTier()
     {
-        // Sibling of AddToPersistence_InMemoryPersist_PrunesPersistedTier for the
-        // persistedToPersist branch at PersistenceManager line 426-432. Tier-source
-        // persists must also drive RemoveStatesUntil so the in-memory tier doesn't keep growing
-        // with entries that RocksDB now supersedes.
+        // Sibling of AddToPersistence_InMemoryPersist_PrunesPersistedTier for the persistedToPersist
+        // branch. Tier-source persists must also drive RemoveStatesUntil so superseded entries are cleared.
         StateId target = CreateStateId(16);
         StateId latest = CreateStateId(100);
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
@@ -419,7 +417,6 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_NoSnapshotAvailable_ReturnsNull()
     {
-        // Setup: sufficient depth but no snapshots in repository
         StateId persisted = Block0;
         StateId latest = CreateStateId(100);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -480,9 +477,9 @@ public class PersistenceManagerTests
         StateId persisted = Block0;
         StateId latest = CreateStateId(100);
         StateId target1 = CreateStateId(16, rootByte: 1);
-        StateId target2 = CreateStateId(16, rootByte: 2); // Different root
+        StateId target2 = CreateStateId(16, rootByte: 2);
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
-        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target2.StateRoot.Bytes)); // target2 is finalized
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target2.StateRoot.Bytes));
 
         using Snapshot snapshot1 = CreateSnapshot(persisted, target1, compacted: true);
         using Snapshot snapshot2 = CreateSnapshot(persisted, target2, compacted: true);
@@ -499,8 +496,8 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_ExactlyAtMinimumBoundary_ReturnsNull()
     {
-        // Setup: persisted at Block0 (0), latest at 79
-        // After persist would be at 15, leaving depth of 64 (exactly at minimum boundary)
+        // Gate passes (79+16=95 > 64), but GetFinalizedStateRootAt(16) is not configured →
+        // returns null → seed = null. No backstop (79 << MaxReorgDepth). Result: null.
         StateId persisted = Block0;
         StateId latest = CreateStateId(79);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -654,7 +651,7 @@ public class PersistenceManagerTests
     public void FlushToPersistence_WithUnfinalizedSnapshots_FallsBackToFirstAvailable()
     {
         StateId state16 = CreateStateId(16);
-        _finalizedStateProvider.SetFinalizedBlockNumber(0); // Nothing finalized
+        _finalizedStateProvider.SetFinalizedBlockNumber(0);
 
         // Repo-owned; FlushToPersistence prunes (disposes) it once persisted, so don't double-own.
         CreateSnapshot(Block0, state16, compacted: true);
@@ -688,7 +685,6 @@ public class PersistenceManagerTests
 
         StateId result = _persistenceManager.FlushToPersistence();
 
-        // Should persist the finalized state.
         Assert.That(result.StateRoot.Bytes.ToArray(), Is.EqualTo(finalizedState.StateRoot.Bytes.ToArray()));
     }
 
@@ -699,7 +695,6 @@ public class PersistenceManagerTests
         StateId state2 = CreateStateId(2);
         StateId state3 = CreateStateId(3);
 
-        // No finalization - will use first available
         _finalizedStateProvider.SetFinalizedBlockNumber(0);
 
         // Repo-owned; FlushToPersistence prunes (disposes) them once persisted, so don't double-own.

@@ -4,8 +4,7 @@
 namespace Nethermind.State.Flat.Hsst.BTree;
 
 /// <summary>
-/// What the reader is sitting on, encoded in the low 2 bits of the leading <c>Flags</c> byte
-/// so the BTree reader can dispatch on it: decode an entry or descend into a node.
+/// Encoded in the low 2 bits of the leading <c>Flags</c> byte.
 /// </summary>
 /// <remarks>Values are fixed by the on-disk format — do not renumber.</remarks>
 public enum BTreeNodeKind : byte

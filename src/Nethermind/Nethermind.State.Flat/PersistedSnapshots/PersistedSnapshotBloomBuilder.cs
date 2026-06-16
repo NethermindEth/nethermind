@@ -91,8 +91,8 @@ internal static class PersistedSnapshotBloomBuilder
 
     /// <summary>
     /// Slot bloom hash: XORs the full 32-byte big-endian slot into the address key.
-    /// Reader-side overload — serialises the <see cref="UInt256"/> once and routes
-    /// through the span variant so writer and reader share the exact hash bytes.
+    /// Serialises the <see cref="UInt256"/> once and routes through the span variant
+    /// so both call sites share the exact hash bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong SlotKey(ulong addressKey, in UInt256 slot)
@@ -103,7 +103,7 @@ internal static class PersistedSnapshotBloomBuilder
     }
 
     /// <summary>
-    /// Writer-side slot bloom hash: XORs the 32-byte big-endian slot into the
+    /// Span-based slot bloom hash: XORs the 32-byte big-endian slot into the
     /// address key as four non-overlapping ulongs covering [0,8), [8,16),
     /// [16,24), [24,32).
     /// </summary>

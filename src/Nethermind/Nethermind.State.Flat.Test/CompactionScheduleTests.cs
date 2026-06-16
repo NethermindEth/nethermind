@@ -145,7 +145,7 @@ public class CompactionScheduleTests
 
     [TestCase(0, 1)]    // block 0 always 1
     [TestCase(13, 16)]  // 13+3 = 16 -> full
-    [TestCase(16, 1)]   // 16+3 = 19 -> 19 & -19 = 1 (caller treats as no compaction)
+    [TestCase(16, 1)]   // 16+3 = 19 -> 19 & -19 = 1
     [TestCase(5, 8)]    // 5+3 = 8
     [TestCase(29, 16)]  // 29+3 = 32 -> 32 & -32 = 32, capped at 16
     public void GetCompactSize_WithOffset3_ShiftsBoundaries(long blockNumber, int expected)
@@ -244,7 +244,7 @@ public class CompactionScheduleTests
     [TestCase(0, 64, 8192, false)]  // large
     [TestCase(3, 13, 8192, true)]   // shifted: (13+3) = 16
     [TestCase(3, 29, 8192, false)]  // shifted large: 32
-    [TestCase(0, 32, 16, true)]     // max == CompactSize: alignment 32 capped to 16 → no merge
+    [TestCase(0, 32, 16, true)]     // max == CompactSize: alignment 32 capped to 16, exactly equals CompactSize
     public void IsCompactSizeBoundary_TrueOnlyWhenWindowEqualsCompactSize(int offset, long blockNumber, int maxCompactSize, bool expected)
     {
         FlatDbConfig config = new() { CompactSize = 16, PersistedSnapshotMaxCompactSize = maxCompactSize };

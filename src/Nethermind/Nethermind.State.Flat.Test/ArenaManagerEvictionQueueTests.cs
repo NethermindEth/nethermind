@@ -59,7 +59,6 @@ public class ArenaManagerEvictionQueueTests
     {
         using ArenaManager manager = NewManager(pageCacheBytes: 0);
         Assert.That(manager.PageTracker.MaxCapacity, Is.EqualTo(0));
-        // No exception, no counters move.
         manager.QueueEviction(0, 0);
         Assert.That(manager.EvictionsQueued, Is.EqualTo(0));
         Assert.That(manager.EvictionsInlineFallback, Is.EqualTo(0));

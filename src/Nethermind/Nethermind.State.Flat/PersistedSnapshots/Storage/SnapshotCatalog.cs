@@ -35,16 +35,12 @@ public sealed class SnapshotCatalog(IDb db)
     // arenaId(4) + offset(8) + size(8) + tier(1) = 101
     private const int EntrySize = 101;
 
-    // 8-byte block number + 32-byte state root + 8-byte depth, matching the runtime
-    // tuple that disambiguates same-To entries across the three buckets.
     private const int KeySize = 48;
 
     // Catalog version: bumped when the on-disk binary layout changes incompatibly. Old
     // directories will fail to load with a clear "wipe and resync" message.
     private const int CurrentVersion = 1;
 
-    // Length-4 sentinel key holding the version word. Entry keys are 48 bytes, so the
-    // length disambiguation is unambiguous when iterating GetAll().
     private static readonly byte[] MetadataKey = new byte[4];
 
     private readonly IDb _db = db;
@@ -70,10 +66,8 @@ public sealed class SnapshotCatalog(IDb db)
     private static long Depth(CatalogEntry entry) => entry.To.BlockNumber - entry.From.BlockNumber;
 
     /// <summary>
-    /// Lazily stream every catalog entry from the underlying DB (unordered) — the iterator reads one
-    /// entry at a time rather than buffering them all. The version check and first-write of the
-    /// metadata word run eagerly when <see cref="Load"/> is called; the entries are read on
-    /// enumeration. The DB is the source of truth; no entries are cached in memory.
+    /// Streams catalog entries lazily (unordered). The version check and first-write of the
+    /// metadata word happen eagerly before the iterator is returned, not on enumeration.
     /// </summary>
     public IEnumerable<CatalogEntry> Load()
     {
@@ -93,7 +87,6 @@ public sealed class SnapshotCatalog(IDb db)
         }
         else
         {
-            // Persist the version word if the catalog has never been written before.
             WriteMetadata();
         }
 

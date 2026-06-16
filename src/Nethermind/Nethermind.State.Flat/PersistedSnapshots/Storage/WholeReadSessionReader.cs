@@ -8,12 +8,11 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// <see cref="IHsstByteReader{TPin}"/> over a <see cref="WholeReadSession"/>'s mmap view.
-/// Holds a raw <c>byte*</c> + <see cref="long"/> length (pointer arithmetic on the long
-/// offset, then constructs an int-sized <see cref="ReadOnlySpan{T}"/> for each pin), so
-/// it correctly addresses &gt;2 GiB views without trying to materialise a single
-/// <see cref="ReadOnlySpan{T}"/> over the whole reservation. The pointer's lifetime is
-/// owned by the <see cref="WholeReadSession"/>; the reader assumes the session is alive.
+/// Uses <c>byte*</c> + <see cref="long"/> length to correctly address &gt;2 GiB views;
+/// each <see cref="PinBuffer"/> call constructs an int-sized <see cref="ReadOnlySpan{T}"/>
+/// at the requested offset rather than spanning the whole reservation.
 /// </summary>
+/// <remarks>The pointer lifetime is owned by the <see cref="WholeReadSession"/>; the session must remain alive for the duration of any use of this reader.</remarks>
 public readonly unsafe ref struct WholeReadSessionReader(byte* basePtr, long length) : IHsstByteReader<NoOpPin>
 {
     private readonly byte* _basePtr = basePtr;

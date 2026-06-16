@@ -16,11 +16,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Single 8-way set-associative clock (second-chance) address-bound cache, mirroring
 /// <see cref="PageResidencyTracker"/>'s hot/miss-path split. One set ⇒ 8 ways × 8 bytes
 /// = 64 bytes stored inline as a <see cref="Vector512{T}"/> field — no separate heap
-/// allocation. The runtime gives <see cref="Vector512{T}"/> its natural 64-byte alignment for
-/// the field offset, matching the single-cache-line layout the previous
-/// <see cref="NativeMemory.AlignedAlloc(nuint,nuint)"/>-based variant relied on. The
-/// <see cref="Vector512{T}"/> is never used as a SIMD vector — it is purely an
-/// alignment-bearing 64-byte storage cell, reinterpreted as <c>Span&lt;long&gt;</c> via
+/// allocation. <see cref="Vector512{T}"/> provides natural 64-byte alignment, keeping the
+/// cache in a single cache line. It is never used as a SIMD vector — purely an
+/// alignment-bearing storage cell, reinterpreted as <c>Span&lt;long&gt;</c> via
 /// <see cref="MemoryMarshal.CreateSpan{T}(ref T,int)"/>.
 /// </summary>
 /// <remarks>

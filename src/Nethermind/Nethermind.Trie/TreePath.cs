@@ -17,8 +17,8 @@ using System.Numerics;
 namespace Nethermind.Trie;
 
 /// <summary>
-/// Patricia trie tree path. Can represent up to 64 nibbles in 32+4 byte.
-/// Can be used as ref struct, and mutated during trie traversal.
+/// Patricia trie path node. Represents up to 64 nibbles packed into 32+4 bytes,
+/// mutated in-place during trie traversal.
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
@@ -198,10 +198,8 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     {
         if (pathLength == Length) return;
         ReadOnlySpan<Vector256<byte>> zeroMasks = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(ZeroMasksData)), ZeroMasksData.Length / Vector256<byte>.Count);
-        // We additionally check against the array length even it will never be larger
-        // however it helps the JIT to optimize the bounds check away, and in this case
-        // the JIT will create two paths based on length, a throwing and a non-throwing one
-        // which expands the code size significantly and can be avoided by this check.
+        // The redundant array-length check helps the JIT eliminate bounds checks: without it,
+        // the JIT emits separate throwing/non-throwing code paths that bloat the method.
         if (pathLength > Length || (uint)pathLength >= (uint)zeroMasks.Length)
         {
             ThrowPathMustBeLess();
@@ -215,9 +213,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         static void ThrowPathMustBeLess() => throw new IndexOutOfRangeException("path length must be less than current length");
     }
 
-    /// <summary>
-    /// Truncate just one. Used for Branch, which is a hot code path.
-    /// </summary>
+    /// <remarks>Hot path — called on every Branch node during traversal.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TruncateOne()
     {
@@ -255,8 +251,8 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     public readonly override int GetHashCode() => (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
 
     /// <summary>
-    /// Used for scoped pattern where inside the scope the path is appended with some nibbles and it will
-    /// truncate back to previous length on dispose. Cut down on memory allocations.
+    /// Scoped append: path is extended on construction and restored to its previous length on dispose,
+    /// avoiding heap allocation for temporary path extensions.
     /// </summary>
     public ref struct AppendScope
     {
@@ -292,11 +288,8 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     int IComparable<TreePath>.CompareTo(TreePath otherTree) => CompareTo(in otherTree);
 
     /// <summary>
-    /// Compare with otherTree, as if this TreePath was truncated to `length`.
+    /// Compare with <paramref name="otherTree"/>, as if this path were truncated to <paramref name="length"/> nibbles.
     /// </summary>
-    /// <param name="otherTree"></param>
-    /// <param name="length"></param>
-    /// <returns></returns>
     public readonly int CompareToTruncated(in TreePath otherTree, int length)
     {
         int minLength = Math.Min(length, otherTree.Length);

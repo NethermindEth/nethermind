@@ -107,7 +107,6 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
         _lastTag = tag;
     }
 
-    /// <summary>Convenience: write a tag/value pair in one call.</summary>
     public void Add(byte tag, scoped ReadOnlySpan<byte> value)
     {
         _writtenBeforeValue = _writer.Written;
@@ -152,7 +151,6 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
         long valuesTotal = _ends![0];
         int offsetSize = HsstPackedArrayLayout.ChooseOffsetSize(valuesTotal);
 
-        // Ends section, written at the chosen stride.
         Span<byte> endsSpan = _writer.GetSpan(n * offsetSize);
         Span<byte> scratch = stackalloc byte[8];
         for (int i = 0; i < n; i++)

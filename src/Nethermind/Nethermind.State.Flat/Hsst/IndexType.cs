@@ -4,8 +4,10 @@
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
-/// Discriminator written as the last byte of an HSST. Selects which index strategy
-/// the rest of the blob uses. New strategies get a new value; this is not a bitfield.
+/// Discriminator byte that selects which index strategy an HSST blob uses; not a
+/// bitfield. For all variants except <see cref="TwoByteSlotValue"/> and
+/// <see cref="TwoByteSlotValueLarge"/> it is the <em>last</em> byte of the blob;
+/// those two keys-first variants lead with it as the <em>first</em> byte instead.
 /// </summary>
 public enum IndexType : byte
 {

@@ -30,7 +30,6 @@ internal static class HsstTwoByteSlotMerger
     /// <param name="scratchKeys">Caller-owned scratch for staged 2-byte keys.</param>
     /// <param name="scratchValues">Caller-owned scratch for staged value bytes.</param>
     /// <param name="scratchLens">Caller-owned scratch for per-entry value lengths.</param>
-    /// <param name="callback">Per-emitted-key hook.</param>
     internal static void NWayMerge<TWriter, TReader, TPin, TSource, TFactory, TCallback>(
         ref TWriter writer,
         scoped ref NWayMergeCursor<TReader, TPin, TSource, TFactory> cursor,

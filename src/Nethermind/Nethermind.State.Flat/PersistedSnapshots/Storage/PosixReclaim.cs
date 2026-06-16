@@ -13,7 +13,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// </summary>
 internal static class PosixReclaim
 {
-    /// <summary>Outcome of a <see cref="TryPunchHole"/> attempt.</summary>
     internal enum PunchHoleOutcome
     {
         /// <summary>The range was hole-punched (or there was nothing to punch).</summary>
@@ -115,8 +114,7 @@ internal static class PosixReclaim
     }
 
     // Round offset up and end down to OS-page boundaries so only fully-covered pages are
-    // touched — mirrors ArenaFile.AdviseDontNeed's rounding and keeps a hole punch from
-    // zeroing a partial page shared with a neighbouring reservation.
+    // touched — prevents a hole punch from zeroing a partial page shared with a neighbouring reservation.
     private static (long start, long len) AlignInward(long offset, long size)
     {
         long start = (offset + PageSize - 1) & ~(PageSize - 1);

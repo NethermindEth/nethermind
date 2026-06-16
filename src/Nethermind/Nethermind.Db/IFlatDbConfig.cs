@@ -7,16 +7,16 @@ namespace Nethermind.Db;
 
 public interface IFlatDbConfig : IConfig
 {
-    [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
+    [ConfigItem(Description = "Block cache size budget in bytes.", DefaultValue = "1073741824")]
     long BlockCacheSizeBudget { get; set; }
 
     [ConfigItem(Description = "Fixed compaction schedule offset in blocks. When 0 or greater, overrides the per-instance offset in the metadata DB, which is neither read nor updated. Only the value modulo CompactSize matters. -1 to use the stored offset, generating a random one when absent.", DefaultValue = "-1")]
     long CompactionOffset { get; set; }
 
-    [ConfigItem(Description = "Compact size", DefaultValue = "32")]
+    [ConfigItem(Description = "Number of blocks per compaction cycle.", DefaultValue = "32")]
     int CompactSize { get; set; }
 
-    [ConfigItem(Description = "Enabled", DefaultValue = "false")]
+    [ConfigItem(Description = "Enable the flat DB storage backend.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
@@ -25,13 +25,13 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 
-    [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
+    [ConfigItem(Description = "Run compaction inline during block processing instead of in a background job.", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
-    [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
+    [ConfigItem(Description = "Storage layout variant for the flat DB.", DefaultValue = "Flat")]
     FlatLayout Layout { get; set; }
 
-    [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
+    [ConfigItem(Description = "Maximum number of background compaction jobs that may run concurrently.", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 
     [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth.", DefaultValue = "128")]
@@ -40,25 +40,25 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Total max reorg depth in blocks (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
     int MaxReorgDepth { get; set; }
 
-    [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
+    [ConfigItem(Description = "Minimum number of blocks kept in the in-memory reorg buffer before any are eligible for persistence.", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
 
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 
-    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
+    [ConfigItem(Description = "Trie cache memory budget in bytes.", DefaultValue = "536870912")]
     long TrieCacheMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
-    [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
+    [ConfigItem(Description = "Cross-verify flat DB reads against the trie for debugging.", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "false")]
     bool EnableLongFinality { get; set; }
 
-    [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
+    [ConfigItem(Description = "Maximum size in bytes for a single arena file before a new one is started.", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }
 
     [ConfigItem(Description = "Estimated-size threshold (bytes) at or above which a persisted-snapshot arena write goes to its own dedicated file instead of being packed into a shared arena.", DefaultValue = "1073741824")]

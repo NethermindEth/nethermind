@@ -128,7 +128,6 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
         indexType[0] = (byte)(_offsetSize == KeyLength ? IndexType.TwoByteSlotValue : IndexType.TwoByteSlotValueLarge);
         _writer.Advance(1);
 
-        // Header: KeyCount (N − 1) u16 LE.
         Span<byte> header = _writer.GetSpan(2);
         BinaryPrimitives.WriteUInt16LittleEndian(header, (ushort)(n - 1));
         _writer.Advance(2);
@@ -156,7 +155,6 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
             _writer.Advance(offsetsBytes);
         }
 
-        // Values: buffered during Add(); flush as a single contiguous block.
         if (_valueBytes > 0)
         {
             Span<byte> valuesSpan = _writer.GetSpan(_valueBytes);

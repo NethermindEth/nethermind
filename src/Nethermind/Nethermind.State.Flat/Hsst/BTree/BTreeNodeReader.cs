@@ -56,7 +56,6 @@ public readonly ref struct BTreeNodeReader(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static BTreeNodeReader ReadFromStart(ReadOnlySpan<byte> data, int nodeStart, ReadOnlySpan<byte> parentSeparator = default)
     {
-        // 12-byte fixed header minimum.
         if (data.Length - nodeStart < 12)
             return default;
 
@@ -71,11 +70,10 @@ public readonly ref struct BTreeNodeReader(
                          | ((ulong)BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(pos + 10, 2)) << 32);
         pos += 12;
 
-        // When prefixLen > 0 the prefix bytes ride in from the caller's parentSeparator.
-        // A value-only caller passes an empty parentSeparator (see the method doc) and gets an
-        // empty commonKeyPrefix — the prefix-dependent APIs are documented to misbehave then. A
-        // non-empty but too-short separator is a contract violation: the builder guarantees
-        // parentSeparator.Length >= CommonPrefixLen for every real descent.
+        // A value-only caller may pass default for parentSeparator; they get an empty
+        // commonKeyPrefix and the prefix-dependent APIs misbehave (documented on the method).
+        // A non-empty but too-short separator is a contract violation: the builder guarantees
+        // parentSeparator.Length >= prefixLen for every real descent.
         ReadOnlySpan<byte> commonKeyPrefix;
         if (prefixLen == 0 || parentSeparator.Length == 0)
             commonKeyPrefix = default;
@@ -175,7 +173,6 @@ public readonly ref struct BTreeNodeReader(
             shortcutResult = 0;
             return true;
         }
-        // key does not start with prefix — relationship to every stored key is fixed.
         residual = default;
         shortcutResult = key.SequenceCompareTo(commonKeyPrefix) < 0
             ? -1                       // key < prefix ≤ every stored key → no floor
@@ -224,8 +221,6 @@ public readonly ref struct BTreeNodeReader(
     /// </summary>
     internal bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue)
     {
-        // FindFloorIndex handles both the empty-node early-return and the
-        // CommonKeyPrefix strip + KeyType dispatch.
         int result = FindFloorIndex(key);
         if (result < 0)
         {

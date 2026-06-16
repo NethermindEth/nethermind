@@ -11,10 +11,6 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat.Test;
 
-/// <summary>
-/// Helpers shared across the test fixtures that wrap synthesised
-/// <see cref="PersistedSnapshot"/> instances.
-/// </summary>
 internal static class TestFixtureHelpers
 {
     /// <summary>

@@ -32,9 +32,9 @@ public static class PersistedSnapshotScanner
 /// Streaming scan over a persisted snapshot's HSST columns, generic over the byte-reader source so
 /// the traversal isn't bound to a specific reader. The <typeparamref name="TSource"/> (held as a
 /// value) mints a fresh <typeparamref name="TReader"/> per enumerator; the caller guarantees the
-/// underlying region stays valid for the scanner's lifetime. Each entry yielded by an enumerator
-/// stores only the raw <see cref="Bound"/>s; key and value are decoded lazily on property access —
-/// consumers that read only one side never pay for the other.
+/// underlying region stays valid for the scanner's lifetime. Node entries (<see cref="StateNodeEntry"/>,
+/// <see cref="StorageNodeEntry"/>) decode key and value lazily on property access; <see cref="PerAddressEntry"/>
+/// materialises the address eagerly but decodes account/slot data lazily.
 /// </summary>
 public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource source, PersistedSnapshot snapshot)
     where TSource : IHsstReaderSource<TReader, TPin>
@@ -404,13 +404,12 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
     {
         private readonly PersistedSnapshot _snapshot;
         private readonly TReader _reader;
-        // Walks column 0x05 (storage-trie) keyed by addressHash. For each row we open the
-        // storage-trie sub-tags in order: top (0x00), compact (0x01), then fallback (0x02).
+        // Column 0x05 (storage-trie) outer enumerator; keys are addressHash (20 bytes).
         private HsstEnumerator<TReader, TPin> _addrEnum;
         private HsstEnumerator<TReader, TPin> _pathEnum;
         // _stage: 0 = current address-hash's top sub-tag, 1 = its compact sub-tag,
         // 2 = its fallback sub-tag. Reported back to StorageNodeEntry for path-key
-        // decoding (top 3 bytes / compact 8 bytes / fallback 33 bytes), so it doubles
+        // decoding (top 4 bytes / compact 8 bytes / fallback 33 bytes), so it doubles
         // as the on-disk path-encoding selector.
         private byte _stage;
         private byte _level;  // 0=need new addr, 1=have pathEnum
@@ -472,7 +471,6 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
                     }
                     _pathEnum.Dispose();
                     _pathEnum = default;
-                    // Advance through the storage sub-tag chain: top → compact → fallback.
                     if (_stage == 0)
                     {
                         _stage = 1;

@@ -30,7 +30,7 @@ internal static class BTreeNodeWriter<TWriter>
     private const int HeaderSize = 12;
 
     /// <summary>14-bit tailOffset cap for the prefix-inlined Variable key section.</summary>
-    private const int MaxVariableKeyTailBytes = (1 << 14) - 1; // 16383
+    private const int MaxVariableKeyTailBytes = (1 << 14) - 1;
 
     /// <summary>
     /// Write the empty-node form: header only (KeyCount = KeySize = 0, CommonPrefixLen = 0).
@@ -40,7 +40,6 @@ internal static class BTreeNodeWriter<TWriter>
     /// </summary>
     public static void WriteEmpty(ref TWriter writer, in BTreeNodeMetadata metadata)
     {
-        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][CommonPrefixLen=0 u8][BaseOffset 6 bytes LE]
         // ValueSlotSize is encoded into the Flags byte but is meaningless when KeyCount = 0;
         // default to 2 (the smallest supported width).
         if (metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
@@ -50,8 +49,8 @@ internal static class BTreeNodeWriter<TWriter>
         byte flags = EncodeFlags(metadata.NodeKind, keyType: 0, EncodeValueSizeCode(emptyValueSlot), keyLe: false);
         Span<byte> span = writer.GetSpan(HeaderSize);
         span[0] = flags;
-        span[1..5].Clear();   // KeyCount + KeySize
-        span[5] = 0;          // CommonPrefixLen
+        span[1..5].Clear();
+        span[5] = 0;
         ulong v = metadata.BaseOffset;
         span[6] = (byte)v;
         span[7] = (byte)(v >> 8);
@@ -102,10 +101,8 @@ internal static class BTreeNodeWriter<TWriter>
             _ => ComputeVariableKeySectionSize(count, sepLengths, prefixLen),
         };
 
-        // 1) Header.
         WriteHeader(ref writer, in metadata, count, keySize, commonKeyPrefix);
 
-        // 2) Keys section.
         switch (metadata.KeyType)
         {
             case 1:
@@ -116,7 +113,7 @@ internal static class BTreeNodeWriter<TWriter>
                 break;
         }
 
-        // 3) Values section — always Uniform (no Variable-value shape for b-tree nodes).
+        // Values section is always Uniform (no Variable-value shape for b-tree nodes).
         WriteUniformValues(ref writer, count, values, metadata.ValueSlotSize);
 
         // Variable keys use a u16 offset table that can't address past 64 KiB. The section
@@ -260,7 +257,6 @@ internal static class BTreeNodeWriter<TWriter>
         }
     }
 
-    /// <summary>Copy <paramref name="src"/> reversed into <paramref name="dst"/>. Both must be the same length.</summary>
     private static void ReverseInto(ReadOnlySpan<byte> src, Span<byte> dst)
     {
         int n = src.Length;
@@ -311,13 +307,12 @@ internal static class BTreeNodeWriter<TWriter>
                 $"Variable key tail section ({tailCursor} bytes) exceeds 14-bit tailOffset cap (16 KiB); split before finalizing.");
         writer.Advance(prefixArrSize);
 
-        // Offset array.
         Span<byte> offsetArr = writer.GetSpan(offsetArrSize)[..offsetArrSize];
         for (int i = 0; i < count; i++)
             BinaryPrimitives.WriteUInt16LittleEndian(offsetArr[(i * 2)..], offsets[i]);
         writer.Advance(offsetArrSize);
 
-        // Tail bytes (only for keys with len > 2; in entry order).
+        // Tail bytes (keys with len > 2, in entry order).
         for (int i = 0; i < count; i++)
         {
             int len = Math.Max(0, sepLengths[i] - prefixLen);

@@ -27,14 +27,10 @@ namespace Nethermind.State.Flat.Test;
 /// the same singletons the production module wires, so tests run against a prod-representative graph.
 /// </summary>
 /// <remarks>
-/// Replaces the old hand-wired test helpers (the arena/compactor factories and the repository+loader
-/// harness). The container builds lazily on first resolve; building runs the loader's
-/// <see cref="IPersistedSnapshotLoader.Load"/>, and disposing runs the loader teardown before the temp
-/// dir is removed. Reopen/restart tests build a second <see cref="FlatTestContainer"/> over the same
-/// <see cref="BaseDbPath"/> and the same <see cref="CatalogDb"/> instance to verify data survives a restart.
-/// The production module sizes the blob arena off <see cref="FlatDbConfig.ArenaFileSizeBytes"/> (shared
-/// with the trie-RLP arena) and wires the catalog/metadata to columned RocksDB via <c>IDbFactory</c>
-/// (absent in the test project); both are overridden here.
+/// The container builds lazily on first resolve; building runs <see cref="IPersistedSnapshotLoader.Load"/>,
+/// and disposal tears down the loader before the temp dir is removed. Reopen/restart tests build a second
+/// <see cref="FlatTestContainer"/> over the same <see cref="BaseDbPath"/> and the same
+/// <see cref="CatalogDb"/> instance to verify data survives a restart.
 /// </remarks>
 internal sealed class FlatTestContainer : IDisposable
 {
@@ -115,9 +111,8 @@ internal sealed class FlatTestContainer : IDisposable
     public BlobArenaManager Blobs => Resolve<BlobArenaManager>();
     public PersistedSnapshotCompactor Compactor => Resolve<PersistedSnapshotCompactor>();
 
-    /// <summary>Persist an in-memory snapshot as a base entry through the production loader, then
-    /// re-lease it from the repository so callers get a disposable handle for assertions — the test
-    /// stand-in for the repository's removed convert helper. The returned snapshot is pre-leased.</summary>
+    /// <summary>Converts <paramref name="snapshot"/> to a persisted base via the production loader and
+    /// returns it pre-leased from the repository so callers hold a disposable handle for assertions.</summary>
     public PersistedSnapshot ConvertToPersistedBase(Snapshot snapshot)
     {
         Loader.ConvertAndRegister(snapshot);

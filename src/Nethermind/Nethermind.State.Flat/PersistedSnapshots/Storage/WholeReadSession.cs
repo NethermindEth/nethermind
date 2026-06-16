@@ -54,9 +54,6 @@ public sealed unsafe class WholeReadSession : IDisposable, IHsstReaderSource<Who
     {
         if (_disposed) return;
         _disposed = true;
-        // _view.Dispose() issues madvise(MADV_DONTNEED) on the mmap range when the flag
-        // is set; pair that with ForgetTracker so the page-residency tracker doesn't
-        // keep ghost entries for pages the kernel just dropped.
         _view.Dispose();
         if (_adviseDontNeedOnDispose)
             _reservation.ForgetTracker();

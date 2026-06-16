@@ -92,9 +92,7 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource, TFactory>
     /// <see cref="AdvanceMatching"/>).</summary>
     public readonly Bound ValueAt(int srcIdx) => _enumerators[srcIdx].CurrentValue;
 
-    /// <summary>The cursor's source span (one source per cursor slot). Used by nested-merge
-    /// helpers that need the per-source reader factory list to build inner sources or to walk
-    /// source bytes.</summary>
+    /// <summary>Used by nested-merge helpers to access the per-source reader factory and bound.</summary>
     public readonly Span<TSource> Sources => _sources;
 
     /// <param name="sources">N source structs, one per cursor slot. Each source supplies a
@@ -206,9 +204,8 @@ internal ref struct NWayMergeCursor<TReader, TPin, TSource, TFactory>
     }
 
     /// <summary>
-    /// Advances every source in <see cref="MatchingSources"/>: calls <c>MoveNext</c> on the
-    /// enumerator, refreshes the cached key, and updates the affected tree path (O(log N)
-    /// per source). The cursor is ready for another <see cref="MoveNext"/> on return.
+    /// Advances every source in <see cref="MatchingSources"/> and replays the tree path for
+    /// each (O(log N) per source). The cursor is ready for another <see cref="MoveNext"/> on return.
     /// </summary>
     public void AdvanceMatching()
     {

@@ -97,7 +97,6 @@ public class LongFinalityIntegrationTests
         tier.ConvertToPersistedBase(snap).Dispose();
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
 
-        // Query all types through the individual persisted snapshot
         Assert.That(persisted!.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
         Assert.That(stateResult, Is.EqualTo(stateRlp));
         Assert.That(persisted.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageResult), Is.True);
@@ -140,7 +139,6 @@ public class LongFinalityIntegrationTests
         }
         MemDb catalogDb = new();
 
-        // Session 1: persist two snapshots
         using (FlatTestContainer tier1 = new(arenaFileSizeBytes: maxArenaSize, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier1.Repository;
@@ -182,7 +180,6 @@ public class LongFinalityIntegrationTests
                 $"{blobFile} length {len} > 1 MiB cap — pre-extension regressed");
         }
 
-        // Session 2: reload and verify
         using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier2.Repository;
@@ -263,7 +260,6 @@ public class LongFinalityIntegrationTests
         Assert.That(mergedSnap.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageRlpResult), Is.True);
         Assert.That(storageRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
 
-        // Both accounts should be present
         Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
         Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
     }
@@ -300,7 +296,6 @@ public class LongFinalityIntegrationTests
         TreePath path = new(Keccak.Compute("e2e_path"), 4);
         byte[] nodeRlp = [0xC1, 0x80];
 
-        // Persist a snapshot with a state node
         tier.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
             c.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp))).Dispose();
 
@@ -341,7 +336,6 @@ public class LongFinalityIntegrationTests
         StateId s5 = new(5, Keccak.Compute("5"));
         MemDb catalogDb = new();
 
-        // Session 1: persist snapshots
         using (FlatTestContainer tier1 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier1.Repository;
@@ -353,7 +347,6 @@ public class LongFinalityIntegrationTests
                 c.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(5).TestObject)).Dispose();
         }
 
-        // Session 2: reload and prune
         using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier2.Repository;
@@ -363,7 +356,6 @@ public class LongFinalityIntegrationTests
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
         }
 
-        // Session 3: verify pruned state persists
         using (FlatTestContainer tier3 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier3.Repository;
@@ -380,7 +372,6 @@ public class LongFinalityIntegrationTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        // Persist an empty snapshot
         Snapshot empty = CreateSnapshot(s0, s1, _ => { });
         tier.ConvertToPersistedBase(empty).Dispose();
 

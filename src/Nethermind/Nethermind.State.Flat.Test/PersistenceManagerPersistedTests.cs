@@ -59,7 +59,6 @@ public class PersistenceManagerPersistedTests
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
 
-        // Persist snapshots at various block heights
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
         StateId s3 = new(3, Keccak.Compute("3"));
@@ -79,10 +78,10 @@ public class PersistenceManagerPersistedTests
 
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(3));
 
-        // Remove states until block 5 (removes snapshots with To < 5, i.e., s1 and s3)
+        // Snapshots with To.BlockNumber < 5 are removed (s1, s3); s6 survives.
         repo.RemovePersistedStatesUntil(5);
 
-        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1)); // Only s6 remains
+        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
     }
 
     [Test]

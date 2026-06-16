@@ -136,8 +136,6 @@ public static class PersistedSnapshotMerger
         }
     }
 
-    /// <summary>Per-key bloom callback for state-trie merges: adds
-    /// <c>StatePathKey(minKey)</c> to <paramref name="bloom"/>.</summary>
     private readonly struct StatePathBloomCallback(BloomFilter bloom)
         : IHsstMergeKeyCallback
     {
@@ -188,7 +186,6 @@ public static class PersistedSnapshotMerger
                 return;
             }
 
-            // Open the outer BTree entry's value write; the per-address DenseByteIndex streams into it.
             ref TWriter writer = ref builder.BeginValueWrite();
             long valueStart = writer.Written;
             // perAddrBuilder is passed to several helpers by ref, so it can't be a `using`
@@ -507,7 +504,6 @@ public static class PersistedSnapshotMerger
             Span<Bound> subTagBounds = stackalloc Bound[matchCount * SubTagCount];
             ResolvePerAddrAndSubTagBounds(in cursor, perAddrBounds, subTagBounds, SubTagCount);
 
-            // Open the outer BTree entry's value write; the per-addressHash DenseByteIndex streams into it.
             ref TWriter writer = ref builder.BeginValueWrite();
             long valueStart = writer.Written;
             HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref writer);
@@ -672,8 +668,6 @@ public static class PersistedSnapshotMerger
         outerBuilder.Build();
     }
 
-    // --- N-Way merge methods ---
-
     /// <summary>
     /// N-way streaming merge of a column across N pre-seeded sources into a fixed-key-size
     /// PackedArray HSST. On key collision, newest (highest index) wins. The caller owns
@@ -690,8 +684,6 @@ public static class PersistedSnapshotMerger
     {
         ArgumentNullException.ThrowIfNull(bloom);
         int n = sources.Length;
-        // Cache each source's current logical key once per MoveNext so the O(log N) cursor
-        // and O(N) match-detection scans don't redo CopyCurrentLogicalKey per output key.
         int keyStride = Math.Max(1, keySize);
         using LoserTreeState state = new(n, keyStride);
         using ArrayPoolList<HsstEnumerator<TReader, TPin>> enumeratorsList = new(n, n);

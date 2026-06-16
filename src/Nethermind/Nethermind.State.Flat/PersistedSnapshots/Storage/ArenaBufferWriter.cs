@@ -8,22 +8,18 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
 /// Arena-backed <see cref="IByteBufferWriter"/> with a 1 MiB write-buffer.
-///
-/// Writes are buffered into a native-memory buffer and flushed to the underlying
-/// <see cref="Stream"/> in 1 MiB chunks.
 /// </summary>
 /// <remarks>
 /// The buffer is a <see cref="NativeMemoryList{T}"/> held at <c>Count == Capacity</c>,
 /// so <see cref="NativeMemoryList{T}.AsSpan"/> exposes the whole backing buffer and the
 /// writer slices the free tail with its own <c>_buffered</c> cursor. A hint larger than
-/// the current buffer grows it by reconstruction (after a flush), mirroring the previous
-/// rent-a-bigger-buffer behavior.
+/// the current buffer grows it by reconstruction (after a flush).
 /// </remarks>
 public struct ArenaBufferWriter(Stream stream, long firstOffset)
     : IByteBufferWriter, IDisposable
 {
-    private const int BufferSize = 1024 * 1024; // 1 MiB
-    private const int MaxSizeHint = 8 * 1024 * 1024; // 8 MiB — largest single span a caller may request
+    private const int BufferSize = 1024 * 1024;
+    private const int MaxSizeHint = 8 * 1024 * 1024; // 8 MiB
 
     private readonly Stream _stream = stream;
     private readonly long _firstOffset = firstOffset;

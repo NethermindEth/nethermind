@@ -8,7 +8,6 @@ namespace Nethermind.State.Flat.Hsst.BTree;
 /// </summary>
 internal struct BTreeNodeMetadata
 {
-    /// <summary>Which kind of addressable thing this is.</summary>
     /// <remarks>
     /// Encoded in the low 2 bits of the on-disk <c>Flags</c> byte. The writer emits only
     /// <see cref="BTreeNodeKind.Intermediate"/>; <see cref="BTreeNodeKind.Entry"/> is the
@@ -18,7 +17,7 @@ internal struct BTreeNodeMetadata
 
     /// <summary>0=Variable, 1=Uniform.</summary>
     public int KeyType;
-    /// <summary>Base offset subtracted from values before writing; caller subtracts it before AddKey. 0 means none.</summary>
+    /// <summary>Base offset subtracted from child offsets before writing; caller must subtract it from all values before passing them to <see cref="BTreeNodeWriter{TWriter}.Write"/>. 0 means none.</summary>
     public ulong BaseOffset;
     /// <summary>Uniform: fixed key length or slot size. Variable: ignored.</summary>
     public int KeySlotSize;

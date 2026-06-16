@@ -30,8 +30,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// <para>
 /// <b>One id per file.</b> A <c>BlobArenaId</c> is the file's stable numeric id
 /// (narrowed to <see cref="ushort"/>) — many writers across many base snapshots append
-/// into the same file over its lifetime, claiming the file for write via the
-/// <c>_reservedFiles</c> mutual-exclusion set and releasing on Complete. A new id is
+/// into the same file over its lifetime; a writer reserves the file by removing it from
+/// <c>_mutableFiles</c> and releases it (re-adding) on Complete or Cancel. A new id is
 /// only minted when no existing file has headroom; with a typical 1 GiB max file size,
 /// the count stays well below 65535.
 /// </para>
@@ -61,10 +61,6 @@ public sealed class BlobArenaManager : IDisposable
     private int _nextFileId;
     private bool _disposed;
 
-    /// <summary>
-    /// Construct a blob arena manager rooted at <paramref name="basePath"/> with a per-file
-    /// size cap of <paramref name="maxFileSize"/>.
-    /// </summary>
     public BlobArenaManager(string basePath, long maxFileSize)
     {
         _basePath = basePath;
@@ -132,7 +128,7 @@ public sealed class BlobArenaManager : IDisposable
             file = _files[fileId]!;
             startOffset = file.Frontier;
             // Reserve: remove from the mutable set so no concurrent CreateWriter picks it.
-            // RegisterCompleted / CancelWrite re-add it if it still has headroom.
+            // OnWriteCompleted / OnWriteCancelled re-add it if it still has headroom.
             _mutableFiles.Remove(fileId);
         }
         else

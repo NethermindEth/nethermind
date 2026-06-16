@@ -7,8 +7,8 @@ using Nethermind.Core.Collections;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// A simple disposable list of persisted snapshots, ordered oldest-first.
-/// Domain-specific query logic lives in <see cref="ReadOnlySnapshotBundle"/>.
+/// A list of persisted snapshots ordered oldest-first (index 0 = oldest).
+/// Probe logic lives in <see cref="PersistedSnapshotStack"/>.
 /// </summary>
 public sealed class PersistedSnapshotList : IDisposable, IEnumerable<PersistedSnapshot>
 {

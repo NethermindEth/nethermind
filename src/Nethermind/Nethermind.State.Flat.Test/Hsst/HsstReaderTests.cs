@@ -68,12 +68,6 @@ public class HsstReaderTests
     }
 
     /// <summary>
-    /// Forces the copy/rent fallback path inside <see cref="HsstReader{TReader,TPin}.TryLoadNode"/>:
-    /// every <see cref="IHsstByteReader{TPin}.PinBuffer"/> rents a pooled buffer and copies into it,
-    /// instead of returning a zero-copy slice. Mirrors what a paged or stream-backed reader
-    /// would do when a requested range can't be served as a contiguous span.
-    /// </summary>
-    /// <summary>
     /// Pin that returns a pooled byte array on dispose — test scaffolding for the copy-fallback
     /// reader below. No production reader needs it (all return <see cref="NoOpPin"/>).
     /// </summary>
@@ -161,7 +155,6 @@ public class HsstReaderTests
             Assert.That(Encoding.UTF8.GetString(buf), Is.EqualTo(value), $"Value mismatch for {key}");
         }
 
-        // Floor for a key before all entries returns false even via the copy path.
         using HsstReader<CopyOnlyByteReader, PooledArrayPin> rEmpty = new(in reader);
         Assert.That(rEmpty.TrySeek(""u8, out _), Is.False);
     }

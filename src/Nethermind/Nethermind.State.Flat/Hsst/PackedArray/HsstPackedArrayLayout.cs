@@ -35,7 +35,6 @@ internal static class HsstPackedArrayLayout
         throw new InvalidOperationException("HSST values-region size exceeds 256 TiB.");
     }
 
-    /// <summary>Validate an OffsetSize byte read from a trailer.</summary>
     public static bool IsValidOffsetSize(int offsetSize)
         => offsetSize == 1 || offsetSize == 2 || offsetSize == 4 || offsetSize == 6;
 }

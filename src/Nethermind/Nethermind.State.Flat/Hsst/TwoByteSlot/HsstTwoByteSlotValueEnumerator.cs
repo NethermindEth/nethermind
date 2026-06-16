@@ -38,9 +38,7 @@ internal sealed class HsstTwoByteSlotValueEnumerator<TReader, TPin>
         int next = _index + 1;
         if (next >= _layout.Count) return false;
         _index = next;
-        // Start of this entry: 0 if first, else Offset_{index} at offsetsStart + offsetSize*(index-1).
         long start = _index == 0 ? 0L : HsstTwoByteSlotValueReader.ReadOffsetLE<TReader, TPin>(in reader, _layout.OffsetsStart + (long)(_index - 1) * _layout.OffsetSize, _layout.OffsetSize);
-        // End of this entry: values-section end if last, else Offset_{index+1} at offsetsStart + offsetSize*index.
         long end = _index == _layout.Count - 1
             ? _layout.ValuesEnd - _layout.ValuesStart
             : HsstTwoByteSlotValueReader.ReadOffsetLE<TReader, TPin>(in reader, _layout.OffsetsStart + (long)_index * _layout.OffsetSize, _layout.OffsetSize);

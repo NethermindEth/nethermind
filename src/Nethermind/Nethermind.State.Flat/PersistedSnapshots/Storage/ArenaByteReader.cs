@@ -7,13 +7,11 @@ using Nethermind.State.Flat.Hsst;
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// Pointer-backed <see cref="IHsstByteReader{TPin}"/> over an arena-mmap region. On every
-/// read or pin computes which OS page(s) the access spans (in arena-absolute terms) and
-/// reports them to the owning <see cref="ArenaReservation"/> via <see cref="ArenaReservation.TouchRangePopulate"/>,
-/// which folds residency tracking, local pre-fault, and same/cross-arena eviction dispatch
-/// behind a single call. Page math uses <see cref="PageLayout.OsPageSize"/>.
+/// Pointer-backed <see cref="IHsstByteReader{TPin}"/> over an arena-mmap region.
 /// Holds a raw <c>byte*</c> + <see cref="long"/> length so the addressed region can exceed
 /// 2 GiB (each individual pin still materialises an int-sized <see cref="ReadOnlySpan{T}"/>).
+/// Each read or pin reports touched OS pages to <see cref="ArenaReservation.TouchRangePopulate"/>
+/// for residency tracking and pre-fault coalescing.
 /// </summary>
 public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 {
@@ -78,12 +76,9 @@ public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
         long absEnd = absStart + length - 1;
         long startPageBase = absStart & ~_pageMask;
         long endPageBase = absEnd & ~_pageMask;
-        // Fast path: access stays within a single OS page, and that page is the same as the
-        // last touch — nothing new to report to the tracker.
         if (startPageBase == endPageBase && startPageBase == _lastPageBase) return;
         _lastPageBase = endPageBase;
 
-        // Let the reservation probe every overlapping page and coalesce the pre-fault syscall.
         _reservation.TouchRangePopulate(localOffset, length);
     }
 }

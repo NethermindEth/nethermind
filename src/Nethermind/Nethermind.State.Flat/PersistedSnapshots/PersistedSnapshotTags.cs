@@ -50,7 +50,6 @@ internal static class PersistedSnapshotTags
     internal static readonly byte[] StateNodeFallbackTag = [0x04];
     internal static readonly byte[] StorageTrieColumnTag = [0x05];
 
-    // Per-address column 0x01 outer key width — raw 20-byte Address bytes.
     internal const int AddressKeyLength = Address.Size;
     // Per-addressHash column 0x05 outer key width — first 20 bytes of Keccak(address).
     internal const int AddressHashPrefixLength = 20;

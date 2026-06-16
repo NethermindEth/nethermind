@@ -13,6 +13,5 @@ public interface IHsstReaderSource<TReader, TPin>
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    /// <summary>Materialise a fresh reader over this source's region.</summary>
     TReader CreateReader();
 }

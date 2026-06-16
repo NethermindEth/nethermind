@@ -39,12 +39,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     private long _entryCount;
     private long _level0Count;
 
-    /// <summary>
-    /// Create a builder writing via <paramref name="writer"/>. <paramref name="keySize"/> /
-    /// <paramref name="valueSize"/> set the fixed entry stride; subsequent
-    /// <see cref="Add"/> calls validate against them. Allocates working buffers from
-    /// NativeMemory — call <see cref="Dispose"/> to free.
-    /// </summary>
+    /// <summary>Allocates NativeMemory working buffers — call <see cref="Dispose"/> to free.</summary>
     /// <param name="isLittleEndian">Storage-endianness override. <c>null</c> (default) auto-enables
     /// the LE-stored layout whenever <paramref name="keySize"/> ∈ {2,4,8}, unlocking the AVX-512
     /// floor-scan fast path; <c>true</c> requires that size; <c>false</c> forces the BE/lex byte
@@ -83,7 +78,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         _entriesPerCkLevel0 = 1 << _entriesPerCkLevel0Log2;
 
         _prevKeyBuffer = new NativeMemoryListRef<byte>(Math.Max(1, keySize));
-        // One checkpoint per stride; size lower bound is keySize bytes.
+        // Pre-size for ~1 ck per _entriesPerCkLevel0 entries (rough: /8 ≈ default stride).
         int checkpointSlots = Math.Max(8, expectedKeyCount / 8);
         _checkpointKeys = new NativeMemoryListRef<byte>(Math.Max(64, checkpointSlots * Math.Max(1, keySize)));
 
@@ -121,7 +116,6 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         _prevKeyBuffer.AddRange(key);
 
         // Emit at exact entries-per-ck boundaries so reader can derive slab bounds.
-        // _entriesPerCkLevel0 is a power of two — use mask in place of modulo.
         if ((_entryCount & (_entriesPerCkLevel0 - 1)) == 0)
         {
             if (_keySize > 0) AppendStorageKey(ref _checkpointKeys, key);
@@ -233,7 +227,6 @@ public ref struct HsstPackedArrayBuilder<TWriter>
 
         int depth = levelCounts.Count;
 
-        // Flush level 0.
         if (level0CountInt > 0)
         {
             ReadOnlySpan<byte> ckKeys = _checkpointKeys.AsSpan();
@@ -244,7 +237,6 @@ public ref struct HsstPackedArrayBuilder<TWriter>
             }
         }
 
-        // Flush higher levels in order from the staging buffer.
         ReadOnlySpan<byte> hlKeys = higherLevelsKeys.AsSpan();
         for (int lvl = 1; lvl < depth; lvl++)
         {

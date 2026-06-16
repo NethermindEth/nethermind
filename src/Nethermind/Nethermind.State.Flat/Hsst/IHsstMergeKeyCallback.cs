@@ -5,12 +5,10 @@ namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Per-emitted-key hook invoked by
-/// <see cref="PackedArray.HsstPackedArrayMerger.NWayMerge{TWriter,TReader,TPin,TSource,TCallback}"/> and
-/// <see cref="TwoByteSlot.HsstTwoByteSlotMerger.NWayMerge{TWriter,TReader,TPin,TSource,TCallback}"/>
-/// once per output key, after the merger has emitted that key+value (written into the
-/// destination builder or staged into the per-merge scratch buffers, respectively). Used by
-/// consumers that maintain side-state per key (e.g. a bloom filter) so they don't have to
-/// re-iterate the merger output.
+/// <see cref="PackedArray.HsstPackedArrayMerger.NWayMerge{TWriter,TReader,TPin,TSource,TFactory,TCallback}"/> and
+/// <see cref="TwoByteSlot.HsstTwoByteSlotMerger.NWayMerge{TWriter,TReader,TPin,TSource,TFactory,TCallback}"/>
+/// once per output key. Used by consumers that maintain side-state per key (e.g. a bloom filter)
+/// so they don't have to re-iterate the merger output.
 /// </summary>
 /// <remarks>
 /// Implemented as a generic struct constraint (<c>TCallback : struct, IHsstMergeKeyCallback</c>)

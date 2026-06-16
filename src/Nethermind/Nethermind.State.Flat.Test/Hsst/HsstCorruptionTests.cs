@@ -33,8 +33,6 @@ public class HsstCorruptionTests
         return hr.TrySeekTwoByteSlot(key, out _);
     }
 
-    // ---- Valid blob builders (one per top-level / nested format) ----
-
     private static byte[] BuildBTree() =>
         HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> b) =>
         {
@@ -180,7 +178,6 @@ public class HsstCorruptionTests
         Assert.That(TrySeek(badMeta, new Bound(0, badMeta.Length), new byte[] { 0, 0, 0, 1 }), Is.False);
     }
 
-    // The TwoByteSlot reader rejects a key whose length is not exactly 2.
     [Test]
     public void TwoByteSlot_RejectsWrongKeyLength()
     {

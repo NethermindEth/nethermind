@@ -38,7 +38,6 @@ public enum SnapshotTier
 
 public static class SnapshotTierExtensions
 {
-    /// <summary>Whether <paramref name="tier"/> is one of the persisted tiers (vs in-memory).</summary>
     public static bool IsPersisted(this SnapshotTier tier) => tier >= SnapshotTier.PersistedBase;
 
     /// <summary>The metric "tier" label (<c>base</c>/<c>compacted</c>/<c>persistable</c>) for a persisted

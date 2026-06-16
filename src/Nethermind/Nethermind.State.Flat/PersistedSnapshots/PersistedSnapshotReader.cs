@@ -25,8 +25,7 @@ public static class PersistedSnapshotReader
     /// <summary>
     /// Seek the bound of the outer address column under
     /// <see cref="PersistedSnapshotTags.AccountColumnTag"/> — the BTree HSST keyed by
-    /// 20-byte address that all per-address inner HSSTs index into. Used by post-write
-    /// warmup to locate the column's index region.
+    /// 20-byte address that all per-address inner HSSTs index into.
     /// </summary>
     internal static bool TryGetAddressColumnBound<TReader, TPin>(scoped in TReader reader, out Bound columnBound)
         where TPin : struct, IBufferPin, allows ref struct
@@ -67,11 +66,11 @@ public static class PersistedSnapshotReader
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        // Per-address HSST is always DenseByteIndex (column 0x01 layout). Resolve the sub-tag
-        // in a single pinned trailer read instead of going through HsstReader's dispatch +
-        // separate IndexType / layout / Ends[] reads. DenseByteIndex returns success for any
-        // tag below count, including gap-filled (length 0) absences; treat length 0 as "no
-        // account record" so callers don't misread an absent entry as a deleted account.
+        // Per-address HSST is always DenseByteIndex. Resolve the sub-tag in a single pinned
+        // trailer read instead of going through HsstReader's dispatch + separate IndexType /
+        // layout / Ends[] reads. DenseByteIndex returns success for any tag below count,
+        // including gap-filled (length 0) absences; treat length 0 as "no account record"
+        // so callers don't misread an absent entry as a deleted account.
         if (!HsstDenseByteIndexReader.TryResolveSingleTag<TReader, TPin>(
                 in reader, addressBound, PersistedSnapshotTags.AccountSubTagByte, out Bound b) ||
             b.Length == 0)

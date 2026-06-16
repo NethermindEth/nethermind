@@ -52,7 +52,7 @@ public sealed class PersistedSnapshotLoader(
     /// cannot tell a base from a sub-<c>CompactSize</c> compacted snapshot apart). For catalogs above
     /// <see cref="ParallelLoadThreshold"/> entries, the per-entry arena/blob lease work runs on
     /// <see cref="Parallel.ForEach"/> with a heartbeat <see cref="ProgressLogger"/>; each entry is then
-    /// indexed under its bucket's lock via <see cref="ISnapshotRepository.LoadPersistedSnapshot"/>.
+    /// indexed under its bucket's lock via <see cref="ISnapshotRepository.AddPersistedSnapshot"/>.
     /// </remarks>
     public void Load()
     {
@@ -105,9 +105,9 @@ public sealed class PersistedSnapshotLoader(
     }
 
     /// <summary>
-    /// Re-indexes a single catalog entry's snapshot via <see cref="ISnapshotRepository.AddPersistedSnapshot"/>,
-    /// which builds it from the reservation and indexes it under the bucket's lock — so this is safe to run
-    /// from the parallel load. No catalog write: the entry is already in the catalog (we are reading from it).
+    /// Loads a single catalog entry's snapshot via <see cref="ISnapshotRepository.AddPersistedSnapshot"/>,
+    /// which indexes it under the bucket's lock — so this is safe to run from the parallel load.
+    /// No catalog write: the entry is already in the catalog (we are reading from it).
     /// </summary>
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
@@ -116,8 +116,7 @@ public sealed class PersistedSnapshotLoader(
         // The ctor walks its own ref_ids metadata and leases each blob arena file (rolling back on
         // partial failure) and takes its own lease on the reservation, so we drop ours right after.
         // The bloom is the AlwaysTrue placeholder — ReconstructBloom replaces it once every snapshot
-        // is in place. No catalog write: the entry is already in the catalog. The `using` drops the
-        // construction lease at the end; the bucket keeps its own.
+        // is in place. The `using` drops the construction lease at the end; the bucket keeps its own.
         using PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, blobs, entry.Tier, BloomFilter.AlwaysTrue());
         reservation.Dispose();
         repository.AddPersistedSnapshot(snapshot, entry.Tier);
@@ -145,7 +144,6 @@ public sealed class PersistedSnapshotLoader(
         // assemblable snapshot and gets its own bloom.
         List<PersistedSnapshot> snapshots = [.. repository.PersistedSnapshots];
 
-        // Widest-first so the big merges (slowest to scan) lead the parallel queue.
         snapshots.Sort(static (a, b) =>
             (b.To.BlockNumber - b.From.BlockNumber).CompareTo(a.To.BlockNumber - a.From.BlockNumber));
 

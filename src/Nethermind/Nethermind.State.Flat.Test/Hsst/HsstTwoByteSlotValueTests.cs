@@ -55,7 +55,6 @@ public class HsstTwoByteSlotValueTests
     [TestCase(true)]
     public void Add_NonAscendingKey_Throws(bool large)
     {
-        // Duplicate key.
         Assert.Throws<ArgumentException>(() =>
         {
             using PooledByteBufferWriter p = new(1024);
@@ -64,7 +63,6 @@ public class HsstTwoByteSlotValueTests
             b.Add([0x10, 0x00], [2]);
         }, "duplicate key must throw");
 
-        // Strictly-lower key.
         Assert.Throws<ArgumentException>(() =>
         {
             using PooledByteBufferWriter p = new(1024);
@@ -210,8 +208,6 @@ public class HsstTwoByteSlotValueTests
     [TestCaseSource(nameof(WireFormatCases))]
     public void WireFormat_KeysFirst_PinsBytes(bool large, byte[] expected)
     {
-        // Three entries, 2-byte values. Validate every byte of the keys-first layout:
-        // leading IndexType byte + header (KeyCount) + keys + offsets + values.
         byte[][] keys =
         [
             [0x00, 0x10],

@@ -45,7 +45,6 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// <summary>Pre-extended file length (sparse on Linux). Writers append within this cap.</summary>
     public long MaxSize { get; }
 
-    /// <summary>Underlying read/write file handle. Used internally by <see cref="RandomRead"/> and <see cref="OpenWriteStream"/>.</summary>
     private SafeFileHandle Handle { get; }
 
     /// <summary>Next-write offset. Mutated under the manager's lock during writer registration.</summary>
@@ -109,10 +108,8 @@ public sealed class BlobArenaFile : RefCountingDisposable
     internal bool HasOnlyManagerLease => Volatile.Read(ref _leases.Value) == 1;
 
     /// <summary>
-    /// Read into <paramref name="destination"/> starting at <paramref name="offset"/> via
-    /// <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>, looping over short reads
-    /// until the destination is full or a 0-byte read signals end-of-data. Returns the total bytes
-    /// copied (may be less than the destination length on a short read at EOF).
+    /// Read into <paramref name="destination"/> starting at <paramref name="offset"/>.
+    /// Returns the total bytes copied; may be less than <c>destination.Length</c> on a short read at EOF.
     /// </summary>
     public int RandomRead(long offset, Span<byte> destination)
     {
@@ -171,8 +168,6 @@ public sealed class BlobArenaFile : RefCountingDisposable
     protected override void CleanUp()
     {
         Handle.Dispose();
-        // Preserve the on-disk file iff someone explicitly opted in via PersistOnShutdown;
-        // otherwise delete it (the normal post-prune cleanup path).
         if (Volatile.Read(ref _preserveOnDispose) == 0)
         {
             try { File.Delete(Path); } catch { /* best-effort */ }

@@ -43,9 +43,6 @@ public sealed class PersistedSnapshotStack(
 
     public int Count => _snapshots.Count;
 
-    /// <summary>
-    /// Probe the stack newest-first for the account at <paramref name="address"/>.
-    /// </summary>
     /// <returns><c>true</c> when a snapshot holds an entry for the address —
     /// <paramref name="account"/> is then the stored account, or <c>null</c> for a
     /// deletion marker. <c>false</c> means the caller should fall through to persistence.</returns>
@@ -113,9 +110,6 @@ public sealed class PersistedSnapshotStack(
     public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, long lookupStart, out byte[]? value)
     {
         long psw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        // Bloom checks both the address-key and the per-slot key before paying for a
-        // column seek into the persisted snapshot. PersistedSnapshot's per-address column
-        // is keyed by raw Address; the bloom seed derives from raw Address bytes directly.
         if (_snapshots.Count > 0)
         {
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
@@ -147,9 +141,6 @@ public sealed class PersistedSnapshotStack(
         return false;
     }
 
-    /// <summary>
-    /// Probe the stack newest-first for the state-trie node RLP at <paramref name="path"/>.
-    /// </summary>
     public bool TryLoadStateRlp(in TreePath path, out byte[]? rlp)
     {
         long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -169,10 +160,6 @@ public sealed class PersistedSnapshotStack(
         return false;
     }
 
-    /// <summary>
-    /// Probe the stack newest-first for the storage-trie node RLP at
-    /// (<paramref name="address"/>, <paramref name="path"/>).
-    /// </summary>
     public bool TryLoadStorageRlp(Hash256 address, in TreePath path, out byte[]? rlp)
     {
         long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;

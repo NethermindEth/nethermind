@@ -33,8 +33,6 @@ public sealed class ArenaManager : IArenaManager
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
     private readonly PageResidencyTracker _pageTracker;
-    // Kernel page-residency machinery: eviction ring + drain, sibling warming, and the resident-bytes
-    // metric timer. Null when the tracker is disabled (no pages tracked).
     private readonly PageResidencyAdvisor? _pageAdvisor;
     private int _nextArenaId;
     private bool _disposed;
@@ -61,8 +59,6 @@ public sealed class ArenaManager : IArenaManager
         _pageTracker = PageResidencyTracker.FromByteBudget(config.PersistedSnapshotArenaPageCacheBytes);
         Metrics.PageTrackerMetadataBytes = _pageTracker.MetadataBytes;
 
-        // The advisor owns the kernel page-residency machinery — the eviction ring + drain, sibling
-        // warming, and the resident-bytes metric timer. Skipped entirely when the tracker is disabled.
         if (_pageTracker.MaxCapacity > 0)
         {
             // Eviction queue sized at ~1% of the tracker's slot capacity, floored at 128 cache lines
@@ -126,8 +122,7 @@ public sealed class ArenaManager : IArenaManager
             liveSizes[aid] = live + entry.Location.Size;
         }
 
-        // Dead bytes = frontier - live sizes (stored on the file itself). Now that
-        // frontiers reflect the catalog's high-water mark, push the per-file count + bytes
+        // Now that frontiers reflect the catalog's high-water mark, push the per-file count + bytes
         // gauges in one go (seeds ReportedFrontier).
         foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
         {
@@ -382,7 +377,6 @@ public sealed class ArenaManager : IArenaManager
         private readonly SemaphoreSlim _wake = new(0, int.MaxValue);
         private readonly CancellationTokenSource _drainCts = new();
         private readonly Task _drainTask;
-        // Mirrors the tracker's resident-bytes counter into the gauge on a 1s tick.
         private readonly Timer _metricsTimer;
         private volatile bool _disposed;
         // 0 = drain may sleep, 1 = at least one item is queued. Producers flip 0→1 and Release; the

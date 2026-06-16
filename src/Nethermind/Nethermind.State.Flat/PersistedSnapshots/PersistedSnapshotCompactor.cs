@@ -319,8 +319,6 @@ public class PersistedSnapshotCompactor(
                 }
                 else
                 {
-                    // Pre-fault the address column index so the first query doesn't chain
-                    // inline page faults.
                     WarmAddressColumnIndex(compacted);
                 }
             }

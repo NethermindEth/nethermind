@@ -60,7 +60,6 @@ public class PersistedSnapshotRepositoryTests
         tier.ConvertToPersistedBase(snap).Dispose();
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
 
-        // Query through the snapshot
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.From, Is.EqualTo(s0));
         Assert.That(persisted.To, Is.EqualTo(s1));
@@ -113,7 +112,6 @@ public class PersistedSnapshotRepositoryTests
         StateId s1 = new(1, Keccak.Compute("1"));
         StateId s2 = new(2, Keccak.Compute("2"));
 
-        // Persist two snapshots with different state trie nodes at same path
         TreePath path = new(Keccak.Compute("path"), 4);
         byte[] rlp1 = [0xC0];
         byte[] rlp2 = [0xC1, 0x80];
@@ -129,7 +127,6 @@ public class PersistedSnapshotRepositoryTests
         tier.ConvertToPersistedBase(snap1).Dispose();
         tier.ConvertToPersistedBase(snap2).Dispose();
 
-        // The newest snapshot (s1→s2) should have rlp2 at the path
         Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedBase, out PersistedSnapshot? newest), Is.True);
         Assert.That(newest!.TryLoadStateNodeRlp(path, out byte[]? result), Is.True);
         Assert.That(result, Is.EqualTo(rlp2));
@@ -143,7 +140,6 @@ public class PersistedSnapshotRepositoryTests
         StateId s1 = new(1, Keccak.Compute("1"));
         MemDb catalogDb = new();
 
-        // Session 1: persist a snapshot
         using (FlatTestContainer tier1 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier1.Repository;
@@ -151,7 +147,6 @@ public class PersistedSnapshotRepositoryTests
             tier1.ConvertToPersistedBase(snap).Dispose();
         }
 
-        // Session 2: reload from disk
         using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier2.Repository;
@@ -198,24 +193,19 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         using PersistedSnapshot _ = persisted!;
 
-        // 1. Account
         Assert.That(persisted!.TryGetAccount(acctAddr, out Account? account), Is.True);
         Assert.That(account, Is.Not.Null);
         Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
 
-        // 2. Storage slot
         SlotValue readSlot = default;
         Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, ref readSlot), Is.True);
         Assert.That(readSlot.AsReadOnlySpan.ToArray(), Is.EqualTo(slotBytes));
 
-        // 3. Self-destruct flag
         Assert.That(persisted.TryGetSelfDestructFlag(selfDestructAddr), Is.Not.Null);
 
-        // 4. State trie node
         Assert.That(persisted.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
         Assert.That(stateResult, Is.EqualTo(stateRlp));
 
-        // 5. Storage trie node
         Assert.That(persisted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, storagePath, out byte[]? storageResult), Is.True);
         Assert.That(storageResult, Is.EqualTo(storageRlp));
     }
@@ -504,7 +494,6 @@ public class PersistedSnapshotRepositoryTests
         using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
         SnapshotRepository repo2 = tier2.Repository;
 
-        // All N bases + 2 persistables survive.
         Assert.That(repo2.PersistedSnapshotCount, Is.EqualTo(N + 2));
         for (int i = 1; i <= N; i++)
         {

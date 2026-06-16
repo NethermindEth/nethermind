@@ -70,8 +70,7 @@ public sealed class BlobArenaWriter : IDisposable
     }
 
     /// <summary>
-    /// The blob arena file id that <see cref="WriteRlp"/> embeds in returned
-    /// <see cref="NodeRef"/>s. Equals the underlying <see cref="ArenaFile.Id"/>.
+    /// The blob arena file id embedded in every <see cref="NodeRef"/> returned by <see cref="WriteRlp"/>.
     /// </summary>
     public ushort BlobArenaId => _blobArenaId;
 

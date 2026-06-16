@@ -4,11 +4,9 @@
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 /// <summary>
-/// Buffered writer over an arena slice. The writer holds the <see cref="ArenaFile"/> ref
-/// directly — Complete and Cancel mutate the file (truncate / drop manager-lease) and then
-/// notify <see cref="ArenaManager"/> for the dict / metric bookkeeping. The manager never
-/// looks the file up by id in the writer's finish path; everything it needs is in the
-/// notification arguments.
+/// Buffered writer over an arena slice. Complete and Cancel mutate the <see cref="ArenaFile"/>
+/// (truncate / drop manager-lease) and then notify <see cref="ArenaManager"/> for dict / metric
+/// bookkeeping.
 /// </summary>
 public sealed class ArenaWriter : IDisposable
 {
