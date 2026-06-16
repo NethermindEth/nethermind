@@ -126,7 +126,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         if (baseBlock == targetState) return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
 
         AssemblePolicy policy = new(targetState);
-        return WalkAndAssemble(baseBlock, startViaPersisted: false, estimatedSize, ref policy);
+        return WalkAndAssemble(baseBlock, estimatedSize, ref policy);
     }
 
     /// <summary>
@@ -145,7 +145,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId baseBlock, long minBlockNumber, int estimatedSize)
     {
         InMemoryCompactionPolicy policy = new(minBlockNumber);
-        AssembledSnapshotResult result = WalkAndAssemble(baseBlock, startViaPersisted: false, estimatedSize, ref policy);
+        AssembledSnapshotResult result = WalkAndAssemble(baseBlock, estimatedSize, ref policy);
         result.Persisted.Dispose(); // in-memory-only policy never yields persisted entries
         return result.InMemory;
     }
@@ -237,8 +237,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// in-memory edges are skipped for any node reached over a persisted edge. The <paramref name="policy"/>
     /// only supplies the edge-priority table and a per-edge verdict.
     /// </summary>
-    private AssembledSnapshotResult WalkAndAssemble<TPolicy>(
-        in StateId start, bool startViaPersisted, int estimatedSize, ref TPolicy policy)
+    private AssembledSnapshotResult WalkAndAssemble<TPolicy>(in StateId start, int estimatedSize, ref TPolicy policy)
         where TPolicy : struct, IAssemblePolicy
     {
         using PooledQueue<WalkNode> queue = new();
@@ -250,7 +249,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         {
             int winnerIndex = -1;
             seen.Add(start);
-            queue.Enqueue(new WalkNode(start, startViaPersisted, -1));
+            // The root starts in the in-memory tier; ViaPersisted flips on as the walk crosses a persisted
+            // edge. A persisted-only policy simply has no in-memory tiers to expand.
+            queue.Enqueue(new WalkNode(start, viaPersisted: false, -1));
 
             while (queue.Count > 0)
             {
@@ -411,7 +412,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         int estimatedSize = (int)Math.Clamp(toStateId.BlockNumber - minBlockNumber, 4, 4096);
         PersistedCompactionPolicy policy = new(minBlockNumber);
-        AssembledSnapshotResult result = WalkAndAssemble(toStateId, startViaPersisted: true, estimatedSize, ref policy);
+        AssembledSnapshotResult result = WalkAndAssemble(toStateId, estimatedSize, ref policy);
         result.InMemory.Dispose(); // persisted-only policy never yields in-memory entries
 
         PersistedSnapshotList persisted = result.Persisted;
