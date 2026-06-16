@@ -170,7 +170,7 @@ public class RpcModuleTests
     public void CalculateBlockInfoByV1EpochNum_ShouldReturnFail_WhenV1EpochIsRequested()
     {
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.CalculateBlockInfoByV1EpochNum(1);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.xdpos_calculateBlockInfoByV1EpochNum(1);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -194,7 +194,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber + 1).Returns(nextBlockRoundInfo);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.xdpos_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -220,7 +220,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber + 1).Returns((BlockRoundInfo?)null);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.xdpos_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -236,7 +236,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns((BlockRoundInfo?)null);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByV2EpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.xdpos_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -260,7 +260,7 @@ public class RpcModuleTests
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByEpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.xdpos_getBlockInfoByEpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -286,7 +286,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(blockRoundInfo);
 
         // Act
-        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByEpochNum(epochNumber);
+        ResultWrapper<EpochNumInfo> result = _rpcModule.xdpos_getBlockInfoByEpochNum(epochNumber);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -319,7 +319,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.xdpos_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -337,7 +337,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(begin).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.xdpos_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -358,7 +358,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.xdpos_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -382,7 +382,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.xdpos_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -406,7 +406,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.xdpos_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -430,7 +430,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
-        ResultWrapper<ulong[]> result = _rpcModule.GetEpochNumbersBetween(begin, end);
+        ResultWrapper<ulong[]> result = _rpcModule.xdpos_getEpochNumbersBetween(begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -469,7 +469,7 @@ public class RpcModuleTests
         _syncInfoManager.GetReceivedSyncInfos().Returns(new Dictionary<(ulong, Hash256), SyncInfoTypes>());
 
         // Act
-        ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
+        ResultWrapper<PoolStatus> result = _rpcModule.xdpos_getLatestPoolStatus();
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -486,7 +486,7 @@ public class RpcModuleTests
         _blockTree.Head.Returns((Block?)null);
 
         // Act
-        ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
+        ResultWrapper<PoolStatus> result = _rpcModule.xdpos_getLatestPoolStatus();
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -501,7 +501,7 @@ public class RpcModuleTests
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
         // Act
-        ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
+        ResultWrapper<PoolStatus> result = _rpcModule.xdpos_getLatestPoolStatus();
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -517,7 +517,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns((EpochSwitchInfo?)null);
 
         // Act
-        ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
+        ResultWrapper<PoolStatus> result = _rpcModule.xdpos_getLatestPoolStatus();
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -552,7 +552,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Latest);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.xdpos_getMasternodesByNumber(BlockParameter.Latest);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -590,7 +590,7 @@ public class RpcModuleTests
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Finalized);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.xdpos_getMasternodesByNumber(BlockParameter.Finalized);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -604,7 +604,7 @@ public class RpcModuleTests
         _quorumCertificateManager.HighestKnownCertificate.Returns((QuorumCertificate?)null);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(BlockParameter.Finalized);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.xdpos_getMasternodesByNumber(BlockParameter.Finalized);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -618,7 +618,7 @@ public class RpcModuleTests
         BlockParameter blockParameter = new(-1);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.xdpos_getMasternodesByNumber(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -633,7 +633,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.xdpos_getMasternodesByNumber(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -650,7 +650,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns(header);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.xdpos_getMasternodesByNumber(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -669,7 +669,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns(header);
 
         // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
+        ResultWrapper<MasternodesStatus> result = _rpcModule.xdpos_getMasternodesByNumber(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -696,7 +696,7 @@ public class RpcModuleTests
         _snapshotManager.GetSnapshotByBlockNumber(100, spec).Returns(snapshot);
 
         // Act
-        ResultWrapper<Address[]> result = _rpcModule.GetSigners(BlockParameter.Latest);
+        ResultWrapper<Address[]> result = _rpcModule.xdpos_getSigners(BlockParameter.Latest);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -723,7 +723,7 @@ public class RpcModuleTests
         _snapshotManager.GetSnapshotByBlockNumber(50, spec).Returns(snapshot);
 
         // Act
-        ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
+        ResultWrapper<Address[]> result = _rpcModule.xdpos_getSigners(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -737,7 +737,7 @@ public class RpcModuleTests
         BlockParameter blockParameter = new(-1);
 
         // Act
-        ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
+        ResultWrapper<Address[]> result = _rpcModule.xdpos_getSigners(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -752,7 +752,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
+        ResultWrapper<Address[]> result = _rpcModule.xdpos_getSigners(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -767,7 +767,7 @@ public class RpcModuleTests
         BlockParameter blockParameter = new(-1);
 
         // Act
-        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
+        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.xdpos_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -782,7 +782,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns((BlockHeader?)null);
 
         // Act
-        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
+        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.xdpos_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -799,7 +799,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(100).Returns(header);
 
         // Act
-        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
+        ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.xdpos_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -854,7 +854,7 @@ public class RpcModuleTests
             });
 
         // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
+        ResultWrapper<AccountRewardResponse> result = _rpcModule.xdpos_getRewardByAccount(account, begin, end);
 
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -898,7 +898,7 @@ public class RpcModuleTests
             });
 
         // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
+        ResultWrapper<AccountRewardResponse> result = _rpcModule.xdpos_getRewardByAccount(account, begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -930,7 +930,7 @@ public class RpcModuleTests
         _rewardsStore.HasEpochRewards(epoch).Returns(false);
 
         // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
+        ResultWrapper<AccountRewardResponse> result = _rpcModule.xdpos_getRewardByAccount(account, begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
@@ -952,7 +952,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(end).Returns(endHeader);
 
         // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
+        ResultWrapper<AccountRewardResponse> result = _rpcModule.xdpos_getRewardByAccount(account, begin, end);
 
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
