@@ -798,7 +798,7 @@ public class StorageProviderTests(bool useFlat)
 
         public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock), writtenData);
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, bool trackWitness = false) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock, trackWitness), writtenData);
 
         private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
         {

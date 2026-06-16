@@ -49,7 +49,7 @@ public class PrewarmerScopeProvider(
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, logManager, isPrewarmer);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, bool trackWitness = false) => new ScopeWrapper(baseProvider.BeginScope(baseBlock, trackWitness), preBlockCaches, logManager, isPrewarmer);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !isPrewarmer;
@@ -149,6 +149,14 @@ public class PrewarmerScopeProvider(
         }
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
+
+        public ScopeWitness? Witness => baseScope.Witness;
+
+        // Reads served from preBlockCache here still call ReportRead from StateProvider/PersistentStorageProvider
+        // (which sit above this cache), so a hit can't hide a touch from the witness; just forward to baseScope.
+        public void ReportRead(Address address) => baseScope.ReportRead(address);
+
+        public void ReportRead(in StorageCell storageCell) => baseScope.ReportRead(in storageCell);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {

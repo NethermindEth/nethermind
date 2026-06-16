@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
-namespace Nethermind.Consensus.Stateless;
+namespace Nethermind.State;
 
 /// <summary>
 /// Walks the trie once and captures trie-node RLP along the path to each of N target accounts and,

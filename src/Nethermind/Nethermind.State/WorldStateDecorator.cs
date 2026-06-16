@@ -23,8 +23,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual bool IsInScope => State.IsInScope;
     public virtual IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 
-    public virtual IDisposable BeginScope(BlockHeader? baseBlock)
-        => State.BeginScope(baseBlock);
+    public virtual IDisposable BeginScope(BlockHeader? baseBlock, bool trackWitness = false)
+        => State.BeginScope(baseBlock, trackWitness);
+
+    public virtual ScopeWitness? Witness => State.Witness;
 
     public virtual Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);

@@ -45,22 +45,28 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, bool trackWitness = false)
     {
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
         _backingStateTree ??= CreateStateTree();
-        _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        Hash256 baseStateRoot = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        _backingStateTree.RootHash = baseStateRoot;
 
-        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager, trackWitness, baseStateRoot);
     }
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
 
-    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
+    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager, bool trackWitness = false, Hash256? witnessBaseStateRoot = null) : IWorldStateScopeProvider.IScope
     {
         // Tracked HintBal background task — StartWriteBatch / Dispose cancel and drain it.
         private CancellationTokenSource? _hintBalCts;
         private Task? _hintBalTask;
+
+        // Witness tracking — populated only when opened with trackWitness. Reads/writes are reported via
+        // ReportRead (the scope's own Get is bypassed by upper-layer caches and never sees writes).
+        private readonly Dictionary<AddressAsKey, HashSet<UInt256>>? _touchedKeys = trackWitness ? new() : null;
+        private ScopeWitness? _builtWitness;
 
         public void Dispose()
         {
@@ -87,6 +93,31 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public Hash256 RootHash => _backingStateTree.RootHash;
         public void UpdateRootHash() => _backingStateTree.UpdateRootHash();
+
+        public void ReportRead(Address address)
+        {
+            if (_touchedKeys is null) return;
+            ref HashSet<UInt256>? slots = ref CollectionsMarshal.GetValueRefOrAddDefault(_touchedKeys, address, out _);
+            slots ??= [];
+        }
+
+        public void ReportRead(in StorageCell storageCell)
+        {
+            if (_touchedKeys is null) return;
+            ref HashSet<UInt256>? slots = ref CollectionsMarshal.GetValueRefOrAddDefault(_touchedKeys, storageCell.Address, out _);
+            slots ??= [];
+            slots.Add(storageCell.Index);
+        }
+
+        public ScopeWitness? Witness => _touchedKeys is null ? null : _builtWitness ??= BuildWitness();
+
+        private ScopeWitness BuildWitness()
+        {
+            // Walk a fresh read-only view at the base state root via the read-only trie store. Trie nodes are
+            // content-addressed, so reading at the base root is unaffected by execution-time commits.
+            IScopedTrieStore stateStore = _scopeProvider._trieStore.GetTrieStore(null);
+            return StorageWitnessCollector.Collect(stateStore, witnessBaseStateRoot ?? Keccak.EmptyTreeHash, _touchedKeys!, _logManager);
+        }
 
         public Account? Get(Address address)
         {

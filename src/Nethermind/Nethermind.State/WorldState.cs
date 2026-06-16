@@ -220,7 +220,9 @@ namespace Nethermind.State
 
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
-        public IDisposable BeginScope(BlockHeader? baseBlock)
+        public ScopeWitness? Witness => _currentScope?.Witness;
+
+        public IDisposable BeginScope(BlockHeader? baseBlock, bool trackWitness = false)
         {
             if (Interlocked.CompareExchange(ref _isInScope, true, false))
             {
@@ -231,9 +233,9 @@ namespace Nethermind.State
 
             try
             {
-                _currentScope = ScopeProvider.BeginScope(baseBlock);
-                _stateProvider.SetScope(_currentScope);
-                _persistentStorageProvider.SetBackendScope(_currentScope);
+                _currentScope = ScopeProvider.BeginScope(baseBlock, trackWitness);
+                _stateProvider.SetScope(_currentScope, trackWitness);
+                _persistentStorageProvider.SetBackendScope(_currentScope, trackWitness);
             }
             catch
             {

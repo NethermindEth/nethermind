@@ -131,7 +131,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     {
         public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+        // Witness tracking is not supported for overridable scopes (no main flat-db base view); the flag is
+        // accepted to satisfy the interface and ignored.
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, bool trackWitness = false)
         {
             StateId currentState = new(baseBlock);
             SnapshotBundle snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);

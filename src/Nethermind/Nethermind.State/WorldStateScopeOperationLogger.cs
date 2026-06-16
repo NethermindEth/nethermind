@@ -22,10 +22,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, bool trackWitness = false)
     {
         long scopeId = Interlocked.Increment(ref _currentScopeId);
-        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock), scopeId, _logger);
+        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, trackWitness), scopeId, _logger);
     }
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
@@ -52,6 +52,12 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public void HintGet(Address address, Account? account) => innerScope.HintGet(address, account);
+
+        public ScopeWitness? Witness => innerScope.Witness;
+
+        public void ReportRead(Address address) => innerScope.ReportRead(address);
+
+        public void ReportRead(in StorageCell storageCell) => innerScope.ReportRead(in storageCell);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => innerScope.HintBal(bal, sink);

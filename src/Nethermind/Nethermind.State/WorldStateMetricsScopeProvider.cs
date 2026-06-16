@@ -18,7 +18,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     private double _stateMerkleizationTime;
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new MetricsScope(_baseProvider.BeginScope(baseBlock), this);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, bool trackWitness = false) => new MetricsScope(_baseProvider.BeginScope(baseBlock, trackWitness), this);
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
@@ -35,6 +35,12 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         public Account? Get(Address address) => baseScope.Get(address);
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
+
+        public ScopeWitness? Witness => baseScope.Witness;
+
+        public void ReportRead(Address address) => baseScope.ReportRead(address);
+
+        public void ReportRead(in StorageCell storageCell) => baseScope.ReportRead(in storageCell);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 

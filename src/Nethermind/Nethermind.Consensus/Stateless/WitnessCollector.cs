@@ -21,7 +21,7 @@ public class WitnessCollector(
 {
     public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block)
     {
-        using IDisposable? scope = worldState.BeginScope(parentHeader);
+        using IDisposable? scope = worldState.BeginScope(parentHeader, trackWitness: true);
         blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
         return worldState.GetWitness(parentHeader);
     }

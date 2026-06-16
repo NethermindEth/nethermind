@@ -24,10 +24,18 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     // For scope to create genesis.
     const BlockHeader? PreGenesis = null;
 
-    IDisposable BeginScope(BlockHeader? baseBlock);
+    /// <param name="trackWitness">When <c>true</c>, the underlying scope records every account/slot touched and
+    /// exposes the storage witness via <see cref="Witness"/>. Default <c>false</c>.</param>
+    IDisposable BeginScope(BlockHeader? baseBlock, bool trackWitness = false);
     Task HintBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
+
+    /// <summary>
+    /// The storage witness for the current scope when it was opened with <c>trackWitness</c>, else <c>null</c>.
+    /// Must be read before the scope is disposed.
+    /// </summary>
+    ScopeWitness? Witness => null;
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);

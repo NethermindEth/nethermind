@@ -221,10 +221,11 @@ public class ProofRpcModuleCallTests
     /// re-walks touched keys via <c>MultiAccountProofCollector</c> + per-account <c>AccountProofCollector</c> to
     /// capture them. A cross-client (geth) verifier cannot reconstruct the slot without these nodes.
     /// </summary>
-    [Test]
-    public async Task Proof_call_includes_trie_nodes_for_storage_sstore_then_reverted()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Proof_call_includes_trie_nodes_for_storage_sstore_then_reverted(bool useFlatDb)
     {
-        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(useFlatDb).Build();
 
         // Runtime: SSTORE(0, 0xEE) then REVERT with empty data. The slot is written then reverted
         // in the same call — the trie is never traversed during the call. The only way the witness
@@ -309,10 +310,11 @@ public class ProofRpcModuleCallTests
     /// again, a caller who omits gas gets a near-empty witness that silently succeeds but fails
     /// stateless re-execution downstream. Seen in the wild with surge-raiko's L1STATICCALL preflight.
     /// </summary>
-    [Test]
-    public async Task Proof_call_with_and_without_gas_field_produces_same_witness_shape()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Proof_call_with_and_without_gas_field_produces_same_witness_shape(bool useFlatDb)
     {
-        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(useFlatDb).Build();
         await CreateTransferTx(blockchain);
         Address contractAddress = await DeploySloadReturningContract(blockchain, 0x55);
 
@@ -391,10 +393,11 @@ public class ProofRpcModuleCallTests
     /// Verifier check: the witness alone reconstructs the contract's account, bytecode, and storage —
     /// the building blocks a stateless light client needs to re-execute the call.
     /// </summary>
-    [Test]
-    public async Task Proof_call_witness_lets_a_verifier_reconstruct_state()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Proof_call_witness_lets_a_verifier_reconstruct_state(bool useFlatDb)
     {
-        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(useFlatDb).Build();
 
         // Contract: SSTORE(slot 0, 0xAB) in deploy init, then runtime returns SLOAD(0).
         byte[] runtimeCode = Prepare.EvmCode
@@ -469,10 +472,11 @@ public class ProofRpcModuleCallTests
     /// Regression guard: a single-slot call must still capture the state-root node (via the
     /// <c>MultiAccountProofCollector</c> walk); without it, tiny-call witnesses fail stateless re-execution.
     /// </summary>
-    [Test]
-    public async Task Proof_call_single_slot_includes_state_root_in_witness()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Proof_call_single_slot_includes_state_root_in_witness(bool useFlatDb)
     {
-        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(useFlatDb).Build();
 
         byte[] runtimeCode = Prepare.EvmCode
             .PushData(0xCD).PushData(0).Op(Instruction.SSTORE)
@@ -533,10 +537,11 @@ public class ProofRpcModuleCallTests
     /// <c>MultiAccountProofCollector</c> keyed its storage-walk discriminator by an address hash
     /// the visitor never provided, so the second account's storage was silently dropped.
     /// </summary>
-    [Test]
-    public async Task Proof_call_with_two_accounts_captures_storage_trie_for_each()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Proof_call_with_two_accounts_captures_storage_trie_for_each(bool useFlatDb)
     {
-        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(useFlatDb).Build();
         Address contract = await DeploySloadReturningContract(blockchain, 0x77);
         long blockNumber = blockchain.BlockTree.Head!.Number;
 
@@ -558,10 +563,11 @@ public class ProofRpcModuleCallTests
     /// witness to capture the target's account leaf, and the round-trip check proves the state-trie
     /// path is reconstructable without the chain.
     /// </summary>
-    [Test]
-    public async Task Proof_call_witness_round_trips_through_stateless_reconstruction_for_balance_opcode()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Proof_call_witness_round_trips_through_stateless_reconstruction_for_balance_opcode(bool useFlatDb)
     {
-        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(useFlatDb).Build();
 
         Address target = await DeploySloadReturningContract(blockchain, 0x33);
         byte[] callerCode = Prepare.EvmCode

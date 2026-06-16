@@ -30,7 +30,7 @@ public class FlatScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, bool trackWitness = false)
     {
         StateId currentState = new(baseBlock);
         SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
@@ -44,7 +44,9 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             warmReadPool: _warmReadPool,
-            isReadOnly: isReadOnly);
+            isReadOnly: isReadOnly,
+            trackWitness: trackWitness,
+            witnessFlatDbManager: flatDbManager);
     }
 
     public void Dispose()

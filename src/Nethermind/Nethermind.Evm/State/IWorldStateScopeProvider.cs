@@ -17,13 +17,38 @@ namespace Nethermind.Evm.State;
 public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
-    IScope BeginScope(BlockHeader? baseBlock);
+
+    /// <param name="trackWitness">When <c>true</c>, the scope records every account/slot touched (via
+    /// <see cref="IScope.ReportRead(Address)"/> / <see cref="IScope.ReportRead(in StorageCell)"/>) and
+    /// exposes the resulting storage witness through <see cref="IScope.Witness"/>. Default <c>false</c>
+    /// keeps the scope on its fast read path with no witness bookkeeping.</param>
+    IScope BeginScope(BlockHeader? baseBlock, bool trackWitness = false);
 
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }
 
         void UpdateRootHash();
+
+        /// <summary>
+        /// The storage witness for everything touched during this scope, or <c>null</c> when the scope was
+        /// not opened with <c>trackWitness</c>. Computed lazily on first access by walking the reported keys
+        /// against a read-only view of the scope's base state, so it must be read before the scope is disposed.
+        /// </summary>
+        ScopeWitness? Witness => null;
+
+        /// <summary>
+        /// Report that an account was touched by a caller whose read/write was served above the scope (cache
+        /// hit, or a write that never reads through the scope). No-op unless the scope is tracking a witness.
+        /// </summary>
+        void ReportRead(Address address) { }
+
+        /// <summary>
+        /// Report that a storage slot was touched by a caller whose read/write was served above the scope.
+        /// Also records the owning account so the witness covers the state-trie path to it. No-op unless the
+        /// scope is tracking a witness.
+        /// </summary>
+        void ReportRead(in StorageCell storageCell) { }
 
         /// <summary>
         /// Get the account information for the following address.

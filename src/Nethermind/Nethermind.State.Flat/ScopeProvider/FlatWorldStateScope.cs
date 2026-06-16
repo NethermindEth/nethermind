@@ -44,6 +44,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
+    // Witness tracking — populated only when the scope is opened with trackWitness. Reads/writes are
+    // reported via ReportRead (the scope's own Get is bypassed by upper-layer caches and never sees writes).
+    private readonly bool _trackWitness;
+    private readonly IFlatDbManager? _witnessFlatDbManager;
+    private readonly StateId _witnessBaseStateId;
+    private readonly Dictionary<AddressAsKey, HashSet<UInt256>>? _touchedKeys;
+    private ScopeWitness? _builtWitness;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     public FlatWorldStateScope(
@@ -55,9 +63,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        bool trackWitness = false,
+        IFlatDbManager? witnessFlatDbManager = null)
     {
         _currentStateId = currentStateId;
+        _witnessBaseStateId = currentStateId;
+        _trackWitness = trackWitness && witnessFlatDbManager is not null;
+        _witnessFlatDbManager = witnessFlatDbManager;
+        _touchedKeys = _trackWitness ? new() : null;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
@@ -137,6 +151,33 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
     public void UpdateRootHash() => _stateTree.UpdateRootHash();
+
+    public void ReportRead(Address address)
+    {
+        if (_touchedKeys is null) return;
+        ref HashSet<UInt256>? slots = ref CollectionsMarshal.GetValueRefOrAddDefault(_touchedKeys, address, out _);
+        slots ??= [];
+    }
+
+    public void ReportRead(in StorageCell storageCell)
+    {
+        if (_touchedKeys is null) return;
+        ref HashSet<UInt256>? slots = ref CollectionsMarshal.GetValueRefOrAddDefault(_touchedKeys, storageCell.Address, out _);
+        slots ??= [];
+        slots.Add(storageCell.Index);
+    }
+
+    public ScopeWitness? Witness => _touchedKeys is null ? null : _builtWitness ??= BuildWitness();
+
+    private ScopeWitness BuildWitness()
+    {
+        // Walk a FRESH read-only view at the base state root — not the execution scope's bundle/_stateTree,
+        // which a block-level witness re-execution mutates via Commit.
+        using ReadOnlySnapshotBundle bundle = _witnessFlatDbManager!.GatherReadOnlySnapshotBundle(_witnessBaseStateId)
+            ?? throw new InvalidOperationException($"State at {_witnessBaseStateId} not found for witness generation");
+        ReadOnlyStateTrieStoreAdapter adapter = new(bundle);
+        return StorageWitnessCollector.Collect(adapter, _witnessBaseStateId.StateRoot.ToCommitment(), _touchedKeys!, _logManager);
+    }
 
     public Account? Get(Address address)
     {

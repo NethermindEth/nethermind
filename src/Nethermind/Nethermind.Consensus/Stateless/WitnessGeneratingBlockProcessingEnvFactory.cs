@@ -41,7 +41,6 @@ public interface IWitnessGeneratingBlockProcessingEnvFactory
 public class WitnessGeneratingBlockProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
     IWorldStateManager worldStateManager,
-    IDbProvider dbProvider,
     IBlockValidationModule[] validationModules,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory, IDisposable
 {
@@ -71,20 +70,18 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private PooledEntry BuildEntry()
     {
-        IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-        WitnessCapturingTrieStore trieStore = new(worldStateManager.CreateReadOnlyTrieStore());
-        IStateReader stateReader = new StateReader(trieStore, readOnlyDbProvider.CodeDb, logManager);
-        IWorldState baseWorldState = new WorldState(
-            new TrieStoreScopeProvider(trieStore, readOnlyDbProvider.CodeDb, logManager), logManager);
+        // Execute against the real (flat-capable) scope provider so reads use the fast path; the storage
+        // witness is produced by the scope itself (opened with trackWitness) from the keys touched during
+        // execution. No capturing trie store — execution no longer detours through trie traversal.
+        IWorldStateScopeProvider scopeProvider = worldStateManager.CreateResettableWorldState();
+        IWorldState baseWorldState = new WorldState(scopeProvider, logManager);
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
         WitnessGeneratingHeaderFinder headerFinder = new(headerStore);
-        // Proof-collection walks go through the global (non-capturing) reader; the capturing
-        // stateReader serves execution-path reads.
-        WitnessGeneratingWorldState witnessWorldState = new(baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerFinder);
+        WitnessGeneratingWorldState witnessWorldState = new(baseWorldState, headerFinder);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
-            .AddScoped<IStateReader>(stateReader)
+            .AddScoped<IStateReader>(worldStateManager.GlobalStateReader)
             .AddScoped<IWorldState>(witnessWorldState)
             .AddScoped<WitnessGeneratingWorldState>(witnessWorldState)
             .AddScoped<IHeaderFinder>(headerFinder)
@@ -96,7 +93,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IWitnessGeneratingBlockProcessingEnv env = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
         IBlockhashCache blockhashCache = envLifetimeScope.Resolve<IBlockhashCache>();
-        return new PooledEntry(envLifetimeScope, readOnlyDbProvider, trieStore, witnessWorldState, headerFinder, blockhashCache, env);
+        return new PooledEntry(envLifetimeScope, witnessWorldState, headerFinder, blockhashCache, env);
     }
 
     private void Return(PooledEntry entry)
@@ -149,8 +146,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private sealed class PooledEntry(
         ILifetimeScope scope,
-        IReadOnlyDbProvider dbProvider,
-        WitnessCapturingTrieStore trieStore,
         WitnessGeneratingWorldState worldState,
         WitnessGeneratingHeaderFinder headerFinder,
         IBlockhashCache blockhashCache,
@@ -162,15 +157,14 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         /// <summary>Wipes per-call accumulators so the entry is safe for the next rent.</summary>
         /// <remarks>
         /// The inner WorldState's per-call caches are already cleared by <c>WorldState.BeginScope</c>'s
-        /// scope-exit <c>Reset(true)</c>; only the witness-specific accumulators are cleared here. The
+        /// scope-exit <c>Reset(true)</c>, and the touched-key set lives on the per-scope object that is
+        /// recreated each <c>BeginScope</c>; only the witness bytecode accumulator is cleared here. The
         /// blockhash cache is content-addressed (never stale) but grows per entry, so it's cleared too.
         /// </remarks>
         public void Reset()
         {
-            trieStore.Reset();
             worldState.Reset();
             headerFinder.Reset();
-            dbProvider.ClearTempChanges();
             blockhashCache.Clear();
         }
     }
