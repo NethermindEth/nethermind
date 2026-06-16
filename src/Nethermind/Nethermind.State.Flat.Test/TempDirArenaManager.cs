@@ -38,7 +38,7 @@ public sealed class TempDirArenaManager : IArenaManager
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => _inner.Initialize(entries);
 
-    public ArenaWriter CreateWriter(long estimatedSize) => _inner.CreateWriter(estimatedSize);
+    public ArenaWriter CreateWriter(long estimatedSize, bool small = false) => _inner.CreateWriter(estimatedSize, small);
 
     public ArenaReservation Open(in SnapshotLocation location) => _inner.Open(location);
 

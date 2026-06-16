@@ -75,7 +75,7 @@ public sealed class ArenaWriter : IDisposable
         }
         else
         {
-            _manager.OnWriteCancelledShared(_file.Id);
+            _manager.OnWriteCancelledShared(_file);
         }
     }
 }

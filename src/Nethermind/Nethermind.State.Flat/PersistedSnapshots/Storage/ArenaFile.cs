@@ -18,7 +18,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// Lifecycle is refcounted: the owning <see cref="ArenaManager"/>'s dictionary entry
 /// holds the initial lease (count 1). Each <see cref="ArenaReservation"/> referencing
 /// the file holds an additional lease. The manager drops its lease via <see cref="Dispose"/>
-/// (typically through <see cref="ArenaManager.MarkDead"/> or <see cref="ArenaManager.CancelWrite"/>);
+/// (typically through <see cref="ArenaManager.MarkDead"/> or one of the cancel paths
+/// <see cref="ArenaManager.OnWriteCancelledShared"/> / <see cref="ArenaManager.OnWriteCancelledDedicated"/>);
 /// the on-disk file is deleted by <see cref="CleanUp"/> when the last lease is released,
 /// unless the manager is in shutdown — in which case the file is preserved for the
 /// next session.
@@ -49,6 +50,15 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     public int Id { get; }
     private string Path { get; }
     public long MappedSize { get; private set; }
+
+    /// <summary>
+    /// True for arenas holding sub-CompactSize snapshots (the <c>PersistedBase</c> and
+    /// <c>PersistedSmallCompacted</c> tiers). Those snapshots are written almost as often as the
+    /// larger tiers but are demoted right after compaction and rarely read again, so they live in
+    /// their own files (and their own mutable pool in <see cref="ArenaManager"/>) to keep cold,
+    /// write-heavy data off the hot working set.
+    /// </summary>
+    public bool Small { get; }
 
     /// <summary>
     /// Next-write offset within this arena (in bytes). Set by <see cref="ArenaWriter.Complete"/>
@@ -94,11 +104,12 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
             Interlocked.Add(ref Metrics._arenaAllocatedBytes, -reported);
     }
 
-    public ArenaFile(int id, string path, long mappedSize)
+    public ArenaFile(int id, string path, long mappedSize, bool small = false)
     {
         Id = id;
         Path = path;
         MappedSize = mappedSize;
+        Small = small;
 
         _handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
 
