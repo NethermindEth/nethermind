@@ -172,12 +172,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverride, token);
 
                 string? errorMessage = result.Error;
-                if (!result.ExecutionReverted && !result.InputError && errorMessage is not null)
+                if (!result.ExecutionReverted && result.InputError && errorMessage is not null)
                 {
                     errorMessage = ErrorWrapper.EstimateGasBinarySearch(errorMessage, tx.GasLimit);
                 }
 
-                return CreateResultWrapper(result.InputError, errorMessage, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent, result.ExecutionReverted, result.OutputData);
+                return CreateResultWrapper(false, errorMessage, result.Error is not null ? null : (UInt256)result.GasSpent, result.ExecutionReverted, result.OutputData);
             }
         }
 
