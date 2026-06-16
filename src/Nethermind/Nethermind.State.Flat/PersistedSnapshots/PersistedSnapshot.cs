@@ -280,19 +280,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// Materialise the trie-node RLP at <paramref name="localBound"/>, which holds a
-    /// <see cref="NodeRef"/> pointing at the actual RLP bytes in a blob arena.
-    /// </summary>
-    internal byte[] ResolveTrieRlp(Bound localBound)
-    {
-        NodeRef nodeRef = default;
-        Span<byte> nr = MemoryMarshal.AsBytes(new Span<NodeRef>(ref nodeRef))[..checked((int)localBound.Length)];
-        ArenaByteReader reader = _reservation.CreateReader();
-        reader.TryRead(localBound.Offset, nr);
-        return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
-    }
-
-    /// <summary>
     /// Resolve the per-address inner-HSST bound, going through the inline 8-way address-bound
     /// cache. <paramref name="useSpanReader"/> is set to <c>true</c> when the caller should
     /// drive the sub-tag walk over a zero-touch <see cref="SpanByteReader"/> sliced from the
@@ -480,6 +467,19 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         byte[] result = new byte[totalLength];
         buf[..totalLength].CopyTo(result);
         return result;
+    }
+
+    /// <summary>
+    /// Materialise the trie-node RLP at <paramref name="localBound"/>, which holds a
+    /// <see cref="NodeRef"/> pointing at the actual RLP bytes in a blob arena.
+    /// </summary>
+    internal byte[] ResolveTrieRlp(Bound localBound)
+    {
+        NodeRef nodeRef = default;
+        Span<byte> nr = MemoryMarshal.AsBytes(new Span<NodeRef>(ref nodeRef))[..checked((int)localBound.Length)];
+        ArenaByteReader reader = _reservation.CreateReader();
+        reader.TryRead(localBound.Offset, nr);
+        return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
     }
 
     internal void AdviseDontNeed() => _reservation.AdviseDontNeed();
