@@ -299,7 +299,6 @@ public class Eip8037Tests : VirtualMachineTestsBase
             caller: Sender,
             codeSource: Recipient,
             callDepth: VirtualMachineStatics.MaxCallDepth,
-            transferValue: UInt256.Zero,
             value: UInt256.Zero,
             inputData: ReadOnlyMemory<byte>.Empty);
         EthereumGasPolicy gas = new()

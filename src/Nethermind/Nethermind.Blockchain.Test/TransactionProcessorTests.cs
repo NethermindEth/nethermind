@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test;
 [Todo(Improve.Refactor, "Check why fixture test cases did not work")]
 [Parallelizable(ParallelScope.All)]
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class TransactionProcessorTests(bool eip155Enabled)
+public partial class TransactionProcessorTests(bool eip155Enabled)
 {
     private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
     private IEthereumEcdsa _ethereumEcdsa;
@@ -41,7 +41,6 @@ public class TransactionProcessorTests(bool eip155Enabled)
     private IDisposable _stateCloser;
 
     private static readonly UInt256 AccountBalance = 1.Ether;
-
     [SetUp]
     public void Setup()
     {
@@ -251,7 +250,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         if (!systemUser)
         {
-            Assert.That(result, Is.EqualTo(TransactionResult.InsufficientSenderBalance));
+            Assert.That(result, Is.EqualTo(TransactionResult.InsufficientMaxFeePerGasForSenderBalance));
         }
         else
         {
@@ -740,4 +739,5 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(balanceBefore), "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
     }
+
 }

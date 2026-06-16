@@ -596,86 +596,93 @@ public partial class EngineModuleTests
         Assert.That(finalResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
-    [Test, Repeat(100)]
+    [Test, Retry(3)]
     public async Task Cannot_produce_bad_blocks()
     {
         // this test sends two payloadAttributes on block X and X + 1 to start many block improvements
-        // as the result we want to check if we are not able to produce invalid block by repeating this test many times
+        // as the result we want to check if we are not able to produce invalid block by repeating this many times.
+        // The 100-iteration loop is internal (was [Repeat(100)]) so it can be combined with [Retry(3)] — NUnit
+        // refuses to combine [Repeat] and [Retry] attributes.
 
+        const int iterations = 100;
         bool logInvalidBlockExecution = false; // change to true if you want to log invalid blocks
         string logFolder = "D:\\logs"; // adjust to your folder if needed by default logging is turned off
-        string guid = Guid.NewGuid().ToString();
-        ILogManager? logManager = LimboLogs.Instance;
-        if (logInvalidBlockExecution)
+
+        for (int iteration = 0; iteration < iterations; iteration++)
         {
-            logManager = new NLogManager($"log_+{guid}", logFolder);
-        }
+            string guid = Guid.NewGuid().ToString();
+            ILogManager? logManager = LimboLogs.Instance;
+            if (logInvalidBlockExecution)
+            {
+                logManager = new NLogManager($"log_+{guid}", logFolder);
+            }
 
-        TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 4 * delay;
-        using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            (ctx) => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
-            timePerSlot, delay: delay);
+            TimeSpan delay = TimeSpan.FromMilliseconds(10);
+            TimeSpan timePerSlot = 4 * delay;
+            using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
+                (ctx) => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
+                timePerSlot, delay: delay);
 
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 blockX = chain.BlockTree.HeadHash;
-        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
+            IEngineRpcModule rpc = chain.EngineRpcModule;
+            Hash256 blockX = chain.BlockTree.HeadHash;
+            chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
 
-        Task improvementTask = chain.WaitForImprovedBlock(blockX);
+            Task improvementTask = chain.WaitForImprovedBlock(blockX);
 
-        string? payloadId = (await rpc.engine_forkchoiceUpdatedV1(
+            string? payloadId = (await rpc.engine_forkchoiceUpdatedV1(
+                    new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
+                    new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero }))
+                .Data.PayloadId!;
+            chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+
+            ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+            Assert.That(getPayloadResult, Is.Not.Null, $"iteration {iteration}");
+            chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
+
+            await improvementTask;
+            Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(getPayloadResult);
+            if (result1.Result.Data.Status != PayloadStatus.Valid)
+            {
+                string[] files = Directory.GetFiles(logFolder);
+                foreach (string file in files)
+                {
+                    if (!file.Contains(guid))
+                        File.Delete(file);
+                }
+            }
+
+            Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
+
+
+            // starting building on block X
+            await rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
-                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero }))
-            .Data.PayloadId!;
-        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
 
-        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-        Assert.That(getPayloadResult, Is.Not.Null);
-        chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
+            int milliseconds = RandomNumberGenerator.GetInt32(timePerSlot.Milliseconds, timePerSlot.Milliseconds * 2);
+            await Task.Delay(milliseconds);
 
-        await improvementTask;
-        Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(getPayloadResult);
-        if (result1.Result.Data.Status != PayloadStatus.Valid)
-        {
-            string[] files = Directory.GetFiles(logFolder);
-            foreach (string file in files)
+            // starting building on block X + 1
+            string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
+                    new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
+                    new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+                .Result.Data.PayloadId!;
+
+            ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
+
+            Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV1(getSecondBlockPayload);
+            if (secondBlock.Result.Data.Status != PayloadStatus.Valid)
             {
-                if (!file.Contains(guid))
-                    File.Delete(file);
+                string[] files = Directory.GetFiles(logFolder);
+                foreach (string file in files)
+                {
+                    if (!file.Contains(guid))
+                        File.Delete(file);
+                }
             }
+
+            Assert.That(secondBlock.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
         }
-
-        Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-
-
-        // starting building on block X
-        await rpc.engine_forkchoiceUpdatedV1(
-            new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
-            new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
-
-        int milliseconds = RandomNumberGenerator.GetInt32(timePerSlot.Milliseconds, timePerSlot.Milliseconds * 2);
-        await Task.Delay(milliseconds);
-
-        // starting building on block X + 1
-        string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
-                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
-            .Result.Data.PayloadId!;
-
-        ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
-
-        Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV1(getSecondBlockPayload);
-        if (secondBlock.Result.Data.Status != PayloadStatus.Valid)
-        {
-            string[] files = Directory.GetFiles(logFolder);
-            foreach (string file in files)
-            {
-                if (!file.Contains(guid))
-                    File.Delete(file);
-            }
-        }
-
-        Assert.That(secondBlock.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     [Test]

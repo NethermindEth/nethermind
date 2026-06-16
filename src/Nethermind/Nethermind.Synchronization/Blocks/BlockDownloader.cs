@@ -418,7 +418,7 @@ namespace Nethermind.Synchronization.Blocks
             using BlocksRequest _ = response;
             BlockBody[]? bodies = response.OwnedBodies?.Bodies;
             response.OwnedBodies?.Disown();
-            IByteArrayList? blockAccessLists = response.BlockAccessLists;
+            IOwnedReadOnlyList<byte[]?>? blockAccessLists = response.BlockAccessLists;
             bool unsupportedBlockAccessListsPeer = response.BlockAccessListsRequests.Count > 0 &&
                                                    peer is not null &&
                                                    !peer.SyncPeer.SupportsBlockAccessLists();
@@ -572,7 +572,7 @@ namespace Nethermind.Synchronization.Blocks
         private bool TryHandleBlockAccessListResponse(
             BlockHeader header,
             BlockEntry entry,
-            IByteArrayList? blockAccessLists,
+            IOwnedReadOnlyList<byte[]?>? blockAccessLists,
             int index,
             bool unsupportedBlockAccessListsPeer,
             PeerInfo? peer,
@@ -589,8 +589,8 @@ namespace Nethermind.Synchronization.Blocks
                 return false;
             }
 
-            ReadOnlySpan<byte> encodedAccessList = blockAccessLists[index];
-            if (encodedAccessList.IsEmpty)
+            byte[]? encodedAccessList = blockAccessLists[index];
+            if (encodedAccessList is null)
             {
                 entry.RetryAccessListRequest();
                 return false;
@@ -606,11 +606,10 @@ namespace Nethermind.Synchronization.Blocks
                 return false;
             }
 
-            byte[] ownedEncodedAccessList = encodedAccessList.ToArray();
-            entry.EncodedAccessList = ownedEncodedAccessList;
+            entry.EncodedAccessList = encodedAccessList;
             if (entry.Block is not null)
             {
-                entry.Block.EncodedBlockAccessList = ownedEncodedAccessList;
+                entry.Block.EncodedBlockAccessList = encodedAccessList;
             }
 
             entry.PeerInfo = peer;
@@ -666,7 +665,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!shouldProcess)
             {
-                _blockTree.UpdateMainChain([currentBlock], false);
+                _blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]);
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);

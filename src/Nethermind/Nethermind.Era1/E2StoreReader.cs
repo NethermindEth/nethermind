@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
@@ -21,7 +22,7 @@ public class E2StoreReader : IDisposable
     private const int IndexSectionCount = 8;
     private const int IndexSectionStartBlock = 8;
     private const int IndexOffsetSize = 8;
-    private const int ValueSizeLimit = 1024 * 1024 * 50;
+    private const int ValueSizeLimit = 50 * MemorySizes.MiB;
 
     private readonly SafeFileHandle _file;
 

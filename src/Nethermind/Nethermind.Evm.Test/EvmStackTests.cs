@@ -187,10 +187,13 @@ public class EvmStackTests
         // Multi-out pop returns top first: a=z (was top), b=y, c=x (deepest).
         Assert.That(stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c), Is.True);
 
-        Assert.That(a, Is.EqualTo(z));
-        Assert.That(b, Is.EqualTo(y));
-        Assert.That(c, Is.EqualTo(x));
-        Assert.That(stack.Head, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a, Is.EqualTo(z));
+            Assert.That(b, Is.EqualTo(y));
+            Assert.That(c, Is.EqualTo(x));
+            Assert.That(stack.Head, Is.EqualTo(0));
+        }
     }
 
     // Direct-encoder coverage for the new PushN fast paths (PUSH1..PUSH32 normal path).
@@ -321,7 +324,7 @@ public class EvmStackTests
         VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromLong(10_000),
             ExecutionType.CALL,
-            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default),
+            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default),
             new StackAccessTracker(),
             Snapshot.Empty);
 }

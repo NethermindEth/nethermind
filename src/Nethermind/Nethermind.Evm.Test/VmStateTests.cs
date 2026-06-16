@@ -63,10 +63,8 @@ namespace Nethermind.Evm.Test
         public void Nothing_to_commit()
         {
             VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
-            {
-                vmState.CommitToParent(parentVmState);
-            }
+            using VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState);
+            vmState.CommitToParent(parentVmState);
         }
 
         [Test]
@@ -238,6 +236,6 @@ namespace Nethermind.Evm.Test
                     Snapshot.Empty);
 
         private static ExecutionEnvironment RentExecutionEnvironment() =>
-            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default);
+            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default);
     }
 }
