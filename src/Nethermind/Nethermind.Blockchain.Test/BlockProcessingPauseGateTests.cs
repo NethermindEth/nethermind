@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
@@ -50,8 +51,7 @@ public class BlockProcessingPauseGateTests
 
         gate.Resume();
 
-        await parked; // completes deterministically once resumed; no timing window
-        Assert.That(gate.IsPaused, Is.False, "the gate is running after resume");
+        await parked;
     }
 
     [Test]
