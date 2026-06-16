@@ -140,9 +140,6 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (ObjectDisposedException ex) when (ex.ObjectName == typeof(IpcSocketMessageStream).FullName)
             {
-                // Client closed the connection while a response was still being written, disposing the
-                // socket stream mid-send. The disposed stream sets ObjectName to its own type, so any other
-                // disposal (e.g. a service torn down during shutdown) still surfaces as a server error.
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
             catch (SocketException ex)
