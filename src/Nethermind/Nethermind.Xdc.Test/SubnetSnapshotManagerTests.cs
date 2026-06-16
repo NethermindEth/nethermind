@@ -103,7 +103,7 @@ internal class SubnetSnapshotManagerTests
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
-        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([new Block(header)], true));
+        blockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs([header], true));
         Snapshot? result = snapshotManager.GetSnapshotByGapNumber(gapNumber);
 
         Assert.That(result, Is.TypeOf<SubnetSnapshot>());
