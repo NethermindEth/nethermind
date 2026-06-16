@@ -640,11 +640,9 @@ public class SyncServerTests
         IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
         using (IBlockCommitter _ = trieStore.BeginBlockCommit(1))
         {
-            using (ICommitter committer = scopedTrieStore.BeginCommit(node))
-            {
-                TreePath path = TreePath.Empty;
-                committer.CommitNode(ref path, node);
-            }
+            using ICommitter committer = scopedTrieStore.BeginCommit(node);
+            TreePath path = TreePath.Empty;
+            committer.CommitNode(ref path, node);
         }
 
         Assert.That(stateDb.KeyExists(nodeKey), Is.False);

@@ -931,11 +931,9 @@ public class TrieNodeTests
 
         using (IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0))
         {
-            using (ICommitter? committer = trieStore.BeginCommit(leaf2))
-            {
-                committer.CommitNode(ref path, leaf1);
-                committer.CommitNode(ref path, leaf2);
-            }
+            using ICommitter? committer = trieStore.BeginCommit(leaf2);
+            committer.CommitNode(ref path, leaf1);
+            committer.CommitNode(ref path, leaf2);
         }
 
         TrieNode trieNode = new(NodeType.Branch);
