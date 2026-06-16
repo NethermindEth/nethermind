@@ -91,9 +91,7 @@ public sealed class CarryForwardReadCache(int maxEntriesPerKind, StateId initial
     /// </summary>
     public void OnSnapshotPersisted(Snapshot snapshot)
     {
-        bool selfDestructed = snapshot.SelfDestructedStorageAddresses.Any();
-
-        if (selfDestructed)
+        if (snapshot.HasSelfDestructedStorageAddresses)
         {
             _slots.Clear();
             Interlocked.Exchange(ref _slotCount, 0);
