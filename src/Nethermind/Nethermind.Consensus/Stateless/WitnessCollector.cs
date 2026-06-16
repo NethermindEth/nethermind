@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -17,6 +19,7 @@ public interface IExistingBlockWitnessCollector
 
 public class WitnessCollector(
     IWorldState worldState,
+    AccessWitnessScopeProvider accessWitness,
     WitnessGeneratingHeaderFinder headerFinder,
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider) : IExistingBlockWitnessCollector
@@ -25,7 +28,7 @@ public class WitnessCollector(
     {
         using IDisposable? scope = worldState.BeginScope(parentHeader, trackWitness: true);
         blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
-        ScopeWitness scopeWitness = worldState.Witness ?? throw new InvalidOperationException("Witness tracking was not enabled for this scope.");
-        return WitnessAssembler.Build(scopeWitness, headerFinder, parentHeader);
+        IReadOnlyList<byte[]> stateNodes = worldState.Witness ?? throw new InvalidOperationException("Witness tracking was not enabled for this scope.");
+        return WitnessAssembler.Build(stateNodes, accessWitness.TouchedKeys, accessWitness.Codes, headerFinder, parentHeader);
     }
 }

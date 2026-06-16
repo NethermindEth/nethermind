@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -221,7 +222,7 @@ namespace Nethermind.State
 
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
-        public ScopeWitness? Witness => _currentScope?.Witness;
+        public IReadOnlyList<byte[]>? Witness => _currentScope?.Witness;
 
         public IDisposable BeginScope(BlockHeader? baseBlock, bool trackWitness = false)
         {

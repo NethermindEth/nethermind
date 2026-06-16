@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -9,6 +10,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -43,6 +45,7 @@ public interface ISingleCallWitnessCollector
 
 public class SingleCallWitnessCollector(
     IWorldState worldState,
+    AccessWitnessScopeProvider accessWitness,
     WitnessGeneratingHeaderFinder headerFinder,
     ITransactionProcessor transactionProcessor) : ISingleCallWitnessCollector
 {
@@ -65,12 +68,12 @@ public class SingleCallWitnessCollector(
         CallOutputTracer tracer = new();
         TransactionResult txResult = transactionProcessor.CallAndRestore(transaction, blockHeader, tracer.WithCancellation(cancellationToken));
 
-        ScopeWitness scopeWitness = worldState.Witness ?? throw new InvalidOperationException("Witness tracking was not enabled for this scope.");
+        IReadOnlyList<byte[]> stateNodes = worldState.Witness ?? throw new InvalidOperationException("Witness tracking was not enabled for this scope.");
         return new SingleCallWitnessResult(
             Output: tracer.ReturnValue,
             Error: txResult.GetErrorMessage(tracer.Error),
             ExecutionReverted: txResult.EvmExceptionType == EvmExceptionType.Revert,
             InputError: !txResult.TransactionExecuted,
-            Witness: WitnessAssembler.Build(scopeWitness, headerFinder, blockHeader));
+            Witness: WitnessAssembler.Build(stateNodes, accessWitness.TouchedKeys, accessWitness.Codes, headerFinder, blockHeader));
     }
 }

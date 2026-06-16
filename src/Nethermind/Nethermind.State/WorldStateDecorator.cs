@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -26,7 +27,7 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual IDisposable BeginScope(BlockHeader? baseBlock, bool trackWitness = false)
         => State.BeginScope(baseBlock, trackWitness);
 
-    public virtual ScopeWitness? Witness => State.Witness;
+    public virtual IReadOnlyList<byte[]>? Witness => State.Witness;
 
     public virtual Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);

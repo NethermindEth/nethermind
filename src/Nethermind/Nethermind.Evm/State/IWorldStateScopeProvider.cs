@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -30,11 +31,17 @@ public interface IWorldStateScopeProvider
         void UpdateRootHash();
 
         /// <summary>
-        /// The storage witness for everything touched during this scope, or <c>null</c> when the scope was
-        /// not opened with <c>trackWitness</c>. Computed lazily on first access by walking the touched keys
-        /// against a read-only view of the scope's base state, so it must be read before the scope is disposed.
+        /// The storage witness — the deduplicated state-trie and storage-trie node RLPs along the paths of
+        /// every account/slot touched during this scope — or <c>null</c> when the scope was not opened with
+        /// <c>trackWitness</c>. Computed lazily on first access by walking the touched keys against a read-only
+        /// view of the scope's base state, so it must be read before the scope is disposed.
         /// </summary>
-        ScopeWitness? Witness => null;
+        /// <remarks>
+        /// This is deliberately only the trie nodes. The touched keys and contract code that complete an
+        /// execution witness are not storage-coupled and are produced independently at a higher level (see
+        /// <c>AccessWitnessScopeProvider</c>).
+        /// </remarks>
+        IReadOnlyList<byte[]>? Witness => null;
 
         /// <summary>
         /// Get the account information for the following address.

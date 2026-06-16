@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -32,10 +33,10 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     IWorldStateScopeProvider ScopeProvider { get; }
 
     /// <summary>
-    /// The storage witness for the current scope when it was opened with <c>trackWitness</c>, else <c>null</c>.
-    /// Must be read before the scope is disposed.
+    /// The storage witness (state-trie node RLPs) for the current scope when it was opened with
+    /// <c>trackWitness</c>, else <c>null</c>. Must be read before the scope is disposed.
     /// </summary>
-    ScopeWitness? Witness => null;
+    IReadOnlyList<byte[]>? Witness => null;
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -36,7 +37,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public ScopeWitness? Witness => baseScope.Witness;
+        public IReadOnlyList<byte[]>? Witness => baseScope.Witness;
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 

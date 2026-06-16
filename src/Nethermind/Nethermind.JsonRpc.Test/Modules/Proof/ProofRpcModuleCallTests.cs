@@ -218,7 +218,7 @@ public class ProofRpcModuleCallTests
     /// when a slot is written (via SSTORE → WorldState.Set) and then reverted (via REVERT → WorldState.Restore),
     /// the cached write is discarded and the trie is never traversed during the call. The witness must
     /// still include the storage trie nodes for the slot — SSTORE reads the current value for gas, so the
-    /// scope sees the slot, and <c>WitnessScopeProvider</c> re-walks the touched keys via
+    /// scope sees the slot, and <c>TrieWitnessScopeProvider</c> re-walks the touched keys via
     /// <c>MultiAccountProofCollector</c> to capture them. A cross-client (geth) verifier cannot reconstruct
     /// the slot without these nodes.
     /// </summary>
@@ -230,7 +230,7 @@ public class ProofRpcModuleCallTests
 
         // Runtime: SSTORE(0, 0xEE) then REVERT with empty data. The slot is written then reverted
         // in the same call — the value never reaches the write batch. The witness still covers slot 0
-        // because SSTORE reads the slot for gas, so WitnessScopeProvider records it and re-walks the
+        // because SSTORE reads the slot for gas, so TrieWitnessScopeProvider records it and re-walks the
         // touched keys post-execution.
         byte[] runtimeCode = Prepare.EvmCode
             .PushData(0xEE)

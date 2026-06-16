@@ -70,15 +70,16 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private PooledEntry BuildEntry()
     {
-        // Execute against the real (flat-capable) scope provider so reads use the fast path; the witness is
-        // tracked by a thin WitnessScopeProvider wrapper (opened with trackWitness) and produced from the keys
-        // and code touched during execution. No capturing trie store — execution no longer detours through
-        // trie traversal; the witness state nodes are walked once post-execution against a fresh base view.
-        IWorldStateScopeProvider scopeProvider = new WitnessScopeProvider(
+        // Execute against the real (flat-capable) scope provider so reads use the fast path. Two independent
+        // witness wrappers ride on the scope's read path: TrieWitnessScopeProvider produces the storage witness
+        // (state-trie node RLPs, walked once post-execution against a fresh base view), and the outer
+        // AccessWitnessScopeProvider records the touched keys + contract code. The collector combines both.
+        TrieWitnessScopeProvider trieWitness = new(
             worldStateManager.CreateResettableWorldState(),
             worldStateManager.CreateReadOnlyTrieStore,
             logManager);
-        IWorldState worldState = new WorldState(scopeProvider, logManager);
+        AccessWitnessScopeProvider accessWitness = new(trieWitness);
+        IWorldState worldState = new WorldState(accessWitness, logManager);
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
         WitnessGeneratingHeaderFinder headerFinder = new(headerStore);
@@ -86,6 +87,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
             .AddScoped<IStateReader>(worldStateManager.GlobalStateReader)
             .AddScoped<IWorldState>(worldState)
+            .AddScoped<AccessWitnessScopeProvider>(accessWitness)
             .AddScoped<WitnessGeneratingHeaderFinder>(headerFinder)
             .AddScoped<IHeaderFinder>(headerFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
