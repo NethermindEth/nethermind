@@ -65,3 +65,10 @@ public readonly record struct PersistedSnapshotLabel(string Tier, long Size) : I
 {
     public string[] Labels => [Tier, Size.ToString()];
 }
+
+/// <summary>Metric key for the per-compact-size persisted-snapshot compaction histograms. <c>Size</c>
+/// is the actual compacted block span rounded up to the next power of two.</summary>
+public readonly record struct CompactSizeLabel(int Size) : IMetricLabels
+{
+    public string[] Labels => [$"size{Size}"];
+}

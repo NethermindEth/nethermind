@@ -9,7 +9,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
-using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -238,18 +237,6 @@ public class PersistedSnapshotCompactor(
         CompactRange(snapshotTo, blockNumber - compactSize, compactSize, isPersistable: true);
     }
 
-    // Compact sizes are powers of 2; cache one StringLabel per sizeLabel so the
-    // observe path skips the per-call string interpolation. Indexed by
-    // BitOperations.Log2(compactSize). Filled lazily on first use.
-    private StringLabel[]? _sizeLabelsByLog2;
-
-    private StringLabel GetSizeLabel(int compactSize)
-    {
-        int log2 = BitOperations.Log2((uint)compactSize);
-        StringLabel[] table = _sizeLabelsByLog2 ??= new StringLabel[32];
-        return table[log2] ??= new StringLabel($"size{compactSize}");
-    }
-
     private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
     {
         using PersistedSnapshotList snapshots = snapshotRepository.AssemblePersistedSnapshotsForCompaction(snapshotTo, startingBlockNumber);
@@ -304,7 +291,7 @@ public class PersistedSnapshotCompactor(
                 // The assembled window is best-effort and may fall short of compactSize, so label by the
                 // actual compacted block span rounded up to the next power of two, not the target size.
                 int actualSize = (int)BitOperations.RoundUpToPowerOf2((ulong)(to.BlockNumber - from.BlockNumber));
-                StringLabel sizeLabel = GetSizeLabel(actualSize);
+                CompactSizeLabel sizeLabel = new(actualSize);
                 Metrics.PersistedSnapshotCompactedSize.Observe(len, sizeLabel);
                 Metrics.PersistedSnapshotCompactTime.Observe(Stopwatch.GetTimestamp() - sw, sizeLabel);
 

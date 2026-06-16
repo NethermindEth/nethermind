@@ -37,6 +37,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth.", DefaultValue = "128")]
     int MaxInMemoryBaseSnapshotCount { get; set; }
 
+    [ConfigItem(Description = "Total max reorg depth in blocks (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
+    int MaxReorgDepth { get; set; }
+
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
 
@@ -54,9 +57,6 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "false")]
     bool EnableLongFinality { get; set; }
-
-    [ConfigItem(Description = "Total max reorg depth in blocks (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
-    int MaxReorgDepth { get; set; }
 
     [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }
