@@ -126,11 +126,20 @@ public static class PrewarmReuse
 
     public static readonly ConcurrentDictionary<int, (HashSet<StorageCell> Reads, HashSet<StorageCell> Writes)> TxAccess = new();
 
+    /// <summary>Speculative result fingerprint of a tx's warmup, compared against real execution to prove reusability.</summary>
+    public readonly record struct SpecResult(bool ReadOnly, byte Status, long GasUsed, int Logs);
+
+    public static readonly ConcurrentDictionary<int, SpecResult> TxResults = new();
+
     public static void Record(int txIndex, HashSet<StorageCell> reads, HashSet<StorageCell> writes) => TxAccess[txIndex] = (reads, writes);
 
     public static void ResetBlock()
     {
-        if (Enabled) TxAccess.Clear();
+        if (Enabled)
+        {
+            TxAccess.Clear();
+            TxResults.Clear();
+        }
     }
 }
 

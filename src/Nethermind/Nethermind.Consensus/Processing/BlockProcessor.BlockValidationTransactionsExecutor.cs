@@ -43,6 +43,8 @@ public partial class BlockProcessor
             bool diag = _logger.IsInfo;
             if (diag) PrewarmCoverage.Enabled = true;
             bool throttling = PrewarmThrottle.Enabled;
+            bool reuseCheck = PrewarmReuse.Enabled;
+            int roCandidates = 0, roMatched = 0, roMismatched = 0;
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -51,11 +53,24 @@ public partial class BlockProcessor
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 if (throttling) PrewarmThrottle.OnExecuted();
 
+                // DIAGNOSTIC: for read-only txs, compare the prewarmer's speculative result fingerprint
+                // against real execution — a match proves the speculative result could be reused as-is.
+                if (reuseCheck && PrewarmReuse.TxResults.TryGetValue(i, out PrewarmReuse.SpecResult spec) && spec.ReadOnly)
+                {
+                    roCandidates++;
+                    TxReceipt real = receiptsTracer.TxReceipts[i];
+                    bool match = spec.Status == real.StatusCode && spec.GasUsed == real.GasUsed && spec.Logs == (real.Logs?.Length ?? 0);
+                    if (match) roMatched++; else roMismatched++;
+                }
+
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
                     ThrowInvalidBlockForGasLimit(block);
                 }
             }
+
+            if (reuseCheck && _logger.IsInfo)
+                _logger.Info($"Block {block.Number} readonly-reuse-check: candidates={roCandidates} matched={roMatched} mismatched={roMismatched}");
 
             if (diag)
             {

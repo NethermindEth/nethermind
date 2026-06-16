@@ -367,7 +367,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             StorageAccessTxTracer? reuseTracer = PrewarmReuse.Enabled ? new StorageAccessTxTracer() : null;
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, (ITxTracer?)reuseTracer ?? NullTxTracer.Instance);
-            if (reuseTracer is not null) PrewarmReuse.Record(txIndex, reuseTracer.Reads, reuseTracer.Writes);
+            if (reuseTracer is not null)
+            {
+                PrewarmReuse.Record(txIndex, reuseTracer.Reads, reuseTracer.Writes);
+                PrewarmReuse.TxResults[txIndex] = new PrewarmReuse.SpecResult(reuseTracer.Writes.Count == 0, reuseTracer.Status, reuseTracer.GasUsed, reuseTracer.LogsCount);
+            }
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
