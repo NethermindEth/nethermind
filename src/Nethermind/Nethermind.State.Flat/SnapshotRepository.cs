@@ -28,15 +28,17 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class SnapshotRepository : ISnapshotRepository, IDisposable
 {
-    // Canonical two-tier expansion order for the assemble/reachability walks: in-RAM-first, widest-first
-    // within a tier, then persisted. The walk driver hardcodes the invariant that once an edge crosses into
-    // the persisted tier the in-memory tiers are unreachable, so it filters these down to the persisted
-    // suffix for any node reached over a persisted edge. PersistedPersistable is never expanded here.
+    // Query (assemble/reachability) expansion order: widest skip-pointers first across both tiers
+    // (in-memory then persisted compacted), then the CompactSize-wide persistable, then the narrow bases —
+    // so a read assembles the shortest chain it can. The walk driver hardcodes the invariant that once an
+    // edge crosses into the persisted tier the in-memory tiers are unreachable, so it drops the in-memory
+    // entries for any node reached over a persisted edge.
     private static readonly SnapshotTier[] FullEdgePriority =
     [
         SnapshotTier.InMemoryCompacted,
-        SnapshotTier.InMemoryBase,
         SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedPersistable,
+        SnapshotTier.InMemoryBase,
         SnapshotTier.PersistedBase,
     ];
 
