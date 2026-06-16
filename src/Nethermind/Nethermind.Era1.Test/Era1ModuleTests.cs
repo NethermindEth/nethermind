@@ -320,7 +320,7 @@ public class Era1ModuleTests
         if (headBlockNumber != 0)
         {
             inTree.Insert(headBlock, BlockTreeInsertBlockOptions.SaveHeader);
-            inTree.UpdateMainChain(new[] { headBlock }, true);
+            inTree.ForceMainChainForTest(new[] { headBlock });
         }
 
         await using IContainer inCtx = new ContainerBuilder()
@@ -347,7 +347,7 @@ public class Era1ModuleTests
         {
             minSuggestedNumber ??= args.Block.Number;
             maxSuggestedBlock = args.Block.Number;
-            inTree.UpdateMainChain([args.Block], true);
+            inTree.TryUpdateMainChain(args.Block.Header, true, preloadedBlocks: new[] { args.Block });
         };
 
         EraCliRunner cliRunner = inCtx.Resolve<EraCliRunner>();

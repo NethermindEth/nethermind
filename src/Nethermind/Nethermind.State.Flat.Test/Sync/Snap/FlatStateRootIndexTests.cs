@@ -44,7 +44,7 @@ public class FlatStateRootIndexTests
             .WithStateRoot(Keccak.Compute(rootSeed.ToBigEndianByteArray()))
             .TestObject;
         tree.SuggestBlock(next);
-        tree.UpdateMainChain(new[] { next }, true);
+        tree.TryUpdateMainChain(next.Header, true, preloadedBlocks: new[] { next });
     }
 
     [Test]

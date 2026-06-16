@@ -237,7 +237,7 @@ public class BranchProcessor(
 
         void IThreadPoolWorkItem.Execute()
         {
-            // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
+            // Hashes will be required for PersistentReceiptStorage in TryUpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
             foreach (Transaction tx in suggestedBlock.Transactions)

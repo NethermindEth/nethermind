@@ -145,7 +145,7 @@ public class DbBlocksLoaderTests
         tree1.SuggestBlock(block2B);
         tree1.SuggestBlock(block3B); // expected to be head
 
-        tree1.UpdateMainChain(block0);
+        tree1.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
 
         BlockTree tree2 = Build.A.BlockTree()
             .WithDatabaseFrom(builder)
@@ -163,7 +163,7 @@ public class DbBlocksLoaderTests
             }
             else
             {
-                tree2.UpdateMainChain(args.Block);
+                tree2.TryUpdateMainChain(args.Block.Header, true, preloadedBlocks: new[] { args.Block });
             }
         };
 
@@ -208,7 +208,7 @@ public class DbBlocksLoaderTests
         tree1.SuggestBlock(block2);
         tree1.SuggestBlock(block3);
 
-        tree1.UpdateMainChain(block0);
+        tree1.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
 
         BlockTree tree2 = Build.A.BlockTree()
             .WithoutSettingHead
@@ -226,7 +226,7 @@ public class DbBlocksLoaderTests
             }
             else
             {
-                tree2.UpdateMainChain(args.Block);
+                tree2.TryUpdateMainChain(args.Block.Header, true, preloadedBlocks: new[] { args.Block });
             }
         };
 
