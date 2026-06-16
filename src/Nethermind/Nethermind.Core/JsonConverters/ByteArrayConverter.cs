@@ -248,7 +248,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
             ThrowInvalidOperationException();
 
-        // Cross-segment value: fall back to the byte[] path (unreachable for the contiguous RPC param buffer).
+        // Value spanning multiple buffer segments: fall back to the byte[] path for correctness.
         if (reader.HasValueSequence)
         {
             byte[]? sequenceBytes = ConvertValueSequence(ref reader, strictHexFormat: false);

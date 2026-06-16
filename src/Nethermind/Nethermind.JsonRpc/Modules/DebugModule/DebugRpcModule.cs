@@ -509,7 +509,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        TxReceipt[] receipts = debugBridge.GetReceiptsForBlock(blockParameter);
+        TxReceipt[]? receipts = debugBridge.GetReceiptsForBlock(blockParameter);
         if (receipts is null)
         {
             return ResultWrapper<RawReceiptsResult>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
@@ -530,7 +530,16 @@ public class DebugRpcModule(
         {
             foreach (TxReceipt receipt in receipts)
             {
-                encoded.Add(receiptDecoder.EncodeToArrayPoolList(receipt, behavior));
+                ArrayPoolList<byte> receiptRlp = receiptDecoder.EncodeToArrayPoolList(receipt, behavior);
+                try
+                {
+                    encoded.Add(receiptRlp);
+                }
+                catch
+                {
+                    receiptRlp.Dispose();
+                    throw;
+                }
             }
             return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(encoded));
         }
