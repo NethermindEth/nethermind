@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -19,11 +20,15 @@ public partial class BlockProcessor
     public class BlockValidationTransactionsExecutor(
         ITransactionProcessorAdapter transactionProcessor,
         IWorldState stateProvider,
-        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null,
+        ILogManager? logManager = null)
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         protected IWorldState _stateProvider = stateProvider;
         protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
+
+        // DIAGNOSTIC: verbose per-tx execution logging to correlate against prewarmer activity.
+        private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidationTransactionsExecutor>() ?? NullLogger.Instance;
 
         public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
@@ -36,6 +41,7 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
+                if (_logger.IsInfo) _logger.Info($"Starting tx execution number {i} in block {block.Number}");
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)

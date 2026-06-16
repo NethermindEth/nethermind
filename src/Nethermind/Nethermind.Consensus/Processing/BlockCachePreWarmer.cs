@@ -287,6 +287,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         int txIndex,
         BlockState blockState)
     {
+        // DIAGNOSTIC: verbose per-tx prewarm logging to correlate against main execution.
+        if (blockState.PreWarmer._logger.IsInfo) blockState.PreWarmer._logger.Info($"Starting prewarming tx number {txIndex} in block {blockState.Block.Number}");
         try
         {
             Address senderAddress = tx.SenderAddress!;
