@@ -304,7 +304,13 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             reservation.Fsync();
 
-            SnapshotTier tier = isPersistable ? SnapshotTier.PersistedPersistable : SnapshotTier.PersistedCompacted;
+            // A non-persistable merge at a large-compaction boundary spans >CompactSize — its own tier
+            // so the assemble walk can prefer it as the widest skip-pointer.
+            SnapshotTier tier = isPersistable
+                ? SnapshotTier.PersistedPersistable
+                : _schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber)
+                    ? SnapshotTier.PersistedLargeCompacted
+                    : SnapshotTier.PersistedCompacted;
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
             using (PersistedSnapshot compacted = new(from, to, reservation, blobs, tier, mergedBloom))
             {

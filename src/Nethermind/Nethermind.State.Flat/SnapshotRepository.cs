@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// The single snapshot repository owning both tiers: the in-memory snapshots (base + compacted
-/// dictionaries) and the persisted tier (three <see cref="PersistedSnapshotBucket"/>s over the
+/// dictionaries) and the persisted tier (four <see cref="PersistedSnapshotBucket"/>s over the
 /// arena/blob/catalog stores). Two-tier graph walks, persistence, and compaction-assembly all
 /// live here so they operate on the buckets directly.
 /// </summary>
@@ -30,7 +30,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 {
     private readonly ILogger _logger;
 
-    // ---- Persisted tier: three buckets keyed by StateId.To, plus the arena/blob/catalog stores.
+    // ---- Persisted tier: four buckets keyed by StateId.To, plus the arena/blob/catalog stores.
     // Each bucket is a self-contained, individually-locked store: its To-keyed ConcurrentDictionary
     // (lock-free point lookups), its block-ordered StateId set + running memory/count totals
     // (guarded by the bucket's own lock), and its share of the catalog and global metrics. A `To`
@@ -39,6 +39,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly int _compactSize;
     private readonly PersistedSnapshotBucket _base;
     private readonly PersistedSnapshotBucket _compacted;
+    private readonly PersistedSnapshotBucket _largeCompacted;
     private readonly PersistedSnapshotBucket _persistable;
     private int _disposed;
 
@@ -66,6 +67,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _catalog = catalog;
         _base = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedBase);
         _compacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedCompacted);
+        _largeCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedLargeCompacted);
         _persistable = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedPersistable);
         _compactSize = config.CompactSize;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
@@ -75,7 +77,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // Test-only observability; not part of ISnapshotRepository.
     internal int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
 
-    public int PersistedSnapshotCount => (int)(_base.Count + _compacted.Count + _persistable.Count);
+    public int PersistedSnapshotCount => (int)(_base.Count + _compacted.Count + _largeCompacted.Count + _persistable.Count);
 
     /// <summary>
     /// Tip used as the seed for backward walks over the snapshot graph
@@ -139,7 +141,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// Runs the shared <see cref="WalkAndAssemble{TPolicy}"/> backward walk with <see cref="FindPersistPolicy"/>
     /// (priority <see cref="PersistEdgePriority"/>): it navigates <c>From</c>-edges from <paramref name="seed"/>
     /// down toward <paramref name="currentPersistedState"/> and wins at the first edge reaching it that is a
-    /// valid persist candidate. The <c>&gt;CompactSize</c> persisted-compacted tier and non-boundary
+    /// valid persist candidate. The persisted-compacted / persisted-large-compacted tiers and non-boundary
     /// in-memory compacted entries are never returnable candidates but are still traversed as skip-pointers.
     /// The winning candidate is the assembled chain's terminus; this returns just that snapshot (re-leased)
     /// and drops the rest of the navigated chain.
@@ -274,6 +276,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         // (Regression: RemoveSiblingAndDescendents_PersistedOrphanAboveInMemoryTip_IsPruned.)
         max = MaxState(max, _base.Max);
         max = MaxState(max, _compacted.Max);
+        max = MaxState(max, _largeCompacted.Max);
         max = MaxState(max, _persistable.Max);
         return max;
     }
@@ -517,15 +520,15 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         BucketFor(tier).Add(snapshot.To, snapshot);
 
     /// <summary>
-    /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket(s) backing
-    /// <paramref name="tier"/>. <see cref="SnapshotTier.PersistedCompacted"/> spans both the compacted
-    /// and persistable buckets (it doubles as the skip-pointer edge); the other two map to a single
-    /// bucket. <paramref name="tier"/> must be a <c>Persisted*</c> value. Caller disposes the lease.
+    /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket backing
+    /// <paramref name="tier"/>. Each persisted tier maps 1:1 to its own bucket. <paramref name="tier"/>
+    /// must be a <c>Persisted*</c> value. Caller disposes the lease.
     /// </summary>
     public bool TryLeasePersistedState(in StateId toState, SnapshotTier tier, [NotNullWhen(true)] out PersistedSnapshot? snapshot) => tier switch
     {
         SnapshotTier.PersistedBase => TryLeaseFrom(_base, toState, out snapshot),
-        SnapshotTier.PersistedCompacted => TryLeaseFrom(_compacted, toState, out snapshot) || TryLeaseFrom(_persistable, toState, out snapshot),
+        SnapshotTier.PersistedCompacted => TryLeaseFrom(_compacted, toState, out snapshot),
+        SnapshotTier.PersistedLargeCompacted => TryLeaseFrom(_largeCompacted, toState, out snapshot),
         SnapshotTier.PersistedPersistable => TryLeaseFrom(_persistable, toState, out snapshot),
         _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
     };
@@ -539,12 +542,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     /// <summary>The single bucket owning a persisted-tier catalog entry. Each entry carries exactly
-    /// one <c>Persisted*</c> tier, so this is a 1:1 map (unlike leasing, where the compacted edge
-    /// spans two buckets).</summary>
+    /// one <c>Persisted*</c> tier, so this is a 1:1 map.</summary>
     private PersistedSnapshotBucket BucketFor(SnapshotTier tier) => tier switch
     {
         SnapshotTier.PersistedBase => _base,
         SnapshotTier.PersistedCompacted => _compacted,
+        SnapshotTier.PersistedLargeCompacted => _largeCompacted,
         SnapshotTier.PersistedPersistable => _persistable,
         _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
     };
@@ -581,6 +584,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         _base.PruneBefore(blockNumber);
         _compacted.PruneBefore(blockNumber);
+        _largeCompacted.PruneBefore(blockNumber);
         _persistable.PruneBefore(blockNumber);
     }
 
@@ -596,10 +600,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         StateId max = new(endBlockInclusive, ValueKeccak.MaxValue);
 
         // A `To` can live in more than one bucket (a base and a compacted snapshot can share it),
-        // so dedupe across the three block-ordered sets.
+        // so dedupe across the block-ordered sets.
         HashSet<StateId> union = [];
         _base.CollectRange(min, max, union);
         _compacted.CollectRange(min, max, union);
+        _largeCompacted.CollectRange(min, max, union);
         _persistable.CollectRange(min, max, union);
 
         ArrayPoolList<StateId> result = new(union.Count);
@@ -613,7 +618,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// </summary>
     // `|` (not `||`): every bucket must be attempted — a `To` can appear in more than one.
     public bool RemovePersistedStateExact(in StateId toState) =>
-        _base.RemoveExact(toState) | _compacted.RemoveExact(toState) | _persistable.RemoveExact(toState);
+        _base.RemoveExact(toState) | _compacted.RemoveExact(toState) | _largeCompacted.RemoveExact(toState) | _persistable.RemoveExact(toState);
 
     public bool HasBaseSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 
@@ -623,6 +628,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         {
             foreach (PersistedSnapshot snap in _base.Snapshots) yield return snap;
             foreach (PersistedSnapshot snap in _compacted.Snapshots) yield return snap;
+            foreach (PersistedSnapshot snap in _largeCompacted.Snapshots) yield return snap;
             foreach (PersistedSnapshot snap in _persistable.Snapshots) yield return snap;
         }
     }
@@ -636,6 +642,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         // between a base and a compacted snapshot must be flagged before either of them is disposed.
         _base.PersistAllOnShutdown();
         _compacted.PersistAllOnShutdown();
+        _largeCompacted.PersistAllOnShutdown();
         _persistable.PersistAllOnShutdown();
     }
 
@@ -648,6 +655,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         // flag set by MarkPersistedTierForShutdown keeps the on-disk file in place for opt-in snapshots.
         _base.DisposeAndClear();
         _compacted.DisposeAndClear();
+        _largeCompacted.DisposeAndClear();
         _persistable.DisposeAndClear();
     }
 
@@ -656,28 +664,32 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // Assemble* / CanReach / FindSnapshotToPersist walks above. Grouped here so the public surface reads
     // top-to-bottom without the walk machinery interleaved between methods.
 
-    // Query (assemble/reachability) expansion order: widest skip-pointers first across both tiers
-    // (in-memory then persisted compacted), then the CompactSize-wide persistable, then the narrow bases —
-    // so a read assembles the shortest chain it can. The walk driver hardcodes the invariant that once an
-    // edge crosses into the persisted tier the in-memory tiers are unreachable, so it drops the in-memory
-    // entries for any node reached over a persisted edge.
+    // Query (assemble/reachability) expansion order: the widest >CompactSize persisted-large-compacted
+    // skip-pointer first, then the CompactSize-wide persistable, then the in-memory hops, and finally
+    // the narrow sub-CompactSize persisted compacted and the persisted bases — so a read assembles the
+    // shortest chain it can. The walk driver hardcodes the invariant that once an edge crosses into the
+    // persisted tier the in-memory tiers are unreachable, so it drops the in-memory entries for any node
+    // reached over a persisted edge.
     private static readonly SnapshotTier[] FullEdgePriority =
     [
-        SnapshotTier.InMemoryCompacted,
-        SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedLargeCompacted,
         SnapshotTier.PersistedPersistable,
+        SnapshotTier.InMemoryCompacted,
         SnapshotTier.InMemoryBase,
+        SnapshotTier.PersistedCompacted,
         SnapshotTier.PersistedBase,
     ];
 
     // FindSnapshotToPersist lease order: persistable, persisted base, in-memory compacted/base, then
-    // the >CompactSize persisted compacted (traversed as a skip pointer, never a returnable candidate).
+    // the >CompactSize large-compacted and the sub-CompactSize compacted skip-pointers (traversed for
+    // navigation, never returnable candidates).
     private static readonly SnapshotTier[] PersistEdgePriority =
     [
         SnapshotTier.PersistedPersistable,
         SnapshotTier.PersistedBase,
         SnapshotTier.InMemoryCompacted,
         SnapshotTier.InMemoryBase,
+        SnapshotTier.PersistedLargeCompacted,
         SnapshotTier.PersistedCompacted,
     ];
 
@@ -745,7 +757,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         private long _winnerBlock = long.MaxValue;
 
         private static readonly SnapshotTier[] CompactionEdges =
-            [SnapshotTier.PersistedCompacted, SnapshotTier.PersistedPersistable, SnapshotTier.PersistedBase];
+            [SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompacted, SnapshotTier.PersistedPersistable, SnapshotTier.PersistedBase];
 
         public readonly SnapshotTier[] EdgePriority => CompactionEdges;
 
@@ -763,8 +775,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     // FindSnapshotToPersist navigation: walk From-edges down toward currentPersistedState, winning at the
-    // first edge that reaches it via a persist candidate. The >CompactSize persisted-compacted skip-pointer
-    // and non-boundary in-memory compacted are followed for navigation while above the target, but are NOT
+    // first edge that reaches it via a persist candidate. The persisted-compacted / persisted-large-compacted
+    // skip-pointers and non-boundary in-memory compacted are followed for navigation while above the target, but are NOT
     // followed onto the target itself (they are not persist candidates) — so, because the
     // driver dedups only retained edges, they don't shadow the real candidate edge to the same target.
     private readonly struct FindPersistPolicy(StateId currentPersistedState, int compactSize) : IAssemblePolicy
@@ -777,7 +789,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             {
                 bool isCandidate = tier switch
                 {
-                    SnapshotTier.PersistedCompacted => false,
+                    SnapshotTier.PersistedCompacted or SnapshotTier.PersistedLargeCompacted => false,
                     SnapshotTier.InMemoryCompacted => to.BlockNumber - from.BlockNumber == compactSize,
                     _ => true,
                 };

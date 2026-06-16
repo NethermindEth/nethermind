@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat;
 /// A snapshot's tier in the two-tier snapshot DAG, spanning the in-memory and persisted tiers.
 /// Used as the parameter that selects which store a snapshot operation targets, as the parent-edge
 /// classification driving the backward graph walk, and as the on-disk catalog discriminator (only
-/// the three <c>Persisted*</c> values are ever serialized — in-memory snapshots have no catalog entry).
+/// the four <c>Persisted*</c> values are ever serialized — in-memory snapshots have no catalog entry).
 /// </summary>
 /// <remarks>
 /// The numeric order is NOT a priority order: traversal priority is expressed by explicit arrays in
@@ -29,11 +29,15 @@ public enum SnapshotTier
     /// <summary>Persisted base — sub-<c>CompactSize</c>, narrowest persisted hop. Owns a contiguous blob region.</summary>
     PersistedBase,
 
-    /// <summary>Persisted compacted — &gt;<c>CompactSize</c> merges plus the <c>CompactSize</c> persistable. References base blob arenas.</summary>
+    /// <summary>Persisted compacted — sub-<c>CompactSize</c> intermediate merges. References base blob arenas.</summary>
     PersistedCompacted,
 
     /// <summary>The <c>CompactSize</c>-wide persistable snapshot written to RocksDB.</summary>
     PersistedPersistable,
+
+    /// <summary>Persisted large compacted — a &gt;<c>CompactSize</c> merge produced at a large-compaction
+    /// boundary. The widest persisted skip-pointer. References base blob arenas.</summary>
+    PersistedLargeCompacted,
 }
 
 public static class SnapshotTierExtensions
@@ -47,6 +51,7 @@ public static class SnapshotTierExtensions
         SnapshotTier.PersistedBase => "base",
         SnapshotTier.PersistedCompacted => "compacted",
         SnapshotTier.PersistedPersistable => "persistable",
+        SnapshotTier.PersistedLargeCompacted => "largecompacted",
         _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Not a persisted tier."),
     };
 
