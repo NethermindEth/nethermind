@@ -128,25 +128,21 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     /// <summary>
-    /// Phase 1 BFS — walks backward over the snapshot graph from <paramref name="seed"/> via
-    /// <see cref="Snapshot.From"/> pointers, returning the first snapshot whose <c>From</c> equals
-    /// <paramref name="currentPersistedState"/>. At each visited <c>StateId</c> the candidate
-    /// sources are tried in the fixed <see cref="PersistEdgePriority"/> order:
-    /// <list type="number">
-    ///   <item><see cref="SnapshotTier.PersistedPersistable"/> — the CompactSize-wide
-    ///   persistable (one persist covers the whole window)</item>
-    ///   <item><see cref="SnapshotTier.PersistedBase"/> — a persisted base (fallback when the
-    ///   persistable for this window has not been compacted yet)</item>
-    ///   <item><see cref="SnapshotTier.InMemoryCompacted"/> filtered to depth == <paramref name="compactSize"/> —
-    ///   in-memory boundary compacted</item>
-    ///   <item><see cref="SnapshotTier.InMemoryBase"/> — in-memory base, depth == 1</item>
-    /// </list>
+    /// Find the next snapshot to flush — the one directly extending <paramref name="currentPersistedState"/>
+    /// (its <c>From</c> equals it) that is a valid persist candidate. Returns the leased persisted or
+    /// in-memory snapshot (caller disposes), or <c>(null, null)</c> when none is reachable. Used by both
+    /// persistence phases in <see cref="PersistenceManager"/>.
     /// </summary>
     /// <remarks>
-    /// &gt;CompactSize compacted persisted entries (<see cref="SnapshotTier.PersistedCompacted"/>,
-    /// last in <see cref="PersistEdgePriority"/>) and non-boundary in-memory compacted entries
-    /// are not returnable candidates; they are still traversed for navigation, acting as skip
-    /// pointers that jump multiple blocks per hop and shorten the path to a candidate.
+    /// A standalone single-result search, not the shared <see cref="WalkAndAssemble{TPolicy}"/> chain driver:
+    /// it returns one boundary snapshot rather than assembling a chain, and disposes every other leased
+    /// snapshot as it goes — the same single-result shape as <see cref="CanReachState"/>, which is likewise
+    /// inlined rather than routed through the chain-gathering driver. It walks <c>From</c>-edges backward from
+    /// <paramref name="seed"/>, trying each node's tiers in <see cref="PersistEdgePriority"/> order; the first
+    /// edge reaching <paramref name="currentPersistedState"/> that passes
+    /// <see cref="IsPersistCandidate"/> wins. The <c>&gt;CompactSize</c> persisted-compacted tier and
+    /// non-boundary in-memory compacted entries are never returnable candidates (see
+    /// <see cref="IsPersistCandidate"/>) but are still traversed as skip-pointers that shorten the path.
     /// </remarks>
     public (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(
         in StateId seed, in StateId currentPersistedState, int compactSize)
