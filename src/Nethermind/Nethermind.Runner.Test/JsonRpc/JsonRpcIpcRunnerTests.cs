@@ -65,7 +65,7 @@ public class JsonRpcIpcRunnerTests
 
             using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             await client.ConnectAsync(new UnixDomainSocketEndPoint(path));
-            Socket server = await listener.AcceptAsync();
+            using Socket server = await listener.AcceptAsync();
 
             byte[] request = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[],\"id\":1}\n");
             await client.SendAsync(request, SocketFlags.None);
@@ -73,8 +73,11 @@ public class JsonRpcIpcRunnerTests
             using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
             await runner.HandleIpcConnection(server, cts.Token);
 
-            Assert.That(testLogger.LogList, Has.None.StartsWith("IPC server error"));
-            Assert.That(testLogger.LogList, Has.Member("IPC client disconnected."));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(testLogger.LogList, Has.None.StartsWith("IPC server error"));
+                Assert.That(testLogger.LogList, Has.Member("IPC client disconnected."));
+            }
         }
         finally
         {
