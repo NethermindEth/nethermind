@@ -53,8 +53,8 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
         private void Grow(int sizeHint)
         {
             int needed = _written + sizeHint;
+            // Math.Max already guarantees newSize >= needed, so no further doubling is required.
             int newSize = Math.Max(needed, _capacity == 0 ? 1 : _capacity * 2);
-            while (newSize < needed) newSize *= 2;
 
             byte* newBuffer = (byte*)NativeMemory.Alloc((nuint)newSize);
             if (_written > 0)

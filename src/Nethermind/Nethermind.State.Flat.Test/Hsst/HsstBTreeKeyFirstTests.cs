@@ -47,6 +47,25 @@ public class HsstBTreeKeyFirstTests
     }
 
     [Test]
+    public void FinishValueWrite_Throws_InKeyFirstMode()
+    {
+        using PooledByteBufferWriter pooled = new(1024);
+        using HsstBTreeBuilderBuffers.Container buffers = new(expectedKeyCount: 4);
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder = new(
+            ref pooled.GetWriter(), ref buffers.Buffers, keyLength: 4, expectedKeyCount: 4, keyFirst: true);
+        try
+        {
+            bool threw = false;
+            try { builder.FinishValueWrite("abcd"u8, 0); } catch (InvalidOperationException) { threw = true; }
+            Assert.That(threw, Is.True, "FinishValueWrite must reject in key-first mode");
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    [Test]
     public void Nested_KeyFirstBTree_Over_KeysFirstSubSlot_RoundTrips()
     {
         // Outer: 4-byte key BTree (key-first).

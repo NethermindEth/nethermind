@@ -764,4 +764,44 @@ public class HsstTests
             }),
             Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
+
+    // The first Add locks the key length (here 4); a subsequent key of a different length
+    // violates the fixed-width contract and must throw.
+    [Test]
+    public void Add_KeyLengthMismatch_Throws() =>
+        Assert.That(() =>
+            HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer> builder) =>
+            {
+                builder.Add(new byte[4], "v"u8);
+                builder.Add(new byte[5], "v"u8);
+            }),
+            Throws.InstanceOf<ArgumentException>());
+
+    // Same fixed-width contract on the streaming BeginValueWrite/FinishValueWrite path: the
+    // first finished entry locks the key length, a later mismatched key must throw.
+    [Test]
+    public void FinishValueWrite_KeyLengthMismatch_Throws()
+    {
+        using PooledByteBufferWriter pooled = new(4096);
+        using HsstBTreeBuilderBuffers.Container buffers = new();
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer> b = new(ref pooled.GetWriter(), ref buffers.Buffers, keyLength: -1);
+        try
+        {
+            ref PooledByteBufferWriter.Writer w1 = ref b.BeginValueWrite();
+            w1.GetSpan(2);
+            w1.Advance(2);
+            b.FinishValueWrite(new byte[4], 2); // locks keyLength = 4
+
+            ref PooledByteBufferWriter.Writer w2 = ref b.BeginValueWrite();
+            w2.GetSpan(2);
+            w2.Advance(2);
+            bool threw = false;
+            try { b.FinishValueWrite(new byte[5], 2); } catch (ArgumentException) { threw = true; }
+            Assert.That(threw, Is.True, "mismatched key length on the streaming path must throw");
+        }
+        finally
+        {
+            b.Dispose();
+        }
+    }
 }
