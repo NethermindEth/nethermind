@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,31 +6,35 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
-namespace Nethermind.Synchronization.Blocks
+namespace Nethermind.Synchronization.Blocks;
+
+public sealed class BlocksRequest : IDisposable
 {
-    public class BlocksRequest : IDisposable
+    public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
+    public OwnedBlockBodies? OwnedBodies { get; set; }
+    public IOwnedReadOnlyList<BlockHeader> BlockAccessListsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
+    public IOwnedReadOnlyList<byte[]?>? BlockAccessLists { get; set; }
+    public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
+    public IOwnedReadOnlyList<TxReceipt[]?>? Receipts { get; set; }
+
+    public int? NumberOfLatestBlocksToBeIgnored { get; }
+    public Task DownloadTask { get; set; }
+    public int AllCounts => BodiesRequests.Count + BlockAccessListsRequests.Count + ReceiptsRequests.Count;
+    private bool _disposed;
+
+    public override string ToString() => $"Blocks Request: {BodiesRequests.Count} Bodies, {BlockAccessListsRequests.Count} Block Access Lists, {ReceiptsRequests.Count} Receipts";
+
+    public void Dispose()
     {
-        public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
-        public OwnedBlockBodies? OwnedBodies { get; set; }
-        public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
-        public IOwnedReadOnlyList<TxReceipt[]?>? Receipts { get; set; }
+        if (_disposed) return;
+        _disposed = true;
 
-        public int? NumberOfLatestBlocksToBeIgnored { get; }
-        public Task DownloadTask { get; set; }
-        bool _disposed;
-
-        public override string ToString() => $"Blocks Request: {BodiesRequests.Count} Bodies, {ReceiptsRequests.Count} Receipts";
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-
-            BodiesRequests?.Dispose();
-            ReceiptsRequests?.Dispose();
-            OwnedBodies?.Dispose();
-            Receipts?.Dispose();
-            DownloadTask?.Dispose();
-        }
+        BodiesRequests.Dispose();
+        BlockAccessListsRequests.Dispose();
+        ReceiptsRequests.Dispose();
+        OwnedBodies?.Dispose();
+        BlockAccessLists?.Dispose();
+        Receipts?.Dispose();
+        DownloadTask?.Dispose();
     }
 }

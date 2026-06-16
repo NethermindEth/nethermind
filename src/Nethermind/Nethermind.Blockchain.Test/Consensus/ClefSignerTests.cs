@@ -28,9 +28,9 @@ namespace Nethermind.Blockchain.Test.Consensus
             postMethod.Returns(returnValue);
             ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
 
-            Signature result = sut.Sign(Keccak.Zero);
-
-            Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes));
+            ValueHash256 hash = Keccak.Zero;
+            Assert.That(sut.TrySign(in hash, out Signature result), Is.True);
+            Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes), Is.True);
         }
 
         [Test]
@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
 
-            sut.Sign(blockHeader);
+            Assert.That(sut.TrySign(blockHeader, out _), Is.True);
 
             await client.Received().Post<string>("account_signData", "application/x-clique-header", Arg.Any<string>(), Arg.Any<string>());
         }
@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
             ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
 
-            Signature result = sut.Sign(blockHeader);
+            Assert.That(sut.TrySign(blockHeader, out Signature result), Is.True);
 
             Assert.That(result.V, Is.EqualTo(expected));
         }

@@ -10,6 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -99,6 +100,14 @@ public class InitializeNetwork : IStep
     {
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
+        if (_syncConfig.StaticSnapPivot)
+        {
+            if (!_syncConfig.SnapSync)
+                throw new InvalidConfigurationException("Sync.StaticSnapPivot requires Sync.SnapSync to be enabled.", -1);
+            if (_syncConfig.PivotNumber <= 0 || string.IsNullOrWhiteSpace(_syncConfig.PivotHash))
+                throw new InvalidConfigurationException("Sync.StaticSnapPivot requires Sync.PivotNumber and Sync.PivotHash to be set to the target (frozen) pivot block.", -1);
+        }
+
         if (_networkConfig.DiagTracerEnabled)
         {
             NetworkDiagTracer.IsEnabled = true;
@@ -132,7 +141,6 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push(snapCapabilitySwitcher);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
-
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
@@ -250,12 +258,6 @@ public class InitializeNetwork : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
 
-        await _api.RlpxPeer.Init();
-
-        await _api.StaticNodesManager.InitAsync();
-
-        await _api.TrustedNodesManager.InitAsync();
-
         _api.ProtocolsManager = CreateProtocolManager();
 
         if (_syncConfig.SnapServingEnabled == true)
@@ -272,6 +274,14 @@ public class InitializeNetwork : IStep
         {
             await plugin.InitNetworkProtocol();
         }
+
+        // Capabilities must be finalized before the RLPx listener accepts peers. Otherwise
+        // early sessions can negotiate only the default ETH version and never upgrade.
+        await _api.RlpxPeer.Init();
+
+        await _api.StaticNodesManager.InitAsync();
+
+        await _api.TrustedNodesManager.InitAsync();
     }
 
     protected virtual IProtocolsManager CreateProtocolManager() => new ProtocolsManager(

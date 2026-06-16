@@ -26,7 +26,8 @@ internal static class XdcConstants
 
     public const int BlockSignersCacheLimit = 9000;
 
-    public const long DefaultTargetGasLimit = 84000000; // XDC default gas limit per block
+    // XDC default gas limit per block https://github.com/XinFinOrg/XDPoSChain/blob/dev-upgrade/cicd/mainnet/start.sh#L120
+    public const long DefaultTargetGasLimit = 420_000_000;
 
     public const byte ConsensusVersion = 0x02;
 
@@ -38,6 +39,11 @@ internal static class XdcConstants
 
     public const int PeriodicJobPeriod = 60;
     public const int PoolHygieneRound = 10;
+    /// <summary>
+    /// Number of epoch switch entries to retain in rewards history.
+    /// This is an epoch count, not a block-number distance.
+    /// </summary>
+    public const int RewardHistoryEpochRetention = 20_000;
     public const int InMemorySignatures = 4096;
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW

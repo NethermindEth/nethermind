@@ -18,6 +18,7 @@ namespace Nethermind.Core.Specs
         long MaxCodeSize { get; }
         long MinGasLimit { get; }
         long MinHistoryRetentionEpochs { get; }
+        long MinBalRetentionEpochs { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
@@ -345,18 +346,6 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsRip7212Enabled { get; }
         bool IsEip7951Enabled { get; }
-
-        /// OP Granite
-        bool IsOpGraniteEnabled { get; }
-
-        /// OP Holocene
-        bool IsOpHoloceneEnabled { get; }
-
-        /// OP Jovian
-        bool IsOpJovianEnabled { get; }
-
-        // OP Isthmus
-        bool IsOpIsthmusEnabled { get; }
 
         /// <summary>
         ///  Increase call data cost

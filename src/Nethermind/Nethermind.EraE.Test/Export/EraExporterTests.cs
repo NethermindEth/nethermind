@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -11,7 +10,7 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using Nethermind.EraE.Config;
 using Nethermind.EraE.E2Store;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.EraE.Export;
 using NUnit.Framework;
 
@@ -41,7 +40,29 @@ public class EraExporterTests
 
         string[] allFiles = System.IO.Directory.GetFiles(tmpDirectory);
         string[] eraFiles = allFiles.Where(f => f.EndsWith(EraPathUtils.FileExtension)).ToArray();
-        eraFiles.Length.Should().Be(expectedEraFiles);
+        Assert.That(eraFiles.Length, Is.EqualTo(expectedEraFiles));
+    }
+
+    [Test]
+    public async Task Export_WhenLegacyEraeFileExists_SkipsEpochWithoutWritingEre()
+    {
+        await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(16)
+            .AddSingleton<IEraEConfig>(new EraEConfig { MaxEraSize = 16, NetworkName = EraETestModule.TestNetwork })
+            .Build();
+
+        string tmpDirectory = container.ResolveTempDirPath();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(tmpDirectory, 0, 15);
+
+        string ereFile = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}").Single();
+        string eraeFile = System.IO.Path.ChangeExtension(ereFile, EraPathUtils.LegacyFileExtension);
+        System.IO.File.Move(ereFile, eraeFile);
+
+        await sut.Export(tmpDirectory, 0, 15);
+
+        Assert.That(System.IO.File.Exists(eraeFile), Is.True, "pre-existing legacy .erae file must be kept on re-export");
+        Assert.That(System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}"), Is.Empty,
+            "epoch already present as .erae must be skipped, not re-exported as a duplicate .ere");
     }
 
     [TestCase("checksums_sha256.txt")]
@@ -54,8 +75,7 @@ public class EraExporterTests
         string tmpDirectory = container.ResolveTempDirPath();
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
 
-        System.IO.File.Exists(System.IO.Path.Combine(tmpDirectory, fileName))
-            .Should().BeTrue();
+        Assert.That(System.IO.File.Exists(System.IO.Path.Combine(tmpDirectory, fileName)), Is.True);
     }
 
     [Test]
@@ -73,8 +93,8 @@ public class EraExporterTests
         {
             ReadOnlySpan<char> span = line.AsSpan();
             int spaceIdx = span.IndexOf(' ');
-            spaceIdx.Should().BeGreaterThan(0, "each line should be '<hash> <filename>'");
-            span[(spaceIdx + 1)..].EndsWith(EraPathUtils.FileExtension.AsSpan()).Should().BeTrue();
+            Assert.That(spaceIdx, Is.GreaterThan(0), "each line should be '<hash> <filename>'");
+            Assert.That(span[(spaceIdx + 1)..].EndsWith(EraPathUtils.FileExtension.AsSpan()), Is.True);
         }
     }
 
@@ -87,8 +107,11 @@ public class EraExporterTests
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
 
         string[] eraFiles = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
-        eraFiles.Should().NotBeEmpty();
-        eraFiles.Should().AllSatisfy(f => f.Should().EndWith(EraPathUtils.FileExtension));
+        Assert.That(eraFiles, Is.Not.Empty);
+        foreach (string eraFile in eraFiles)
+        {
+            Assert.That(eraFile, Does.EndWith(EraPathUtils.FileExtension));
+        }
     }
 
     [Test]
@@ -140,7 +163,7 @@ public class EraExporterTests
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, to: 0);
 
         string[] eraFiles = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
-        eraFiles.Should().NotBeEmpty("exporting to 0 should default to head");
+        Assert.That(eraFiles, Is.Not.Empty, "exporting to 0 should default to head");
     }
 
     [Test]
@@ -166,12 +189,12 @@ public class EraExporterTests
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 1, 0);
 
         string[] eraFiles = Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
-        eraFiles.Should().HaveCount(1, "one epoch for blocks 1-15");
+        Assert.That(eraFiles, Has.Length.EqualTo(1), "one epoch for blocks 1-15");
 
         List<ushort> types = EraFileFormatComplianceTests.ReadAllEntries(eraFiles[0]).Select(e => e.Type).ToList();
-        types.Should().NotContain(EntryTypes.Proof, "post-merge epochs have no Proof entries");
-        types.Should().NotContain(EntryTypes.TotalDifficulty, "post-merge epochs have no TotalDifficulty entries");
-        types.Should().NotContain(EntryTypes.AccumulatorRoot, "post-merge epochs have no AccumulatorRoot entry");
+        Assert.That(types, Does.Not.Contain(EntryTypes.Proof), "post-merge epochs have no Proof entries");
+        Assert.That(types, Does.Not.Contain(EntryTypes.TotalDifficulty), "post-merge epochs have no TotalDifficulty entries");
+        Assert.That(types, Does.Not.Contain(EntryTypes.AccumulatorRoot), "post-merge epochs have no AccumulatorRoot entry");
     }
 
     [Test]
@@ -203,6 +226,6 @@ public class EraExporterTests
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 16, 31);
 
         string[] eraFiles = System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}");
-        eraFiles.Length.Should().Be(1, "only one epoch covers blocks 16-31");
+        Assert.That(eraFiles.Length, Is.EqualTo(1), "only one epoch covers blocks 16-31");
     }
 }

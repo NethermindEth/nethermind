@@ -4,12 +4,11 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 
-namespace Nethermind.Xdc;
+namespace Nethermind.Xdc.RLP;
 
-public sealed class VoteDecoder : RlpValueDecoder<Vote>
+public sealed class VoteDecoder : RlpDecoder<Vote>
 {
     private static readonly XdcBlockInfoDecoder _xdcBlockInfoDecoder = new();
 
@@ -57,7 +56,7 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         stream.Encode(item.GapNumber);
     }
 
-    public Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
             return Rlp.OfEmptyList;

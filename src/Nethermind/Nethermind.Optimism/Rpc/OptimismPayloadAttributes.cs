@@ -16,6 +16,7 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismPayloadAttributes : PayloadAttributes
 {
+    private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     private byte[][]? _encodedTransactions;
 
     public byte[][]? Transactions
@@ -49,7 +50,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             try
             {
-                return TxDecoder.Instance.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
+                return TxRlpDecoder.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
             catch (RlpException e)
             {
@@ -114,7 +115,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
+        IOptimismReleaseSpec releaseSpec = (IOptimismReleaseSpec)specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
         if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
         {
             error = $"{nameof(EIP1559Params)} should be null before Holocene";

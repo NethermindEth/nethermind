@@ -33,7 +33,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly ITxGossipPolicy _txGossipPolicy;
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
-        private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
+        private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handleSlow;
+
+        protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex);
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -65,14 +67,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
         protected bool CanReceiveTransactions => _txGossipPolicy.ShouldListenToGossipedTransactions;
 
-        public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
-
-        public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested
-        {
-            add { }
-            remove { }
-        }
-
         protected virtual void EnrichStatusMessage(StatusMessage statusMessage) { }
 
         public override void Init()
@@ -98,7 +92,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected sealed override void BeforeHandleMessage(ZeroPacket message) => ThrowIfStatusWasNotReceived(message.PacketType);
 
-        protected override void HandleMessageCore(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
 
@@ -129,7 +123,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         using StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
                         ReportIn(statusMsg, size);
                         Handle(statusMsg);
-                        break;
+                        return true;
                     }
                 case Eth62MessageCode.NewBlockHashes:
                     if (CanAcceptBlockGossip())
@@ -138,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(newBlockHashesMessage, size);
                         Handle(newBlockHashesMessage);
                     }
-                    break;
+                    return true;
                 case Eth62MessageCode.Transactions:
                     if (CanReceiveTransactions)
                     {
@@ -160,29 +154,31 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(ignored, size);
                     }
 
-                    break;
+                    return true;
                 case Eth62MessageCode.GetBlockHeaders:
                     HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth62MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
-                    break;
+                    return true;
                 case Eth62MessageCode.GetBlockBodies:
                     HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
-                    break;
+                    return true;
                 case Eth62MessageCode.NewBlock:
                     if (CanAcceptBlockGossip())
                     {
                         HandleInBackground<NewBlockMessage>(message, Handle);
                     }
-                    break;
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -233,25 +229,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
-            ProtocolInitialized?.Invoke(this, eventArgs);
+            NotifyProtocolInitialized(eventArgs);
         }
 
         protected void Handle(TransactionsMessage msg)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow, "Transactions"))
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), _handleSlow, "Transactions"))
             {
                 iList.Dispose();
             }
         }
 
-        protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        protected virtual ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
         {
-            IOwnedReadOnlyList<Transaction> transactions = request.txs;
+            IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
             ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
             try
             {
-                int startIdx = request.startIndex;
+                int startIdx = request.StartIndex;
                 bool isTrace = Logger.IsTrace;
 
                 for (int i = startIdx; i < transactionsSpan.Length; i++)
@@ -267,7 +263,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         }
 
                         // Reschedule remaining transactions with a different start index
-                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), _handleSlow, "Transactions"))
+                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, i), _handleSlow, "Transactions"))
                         {
                             transactions.Dispose();
                         }
@@ -393,8 +389,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        protected override void OnDisposed() =>
-            // Clear Events
-            ProtocolInitialized = null;
+        protected override void OnDisposed() => ClearProtocolEvents();
     }
 }

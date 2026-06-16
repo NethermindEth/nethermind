@@ -51,10 +51,15 @@ public interface IPersistence
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
         void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
-        void SetStateTrieNode(in TreePath path, TrieNode tnValue);
-        void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
+        void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
-        void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
+        /// <summary>
+        /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced
+        /// during sync. When slot values are RLP-wrapped the bytes are stored verbatim; in raw mode the value is
+        /// unwrapped to its stripped bytes.
+        /// </summary>
+        void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
         void SetAccountRaw(in ValueHash256 addrHash, Account account);
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);

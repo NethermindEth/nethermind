@@ -63,7 +63,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Auto-dump on bad blocks for diagnostics.", DefaultValue = nameof(DumpOptions.Default))]
     DumpOptions AutoDump { get; set; }
 
-    [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "")]
+    [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "", IsSensitive = true)]
     string RpcDbUrl { get; set; }
 
     [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]

@@ -99,9 +99,9 @@ public class DiscoveryV5AppTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(loadedEnrs, Has.Count.EqualTo(2), "Should get all records");
-            Assert.That(_legacyDiscoveryDb, Has.Count.EqualTo(0), "Legacy DB should be empty");
-            Assert.That(_discoveryDb, Has.Count.EqualTo(2), "DB should contain all items migrated");
+            Assert.That(loadedEnrs.Count, Is.EqualTo(2), "Should get all records");
+            Assert.That(_legacyDiscoveryDb.Count, Is.EqualTo(0), "Legacy DB should be empty");
+            Assert.That(_discoveryDb.Count, Is.EqualTo(2), "DB should contain all items migrated");
         }
     }
 
@@ -118,9 +118,9 @@ public class DiscoveryV5AppTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(loadedEnrs, Has.Count.EqualTo(0), "Should not load any nodes if legacy DB contains enodes");
-            Assert.That(_legacyDiscoveryDb, Has.Count.EqualTo(2), "Legacy DB should not be changed");
-            Assert.That(_discoveryDb, Has.Count.EqualTo(0), "DB should not load any records");
+            Assert.That(loadedEnrs.Count, Is.EqualTo(0), "Should not load any nodes if legacy DB contains enodes");
+            Assert.That(_legacyDiscoveryDb.Count, Is.EqualTo(2), "Legacy DB should not be changed");
+            Assert.That(_discoveryDb.Count, Is.EqualTo(0), "DB should not load any records");
         }
     }
 

@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching;
@@ -46,13 +45,13 @@ public abstract class AssociativeCacheTestsBase
     /// Asserts that <paramref name="key"/> is present and maps to <c>_accounts[expectedIndex]</c>.
     /// Key-only caches just assert presence.
     /// </summary>
-    protected virtual void AssertValue(in AddressAsKey key, int expectedIndex) => Get(in key).Should().BeTrue();
+    protected virtual void AssertValue(in AddressAsKey key, int expectedIndex) => Assert.That(Get(in key), Is.True);
 
     [Test]
     public void At_capacity()
     {
         for (int i = 0; i < Capacity; i++)
-            Set(in _keys[i], i).Should().BeTrue();
+            Assert.That(Set(in _keys[i], i), Is.True);
 
         AssertValue(in _keys[Capacity - 1], Capacity - 1);
     }
@@ -60,13 +59,13 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Can_reset()
     {
-        Set(in _keys[0], 0).Should().BeTrue();
-        Set(in _keys[0], 1).Should().BeFalse();
+        Assert.That(Set(in _keys[0], 0), Is.True);
+        Assert.That(Set(in _keys[0], 1), Is.False);
         AssertValue(in _keys[0], 1);
     }
 
     [Test]
-    public void Can_ask_before_first_set() => Get(in _keys[0]).Should().BeFalse();
+    public void Can_ask_before_first_set() => Assert.That(Get(in _keys[0]), Is.False);
 
     [Test]
     public void Beyond_capacity()
@@ -74,7 +73,7 @@ public abstract class AssociativeCacheTestsBase
         for (int i = 0; i < Capacity * 2; i++)
             Set(in _keys[i], i);
 
-        GetCount().Should().BeLessOrEqualTo(Capacity);
+        Assert.That(GetCount(), Is.LessThanOrEqualTo(Capacity));
 
         // Any item that is present must return the correct value
         for (int i = 0; i < Capacity * 2; i++)
@@ -98,7 +97,7 @@ public abstract class AssociativeCacheTestsBase
         }
 
         // No crash means success; count is bounded
-        GetCount().Should().BeLessOrEqualTo(Capacity);
+        Assert.That(GetCount(), Is.LessThanOrEqualTo(Capacity));
     }
 
     [Test]
@@ -118,15 +117,14 @@ public abstract class AssociativeCacheTestsBase
     public void Can_delete()
     {
         Set(in _keys[0], 0);
-        Delete(in _keys[0]).Should().BeTrue();
-        Get(in _keys[0]).Should().BeFalse();
-        Delete(in _keys[0]).Should().BeFalse();
+        Assert.That(Delete(in _keys[0]), Is.True);
+        Assert.That(Get(in _keys[0]), Is.False);
+        Assert.That(Delete(in _keys[0]), Is.False);
     }
 
     [TestCase(-1)]
     [TestCase(134_217_729)]
-    public void Capacity_out_of_range_throws(int capacity) => FluentActions.Invoking(() => CreateCache(capacity))
-            .Should().Throw<ArgumentOutOfRangeException>();
+    public void Capacity_out_of_range_throws(int capacity) => Assert.That(() => CreateCache(capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [TestCase(0)]
     [TestCase(4096)]
@@ -137,13 +135,16 @@ public abstract class AssociativeCacheTestsBase
 
         if (capacity == 0)
         {
-            Get(in _keys[0]).Should().BeFalse();
-            GetCount().Should().Be(0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Get(in _keys[0]), Is.False);
+                Assert.That(GetCount(), Is.EqualTo(0));
+            }
         }
         else
         {
             AssertValue(in _keys[0], 0);
-            GetCount().Should().Be(1);
+            Assert.That(GetCount(), Is.EqualTo(1));
         }
     }
 
@@ -160,30 +161,33 @@ public abstract class AssociativeCacheTestsBase
         int insertCount = Math.Min(capacity / 2, _keys.Length - 1);
 
         for (int i = 0; i < insertCount; i++)
-            Set(in _keys[i], i).Should().BeTrue();
+            Assert.That(Set(in _keys[i], i), Is.True);
 
         for (int i = 0; i < insertCount; i++)
             AssertValue(in _keys[i], i);
 
-        GetCount().Should().Be(insertCount);
+        Assert.That(GetCount(), Is.EqualTo(insertCount));
     }
 
     [Test]
     public void Concurrent_clear_does_not_corrupt_count()
     {
-        // Catches count/Clear race: concurrent Set + Clear should not produce
-        // negative counts or counts wildly exceeding capacity.
-        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+        // 50 rounds so a probabilistic Set/Clear race is caught reliably.
+        for (int round = 0; round < 50; round++)
         {
-            for (int i = 0; i < Capacity; i++)
-                Set(in _keys[i], i);
-            if (iter % 3 == 0)
-                Clear();
-        });
+            CreateCache(Capacity);
+            Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+            {
+                for (int i = 0; i < Capacity; i++)
+                    Set(in _keys[i], i);
+                if (iter % 3 == 0)
+                    Clear();
+            });
 
-        int count = GetCount();
-        count.Should().BeGreaterThanOrEqualTo(0);
-        count.Should().BeLessOrEqualTo(Capacity);
+            int count = GetCount();
+            Assert.That(count, Is.GreaterThanOrEqualTo(0), $"round {round}");
+            Assert.That(count, Is.LessThanOrEqualTo(Capacity), $"round {round}");
+        }
     }
 
     [Test]
@@ -195,10 +199,10 @@ public abstract class AssociativeCacheTestsBase
         });
 
         AssertValue(in _keys[0], 0);
-        GetCount().Should().BeGreaterThan(0);
+        Assert.That(GetCount(), Is.GreaterThan(0));
 
-        Delete(in _keys[0]).Should().BeTrue();
-        Get(in _keys[0]).Should().BeFalse();
+        Assert.That(Delete(in _keys[0]), Is.True);
+        Assert.That(Get(in _keys[0]), Is.False);
     }
 
     [Test]
@@ -208,9 +212,9 @@ public abstract class AssociativeCacheTestsBase
         Clear();
 
         // Set immediately after Clear must succeed AND be retrievable
-        Set(in _keys[1], 1).Should().BeTrue();
+        Assert.That(Set(in _keys[1], 1), Is.True);
         AssertValue(in _keys[1], 1);
-        GetCount().Should().Be(1);
+        Assert.That(GetCount(), Is.EqualTo(1));
     }
 
     [Test]
@@ -219,14 +223,14 @@ public abstract class AssociativeCacheTestsBase
         // Catches count underflow: Clear sets count to 0, then Delete
         // on a stale entry should not decrement below 0.
         Set(in _keys[0], 0);
-        GetCount().Should().Be(1);
+        Assert.That(GetCount(), Is.EqualTo(1));
 
         Clear();
-        GetCount().Should().Be(0);
+        Assert.That(GetCount(), Is.EqualTo(0));
 
         // Delete after Clear — entry is stale, delete should be a no-op
-        Delete(in _keys[0]).Should().BeFalse();
-        GetCount().Should().Be(0);
+        Assert.That(Delete(in _keys[0]), Is.False);
+        Assert.That(GetCount(), Is.EqualTo(0));
     }
 
     [Test]
@@ -245,39 +249,48 @@ public abstract class AssociativeCacheTestsBase
                 Delete(in _keys[i]);
         });
 
-        GetCount().Should().BeGreaterThanOrEqualTo(0);
+        Assert.That(GetCount(), Is.GreaterThanOrEqualTo(0));
     }
 
     [Test]
     public void Clear_invalidates_and_frees_capacity()
     {
-        Set(in _keys[0], 0).Should().BeTrue();
+        Assert.That(Set(in _keys[0], 0), Is.True);
         Clear();
 
         // Epoch bump makes entry invisible, count resets
-        Get(in _keys[0]).Should().BeFalse();
-        GetCount().Should().Be(0);
+        Assert.That(Get(in _keys[0]), Is.False);
+        Assert.That(GetCount(), Is.EqualTo(0));
 
         // Capacity is free — Set returns true (new), value is retrievable
-        Set(in _keys[0], 1).Should().BeTrue();
+        Assert.That(Set(in _keys[0], 1), Is.True);
         AssertValue(in _keys[0], 1);
     }
 
     [Test]
     public void Contains_works()
     {
-        Contains(in _keys[0]).Should().BeFalse();
-        Get(in _keys[0]).Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.False);
+            Assert.That(Get(in _keys[0]), Is.False);
+        }
 
         Set(in _keys[0], 0);
 
-        Contains(in _keys[0]).Should().BeTrue();
-        Get(in _keys[0]).Should().BeTrue();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.True);
+            Assert.That(Get(in _keys[0]), Is.True);
+        }
 
         Delete(in _keys[0]);
 
-        Contains(in _keys[0]).Should().BeFalse();
-        Get(in _keys[0]).Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(in _keys[0]), Is.False);
+            Assert.That(Get(in _keys[0]), Is.False);
+        }
     }
 
     [Test]
@@ -291,14 +304,14 @@ public abstract class AssociativeCacheTestsBase
 
         Clear(releaseReferences: false);
 
-        GetCount().Should().Be(0);
+        Assert.That(GetCount(), Is.EqualTo(0));
         for (int i = 0; i < 16; i++)
-            Get(in _keys[i]).Should().BeFalse();
+            Assert.That(Get(in _keys[i]), Is.False);
 
         // Re-insert — all should report as new
         for (int i = 0; i < 16; i++)
-            Set(in _keys[i], i).Should().BeTrue($"key {i} should be new after Clear");
+            Assert.That(Set(in _keys[i], i), Is.True, $"key {i} should be new after Clear");
 
-        GetCount().Should().Be(16);
+        Assert.That(GetCount(), Is.EqualTo(16));
     }
 }

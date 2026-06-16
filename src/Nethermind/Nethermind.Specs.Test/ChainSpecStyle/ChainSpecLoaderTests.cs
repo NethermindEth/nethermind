@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
-using FluentAssertions;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,27 +36,30 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
-        chainSpec.HomesteadBlockNumber.Should().Be(MainnetSpecProvider.HomesteadBlockNumber);
-        chainSpec.DaoForkBlockNumber.Should().Be(1920000);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(MainnetSpecProvider.TangerineWhistleBlockNumber);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(MainnetSpecProvider.SpuriousDragonBlockNumber);
-        chainSpec.ByzantiumBlockNumber.Should().Be(MainnetSpecProvider.ByzantiumBlockNumber);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(null);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(MainnetSpecProvider.ConstantinopleFixBlockNumber);
-        chainSpec.IstanbulBlockNumber.Should().Be(MainnetSpecProvider.IstanbulBlockNumber);
-        chainSpec.MuirGlacierNumber.Should().Be(MainnetSpecProvider.MuirGlacierBlockNumber);
-        chainSpec.BerlinBlockNumber.Should().Be(MainnetSpecProvider.BerlinBlockNumber);
-        chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
-        chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
-        chainSpec.GrayGlacierBlockNumber.Should().Be(MainnetSpecProvider.GrayGlacierBlockNumber);
-        chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.ShanghaiBlockTimestamp);
-        chainSpec.ShanghaiTimestamp.Should().Be(MainnetSpecProvider.Instance.TimestampFork);
+            Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo(MainnetSpecProvider.HomesteadBlockNumber));
+            Assert.That(chainSpec.DaoForkBlockNumber, Is.EqualTo(1920000));
+            Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(MainnetSpecProvider.TangerineWhistleBlockNumber));
+            Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(MainnetSpecProvider.SpuriousDragonBlockNumber));
+            Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(MainnetSpecProvider.ByzantiumBlockNumber));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
+            Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(MainnetSpecProvider.IstanbulBlockNumber));
+            Assert.That(chainSpec.MuirGlacierNumber, Is.EqualTo(MainnetSpecProvider.MuirGlacierBlockNumber));
+            Assert.That(chainSpec.BerlinBlockNumber, Is.EqualTo(MainnetSpecProvider.BerlinBlockNumber));
+            Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
+            Assert.That(chainSpec.ArrowGlacierBlockNumber, Is.EqualTo(MainnetSpecProvider.ArrowGlacierBlockNumber));
+            Assert.That(chainSpec.GrayGlacierBlockNumber, Is.EqualTo(MainnetSpecProvider.GrayGlacierBlockNumber));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(MainnetSpecProvider.ShanghaiBlockTimestamp));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(MainnetSpecProvider.Instance.TimestampFork));
+        }
     }
 
     [Test]
@@ -66,24 +68,27 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(99), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Spaceneth"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.DataDir, Is.EqualTo("spaceneth"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(99), $"{nameof(chainSpec.NetworkId)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Spaceneth"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.DataDir, Is.EqualTo("spaceneth"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
 
-        chainSpec.HomesteadBlockNumber.Should().Be(0L);
-        chainSpec.DaoForkBlockNumber.Should().Be(null);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(0L);
-        chainSpec.ByzantiumBlockNumber.Should().Be(0L);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(0L);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(0L);
-        chainSpec.IstanbulBlockNumber.Should().Be(0L);
-        chainSpec.MuirGlacierNumber.Should().Be(null);
-        chainSpec.BerlinBlockNumber.Should().Be(0L);
-        chainSpec.LondonBlockNumber.Should().Be(0L);
-        chainSpec.ArrowGlacierBlockNumber.Should().Be(null);
-        chainSpec.GrayGlacierBlockNumber.Should().Be(null);
+            Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.DaoForkBlockNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.MuirGlacierNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.BerlinBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.ArrowGlacierBlockNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.GrayGlacierBlockNumber, Is.EqualTo(null));
+        }
     }
 
     [Test]
@@ -92,13 +97,16 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/sepolia.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
-        chainSpec.LondonBlockNumber.Should().Be(0L);
-        chainSpec.ShanghaiTimestamp.Should().Be(1677557088);
+            Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1677557088));
+        }
     }
 
     [Test]
@@ -107,21 +115,24 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(560048), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(560048), $"{nameof(chainSpec.NetworkId)}");
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
-        chainSpec.DaoForkBlockNumber.Should().Be(null);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(0);
-        chainSpec.ByzantiumBlockNumber.Should().Be(0);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(0);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(0);
-        chainSpec.IstanbulBlockNumber.Should().Be(0);
-        chainSpec.BerlinBlockNumber.Should().Be(0);
-        chainSpec.LondonBlockNumber.Should().Be(0);
-        chainSpec.ShanghaiTimestamp.Should().Be(0);
-        chainSpec.CancunTimestamp.Should().Be(0);
-        chainSpec.PragueTimestamp.Should().Be(HoodiSpecProvider.PragueTimestamp);
+            Assert.That(chainSpec.DaoForkBlockNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.BerlinBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(HoodiSpecProvider.PragueTimestamp));
+        }
     }
 
     [Test]
@@ -130,8 +141,11 @@ public class ChainSpecLoaderTests
         // TODO: modexp 2565
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
         ChainSpec chainSpec = LoadChainSpec(path);
-        chainSpec.Parameters.Eip152Transition.Should().Be(15);
-        chainSpec.Parameters.Eip1108Transition.Should().Be(10);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip152Transition, Is.EqualTo(15));
+            Assert.That(chainSpec.Parameters.Eip1108Transition, Is.EqualTo(10));
+        }
     }
 
     [Test]
@@ -181,8 +195,7 @@ public class ChainSpecLoaderTests
             if (excludedProperties.Contains(prop.Name)) continue;
             object? loadedValue = prop.GetValue(chainSpec.Parameters);
             object? baselineValue = prop.GetValue(baseline);
-            ValuesMatch(loadedValue, baselineValue).Should().BeFalse(
-                $"ChainParameters.{prop.Name} still has its default value ({baselineValue}) after loading. " +
+            Assert.That(ValuesMatch(loadedValue, baselineValue), Is.False, $"ChainParameters.{prop.Name} still has its default value ({baselineValue}) after loading. " +
                 "Ensure it is mapped in ChainSpecLoader.LoadParameters.");
         }
     }

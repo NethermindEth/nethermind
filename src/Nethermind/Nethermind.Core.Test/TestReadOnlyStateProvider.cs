@@ -12,8 +12,8 @@ namespace Nethermind.Core.Test;
 
 public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 {
-    private Dictionary<Address, AccountStruct> _accounts = new();
-    private Dictionary<ValueHash256, byte[]> _codes = new();
+    private Dictionary<Address, AccountStruct> _accounts = [];
+    private Dictionary<ValueHash256, byte[]> _codes = [];
 
     public bool TryGetAccount(Address address, out AccountStruct account) => _accounts.TryGetValue(address, out account);
 

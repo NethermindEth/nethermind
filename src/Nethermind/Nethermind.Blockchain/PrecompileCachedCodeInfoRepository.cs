@@ -16,6 +16,7 @@ using Nethermind.Evm.State;
 namespace Nethermind.Blockchain;
 
 public class PrecompileCachedCodeInfoRepository(
+    IWorldState worldState,
     IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
     ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
@@ -24,11 +25,15 @@ public class PrecompileCachedCodeInfoRepository(
         ? precompileProvider.GetPrecompiles()
         : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
 
+    public bool IsCodeOverridable => baseCodeInfoRepository.IsCodeOverridable;
+
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
         if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo cachedCodeInfo))
         {
+            // EIP-7928: mirror base CodeInfoRepository.GetCachedCodeInfo precompile path so the read lands in the BAL.
+            worldState.AddAccountRead(codeSource);
             delegationAddress = null;
             return cachedCodeInfo;
         }

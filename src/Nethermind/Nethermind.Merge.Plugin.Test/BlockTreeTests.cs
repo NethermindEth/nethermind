@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -56,9 +56,12 @@ public partial class BlockTreeTests
         BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(10);
         BlockTree tree = Build.A.BlockTree().WithDatabaseFrom(treeBuilder).WithoutSettingHead.BlockTree;
 
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
-        Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head!.Number, Is.EqualTo(9));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
+            Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
+            Assert.That(tree.Head!.Number, Is.EqualTo(9));
+        }
     }
 
     [Test]
@@ -75,11 +78,14 @@ public partial class BlockTreeTests
         _ = new PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
-        Assert.That(block8!.IsTerminalBlock(specProvider), Is.False);
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
-        Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block8!.IsTerminalBlock(specProvider), Is.False);
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
+            Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
+            Assert.That(tree.Head!.Number, Is.EqualTo(9));
+            Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        }
     }
 
     [Test]
@@ -101,11 +107,14 @@ public partial class BlockTreeTests
             .WithNumber(block7!.Number + 1).WithDifficulty(1999950).TestObject;
         // current Head TD: 10000000, block7 TD: 8000000, TTD 9999900, newTerminalBlock 9999950
         tree.SuggestBlock(newTerminalBlock);
-        Assert.That(newTerminalBlock.IsTerminalBlock(specProvider), Is.True);
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
-        Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newTerminalBlock.IsTerminalBlock(specProvider), Is.True);
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
+            Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
+            Assert.That(tree.Head!.Number, Is.EqualTo(9));
+            Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        }
     }
 
     [Test]
@@ -123,11 +132,14 @@ public partial class BlockTreeTests
         PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
-        Assert.That(block8!.Header.IsTerminalBlock(specProvider), Is.False);
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
-        Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head!.Number, Is.EqualTo(9));
-        Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block8!.Header.IsTerminalBlock(specProvider), Is.False);
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(9));
+            Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(9));
+            Assert.That(tree.Head!.Number, Is.EqualTo(9));
+            Assert.That(tree.Head.IsTerminalBlock(specProvider), Is.True);
+        }
 
         Block firstPoSBlock = Build.A.Block
             .WithHeader(Build.A.BlockHeader.WithParent(tree.Head!.Header).TestObject)
@@ -135,9 +147,12 @@ public partial class BlockTreeTests
             .WithDifficulty(0)
             .WithNumber(tree.Head!.Number + 1).TestObject;
         tree.SuggestBlock(firstPoSBlock);
-        tree.UpdateMainChain(new[] { firstPoSBlock }, true, true); // simulating fcU
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(10));
-        Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(10));
+        tree.TryUpdateMainChain(firstPoSBlock.Header, true, true, preloadedBlocks: new[] { firstPoSBlock }); // simulating fcU
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(10));
+            Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(10));
+        }
 
         Block newTerminalBlock = Build.A.Block
             .WithHeader(Build.A.BlockHeader.WithParent(block8!.Header).TestObject)
@@ -146,8 +161,11 @@ public partial class BlockTreeTests
             .WithNumber(block8!.Number + 1).WithDifficulty(2000001).TestObject;
         Assert.That(newTerminalBlock.IsTerminalBlock(specProvider), Is.True);
         tree.SuggestBlock(newTerminalBlock);
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(10));
-        Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(10));
+            Assert.That(tree.BestSuggestedBody!.Number, Is.EqualTo(10));
+        }
     }
 
     [Test]
@@ -158,13 +176,16 @@ public partial class BlockTreeTests
         BlockTreeInsertHeaderOptions insertHeaderOption = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
         AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOption);
 
-        Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
-        Assert.That(notSyncedTree.BestKnownNumber, Is.EqualTo(9));
-        Assert.That(notSyncedTree.BestSuggestedHeader!.Number, Is.EqualTo(9));
-        Assert.That(notSyncedTree.Head!.Number, Is.EqualTo(9));
-        Assert.That(notSyncedTree.BestSuggestedBody!.Number, Is.EqualTo(9));
-        Assert.That(notSyncedTree.BestKnownBeaconNumber, Is.EqualTo(14));
-        Assert.That(notSyncedTree.BestSuggestedBeaconHeader!.Number, Is.EqualTo(14));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(insertResult, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(notSyncedTree.BestKnownNumber, Is.EqualTo(9));
+            Assert.That(notSyncedTree.BestSuggestedHeader!.Number, Is.EqualTo(9));
+            Assert.That(notSyncedTree.Head!.Number, Is.EqualTo(9));
+            Assert.That(notSyncedTree.BestSuggestedBody!.Number, Is.EqualTo(9));
+            Assert.That(notSyncedTree.BestKnownBeaconNumber, Is.EqualTo(14));
+            Assert.That(notSyncedTree.BestSuggestedBeaconHeader!.Number, Is.EqualTo(14));
+        }
     }
 
 
@@ -221,10 +242,12 @@ public partial class BlockTreeTests
         BlockHeader? beaconHeader = syncedTree.FindHeader(13, BlockTreeLookupOptions.None);
         beaconHeader!.TotalDifficulty = null;
         AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, headerOptions);
-        Assert.That(insertResult, Is.EqualTo(insertOutcome));
-
         BlockHeader? headerToCheck = notSyncedTree.FindHeader(beaconHeader.Hash, BlockTreeLookupOptions.None);
-        Assert.That(headerToCheck!.TotalDifficulty, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(insertResult, Is.EqualTo(insertOutcome));
+            Assert.That(headerToCheck!.TotalDifficulty, Is.Null);
+        }
     }
 
     [Test]
@@ -239,10 +262,12 @@ public partial class BlockTreeTests
         Block? beaconBlock2 = syncedTree.FindBlock(13, BlockTreeLookupOptions.None);
         beaconBlock2!.Header.TotalDifficulty = null;
         AddBlockResult insertOutcome = notSyncedTree.Insert(beaconBlock2, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
-        Assert.That(insertResult, Is.EqualTo(insertOutcome));
-
         Block? blockToCheck = notSyncedTree.FindBlock(beaconBlock2.Hash, BlockTreeLookupOptions.None);
-        Assert.That(blockToCheck!.TotalDifficulty, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(insertResult, Is.EqualTo(insertOutcome));
+            Assert.That(blockToCheck!.TotalDifficulty, Is.Null);
+        }
     }
 
 
@@ -303,7 +328,7 @@ public partial class BlockTreeTests
             }
 
             private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e) =>
-                NotSyncedTree.UpdateMainChain(new[] { e.Block! }, true);
+                NotSyncedTree.TryUpdateMainChain(e.Block!.Header, true, preloadedBlocks: new[] { e.Block! });
 
             public ScenarioBuilder InsertBeaconPivot(long num)
             {
@@ -408,8 +433,8 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertFork(long low, long high, bool moveToBeaconMainChain = false, bool moveSyncedTree = true, ulong nonce = 0)
             {
-                List<BlockInfo> blockInfos = new();
-                List<Block> blocks = new();
+                List<BlockInfo> blockInfos = [];
+                List<Block> blocks = [];
                 Block? parent = null;
                 for (long i = low; i <= high; i++)
                 {
@@ -427,7 +452,7 @@ public partial class BlockTreeTests
 
                 if (moveToBeaconMainChain)
                 {
-                    if (moveSyncedTree) SyncedTree.UpdateMainChain(blocks, true, true);
+                    if (moveSyncedTree) SyncedTree.TryUpdateMainChain(blocks[^1].Header, true, true, preloadedBlocks: CollectionsMarshal.AsSpan(blocks));
                     NotSyncedTree.UpdateBeaconMainChain(blockInfos, blockInfos[^1].BlockNumber);
                 }
 
@@ -437,7 +462,7 @@ public partial class BlockTreeTests
             public ScenarioBuilder InsertOtherChainToMain(BlockTree blockTree, long low, long high)
             {
                 Block? parent = null;
-                List<Block> newBlocks = new();
+                List<Block> newBlocks = [];
                 for (long i = low; i <= high; i++)
                 {
                     parent ??= blockTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
@@ -451,7 +476,7 @@ public partial class BlockTreeTests
                     parent = blockToInsert;
                 }
 
-                blockTree.UpdateMainChain(newBlocks, true, true);
+                blockTree.TryUpdateMainChain(newBlocks[^1].Header, true, true, preloadedBlocks: CollectionsMarshal.AsSpan(newBlocks));
 
                 return this;
             }
@@ -544,7 +569,7 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder AssertChainLevelHelperLength(int count)
             {
-                _chainLevelHelper!.GetNextHeaders(1000, 1000)!.Length.Should().Be(count);
+                Assert.That(_chainLevelHelper!.GetNextHeaders(1000, 1000)!.Length, Is.EqualTo(count));
 
                 return this;
             }
@@ -555,11 +580,11 @@ public partial class BlockTreeTests
                 {
                     ChainLevelInfo? level = NotSyncedTree.FindLevel(i)!;
                     BlockInfo? blockInfo = level.MainChainBlock;
-                    blockInfo.Should().NotBe(null, $"Current block number: {i}");
-                    blockInfo!.TotalDifficulty.Should().NotBe(0, $"Current block number: {i}");
+                    Assert.That(blockInfo, Is.Not.EqualTo(null), $"Current block number: {i}");
+                    Assert.That(blockInfo!.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero), $"Current block number: {i}");
 
                     ChainLevelInfo? syncedLevel = SyncedTree.FindLevel(i);
-                    blockInfo.BlockHash.Should().Be(syncedLevel?.MainChainBlock!.BlockHash!, $"Current block number: {i}");
+                    Assert.That(blockInfo.BlockHash, Is.EqualTo(syncedLevel?.MainChainBlock!.BlockHash!), $"Current block number: {i}");
                 }
 
                 return this;
@@ -567,14 +592,14 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder AssertForceNewBeaconSync()
             {
-                _beaconPivot!.ShouldForceStartNewSync.Should().BeTrue();
+                Assert.That(_beaconPivot!.ShouldForceStartNewSync, Is.True);
 
                 return this;
             }
 
             public ScenarioBuilder AssertNotForceNewBeaconSync()
             {
-                _beaconPivot!.ShouldForceStartNewSync.Should().BeFalse();
+                Assert.That(_beaconPivot!.ShouldForceStartNewSync, Is.False);
 
                 return this;
             }
@@ -793,8 +818,11 @@ public partial class BlockTreeTests
 
         scenario.InsertFork(6, 8);
         level6 = scenario.NotSyncedTree.FindLevel(6);
-        level6!.BlockInfos.Length.Should().Be(2);
-        level6.BeaconMainChainBlock!.BlockHash.Should().Be(previousBlockHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(level6!.BlockInfos.Length, Is.EqualTo(2));
+            Assert.That(level6.BeaconMainChainBlock!.BlockHash, Is.EqualTo(previousBlockHash));
+        }
     }
 
     [Test]
@@ -825,7 +853,10 @@ public partial class BlockTreeTests
 
         Block block = scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!;
         AddBlockResult result = scenario.NotSyncedTree.SuggestBlock(block);
-        result.Should().Be(AddBlockResult.Added);
-        scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().NotBe((UInt256)0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(scenario.NotSyncedTree.FindBlock(8, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.Not.EqualTo((UInt256)0));
+        }
     }
 }

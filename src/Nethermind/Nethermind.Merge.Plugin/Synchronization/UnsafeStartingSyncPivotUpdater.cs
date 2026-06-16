@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -64,7 +65,9 @@ public class UnsafeStartingSyncPivotUpdater(
         TryGetFromPeers(blockNumber, cancellationToken, static async (peer, number, token) =>
         {
             using IOwnedReadOnlyList<BlockHeader>? x = await peer.GetBlockHeaders(number, 1, 0, token);
-            return x?.Count == 1 ? x[0] : null;
+            ReadOnlySpan<BlockHeader> headers = x is null ? [] : x.AsSpan();
+            // Only accept the header that is actually at the requested number; a peer must not substitute another.
+            return headers.Length == 1 && headers[0].Number == number ? headers[0] : null;
         });
 
     private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(long potentialPivotBlockNumber)

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using System;
-using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -36,16 +38,19 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public Address RelayerRegistrationSMC { get; set; }
+    public Address TRC21IssuerSMC { get; set; }
 
-    private List<V2ConfigParams> _v2Configs = new();
+    private List<V2ConfigParams> _v2Configs = [];
     public List<V2ConfigParams> V2Configs
     {
         get => _v2Configs;
         set
         {
-            _v2Configs = value ?? new();
-            _v2Configs.Sort((a, b) => a.SwitchRound.CompareTo(b.SwitchRound));
-            CheckConfig(_v2Configs);
+            Span<V2ConfigParams> v2Configs = CollectionsMarshal.AsSpan(value);
+            v2Configs.Sort(default(V2ConfigBySwitchRoundComparer));
+            CheckConfig(v2Configs);
+            _v2Configs = value;
         }
     }
     public long? TipTrc21Fee { get; set; }
@@ -62,11 +67,17 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long TIPXDCXMinerDisable { get; set; }
     public long? DynamicGasLimitBlock { get; set; }
 
-    private static void CheckConfig(List<V2ConfigParams> list)
+    private readonly struct V2ConfigBySwitchRoundComparer : IComparer<V2ConfigParams>
     {
-        if (list.Count == 0 || list[0].SwitchRound != 0)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Compare(V2ConfigParams a, V2ConfigParams b) => a.SwitchRound.CompareTo(b.SwitchRound);
+    }
+
+    private static void CheckConfig(ReadOnlySpan<V2ConfigParams> list)
+    {
+        if (list.Length == 0 || list[0].SwitchRound != 0)
             throw new InvalidOperationException("There should be a default configuration with switchRound = 0");
-        for (int i = 1; i < list.Count; i++)
+        for (int i = 1; i < list.Length; i++)
         {
             if (list[i].SwitchRound == list[i - 1].SwitchRound)
                 throw new InvalidOperationException($"Duplicate config for round {list[i].SwitchRound}.");

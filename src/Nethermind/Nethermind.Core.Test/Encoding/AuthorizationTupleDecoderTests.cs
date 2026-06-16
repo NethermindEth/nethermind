@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -29,10 +28,11 @@ public class AuthorizationTupleDecoderTests
     {
         AuthorizationTupleDecoder sut = new();
 
-        RlpStream result = sut.Encode(item);
-        Rlp.ValueDecoderContext ctx = new(result.Data);
+        Rlp result = sut.Encode(item);
+        Rlp.ValueDecoderContext ctx = new(result.Bytes);
 
-        sut.Decode(ref ctx).Should().BeEquivalentTo(item);
+        AuthorizationTuple decoded = sut.Decode(ref ctx);
+        Assert.That(decoded, Is.EqualTo(item).UsingAuthorizationTupleComparer());
     }
 
     [Test]
@@ -45,8 +45,7 @@ public class AuthorizationTupleDecoderTests
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data);
             sut.Decode(ref decoderContext, RlpBehaviors.None);
-        }
-        , Throws.TypeOf<RlpException>());
+        }, Throws.TypeOf<RlpException>());
     }
 
     public static IEnumerable<RlpStream> WrongSizeFieldsEncodedCases()

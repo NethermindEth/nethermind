@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using NUnit.Framework;
@@ -47,7 +46,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(10 * MaxCodeSize, MaxCodeSize)]
     [TestCase(100 * MaxCodeSize, MaxCodeSize)]
     [TestCase(1000 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(0, 1024 * 1024)]
+    [TestCase(0, MemorySizes.MiB)]
     // Note: Int32.MaxValue was removed as a test case because after word alignment
     // it exceeds the maximum allowed memory size and correctly returns out-of-gas.
     public void MemoryCost(int destination, int memoryAllocation)
@@ -289,7 +288,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         memory.CalculateMemoryCost(0, 32, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
-        memory.GetTrace().ToHexWordList().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
+        Assert.That(memory.GetTrace().ToHexWordList(), Is.EqualTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" }));
     }
 
     [Test]

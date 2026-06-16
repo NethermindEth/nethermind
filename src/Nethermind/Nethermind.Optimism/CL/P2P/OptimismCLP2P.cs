@@ -134,7 +134,7 @@ public class OptimismCLP2P : IDisposable
 
                 if (_headNumber is not null)
                 {
-                    List<ExecutionPayloadV3> missingPayloads = new();
+                    List<ExecutionPayloadV3> missingPayloads = [];
                     Hash256 previousParentHash = payload.ParentHash;
                     // Rollback missing payloads
                     for (ulong i = (ulong)payload.BlockNumber - 1; i > _headNumber.Value; i--)

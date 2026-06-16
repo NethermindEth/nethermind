@@ -82,7 +82,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
     internal class RandomPenaltyHandler(ISpecProvider specProvider) : IPenaltyHandler
     {
-        readonly Dictionary<Hash256, Address[]> _penaltiesCache = new();
+        readonly Dictionary<Hash256, Address[]> _penaltiesCache = [];
         public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)
         {
             IXdcReleaseSpec spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
@@ -95,7 +95,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
                 return _penaltiesCache[currentHash];
             }
             int nodesCount = candidates.Length;
-            List<Address> penalized = new();
+            List<Address> penalized = [];
 
             Random rand = new();
             while (penalized.Count < count && penalized.Count < nodesCount)

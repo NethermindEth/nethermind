@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -25,11 +24,12 @@ public sealed class CountingPipeWriter : CountingWriter
 {
     private readonly PipeWriter _writer;
 
-    public CountingPipeWriter(PipeWriter writer)
+    public CountingPipeWriter(PipeWriter writer, long initialWrittenCount = 0)
     {
         ArgumentNullException.ThrowIfNull(writer);
 
         _writer = writer;
+        WrittenCount = initialWrittenCount;
     }
 
     public override void Advance(int count)
@@ -52,7 +52,12 @@ public sealed class CountingPipeWriter : CountingWriter
         => _writer.Complete(exception);
 
     public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
-        => _writer.FlushAsync(cancellationToken);
+    {
+        ValueTask<FlushResult> flushTask = _writer.FlushAsync(cancellationToken);
+        return flushTask.IsCompletedSuccessfully
+            ? new ValueTask<FlushResult>(flushTask.GetAwaiter().GetResult())
+            : flushTask;
+    }
 
     public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
     public override long UnflushedBytes => _writer.UnflushedBytes;
@@ -92,7 +97,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         }
     }
 
-    public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions? options = null)
+    public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions? options = null, long initialWrittenCount = 0)
     {
         if (writingStream is null)
         {
@@ -104,6 +109,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         _maxPooledBufferSize = _pool?.MaxBufferSize ?? -1;
         _bufferSegmentPool = new BufferSegmentStack(InitialSegmentPoolSize);
         _leaveOpen = options?.LeaveOpen ?? true;
+        WrittenCount = initialWrittenCount;
     }
 
     /// <summary>
@@ -123,11 +129,6 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         _bytesBuffered += bytes;
         _tailMemory = _tailMemory[bytes..];
         WrittenCount += bytes;
-
-        if (_bytesBuffered > _minimumBufferSize)
-        {
-            FlushInternal(writeToStream: true);
-        }
     }
 
     /// <inheritdoc />
@@ -191,10 +192,24 @@ public sealed class CountingStreamPipeWriter : CountingWriter
                     _tailBytesBuffered = 0;
                 }
 
+                // Threshold flush happens here, never in Advance: a consumer may still hold a buffer
+                // obtained earlier and Advance into it across the flush.
+                if (_bytesBuffered > _minimumBufferSize)
+                {
+                    FlushInternal(writeToStream: true);
+                }
+
                 BufferSegment newSegment = AllocateSegment(sizeHint);
 
-                _tail.SetNext(newSegment);
-                _tail = newSegment;
+                if (_head is null)
+                {
+                    _head = _tail = newSegment;
+                }
+                else
+                {
+                    _tail!.SetNext(newSegment);
+                    _tail = newSegment;
+                }
             }
         }
     }
@@ -318,7 +333,10 @@ public sealed class CountingStreamPipeWriter : CountingWriter
             return new ValueTask<FlushResult>(new FlushResult(isCanceled: false, isCompleted: false));
         }
 
-        return FlushAsyncInternal(writeToStream: true, data: Memory<byte>.Empty, cancellationToken);
+        ValueTask<FlushResult> flushTask = FlushAsyncInternal(writeToStream: true, data: Memory<byte>.Empty, cancellationToken);
+        return flushTask.IsCompletedSuccessfully
+            ? new ValueTask<FlushResult>(flushTask.GetAwaiter().GetResult())
+            : flushTask;
     }
 
     /// <inheritdoc />
@@ -328,7 +346,6 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
     private void Cancel() => InternalTokenSource.Cancel();
 
-    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<FlushResult> FlushAsyncInternal(bool writeToStream, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
         // Write all completed segments and whatever remains in the current segment

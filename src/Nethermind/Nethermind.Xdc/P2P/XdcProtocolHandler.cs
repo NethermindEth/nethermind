@@ -47,7 +47,7 @@ internal class XdcProtocolHandler(
 
     protected override TimeSpan InitTimeout => base.InitTimeout;
 
-    protected override void HandleMessageCore(ZeroPacket message)
+    protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;
 
@@ -58,7 +58,7 @@ internal class XdcProtocolHandler(
         {
             const string ignored = $"XDC message ignored, syncing";
             ReportIn(ignored, size);
-            return;
+            return true;
         }
 
         switch (packetType)
@@ -68,27 +68,24 @@ internal class XdcProtocolHandler(
                     using VoteMsg voteMsg = Deserialize<VoteMsg>(message.Content);
                     ReportIn(voteMsg, size);
                     Handle(voteMsg);
-                    break;
+                    return true;
                 }
             case XdcMessageCode.TimeoutMsg:
                 {
                     using TimeoutMsg timeoutMsg = Deserialize<TimeoutMsg>(message.Content);
                     ReportIn(timeoutMsg, size);
                     Handle(timeoutMsg);
-                    break;
+                    return true;
                 }
             case XdcMessageCode.SyncInfoMsg:
                 {
                     using SyncInfoMsg syncInfoMsg = Deserialize<SyncInfoMsg>(message.Content);
                     ReportIn(syncInfoMsg, size);
                     Handle(syncInfoMsg);
-                    break;
+                    return true;
                 }
             default:
-                {
-                    base.HandleMessageCore(message);
-                    break;
-                }
+                return base.HandleMessageCore(message);
         }
     }
 

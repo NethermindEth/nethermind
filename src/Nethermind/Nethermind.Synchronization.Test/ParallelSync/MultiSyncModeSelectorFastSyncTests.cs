@@ -162,6 +162,34 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
 
         [Test]
+        public void StaticSnapPivot_peer_at_pivot_enters_state_nodes() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync()
+                .AndAPeerExactlyAtThePivotIsKnown()
+                .WhenStaticSnapPivotIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
+
+        [Test]
+        public void Without_StaticSnapPivot_peer_at_pivot_does_not_enter_state_nodes() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync()
+                .AndAPeerExactlyAtThePivotIsKnown()
+                .WhenSnapSyncIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.None);
+
+        [Test]
+        public void StaticSnapPivot_peer_at_pivot_behind_pivot_enters_fast_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeIsBehindThePivotInFastSync()
+                .AndAPeerExactlyAtThePivotIsKnown()
+                .WhenStaticSnapPivotIsConfigured()
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.FastHeaders | SyncMode.FastSync));
+
+        [Test]
+        public void StaticSnapPivot_peer_at_pivot_state_downloaded_idles() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync(stateFinished: true)
+                .AndAPeerExactlyAtThePivotIsKnown()
+                .WhenStaticSnapPivotIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.None);
+
+        [Test]
         public void Finished_fast_sync_but_not_snap_ranges_IsFarFromHead() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(bestHeader: Scenario.ChainHead.Number - 1000)
                 .AndGoodPeersAreKnown()
@@ -221,6 +249,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
         [TestCase(FastBlocksState.FinishedReceipts)]
+        [TestCase(FastBlocksState.FinishedBlockAccessLists)]
         public void Just_after_finishing_state_sync_and_fast_blocks(FastBlocksState fastBlocksState) => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeJustFinishedStateSyncAndFastBlocks(fastBlocksState)
                 .When_FastSync_NoSnapSync_Configured()
@@ -230,6 +259,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.None)]
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
+        [TestCase(FastBlocksState.FinishedReceipts)]
         public void Just_after_finishing_state_sync_but_not_fast_blocks(FastBlocksState fastBlocksState) => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeFinishedStateSyncButNotFastBlocks(fastBlocksState)
                 .When_FastSync_NoSnapSync_Configured()
@@ -261,6 +291,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
         [TestCase(FastBlocksState.FinishedReceipts)]
+        [TestCase(FastBlocksState.FinishedBlockAccessLists)]
         public void When_just_started_full_sync_with_fast_blocks(FastBlocksState fastBlocksState) => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeJustStartedFullSyncProcessing(fastBlocksState)
                 .AndGoodPeersAreKnown()

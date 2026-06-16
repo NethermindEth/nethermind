@@ -5,6 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.ExceptionServices;
+using System.Threading.Tasks;
+using Nethermind.Core.Test;
+
 namespace Ethereum.Test.Base;
 
 /// <summary>
@@ -13,23 +16,28 @@ namespace Ethereum.Test.Base;
 /// </summary>
 public abstract class TestLoadStrategy(string testsRootPath, TestType testType) : ITestLoadStrategy
 {
+    private static readonly ParallelOptions LoadParallelOptions = new()
+    {
+        MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount)
+    };
+
     public IEnumerable<EthereumTest> Load(string testsDirectoryName, string? wildcard = null)
     {
-        IEnumerable<string> testDirs;
+        List<string> testDirs = [];
         if (!Path.IsPathRooted(testsDirectoryName))
         {
             string testsDirectory = GetTestsDirectory();
-            testDirs = Directory.EnumerateDirectories(testsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
+            foreach (string testDir in Directory.EnumerateDirectories(testsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true }))
+            {
+                testDirs.Add(testDir);
+            }
         }
         else
         {
-            testDirs = [testsDirectoryName];
+            testDirs.Add(testsDirectoryName);
         }
 
-        List<EthereumTest> tests = [];
-        foreach (string testDir in testDirs)
-            tests.AddRange(LoadTestsFromDirectoryWithHooks(testDir, wildcard));
-        return tests;
+        return LoadTestsFromDirectoriesWithHooks(testDirs, wildcard);
     }
 
     private string GetTestsDirectory()
@@ -43,45 +51,137 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
     /// Loads all tests from a single directory. Can be called directly by other strategies
     /// that don't need the hook/error-handling infrastructure.
     /// </summary>
-    public static List<EthereumTest> LoadTestsFromDirectory(string testDir, string? wildcard, TestType testType)
+    public static List<EthereumTest> LoadTestsFromDirectory(string testDir, string? wildcard, TestType testType) =>
+        [.. LoadTestsFromDirectories([testDir], wildcard, testType)];
+
+    public static IEnumerable<EthereumTest> LoadTestsFromDirectories(IReadOnlyList<string> testDirs, string? wildcard, TestType testType) =>
+        LoadTestFiles(GetTestFiles(testDirs), file =>
+        {
+            FileTestsSource fileTestsSource = new(file.Path, wildcard);
+            IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(testType);
+            List<EthereumTest> testsByName = [];
+            foreach (EthereumTest test in tests)
+            {
+                test.Category ??= file.Directory;
+                testsByName.Add(test);
+            }
+
+            return testsByName;
+        });
+
+    private IEnumerable<EthereumTest> LoadTestsFromDirectoriesWithHooks(IReadOnlyList<string> testDirs, string? wildcard) =>
+        LoadTestFiles(GetTestFiles(testDirs), file => LoadTestFileWithHooks(file, wildcard));
+
+    private List<EthereumTest> LoadTestFileWithHooks(TestFile file, string? wildcard)
     {
         List<EthereumTest> testsByName = [];
-        foreach (string testFile in Directory.EnumerateFiles(testDir))
+        FileTestsSource fileTestsSource = new(file.Path, wildcard);
+        try
         {
-            FileTestsSource fileTestsSource = new(testFile, wildcard);
             IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(testType);
             foreach (EthereumTest test in tests)
-                test.Category ??= testDir;
-            testsByName.AddRange(tests);
+            {
+                test.Category = file.Directory;
+                OnTestLoaded(test);
+                testsByName.Add(test);
+            }
         }
+        catch (Exception e)
+        {
+            EthereumTest? failedTest = HandleLoadFailure(file.Path, e);
+            if (failedTest is not null)
+            {
+                testsByName.Add(failedTest);
+            }
+        }
+
         return testsByName;
     }
 
-    private IEnumerable<EthereumTest> LoadTestsFromDirectoryWithHooks(string testDir, string? wildcard)
+    private static List<TestFile> GetTestFiles(IReadOnlyList<string> testDirs)
     {
-        List<EthereumTest> testsByName = [];
-        foreach (string testFile in Directory.EnumerateFiles(testDir))
+        List<TestFile> testFiles = [];
+        for (int i = 0; i < testDirs.Count; i++)
         {
-            FileTestsSource fileTestsSource = new(testFile, wildcard);
+            string testDir = testDirs[i];
+            foreach (string testFile in Directory.EnumerateFiles(testDir))
+            {
+                testFiles.Add(new TestFile(testFile, testDir));
+            }
+        }
+
+        return testFiles;
+    }
+
+    private static IEnumerable<EthereumTest> LoadTestFiles(IReadOnlyList<TestFile> testFiles, Func<TestFile, List<EthereumTest>> loadFile)
+    {
+        if (testFiles.Count == 0)
+        {
+            return [];
+        }
+
+        if (TestChunkFilter.TryGetChunkConfig() is not null)
+        {
+            return LoadTestFilesSequentially(testFiles, loadFile);
+        }
+
+        if (testFiles.Count == 1)
+        {
+            return loadFile(testFiles[0]);
+        }
+
+        return LoadTestFilesInParallel(testFiles, loadFile);
+    }
+
+    private static IEnumerable<EthereumTest> LoadTestFilesSequentially(IReadOnlyList<TestFile> testFiles, Func<TestFile, List<EthereumTest>> loadFile)
+    {
+        for (int i = 0; i < testFiles.Count; i++)
+        {
+            foreach (EthereumTest test in loadFile(testFiles[i]))
+            {
+                yield return test;
+            }
+        }
+    }
+
+    private static List<EthereumTest> LoadTestFilesInParallel(IReadOnlyList<TestFile> testFiles, Func<TestFile, List<EthereumTest>> loadFile)
+    {
+        List<EthereumTest>[] loadedByFile = new List<EthereumTest>[testFiles.Count];
+        ExceptionDispatchInfo?[] failures = new ExceptionDispatchInfo?[testFiles.Count];
+        Parallel.For(0, testFiles.Count, LoadParallelOptions, i =>
+        {
             try
             {
-                IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(testType);
-                foreach (EthereumTest test in tests)
-                {
-                    test.Category = testDir;
-                    OnTestLoaded(test);
-                }
-                testsByName.AddRange(tests);
+                loadedByFile[i] = loadFile(testFiles[i]);
             }
             catch (Exception e)
             {
-                EthereumTest? failedTest = HandleLoadFailure(testFile, e);
-                if (failedTest is not null)
-                    testsByName.Add(failedTest);
+                loadedByFile[i] = [];
+                failures[i] = ExceptionDispatchInfo.Capture(e);
             }
+        });
+
+        for (int i = 0; i < failures.Length; i++)
+        {
+            failures[i]?.Throw();
         }
-        return testsByName;
+
+        int count = 0;
+        for (int i = 0; i < loadedByFile.Length; i++)
+        {
+            count += loadedByFile[i].Count;
+        }
+
+        List<EthereumTest> result = new(count);
+        for (int i = 0; i < loadedByFile.Length; i++)
+        {
+            result.AddRange(loadedByFile[i]);
+        }
+
+        return result;
     }
+
+    private readonly record struct TestFile(string Path, string Directory);
 
     /// <summary>Called for each successfully loaded test. Override for post-processing.</summary>
     protected virtual void OnTestLoaded(EthereumTest test) { }

@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 
@@ -24,6 +25,9 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 
                 // Note: There is a special logic for this in `PruningTrieStateFactory`.
                 .AddSingleton<NodeStorageCache>()
+
+                // Parent scope so test modules can override; child scope's PreBlockCaches falls through here.
+                .AddSingleton<PreBlockCachesConfig>()
 
                 // Note: Need a small modification to have this work on all branch processor due to the shared
                 // NodeStorageCache and the FrozenDictionary and the fact that some processing does not have
@@ -50,7 +54,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
                         ctx.Resolve<PreBlockCaches>(),
-                        populatePreBlockCache: false
+                        ctx.Resolve<ILogManager>(),
+                        isPrewarmer: false
                     );
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
@@ -58,8 +63,9 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
                     PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
                     IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
+                    IWorldState worldState = ctx.Resolve<IWorldState>();
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                    return new PrecompileCachedCodeInfoRepository(precompileProvider, originalCodeInfoRepository,
+                    return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                 });
     }

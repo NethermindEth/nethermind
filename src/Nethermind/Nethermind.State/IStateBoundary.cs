@@ -1,0 +1,41 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.State;
+
+/// <summary>
+/// Read-only view of the persisted state window. Implemented by <see cref="IWorldStateManager"/>;
+/// each backend reports the floor from its own state-tracking layer (trie: a co-located metadata
+/// store; flat: the persistence manager).
+/// </summary>
+public interface IStateBoundary
+{
+    /// <summary>
+    /// Absolute lower bound of the persisted state window. Updated when fast/snap sync
+    /// completes (= pivot) and after a full pruning run completes (= copied state's block).
+    /// Null if never set (archive node syncing from genesis).
+    /// </summary>
+    long? OldestStateBlock { get; }
+
+    /// <summary>
+    /// Configured rolling-window retention in blocks (e.g. trie memory pruning). Null when
+    /// there is no rolling window (archive, full pruning, flat storage); the absolute floor
+    /// is reported via <see cref="OldestStateBlock"/> instead.
+    /// </summary>
+    long? RetentionWindowBlocks { get; }
+}
+
+/// <summary>
+/// Write side of the state-availability floor. Trie-specific — flat state tracking is handled
+/// directly by the persistence manager and exposes no writer.
+/// </summary>
+/// <remarks>
+/// Held by <c>PatriciaTreeSyncStore.FinalizeSync</c> (advancing the floor to the synced pivot)
+/// and <c>FullPruner</c> (advancing it to the copied state's block on a successful prune).
+/// Monotonically non-decreasing while non-null — setting a smaller value is a no-op. Setting to
+/// <c>null</c> is allowed as an explicit reset (e.g. when wiping a corrupt state DB).
+/// </remarks>
+public interface IStateBoundaryWriter
+{
+    long? OldestStateBlock { set; }
+}

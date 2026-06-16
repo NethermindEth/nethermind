@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.P2P;
@@ -21,6 +22,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -33,7 +35,8 @@ internal class VotesManager(
     IQuorumCertificateManager quorumCertificateManager,
     ISpecProvider specProvider,
     ISigner signer,
-    IForensicsProcessor forensicsProcessor) : IVotesManager
+    IForensicsProcessor forensicsProcessor,
+    ILogManager logManager) : IVotesManager
 {
     private readonly IBlockTree _blockTree = tree;
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
@@ -44,6 +47,7 @@ internal class VotesManager(
     private readonly IForensicsProcessor _forensicsProcessor = forensicsProcessor;
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly ISigner _signer = signer;
+    private readonly ILogger _logger = logManager.GetClassLogger<VotesManager>();
 
     private readonly XdcPool<Vote> _votePool = new();
     private static readonly VoteDecoder _voteDecoder = new();
@@ -67,7 +71,11 @@ internal class VotesManager(
 
         Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
-        Sign(vote);
+        if (!TrySign(vote))
+        {
+            if (_logger.IsWarn) _logger.Warn($"XDC signer {_signer.Address} could not sign vote for block {blockInfo.Hash} (round {blockInfo.Round}) — skipping broadcast.");
+            return Task.CompletedTask;
+        }
 
         _highestVotedRound = (long)blockInfo.Round;
 
@@ -85,7 +93,7 @@ internal class VotesManager(
 
         // Collect votes
         _votePool.Add(vote);
-        IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote);
+        IReadOnlyCollection<Vote> roundVotes = _votePool.GetItemsByKey(vote);
         IReadOnlyCollection<Vote> roundVotesFromOtherKeys = _votePool.GetItemsFromRoundExcludingKey(vote);
         // Forensics is expected to run asynchronously and must not block vote processing.
         // The two calls are complementary: one checks signer conflicts across pool keys in the same round,
@@ -251,8 +259,8 @@ internal class VotesManager(
 
     private static Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        HashSet<Address> masternodeSet = new(masternodes);
-        List<Signature> signatures = new();
+        HashSet<Address> masternodeSet = [.. masternodes];
+        List<Signature> signatures = [];
         foreach (Vote vote in votes)
         {
             vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
@@ -312,13 +320,19 @@ internal class VotesManager(
         return error is null ? count : null;
     }
 
-    private void Sign(Vote vote)
+    private bool TrySign(Vote vote)
     {
         KeccakRlpStream stream = new();
         _voteDecoder.Encode(stream, vote, RlpBehaviors.ForSealing);
-        vote.Signature = _signer.Sign(stream.GetValueHash());
+        ValueHash256 hash = stream.GetValueHash();
+        if (!_signer.TrySign(in hash, out Signature signature))
+            return false;
+        vote.Signature = signature;
         vote.Signer = _signer.Address;
+        return true;
     }
 
     public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
+
+    public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> GetReceivedVotes() => _votePool.GetItems();
 }

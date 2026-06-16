@@ -1,58 +1,80 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    public static Block Execute(ReadOnlySpan<byte> data)
+    public static byte[] Execute(ReadOnlySpan<byte> data)
     {
-        Witness witness;
-        (Block suggestedBlock, witness, ulong chainId) = InputSerializer.Deserialize(data);
+        StatelessPayload payload = InputDecoder.Decode(data);
+        ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
+        Transaction[] transactions = payload.Block.Transactions;
+        bool success = false;
 
-        using (witness)
+        if (transactions.Length == publicKeys.Length)
         {
-            ISpecProvider specProvider = GetSpecProvider(chainId);
-            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            EthereumEcdsa ecdsa = new(chainId);
-
-            // Recover sender addresses for transactions,
-            // as RLP-deserialized blocks don't have them
-            foreach (Transaction tx in suggestedBlock.Transactions)
-                tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
-
-            return Execute(suggestedBlock, witness, specProvider);
-        }
-    }
-
-    public static Block Execute(
-        Block suggestedBlock, Witness witness, ISpecProvider specProvider)
-    {
-        BlockHeader? parentHeader = null;
-        using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
-
-        foreach (BlockHeader header in headers)
-        {
-            if (header.Hash == suggestedBlock.Header.ParentHash)
+            try
             {
-                parentHeader = header;
-                break;
+                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
+                IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
+#if !ZK_EVM
+                if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
+                    KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
+#endif
+                for (int i = 0; i < transactions.Length; i++)
+                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
+
+                using Witness witness = payload.Witness.ToWitness();
+
+                success = Execute(payload.Block, witness, specProvider);
+            }
+            catch (Exception ex)
+            {
+                Debug.Fail(ex.Message);
             }
         }
 
-        if (parentHeader is null)
-            throw new InvalidOperationException("Witness is missing the parent header");
+        StatelessValidationResult result = new()
+        {
+            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
+            IsSuccess = success,
+            ChainConfig = payload.ChainConfig
+        };
+
+        return StatelessValidationResult.Encode(result);
+    }
+
+    public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
+    {
+        using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
+        BlockHeader parentHeader;
+
+        // The parent header must be the last one in the list
+        // and must match the parent hash of the suggested block
+        if (headers.Count > 0 && suggestedBlock.Header.ParentHash == headers[^1].Hash)
+        {
+            parentHeader = headers[^1];
+        }
+        else
+        {
+            Debug.Fail("Witness is missing the parent header");
+            return false;
+        }
 
         StatelessBlockTree blockTree = new(headers);
         HeaderValidator headerValidator = new(
@@ -70,7 +92,10 @@ public static class StatelessExecutor
         );
 
         if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
-            throw new InvalidBlockException(suggestedBlock, error!);
+        {
+            Debug.Fail(error);
+            return false;
+        }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
@@ -86,16 +111,27 @@ public static class StatelessExecutor
             specProvider.GetSpec(suggestedBlock.Header));
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
-            throw new InvalidBlockException(processedBlock, error!);
+        {
+            Debug.Fail(error);
+            return false;
+        }
 
-        return processedBlock;
+        return true;
     }
 
-    private static ISpecProvider GetSpecProvider(ulong chainId) => chainId switch
+    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
     {
-        BlockchainIds.Hoodi => HoodiSpecProvider.Instance,
-        BlockchainIds.Mainnet => MainnetSpecProvider.Instance,
-        BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
-        _ => throw new ArgumentException($"Unsupported chain id: {chainId}", nameof(chainId))
-    };
+        if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider))
+            throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
+
+        // Empty arrays mean ActiveFork was omitted — use the base provider as-is.
+        if (chainConfig.ActiveFork.Fork == 0 &&
+            chainConfig.ActiveFork.Activation.BlockNumber.Length == 0 &&
+            chainConfig.ActiveFork.Activation.Timestamp.Length == 0)
+        {
+            return baseProvider;
+        }
+
+        return StatelessSpecProvider.Create(baseProvider, chainConfig.ActiveFork);
+    }
 }

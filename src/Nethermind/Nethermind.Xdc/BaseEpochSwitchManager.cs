@@ -25,6 +25,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
     public abstract bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent);
 
     public abstract BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch);
+    public abstract EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end);
 
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header)
     {
@@ -38,6 +39,12 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
         while (!IsEpochSwitchAtBlock(header))
         {
+            if (EpochSwitches.TryGet(header.ParentHash!, out EpochSwitchInfo cached))
+            {
+                EpochSwitches.Set(headerHash, cached);
+                return cached;
+            }
+
             header = (XdcBlockHeader)(Tree.FindHeader(header.ParentHash!) ?? throw new InvalidOperationException($"Parent block {header.ParentHash} not found while walking to epoch switch"));
         }
 
@@ -72,10 +79,10 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
         if (masterNodes.Length != candidates.Length)
         {
-            HashSet<Address> excluded = new(masterNodes);
+            HashSet<Address> excluded = [.. masterNodes];
             excluded.UnionWith(penalties);
 
-            List<Address> result = new();
+            List<Address> result = [];
             foreach (Address candidate in candidates)
             {
                 if (excluded.Add(candidate))

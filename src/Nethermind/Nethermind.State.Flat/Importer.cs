@@ -102,11 +102,11 @@ public class Importer(
 
             if (address is null)
             {
-                writeBatch.SetStateTrieNode(path, node);
+                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
             }
             else
             {
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
             }
 
             if (node.IsLeaf)
@@ -114,25 +114,19 @@ public class Importer(
                 ValueHash256 fullPath = path.Append(node.Key).Path;
                 if (address is null)
                 {
-                    Account acc = _accountDecoder.Decode(node.Value.AsSpan())!;
-                    writeBatch.SetAccountRaw(fullPath.ToHash256(), acc);
+                    Rlp.ValueDecoderContext accountContext = node.Value.AsSpan().AsRlpValueContext();
+                    Account acc = _accountDecoder.Decode(ref accountContext)!;
+                    writeBatch.SetAccountRaw(fullPath, acc);
                 }
                 else
                 {
+                    // A storage leaf value is RLP(stripped) and never empty (zero slots are absent), so it is
+                    // stored verbatim when wrapping, skipping a decode + re-encode round-trip.
                     ReadOnlySpan<byte> value = node.Value.AsSpan();
-                    byte[] toWrite;
-
-                    if (value.IsEmpty)
+                    if (!value.IsEmpty)
                     {
-                        toWrite = StorageTree.ZeroBytes;
+                        writeBatch.SetStorageRawEncoded(address, fullPath, value);
                     }
-                    else
-                    {
-                        Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-                        toWrite = rlp.DecodeByteArray();
-                    }
-
-                    writeBatch.SetStorageRaw(address, fullPath.ToHash256(), SlotValue.FromSpanWithoutLeadingZero(toWrite));
                 }
             }
 
