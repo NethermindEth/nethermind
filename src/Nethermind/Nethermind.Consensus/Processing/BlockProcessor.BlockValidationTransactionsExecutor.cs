@@ -31,7 +31,7 @@ public partial class BlockProcessor
         // DIAGNOSTIC: verbose per-tx execution logging to correlate against prewarmer activity.
         private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidationTransactionsExecutor>() ?? NullLogger.Instance;
         // DIAGNOSTIC: running totals of main-path prewarm-cache coverage, snapshotted per block.
-        private long _prevSlotHit, _prevSlotMiss, _prevAddrHit, _prevAddrMiss;
+        private long _prevSlotHit, _prevSlotMiss, _prevAddrHit, _prevAddrMiss, _prevEvicted, _prevNeverWarmed;
 
         public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
@@ -75,9 +75,11 @@ public partial class BlockProcessor
         private void LogCoverageDelta(long blockNumber)
         {
             long sh = PrewarmCoverage.SlotHit, sm = PrewarmCoverage.SlotMiss, ah = PrewarmCoverage.AddrHit, am = PrewarmCoverage.AddrMiss;
+            long ev = PrewarmCoverage.SlotMissEvicted, nw = PrewarmCoverage.SlotMissNeverWarmed;
             long dsh = sh - _prevSlotHit, dsm = sm - _prevSlotMiss, dah = ah - _prevAddrHit, dam = am - _prevAddrMiss;
-            _prevSlotHit = sh; _prevSlotMiss = sm; _prevAddrHit = ah; _prevAddrMiss = am;
-            _logger.Info($"Block {blockNumber} prewarm-coverage: slot_hit={dsh} slot_miss={dsm} addr_hit={dah} addr_miss={dam}");
+            long dev = ev - _prevEvicted, dnw = nw - _prevNeverWarmed;
+            _prevSlotHit = sh; _prevSlotMiss = sm; _prevAddrHit = ah; _prevAddrMiss = am; _prevEvicted = ev; _prevNeverWarmed = nw;
+            _logger.Info($"Block {blockNumber} prewarm-coverage: slot_hit={dsh} slot_miss={dsm} slot_miss_evicted={dev} slot_miss_neverwarmed={dnw} addr_hit={dah} addr_miss={dam}");
         }
 
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)

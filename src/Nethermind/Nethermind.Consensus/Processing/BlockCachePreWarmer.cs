@@ -80,6 +80,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
             CacheType result = _preBlockCaches.ClearCaches();
+            PrewarmCoverage.ResetBlock();
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
             if (result != default)

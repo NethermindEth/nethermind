@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Threading;
 
 namespace Nethermind.Core.Diagnostics;
@@ -25,8 +26,33 @@ public static class PrewarmCoverage
     public static long AddrHit;
     public static long AddrMiss;
 
+    // Miss taxonomy: of the slots the main thread missed, how many did the prewarmer warm
+    // this block (so the SeqlockCache evicted them = fixable by capacity) vs never warm
+    // (drift / cold-start / unreachable = the speculation floor)?
+    public static long SlotMissEvicted;
+    public static long SlotMissNeverWarmed;
+
+    // Set of storage cells the prewarmer warmed this block (cleared per block). Independent of the
+    // fixed-size SeqlockCache, so it records intent even when the cache has since evicted the entry.
+    public static readonly ConcurrentDictionary<StorageCell, byte> WarmedSlots = new();
+
     public static void RecordSlot(bool hit) => Interlocked.Increment(ref hit ? ref SlotHit : ref SlotMiss);
     public static void RecordAddr(bool hit) => Interlocked.Increment(ref hit ? ref AddrHit : ref AddrMiss);
+
+    /// <summary>Called by the prewarmer when it warms (Sets) a storage cell into the cache.</summary>
+    public static void MarkWarmed(in StorageCell cell) => WarmedSlots[cell] = 0;
+
+    /// <summary>Called on a main-thread slot miss; classifies it as evicted vs never-warmed.</summary>
+    public static void RecordSlotMiss(in StorageCell cell)
+    {
+        Interlocked.Increment(ref SlotMiss);
+        Interlocked.Increment(ref WarmedSlots.ContainsKey(cell) ? ref SlotMissEvicted : ref SlotMissNeverWarmed);
+    }
+
+    public static void ResetBlock()
+    {
+        if (Enabled) WarmedSlots.Clear();
+    }
 }
 
 /// <summary>

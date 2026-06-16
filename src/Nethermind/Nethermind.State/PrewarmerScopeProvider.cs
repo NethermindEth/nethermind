@@ -189,6 +189,7 @@ public class PrewarmerScopeProvider(
                     value = LoadFromTreeStorage(in storageCell);
                     preBlockCache.Set(in storageCell, value);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
+                    if (PrewarmCoverage.Enabled) PrewarmCoverage.MarkWarmed(in storageCell);
                 }
                 return value;
             }
@@ -204,7 +205,7 @@ public class PrewarmerScopeProvider(
                 {
                     value = LoadFromTreeStorage(in storageCell);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
-                    if (PrewarmCoverage.Enabled) PrewarmCoverage.RecordSlot(hit: false);
+                    if (PrewarmCoverage.Enabled) PrewarmCoverage.RecordSlotMiss(in storageCell);
                 }
                 return value;
             }
