@@ -11,6 +11,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Validation;
@@ -225,6 +226,11 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds = 0;
             int delegationAuthBaseRefunds = 0;
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
+
+            // DIAGNOSTIC (consensus-safe, Warmup-only): run speculative warmup with the block gas
+            // limit so cold-priced SLOADs on parent state don't OOG-abort before reaching deep reads.
+            if (PrewarmExtraGas.Enabled && opts.HasFlag(ExecutionOptions.Warmup))
+                gasAvailable = TGasPolicy.CreateAvailableFromIntrinsic(header.GasLimit, intrinsicGas.Standard, spec);
 
             if (!(result = Validate8037DelegationRefundBounds(tx, spec, in gasAvailable))) return result;
 

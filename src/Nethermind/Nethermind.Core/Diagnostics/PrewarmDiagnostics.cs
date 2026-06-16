@@ -93,6 +93,21 @@ public static class PrewarmCoverage
 /// prewarmer calls <see cref="StartBlock"/> before execution begins (PreWarmCaches precedes
 /// block processing), so the reset is observed before the first <see cref="OnExecuted"/>.
 /// </remarks>
+/// <summary>
+/// DIAGNOSTIC: when enabled, the speculative prewarmer's Warmup runs with the block gas limit
+/// instead of the tx gas limit, so cold-priced SLOADs (every slot is cold on parent state) don't
+/// run the tx out of gas before reaching its deep state reads.
+/// </summary>
+/// <remarks>
+/// Consensus-safe: Warmup executes on a throwaway read-only scope and its result/gas is never
+/// committed (TransactionProcessor only records BlockGasUsed when the Warmup flag is absent), so a
+/// larger budget only changes which slots get pulled into PreBlockCaches.
+/// </remarks>
+public static class PrewarmExtraGas
+{
+    public static bool Enabled;
+}
+
 public static class PrewarmThrottle
 {
     public static bool Enabled;

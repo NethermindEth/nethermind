@@ -56,6 +56,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         _leadCapEnabled = blocksConfig.PreWarmLeadCapPercent > 0;
         if (_leadCapEnabled) PrewarmThrottle.Configure(blocksConfig.PreWarmLeadCapPercent, blocksConfig.PreWarmLeadCapPercent * 2 / 5);
+        PrewarmExtraGas.Enabled = blocksConfig.PreWarmExtraGas;
     }
 
     internal BlockCachePreWarmer(
