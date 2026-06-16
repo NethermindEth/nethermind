@@ -110,10 +110,8 @@ internal static class HsstPackedArrayReader
         }
 
         // Metadata exceeds the tail window; re-pin precisely.
-        using (TPin metaPin = reader.PinBuffer(new Bound(metaAbsStart, metaLen)))
-        {
-            return ParseMetadata(metaPin.Buffer, hsstStart, metaAbsStart, ref layout);
-        }
+        using TPin metaPin = reader.PinBuffer(new Bound(metaAbsStart, metaLen));
+        return ParseMetadata(metaPin.Buffer, hsstStart, metaAbsStart, ref layout);
     }
 
     /// <summary>
@@ -252,42 +250,40 @@ internal static class HsstPackedArrayReader
         // the largest local index whose stored key is ≤ search (or -1 if none).
         long count = rangeEnd - rangeStart + 1;
         if (count <= 0) return false;
-        using (TPin dataPin = reader.PinBuffer(new Bound(L.EntryAbsStart(rangeStart), count * L.EntryStride)))
-        {
-            ReadOnlySpan<byte> dataSpan = dataPin.Buffer;
-            int localFloor = L.IsLittleEndian
-                ? L.KeySize switch
-                {
-                    2 => UniformKeySearch.Uniform2LEStrided(key, dataSpan, (int)count, L.EntryStride),
-                    4 => UniformKeySearch.Uniform4LEStrided(key, dataSpan, (int)count, L.EntryStride),
-                    8 => UniformKeySearch.Uniform8LEStrided(key, dataSpan, (int)count, L.EntryStride),
-                    _ => UniformKeySearch.UniformBEStrided(key, dataSpan, (int)count, L.KeySize, L.EntryStride),
-                }
-                : UniformKeySearch.UniformBEStrided(key, dataSpan, (int)count, L.KeySize, L.EntryStride);
-
-            if (localFloor >= 0)
+        using TPin dataPin = reader.PinBuffer(new Bound(L.EntryAbsStart(rangeStart), count * L.EntryStride));
+        ReadOnlySpan<byte> dataSpan = dataPin.Buffer;
+        int localFloor = L.IsLittleEndian
+            ? L.KeySize switch
             {
-                ReadOnlySpan<byte> floorKey = dataSpan.Slice(localFloor * L.EntryStride, L.KeySize);
-                if (UniformKeySearch.StorageEqualsLex(floorKey, key, L.IsLittleEndian))
-                {
-                    resultBound = new Bound(L.ValueAbsStart(rangeStart + localFloor), L.ValueSize);
-                    return true;
-                }
-                if (exactMatch) return false;
+                2 => UniformKeySearch.Uniform2LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                4 => UniformKeySearch.Uniform4LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                8 => UniformKeySearch.Uniform8LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                _ => UniformKeySearch.UniformBEStrided(key, dataSpan, (int)count, L.KeySize, L.EntryStride),
+            }
+            : UniformKeySearch.UniformBEStrided(key, dataSpan, (int)count, L.KeySize, L.EntryStride);
+
+        if (localFloor >= 0)
+        {
+            ReadOnlySpan<byte> floorKey = dataSpan.Slice(localFloor * L.EntryStride, L.KeySize);
+            if (UniformKeySearch.StorageEqualsLex(floorKey, key, L.IsLittleEndian))
+            {
                 resultBound = new Bound(L.ValueAbsStart(rangeStart + localFloor), L.ValueSize);
                 return true;
             }
-            // No key in this slab is ≤ search. This happens when the descent picked slab c
-            // because stored[c] ≥ key (ceiling) but every entry in slab c sits strictly above
-            // key — the floor is then the last entry of slab c-1, i.e. global index
-            // rangeStart-1, whose key equals stored[c-1] < key (guaranteed by the descent).
-            // When rangeStart == 0 the descent picked slab 0 and the search key is smaller
-            // than every stored entry; no floor exists.
             if (exactMatch) return false;
-            if (rangeStart == 0) return false;
-            resultBound = new Bound(L.ValueAbsStart(rangeStart - 1), L.ValueSize);
+            resultBound = new Bound(L.ValueAbsStart(rangeStart + localFloor), L.ValueSize);
             return true;
         }
+        // No key in this slab is ≤ search. This happens when the descent picked slab c
+        // because stored[c] ≥ key (ceiling) but every entry in slab c sits strictly above
+        // key — the floor is then the last entry of slab c-1, i.e. global index
+        // rangeStart-1, whose key equals stored[c-1] < key (guaranteed by the descent).
+        // When rangeStart == 0 the descent picked slab 0 and the search key is smaller
+        // than every stored entry; no floor exists.
+        if (exactMatch) return false;
+        if (rangeStart == 0) return false;
+        resultBound = new Bound(L.ValueAbsStart(rangeStart - 1), L.ValueSize);
+        return true;
     }
 
     /// <summary>
