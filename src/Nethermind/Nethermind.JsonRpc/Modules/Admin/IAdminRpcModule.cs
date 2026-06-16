@@ -33,6 +33,15 @@ public interface IAdminRpcModule : IContextAwareRpcModule
         bool persistent = false);
 
 
+    [JsonRpcMethod(Description = "Pauses or resumes local block processing. While paused, blocks received from the network or consensus client are still queued but not processed; resuming processes the accumulated backlog. Intended for testing and diagnostics (Nethermind specific).",
+        EdgeCaseHint = "Idempotent: pausing an already-paused (or resuming an already-running) processor simply returns the current state.",
+        ResponseDescription = "`true` if block processing is paused after the call, `false` if running.",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    ResultWrapper<bool> admin_setBlockProcessingPaused(
+        [JsonRpcParameter(Description = "`true` to pause block processing, `false` to resume.", ExampleValue = "true")]
+        bool paused);
+
     [JsonRpcMethod(Description = "Displays a list of connected peers including information about them (`clientId`, `host`, `port`, `address`, `isBootnode`, `isStatic`, `enode`).",
         EdgeCaseHint = "",
         ResponseDescription = "List of connected peers including information",

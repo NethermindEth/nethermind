@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -100,7 +101,8 @@ public class AdminModuleTests
             new ChainSpec { Parameters = new ChainParameters() }.Parameters,
             Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingQueue>());
         _adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 
         _serializer = new EthereumJsonSerializer();
@@ -627,7 +629,8 @@ public class AdminModuleTests
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingQueue>());
     }
 
     private JsonRpcResult RaisePeerEventAndCapture(Action raiseEvent, out string subscriptionId, bool disposeSubscription = false, bool shouldReceive = true)
@@ -689,7 +692,37 @@ public class AdminModuleTests
             new ChainParameters(),
             Substitute.For<ITrustedNodesManager>(),
             subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingQueue>());
+    }
+
+    [Test]
+    public void Admin_setBlockProcessingPaused_delegates_to_processing_queue()
+    {
+        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
+        IAdminRpcModule module = new AdminRpcModule(
+            Substitute.For<IBlockTree>(),
+            Substitute.For<INetworkConfig>(),
+            Substitute.For<IPeerPool>(),
+            Substitute.For<IStaticNodesManager>(),
+            Substitute.For<IStateReader>(),
+            new Enode(_enodeString),
+            "/test/data",
+            new ChainParameters(),
+            Substitute.For<ITrustedNodesManager>(),
+            Substitute.For<ISubscriptionManager>(),
+            new JsonRpcConfig(),
+            queue);
+
+        queue.IsProcessingPaused.Returns(true);
+        ResultWrapper<bool> paused = module.admin_setBlockProcessingPaused(true);
+        queue.Received(1).PauseProcessing();
+        Assert.That(paused.Data, Is.True);
+
+        queue.IsProcessingPaused.Returns(false);
+        ResultWrapper<bool> resumed = module.admin_setBlockProcessingPaused(false);
+        queue.Received(1).ResumeProcessing();
+        Assert.That(resumed.Data, Is.False);
     }
 
     private static IPeerPool CreatePeerPool(Peer peer)

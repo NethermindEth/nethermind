@@ -74,6 +74,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private Task? _processorTask;
     private DateTime _lastProcessedBlock;
 
+    private readonly Lock _pauseLock = new();
+    // Non-null while processing is paused; its task completes when processing is resumed.
+    private volatile TaskCompletionSource? _resumeSignal;
+
     private int _currentRecoveryQueueSize;
     private bool _isProcessingBlock;
     private const int MaxBranchSize = 8192;
@@ -203,10 +207,40 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         static void ThrowAlreadyStarted() => throw new InvalidOperationException($"{nameof(BlockchainProcessor)} already started");
     }
 
+    public bool IsProcessingPaused => _resumeSignal is not null;
+
+    public void PauseProcessing()
+    {
+        lock (_pauseLock)
+        {
+            _resumeSignal ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        if (_logger.IsInfo) _logger.Info("Block processing paused.");
+    }
+
+    public void ResumeProcessing()
+    {
+        TaskCompletionSource? signal;
+        lock (_pauseLock)
+        {
+            signal = _resumeSignal;
+            _resumeSignal = null;
+        }
+
+        if (signal is null) return;
+
+        signal.TrySetResult();
+        if (_logger.IsInfo) _logger.Info("Block processing resumed.");
+    }
+
     public async Task StopAsync(bool processRemainingBlocks = false)
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Unblock the processing loop in case it is parked on a pause, so shutdown can complete.
+        ResumeProcessing();
 
         bool isStarted = _processorTask is not null;
         if (isStarted)
@@ -325,6 +359,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
+            // Park here while processing is paused; queued blocks accumulate until resumed.
+            while (_resumeSignal is { } resume)
+            {
+                await resume.Task.WaitAsync(CancellationToken);
+            }
+
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);

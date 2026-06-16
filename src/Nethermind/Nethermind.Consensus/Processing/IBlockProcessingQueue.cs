@@ -35,5 +35,21 @@ namespace Nethermind.Consensus.Processing
         int Count { get; }
 
         public bool IsEmpty => Count == 0;
+
+        /// <summary>
+        /// Pauses dequeuing of blocks for processing. Blocks can still be enqueued and accumulate
+        /// in the queue until <see cref="ResumeProcessing"/> is called. Intended for testing and diagnostics.
+        /// </summary>
+        void PauseProcessing();
+
+        /// <summary>
+        /// Resumes processing of blocks previously paused via <see cref="PauseProcessing"/>. No-op if not paused.
+        /// </summary>
+        void ResumeProcessing();
+
+        /// <summary>
+        /// Whether block processing is currently paused.
+        /// </summary>
+        bool IsProcessingPaused { get; }
     }
 }

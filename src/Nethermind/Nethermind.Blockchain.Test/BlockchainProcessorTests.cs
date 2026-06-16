@@ -448,6 +448,53 @@ public class BlockchainProcessorTests
             return this;
         }
 
+        public ProcessingTestContext Pause()
+        {
+            _processor.PauseProcessing();
+            Assert.That(_processor.IsProcessingPaused, Is.True, "Expected processing to be paused");
+            return this;
+        }
+
+        public ProcessingTestContext Resume()
+        {
+            _processor.ResumeProcessing();
+            Assert.That(_processor.IsProcessingPaused, Is.False, "Expected processing to be resumed");
+            return this;
+        }
+
+        public ProcessingTestContext DoesNotProcessWhilePaused(Block block)
+        {
+            // Enqueue the block and allow every gate; only the pause should keep it from being processed.
+            Suggested(block);
+            _recoveryStep.Allow(block.Hash!);
+            _branchProcessor.Allow(block.Hash!);
+
+            // Give the (paused) processing loop ample opportunity to pick the block up.
+            Thread.Sleep(500);
+
+            Assert.That(_processor.IsProcessingPaused, Is.True, "Processing should still be paused");
+            // BranchProcessorMock records a hash as soon as Process() starts, so an empty entry
+            // proves the parked loop never dispatched the block.
+            Assert.That(_branchProcessor.Processed, Does.Not.Contain(block.Hash), "Block was processed while paused");
+            Assert.That(_blockTree.Head?.Hash, Is.Not.EqualTo(block.Hash), "Block became head while paused");
+            return this;
+        }
+
+        public ProcessingTestContext ThenBecomesNewHead(Block block)
+        {
+            long deadline = Environment.TickCount64 + ProcessingWait;
+            while (_blockTree.Head?.Hash != block.Hash)
+            {
+                long remaining = deadline - Environment.TickCount64;
+                if (remaining <= 0)
+                    break;
+                _resetEvent.WaitOne((int)remaining);
+            }
+
+            Assert.That(_blockTree.Head?.Hash, Is.EqualTo(block.Hash), "Block did not become head after resume");
+            return this;
+        }
+
         public class AfterBlock(ILogManager logManager, ProcessingTestContext processingTestContext, Block block)
         {
             private const int IgnoreWait = 200;
@@ -588,6 +635,15 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockB3D8).BecomesNewHead()
             .FullyProcessedSkipped(_block2D4).IsKeptOnBranch()
             .FullyProcessedSkipped(_block3D6).IsKeptOnBranch();
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_pause_and_resume_block_processing() => When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .FullyProcessed(_block1D2).BecomesNewHead()
+            .Pause()
+            .DoesNotProcessWhilePaused(_block2D4)
+            .Resume()
+            .ThenBecomesNewHead(_block2D4);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_ignore_same_difficulty() => When.ProcessingBlocks

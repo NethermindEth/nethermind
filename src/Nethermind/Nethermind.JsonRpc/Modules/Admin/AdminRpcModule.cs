@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network;
@@ -37,6 +38,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly ISubscriptionManager _subscriptionManager;
     private readonly IJsonRpcConfig _jsonRpcConfig;
+    private readonly IBlockProcessingQueue _blockProcessingQueue;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -49,7 +51,8 @@ public class AdminRpcModule : IAdminRpcModule
         ChainParameters parameters,
         ITrustedNodesManager trustedNodesManager,
         ISubscriptionManager subscriptionManager,
-        IJsonRpcConfig jsonRpcConfig)
+        IJsonRpcConfig jsonRpcConfig,
+        IBlockProcessingQueue blockProcessingQueue)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -62,8 +65,23 @@ public class AdminRpcModule : IAdminRpcModule
         _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
         _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        _blockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
 
         BuildNodeInfo();
+    }
+
+    public ResultWrapper<bool> admin_setBlockProcessingPaused(bool paused)
+    {
+        if (paused)
+        {
+            _blockProcessingQueue.PauseProcessing();
+        }
+        else
+        {
+            _blockProcessingQueue.ResumeProcessing();
+        }
+
+        return ResultWrapper<bool>.Success(_blockProcessingQueue.IsProcessingPaused);
     }
 
     public async Task<ResultWrapper<bool>> admin_addPeer(string enode, bool persistent = false)
