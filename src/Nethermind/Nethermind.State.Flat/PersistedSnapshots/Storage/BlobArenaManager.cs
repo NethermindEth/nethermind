@@ -79,21 +79,19 @@ public sealed class BlobArenaManager : IDisposable
     /// </summary>
     public void Initialize()
     {
-        lock (_lock)
+        using Lock.Scope scope = _lock.EnterScope();
+        foreach (string path in Directory.GetFiles(_basePath, $"*{BlobFileExtension}"))
         {
-            foreach (string path in Directory.GetFiles(_basePath, $"*{BlobFileExtension}"))
-            {
-                string name = Path.GetFileName(path);
-                if (!name.StartsWith(BlobFilePrefix, StringComparison.Ordinal)) continue;
-                int id = ParseId(name);
-                if (id < 0 || id > ushort.MaxValue) continue;
-                long len = new FileInfo(path).Length;
-                long maxSize = len > 0 ? Math.Max(len, _maxFileSize) : _maxFileSize;
-                BlobArenaFile file = new((ushort)id, path, maxSize, frontier: len);
-                _files[id] = file;
-                _nextFileId = Math.Max(_nextFileId, id + 1);
-                if (len < _maxFileSize) _mutableFiles.Add((ushort)id);
-            }
+            string name = Path.GetFileName(path);
+            if (!name.StartsWith(BlobFilePrefix, StringComparison.Ordinal)) continue;
+            int id = ParseId(name);
+            if (id < 0 || id > ushort.MaxValue) continue;
+            long len = new FileInfo(path).Length;
+            long maxSize = len > 0 ? Math.Max(len, _maxFileSize) : _maxFileSize;
+            BlobArenaFile file = new((ushort)id, path, maxSize, frontier: len);
+            _files[id] = file;
+            _nextFileId = Math.Max(_nextFileId, id + 1);
+            if (len < _maxFileSize) _mutableFiles.Add((ushort)id);
         }
     }
 
@@ -106,60 +104,58 @@ public sealed class BlobArenaManager : IDisposable
     /// </summary>
     public BlobArenaWriter CreateWriter(long estimatedSize)
     {
-        lock (_lock)
+        using Lock.Scope scope = _lock.EnterScope();
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(BlobArenaManager));
+
+        ushort? chosen = null;
+        List<ushort>? toRemove = null;
+        foreach (ushort id in _mutableFiles)
         {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(BlobArenaManager));
-
-            ushort? chosen = null;
-            List<ushort>? toRemove = null;
-            foreach (ushort id in _mutableFiles)
+            BlobArenaFile candidate = _files[id]!;
+            if (candidate.Frontier + estimatedSize <= candidate.MaxSize)
             {
-                BlobArenaFile candidate = _files[id]!;
-                if (candidate.Frontier + estimatedSize <= candidate.MaxSize)
-                {
-                    chosen = id;
-                    break;
-                }
-                (toRemove ??= []).Add(id);
+                chosen = id;
+                break;
             }
-            if (toRemove is not null)
-                foreach (ushort id in toRemove) _mutableFiles.Remove(id);
-
-            ushort fileId;
-            BlobArenaFile file;
-            long startOffset;
-            if (chosen is ushort existing)
-            {
-                fileId = existing;
-                file = _files[fileId]!;
-                startOffset = file.Frontier;
-                // Reserve: remove from the mutable set so no concurrent CreateWriter picks it.
-                // RegisterCompleted / CancelWrite re-add it if it still has headroom.
-                _mutableFiles.Remove(fileId);
-            }
-            else
-            {
-                if (_nextFileId > ushort.MaxValue)
-                    throw new InvalidOperationException(
-                        $"Blob arena file id space exhausted ({ushort.MaxValue + 1} files).");
-                fileId = (ushort)_nextFileId++;
-                string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
-                file = new BlobArenaFile(fileId, path, _maxFileSize, frontier: 0);
-                _files[fileId] = file;
-                // Fresh file isn't added to _mutableFiles yet — Complete/Cancel adds it.
-                startOffset = 0;
-            }
-
-            // The writer's lease keeps the file alive for the write. Mid-cleanup shouldn't happen
-            // under _lock, but guard against it.
-            if (!file.TryAcquireLease())
-                throw new InvalidOperationException(
-                    $"Blob arena {fileId} is mid-cleanup; cannot open writer.");
-
-            FileStream stream = file.OpenWriteStream(startOffset);
-            return new BlobArenaWriter(this, file, startOffset, stream);
+            (toRemove ??= []).Add(id);
         }
+        if (toRemove is not null)
+            foreach (ushort id in toRemove) _mutableFiles.Remove(id);
+
+        ushort fileId;
+        BlobArenaFile file;
+        long startOffset;
+        if (chosen is ushort existing)
+        {
+            fileId = existing;
+            file = _files[fileId]!;
+            startOffset = file.Frontier;
+            // Reserve: remove from the mutable set so no concurrent CreateWriter picks it.
+            // RegisterCompleted / CancelWrite re-add it if it still has headroom.
+            _mutableFiles.Remove(fileId);
+        }
+        else
+        {
+            if (_nextFileId > ushort.MaxValue)
+                throw new InvalidOperationException(
+                    $"Blob arena file id space exhausted ({ushort.MaxValue + 1} files).");
+            fileId = (ushort)_nextFileId++;
+            string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
+            file = new BlobArenaFile(fileId, path, _maxFileSize, frontier: 0);
+            _files[fileId] = file;
+            // Fresh file isn't added to _mutableFiles yet — Complete/Cancel adds it.
+            startOffset = 0;
+        }
+
+        // The writer's lease keeps the file alive for the write. Mid-cleanup shouldn't happen
+        // under _lock, but guard against it.
+        if (!file.TryAcquireLease())
+            throw new InvalidOperationException(
+                $"Blob arena {fileId} is mid-cleanup; cannot open writer.");
+
+        FileStream stream = file.OpenWriteStream(startOffset);
+        return new BlobArenaWriter(this, file, startOffset, stream);
     }
 
     /// <summary>
@@ -204,18 +200,16 @@ public sealed class BlobArenaManager : IDisposable
     /// </summary>
     internal void OnWriteCompleted(BlobArenaFile file, bool hasHeadroom)
     {
-        lock (_lock)
+        using Lock.Scope scope = _lock.EnterScope();
+        if (hasHeadroom) _mutableFiles.Add(file.BlobArenaId);
+        // Ratchet BlobAllocatedBytes up to file.Frontier: push the delta since the last report
+        // and bring ReportedFrontier in sync. Bytes are **allocated** (Frontier), not mapped
+        // (MaxSize) — sparse-file zeros after the frontier are excluded.
+        long delta = file.Frontier - file.ReportedFrontier;
+        if (delta != 0)
         {
-            if (hasHeadroom) _mutableFiles.Add(file.BlobArenaId);
-            // Ratchet BlobAllocatedBytes up to file.Frontier: push the delta since the last report
-            // and bring ReportedFrontier in sync. Bytes are **allocated** (Frontier), not mapped
-            // (MaxSize) — sparse-file zeros after the frontier are excluded.
-            long delta = file.Frontier - file.ReportedFrontier;
-            if (delta != 0)
-            {
-                file.ReportedFrontier = file.Frontier;
-                Interlocked.Add(ref Metrics._blobAllocatedBytes, delta);
-            }
+            file.ReportedFrontier = file.Frontier;
+            Interlocked.Add(ref Metrics._blobAllocatedBytes, delta);
         }
     }
 
@@ -226,7 +220,8 @@ public sealed class BlobArenaManager : IDisposable
     /// </summary>
     internal void OnWriteCancelled(ushort blobArenaId)
     {
-        lock (_lock) _mutableFiles.Add(blobArenaId);
+        using Lock.Scope scope = _lock.EnterScope();
+        _mutableFiles.Add(blobArenaId);
     }
 
     /// <summary>
@@ -238,22 +233,20 @@ public sealed class BlobArenaManager : IDisposable
     /// </summary>
     public void SweepUnreferenced()
     {
-        lock (_lock)
+        using Lock.Scope scope = _lock.EnterScope();
+        if (_disposed) return;
+        for (int id = 0; id < _files.Length; id++)
         {
-            if (_disposed) return;
-            for (int id = 0; id < _files.Length; id++)
-            {
-                BlobArenaFile? file = _files[id];
-                if (file is null) continue;
-                // File still has external lease(s) — a snapshot loaded it during LoadFromCatalog.
-                if (!file.HasOnlyManagerLease) continue;
-                _files[id] = null;
-                _mutableFiles.Remove((ushort)id);
-                // Drop the manager's array-slot lease. With no other lease holders the
-                // file's refcount hits zero, CleanUp runs and deletes the on-disk file
-                // (preserve flag isn't set — nothing called PersistOnShutdown on this).
-                file.Dispose();
-            }
+            BlobArenaFile? file = _files[id];
+            if (file is null) continue;
+            // File still has external lease(s) — a snapshot loaded it during LoadFromCatalog.
+            if (!file.HasOnlyManagerLease) continue;
+            _files[id] = null;
+            _mutableFiles.Remove((ushort)id);
+            // Drop the manager's array-slot lease. With no other lease holders the
+            // file's refcount hits zero, CleanUp runs and deletes the on-disk file
+            // (preserve flag isn't set — nothing called PersistOnShutdown on this).
+            file.Dispose();
         }
     }
 
@@ -266,64 +259,60 @@ public sealed class BlobArenaManager : IDisposable
     /// </summary>
     public void TryResetOrphanedFrontier(BlobArenaFile file)
     {
-        lock (_lock)
+        using Lock.Scope scope = _lock.EnterScope();
+        if (_disposed) return;
+        // Slot may already have been replaced (Dispose nulls it out).
+        if (_files[file.BlobArenaId] != file) return;
+        // Re-check inside the lock — a racing TryLeaseFile or CreateWriter could
+        // have bumped the refcount in the window between the caller's
+        // HasOnlyManagerLease probe and us taking the lock.
+        if (!file.HasOnlyManagerLease) return;
+        // PersistedSnapshotRepository.Dispose flags every loaded blob with
+        // PersistOnShutdown before disposing snapshots. The last snapshot's CleanUp
+        // arrives here with HasOnlyManagerLease=true — without this guard we'd punch
+        // a hole over the WHOLE [0, prev) range of a file the next session needs to
+        // rehydrate intact (BlobArenaFile.CleanUp would keep the file on disk, but
+        // its bytes would all read as zeros).
+        if (file.IsShutdownPreserved) return;
+        long prev = file.ReportedFrontier;
+        if (prev == 0)
         {
-            if (_disposed) return;
-            // Slot may already have been replaced (Dispose nulls it out).
-            if (_files[file.BlobArenaId] != file) return;
-            // Re-check inside the lock — a racing TryLeaseFile or CreateWriter could
-            // have bumped the refcount in the window between the caller's
-            // HasOnlyManagerLease probe and us taking the lock.
-            if (!file.HasOnlyManagerLease) return;
-            // PersistedSnapshotRepository.Dispose flags every loaded blob with
-            // PersistOnShutdown before disposing snapshots. The last snapshot's CleanUp
-            // arrives here with HasOnlyManagerLease=true — without this guard we'd punch
-            // a hole over the WHOLE [0, prev) range of a file the next session needs to
-            // rehydrate intact (BlobArenaFile.CleanUp would keep the file on disk, but
-            // its bytes would all read as zeros).
-            if (file.IsShutdownPreserved) return;
-            long prev = file.ReportedFrontier;
-            if (prev == 0)
-            {
-                _mutableFiles.Add(file.BlobArenaId);
-                return;
-            }
-
-            // Take the file out of the packing pool before mutating Frontier, preserving the
-            // "files in _mutableFiles have a stable Frontier" invariant. Re-added at frontier=0 below.
-            _mutableFiles.Remove(file.BlobArenaId);
-
-            // Reclaim [0, prev) while still under _lock — a racing CreateWriter would otherwise
-            // lease this file and append at offset 0, and a truncate over fresh data would corrupt
-            // it. ftruncate zeros the logical length AND frees all disk blocks in one syscall; the
-            // page cache for the range is implicitly invalidated.
-            file.SetFileLength(0);
-
-            file.Frontier = 0;
-            file.ReportedFrontier = 0;
-            Interlocked.Add(ref Metrics._blobAllocatedBytes, -prev);
-
             _mutableFiles.Add(file.BlobArenaId);
+            return;
         }
+
+        // Take the file out of the packing pool before mutating Frontier, preserving the
+        // "files in _mutableFiles have a stable Frontier" invariant. Re-added at frontier=0 below.
+        _mutableFiles.Remove(file.BlobArenaId);
+
+        // Reclaim [0, prev) while still under _lock — a racing CreateWriter would otherwise
+        // lease this file and append at offset 0, and a truncate over fresh data would corrupt
+        // it. ftruncate zeros the logical length AND frees all disk blocks in one syscall; the
+        // page cache for the range is implicitly invalidated.
+        file.SetFileLength(0);
+
+        file.Frontier = 0;
+        file.ReportedFrontier = 0;
+        Interlocked.Add(ref Metrics._blobAllocatedBytes, -prev);
+
+        _mutableFiles.Add(file.BlobArenaId);
     }
 
     public void Dispose()
     {
-        lock (_lock)
+        using Lock.Scope scope = _lock.EnterScope();
+        if (_disposed) return;
+        _disposed = true;
+        for (int id = 0; id < _files.Length; id++)
         {
-            if (_disposed) return;
-            _disposed = true;
-            for (int id = 0; id < _files.Length; id++)
-            {
-                BlobArenaFile? file = _files[id];
-                if (file is null) continue;
-                _files[id] = null;
-                // Drop the manager's array-slot lease. If a snapshot still holds a lease,
-                // the file's refcount stays positive; the snapshot's later Dispose triggers
-                // CleanUp, which honours the PersistOnShutdown flag set by
-                // PersistedSnapshotRepository.Dispose's first pass.
-                file.Dispose();
-            }
+            BlobArenaFile? file = _files[id];
+            if (file is null) continue;
+            _files[id] = null;
+            // Drop the manager's array-slot lease. If a snapshot still holds a lease,
+            // the file's refcount stays positive; the snapshot's later Dispose triggers
+            // CleanUp, which honours the PersistOnShutdown flag set by
+            // PersistedSnapshotRepository.Dispose's first pass.
+            file.Dispose();
         }
     }
 

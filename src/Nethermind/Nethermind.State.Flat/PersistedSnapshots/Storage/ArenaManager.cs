@@ -81,61 +81,59 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries)
     {
-        using (_lock.EnterScope())
+        using Lock.Scope scope = _lock.EnterScope();
+        // Open existing arena files. Defer the per-file metric push until after frontier
+        // computation so the initial ArenaAllocatedBytes delta reflects the
+        // catalog-derived high-water mark, not 0.
+        foreach (string file in Directory.GetFiles(_basePath, $"*{ArenaFileExtension}"))
         {
-            // Open existing arena files. Defer the per-file metric push until after frontier
-            // computation so the initial ArenaAllocatedBytes delta reflects the
-            // catalog-derived high-water mark, not 0.
-            foreach (string file in Directory.GetFiles(_basePath, $"*{ArenaFileExtension}"))
+            string fileName = Path.GetFileName(file);
+            bool isDedicated = fileName.StartsWith(DedicatedArenaFilePrefix, StringComparison.Ordinal);
+            bool isArena = fileName.StartsWith(ArenaFilePrefix, StringComparison.Ordinal);
+            if (!isDedicated && !isArena) continue;
+
+            int arenaId = ParseArenaId(file, isDedicated);
+            if (arenaId < 0) continue;
+
+            long fileLength = new FileInfo(file).Length;
+            long mappedSize = fileLength > 0 ? fileLength : _maxArenaSize;
+
+            ArenaFile arena = new(arenaId, file, mappedSize);
+            _arenas[arenaId] = arena;
+            _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
+        }
+
+        // Compute frontiers (max end-offset of any slice referencing the arena) and live
+        // sizes from the catalog. Entries pointing at arena ids we didn't load on disk are
+        // dropped — the catalog is the slower-moving authority but the on-disk file set is
+        // what we can actually serve. The drop signals catalog/disk drift, so warn once per
+        // missing arena id (not per entry).
+        Dictionary<int, long> liveSizes = [];
+        HashSet<int> missingArenas = [];
+        foreach (SnapshotCatalog.CatalogEntry entry in entries)
+        {
+            int aid = entry.Location.ArenaId;
+            if (!_arenas.TryGetValue(aid, out ArenaFile? arena))
             {
-                string fileName = Path.GetFileName(file);
-                bool isDedicated = fileName.StartsWith(DedicatedArenaFilePrefix, StringComparison.Ordinal);
-                bool isArena = fileName.StartsWith(ArenaFilePrefix, StringComparison.Ordinal);
-                if (!isDedicated && !isArena) continue;
-
-                int arenaId = ParseArenaId(file, isDedicated);
-                if (arenaId < 0) continue;
-
-                long fileLength = new FileInfo(file).Length;
-                long mappedSize = fileLength > 0 ? fileLength : _maxArenaSize;
-
-                ArenaFile arena = new(arenaId, file, mappedSize);
-                _arenas[arenaId] = arena;
-                _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
+                if (missingArenas.Add(aid) && _logger.IsWarn)
+                    _logger.Warn($"Persisted-snapshot catalog references arena {aid} with no on-disk file; dropping its entries.");
+                continue;
             }
+            long end = entry.Location.Offset + entry.Location.Size;
+            if (end > arena.Frontier) arena.Frontier = end;
 
-            // Compute frontiers (max end-offset of any slice referencing the arena) and live
-            // sizes from the catalog. Entries pointing at arena ids we didn't load on disk are
-            // dropped — the catalog is the slower-moving authority but the on-disk file set is
-            // what we can actually serve. The drop signals catalog/disk drift, so warn once per
-            // missing arena id (not per entry).
-            Dictionary<int, long> liveSizes = [];
-            HashSet<int> missingArenas = [];
-            foreach (SnapshotCatalog.CatalogEntry entry in entries)
-            {
-                int aid = entry.Location.ArenaId;
-                if (!_arenas.TryGetValue(aid, out ArenaFile? arena))
-                {
-                    if (missingArenas.Add(aid) && _logger.IsWarn)
-                        _logger.Warn($"Persisted-snapshot catalog references arena {aid} with no on-disk file; dropping its entries.");
-                    continue;
-                }
-                long end = entry.Location.Offset + entry.Location.Size;
-                if (end > arena.Frontier) arena.Frontier = end;
+            liveSizes.TryGetValue(aid, out long live);
+            liveSizes[aid] = live + entry.Location.Size;
+        }
 
-                liveSizes.TryGetValue(aid, out long live);
-                liveSizes[aid] = live + entry.Location.Size;
-            }
-
-            // Dead bytes = frontier - live sizes (stored on the file itself). Now that
-            // frontiers reflect the catalog's high-water mark, push the per-file count + bytes
-            // gauges in one go (seeds ReportedFrontier).
-            foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
-            {
-                liveSizes.TryGetValue(kv.Key, out long live);
-                kv.Value.DeadBytes = kv.Value.Frontier - live;
-                kv.Value.ReportAdded();
-            }
+        // Dead bytes = frontier - live sizes (stored on the file itself). Now that
+        // frontiers reflect the catalog's high-water mark, push the per-file count + bytes
+        // gauges in one go (seeds ReportedFrontier).
+        foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
+        {
+            liveSizes.TryGetValue(kv.Key, out long live);
+            kv.Value.DeadBytes = kv.Value.Frontier - live;
+            kv.Value.ReportAdded();
         }
     }
 
@@ -148,20 +146,18 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     public ArenaWriter CreateWriter(long estimatedSize)
     {
-        using (_lock.EnterScope())
-        {
-            bool dedicated = estimatedSize >= _dedicatedArenaThreshold;
-            ArenaFile file = dedicated
-                ? CreateArenaFile(estimatedSize, dedicated: true)
-                : GetOrCreateArena(estimatedSize);
-            long offset = file.Frontier;
-            // Reserve: remove from the mutable pool so no concurrent CreateWriter picks the same
-            // file. OnWriteCompleted / OnWriteCancelledShared re-adds the id if room remains.
-            // Dedicated files never enter the mutable pool.
-            if (!dedicated) _mutableArenas.Remove(file.Id);
-            FileStream stream = file.CreateWriteStream(offset);
-            return new ArenaWriter(this, file, dedicated, offset, stream);
-        }
+        using Lock.Scope scope = _lock.EnterScope();
+        bool dedicated = estimatedSize >= _dedicatedArenaThreshold;
+        ArenaFile file = dedicated
+            ? CreateArenaFile(estimatedSize, dedicated: true)
+            : GetOrCreateArena(estimatedSize);
+        long offset = file.Frontier;
+        // Reserve: remove from the mutable pool so no concurrent CreateWriter picks the same
+        // file. OnWriteCompleted / OnWriteCancelledShared re-adds the id if room remains.
+        // Dedicated files never enter the mutable pool.
+        if (!dedicated) _mutableArenas.Remove(file.Id);
+        FileStream stream = file.CreateWriteStream(offset);
+        return new ArenaWriter(this, file, dedicated, offset, stream);
     }
 
     /// <summary>
@@ -172,17 +168,15 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     internal void OnWriteCompleted(ArenaFile file, bool hasHeadroom)
     {
-        using (_lock.EnterScope())
+        using Lock.Scope scope = _lock.EnterScope();
+        if (hasHeadroom) _mutableArenas.Add(file.Id);
+        // Ratchet ArenaAllocatedBytes up to file.Frontier (post-write high-water): push the
+        // delta since the last report and bring file.ReportedFrontier in sync.
+        long delta = file.Frontier - file.ReportedFrontier;
+        if (delta != 0)
         {
-            if (hasHeadroom) _mutableArenas.Add(file.Id);
-            // Ratchet ArenaAllocatedBytes up to file.Frontier (post-write high-water): push the
-            // delta since the last report and bring file.ReportedFrontier in sync.
-            long delta = file.Frontier - file.ReportedFrontier;
-            if (delta != 0)
-            {
-                file.ReportedFrontier = file.Frontier;
-                Interlocked.Add(ref Metrics._arenaAllocatedBytes, delta);
-            }
+            file.ReportedFrontier = file.Frontier;
+            Interlocked.Add(ref Metrics._arenaAllocatedBytes, delta);
         }
     }
 
@@ -193,7 +187,8 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     internal void OnWriteCancelledShared(int arenaId)
     {
-        using (_lock.EnterScope()) _mutableArenas.Add(arenaId);
+        using Lock.Scope scope = _lock.EnterScope();
+        _mutableArenas.Add(arenaId);
     }
 
     /// <summary>
@@ -205,11 +200,9 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     internal void OnWriteCancelledDedicated(ArenaFile file)
     {
-        using (_lock.EnterScope())
-        {
-            _arenas.TryRemove(file.Id, out _);
-            file.ReportRemoved();
-        }
+        using Lock.Scope scope = _lock.EnterScope();
+        _arenas.TryRemove(file.Id, out _);
+        file.ReportRemoved();
     }
 
     /// <summary>
@@ -240,23 +233,21 @@ public sealed class ArenaManager : IArenaManager
     /// </returns>
     public bool MarkDead(ArenaFile file, long deadSize)
     {
-        using (_lock.EnterScope())
+        using Lock.Scope scope = _lock.EnterScope();
+        // After Dispose, on-disk files must be preserved for the next session — skip
+        // dead-byte accounting and file deletion entirely. Reporting "not surviving"
+        // also makes ArenaReservation.CleanUp skip the hole punch, so a file the next
+        // session rehydrates is never zeroed.
+        if (_disposed) return false;
+        file.DeadBytes += deadSize;
+        if (file.DeadBytes < file.Frontier) return true;
+        _mutableArenas.Remove(file.Id);
+        if (_arenas.TryRemove(file.Id, out _))
         {
-            // After Dispose, on-disk files must be preserved for the next session — skip
-            // dead-byte accounting and file deletion entirely. Reporting "not surviving"
-            // also makes ArenaReservation.CleanUp skip the hole punch, so a file the next
-            // session rehydrates is never zeroed.
-            if (_disposed) return false;
-            file.DeadBytes += deadSize;
-            if (file.DeadBytes < file.Frontier) return true;
-            _mutableArenas.Remove(file.Id);
-            if (_arenas.TryRemove(file.Id, out _))
-            {
-                file.ReportRemoved();
-                file.Dispose();
-            }
-            return false;
+            file.ReportRemoved();
+            file.Dispose();
         }
+        return false;
     }
 
     /// <inheritdoc/>

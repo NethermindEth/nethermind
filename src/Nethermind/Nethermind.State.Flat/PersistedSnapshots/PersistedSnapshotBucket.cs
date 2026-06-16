@@ -35,7 +35,7 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
     /// <summary>The greatest <c>To</c> held by this bucket, or <c>null</c> when empty.</summary>
     public StateId? Max
     {
-        get { lock (_lock) return _ordered.Count == 0 ? null : _ordered.Max; }
+        get { using Lock.Scope scope = _lock.EnterScope(); return _ordered.Count == 0 ? null : _ordered.Max; }
     }
 
     // The metric label for a snapshot: this bucket's tier plus the snapshot's block span (compact size).
@@ -65,16 +65,14 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
     /// </summary>
     public void Set(in StateId to, PersistedSnapshot snapshot)
     {
-        lock (_lock)
-        {
-            _byTo[to] = snapshot;
-            _ordered.Add(to);
-            Interlocked.Add(ref _memoryBytes, snapshot.Size);
-            Interlocked.Increment(ref _count);
-            PersistedSnapshotLabel label = LabelFor(snapshot);
-            Metrics.PersistedSnapshotMemory.AddBy(label, snapshot.Size);
-            Metrics.PersistedSnapshotCount.AddBy(label, 1);
-        }
+        using Lock.Scope scope = _lock.EnterScope();
+        _byTo[to] = snapshot;
+        _ordered.Add(to);
+        Interlocked.Add(ref _memoryBytes, snapshot.Size);
+        Interlocked.Increment(ref _count);
+        PersistedSnapshotLabel label = LabelFor(snapshot);
+        Metrics.PersistedSnapshotMemory.AddBy(label, snapshot.Size);
+        Metrics.PersistedSnapshotCount.AddBy(label, 1);
     }
 
     /// <summary>
@@ -84,18 +82,17 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
     /// </summary>
     public void Add(in StateId to, PersistedSnapshot snapshot)
     {
-        lock (_lock)
-        {
-            Set(to, snapshot);
-            snapshot.AcquireLease();
-        }
+        using Lock.Scope scope = _lock.EnterScope();
+        Set(to, snapshot);
+        snapshot.AcquireLease();
     }
 
     /// <summary>Remove the entry at <paramref name="to"/> (catalog + index + leases) under this
     /// bucket's lock. Returns <c>true</c> when an entry was present.</summary>
     public bool RemoveExact(in StateId to)
     {
-        lock (_lock) return RemoveLocked(to);
+        using Lock.Scope scope = _lock.EnterScope();
+        return RemoveLocked(to);
     }
 
     /// <summary>
@@ -104,55 +101,51 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
     /// </summary>
     public void PruneBefore(long beforeBlock)
     {
-        lock (_lock)
+        using Lock.Scope scope = _lock.EnterScope();
+        // Materialise the prefix first — the removal loop mutates the ordered set.
+        using ArrayPoolList<StateId> toRemove = new(0);
+        foreach (StateId to in _ordered)
         {
-            // Materialise the prefix first — the removal loop mutates the ordered set.
-            using ArrayPoolList<StateId> toRemove = new(0);
-            foreach (StateId to in _ordered)
-            {
-                if (to.BlockNumber >= beforeBlock) break;
-                toRemove.Add(to);
-            }
-            foreach (StateId to in toRemove) RemoveLocked(to);
+            if (to.BlockNumber >= beforeBlock) break;
+            toRemove.Add(to);
         }
+        foreach (StateId to in toRemove) RemoveLocked(to);
     }
 
     /// <summary>Copy this bucket's <c>To</c>s in the inclusive [<paramref name="min"/>,
     /// <paramref name="max"/>] range into <paramref name="into"/>, under this bucket's lock.</summary>
     public void CollectRange(in StateId min, in StateId max, ISet<StateId> into)
     {
-        lock (_lock)
-            foreach (StateId to in _ordered.GetViewBetween(min, max))
-                into.Add(to);
+        using Lock.Scope scope = _lock.EnterScope();
+        foreach (StateId to in _ordered.GetViewBetween(min, max))
+            into.Add(to);
     }
 
     /// <summary>Mark every live snapshot's files shutdown-preserved, under this bucket's lock.
     /// Must complete across all buckets before any <see cref="DisposeAndClear"/>.</summary>
     public void PersistAllOnShutdown()
     {
-        lock (_lock)
-            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
-                kv.Value.PersistOnShutdown();
+        using Lock.Scope scope = _lock.EnterScope();
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
+            kv.Value.PersistOnShutdown();
     }
 
     /// <summary>Dispose every live snapshot, clear the index, and roll back this bucket's
     /// contribution to the global memory/count gauges. Under this bucket's lock.</summary>
     public void DisposeAndClear()
     {
-        lock (_lock)
+        using Lock.Scope scope = _lock.EnterScope();
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
         {
-            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
-            {
-                PersistedSnapshotLabel label = LabelFor(kv.Value);
-                Metrics.PersistedSnapshotMemory.AddBy(label, -kv.Value.Size);
-                Metrics.PersistedSnapshotCount.AddBy(label, -1);
-                kv.Value.Dispose();
-            }
-            _byTo.Clear();
-            _ordered.Clear();
-            Interlocked.Exchange(ref _memoryBytes, 0);
-            Interlocked.Exchange(ref _count, 0);
+            PersistedSnapshotLabel label = LabelFor(kv.Value);
+            Metrics.PersistedSnapshotMemory.AddBy(label, -kv.Value.Size);
+            Metrics.PersistedSnapshotCount.AddBy(label, -1);
+            kv.Value.Dispose();
         }
+        _byTo.Clear();
+        _ordered.Clear();
+        Interlocked.Exchange(ref _memoryBytes, 0);
+        Interlocked.Exchange(ref _count, 0);
     }
 
     /// <summary>

@@ -87,7 +87,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         get
         {
-            lock (_lastRegisteredLock) return _lastRegisteredState;
+            using Lock.Scope scope = _lastRegisteredLock.EnterScope();
+            return _lastRegisteredState;
         }
     }
 
@@ -95,7 +96,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
             sortedSnapshots.Add(stateId);
-        lock (_lastRegisteredLock) _lastRegisteredState = stateId;
+        using Lock.Scope scope = _lastRegisteredLock.EnterScope();
+        _lastRegisteredState = stateId;
     }
 
     public AssembledSnapshotResult AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
@@ -321,7 +323,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             }
             // Only reset if it is still the removed tip; a racing AddStateId that advanced the tip
             // leaves _lastRegisteredState != stateId, so newMax (possibly stale) is not applied.
-            lock (_lastRegisteredLock)
+            using (_lastRegisteredLock.EnterScope())
                 if (_lastRegisteredState == stateId) _lastRegisteredState = newMax;
 
             long totalBytes = existing.EstimateMemory();
