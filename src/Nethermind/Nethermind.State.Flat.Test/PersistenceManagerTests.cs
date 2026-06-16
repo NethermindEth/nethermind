@@ -301,7 +301,7 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void DoConvert_BoundaryCompacted_RemovesOnlyConvertedStates_PreservingOutsider()
+    public void ConvertCompactedRange_BoundaryCompacted_RemovesOnlyConvertedStates_PreservingOutsider()
     {
         // Branch A converts the in-memory bases spanning the boundary compacted's range, then must
         // remove ONLY those gathered states from the in-memory tier. A state outside the gathered
@@ -313,8 +313,8 @@ public class PersistenceManagerTests
         StateId baseB = CreateStateId(10);
         StateId outsider = CreateStateId(1); // below start (= compactedFrom.BlockNumber + 1)
 
-        // DoConvert persists the gathered snapshot into the real persisted tier.
-        // The converted/boundary snapshots are disposed by DoConvert (via RemoveAndRelease + the
+        // ConvertCompactedRange persists the gathered snapshot into the real persisted tier.
+        // The converted/boundary snapshots are disposed by it (via RemoveAndRelease + the
         // pre-leased candidate), so they are NOT wrapped in `using`. Only the survivor is.
         CreateSnapshot(compactedFrom, compactedTo, compacted: true);
         CreateSnapshot(compactedFrom, baseA, compacted: false);
@@ -324,7 +324,7 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasState(outsider), Is.True);
 
         _snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out Snapshot? compactedForConvert);
-        InvokeDoConvert(new PersistenceManager.ConversionCandidate(compactedForConvert!, Base: null));
+        InvokeConvertCompactedRange(compactedForConvert!);
 
         Assert.Multiple(() =>
         {
@@ -754,14 +754,14 @@ public class PersistenceManagerTests
         return (PersistenceManager.ConversionCandidate?)method.Invoke(_persistenceManager, [currentPersistedState]);
     }
 
-    private void InvokeDoConvert(PersistenceManager.ConversionCandidate candidate)
+    private void InvokeConvertCompactedRange(Snapshot compacted)
     {
-        // DoConvert is private; reach it via reflection to unit-test the in-memory removal logic
-        // directly without driving the full DetermineSnapshotAction → AddToPersistence loop.
+        // ConvertCompactedRange is private; reach it via reflection to unit-test the in-memory
+        // removal logic directly without driving the full DetermineSnapshotAction → AddToPersistence loop.
         System.Reflection.MethodInfo method = typeof(PersistenceManager).GetMethod(
-            "DoConvert",
+            "ConvertCompactedRange",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        method.Invoke(_persistenceManager, [candidate]);
+        method.Invoke(_persistenceManager, [compacted]);
     }
 
     private class TestFinalizedStateProvider : IFinalizedStateProvider

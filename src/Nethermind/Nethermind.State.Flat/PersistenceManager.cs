@@ -204,9 +204,13 @@ public class PersistenceManager(
                 _currentPersistedStateId = persistedToPersist.To;
                 snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
             }
-            else if (toConvert is not null)
+            else if (toConvert?.Compacted is not null)
             {
-                DoConvert(toConvert);
+                ConvertCompactedRange(toConvert.Compacted);
+            }
+            else if (toConvert?.Base is not null)
+            {
+                ConvertSingleBase(toConvert.Base);
             }
             else
             {
@@ -215,83 +219,83 @@ public class PersistenceManager(
         }
     }
 
-    private void DoConvert(ConversionCandidate candidate)
+    /// <summary>
+    /// Branch A — boundary CompactSize compacted: convert every in-memory base in the range it
+    /// spans and queue them for batched compaction. The CompactSize persistable is produced by the
+    /// batched compactor (a linked merge of the bases), not here, so the compacted in-memory
+    /// snapshot is used only to delimit the block range. Disposes <paramref name="compacted"/>.
+    /// </summary>
+    private void ConvertCompactedRange(Snapshot compacted)
     {
-        if (candidate.Compacted is not null)
+        try
         {
-            // Branch A — boundary CompactSize compacted: convert every in-memory base in the
-            // range it spans and queue them for batched compaction. The CompactSize persistable
-            // is produced by the batched compactor (a linked merge of the bases), not here, so
-            // the compacted in-memory snapshot is used only to delimit the block range.
-            Snapshot compacted = candidate.Compacted;
-            try
+            long start = compacted.From.BlockNumber + 1;
+            long end = compacted.To.BlockNumber;
+
+            ArrayPoolList<StateId> allStateIds = new(64);
+            for (long b = start; b <= end; b++)
             {
-                long start = compacted.From.BlockNumber + 1;
-                long end = compacted.To.BlockNumber;
+                using ArrayPoolList<StateId> statesAtBlock = snapshotRepository.GetStatesAtBlockNumber(b);
+                foreach (StateId state in statesAtBlock)
+                    allStateIds.Add(state);
+            }
 
-                ArrayPoolList<StateId> allStateIds = new(64);
-                for (long b = start; b <= end; b++)
+            Parallel.ForEach(
+                allStateIds,
+                state =>
                 {
-                    using ArrayPoolList<StateId> statesAtBlock = snapshotRepository.GetStatesAtBlockNumber(b);
-                    foreach (StateId state in statesAtBlock)
-                        allStateIds.Add(state);
-                }
-
-                Parallel.ForEach(
-                    allStateIds,
-                    state =>
+                    if (snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
                     {
-                        if (snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
-                        {
-                            long sw = Stopwatch.GetTimestamp();
-                            // Pre-leased return — dispose the caller's lease immediately;
-                            // the repository's dict entry holds its own lease.
-                            loader.Convert(snap).Dispose();
-                            Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
-                            snap.Dispose();
-                        }
-                    });
+                        long sw = Stopwatch.GetTimestamp();
+                        // Pre-leased return — dispose the caller's lease immediately;
+                        // the repository's dict entry holds its own lease.
+                        loader.Convert(snap).Dispose();
+                        Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
+                        snap.Dispose();
+                    }
+                });
 
-                // Remove exactly the converted in-memory snapshots — not RemoveStatesUntil(end),
-                // which would also drop snapshots added concurrently within the block range. Must
-                // run before the channel handoff below: the compactor takes ownership of
-                // allStateIds and disposes it.
-                foreach (StateId state in allStateIds)
-                {
-                    // A To can exist in both in-memory tiers — remove from each.
-                    snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryCompacted);
-                    snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
-                }
-
-                compactor.Enqueue(allStateIds);
-            }
-            finally
+            // Remove exactly the converted in-memory snapshots — not RemoveStatesUntil(end),
+            // which would also drop snapshots added concurrently within the block range. Must
+            // run before the channel handoff below: the compactor takes ownership of
+            // allStateIds and disposes it.
+            foreach (StateId state in allStateIds)
             {
-                compacted.Dispose();
+                // A To can exist in both in-memory tiers — remove from each.
+                snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryCompacted);
+                snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
             }
+
+            compactor.Enqueue(allStateIds);
         }
-        else
+        finally
         {
-            // Branch B — single base convert (fragmented case: no full-CompactSize compacted
-            // available for the candidate range yet).
-            Snapshot baseSnap = candidate.Base!;
-            try
-            {
-                long sw = Stopwatch.GetTimestamp();
-                // Pre-leased return — dispose the caller's lease immediately;
-                // the repository's dict entry holds its own lease.
-                loader.Convert(baseSnap).Dispose();
-                Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
+            compacted.Dispose();
+        }
+    }
 
-                ArrayPoolList<StateId> single = new(1) { baseSnap.To };
-                compactor.Enqueue(single);
+    /// <summary>
+    /// Branch B — single base convert (fragmented case: no full-CompactSize compacted available
+    /// for the candidate range yet). Disposes <paramref name="baseSnap"/>.
+    /// </summary>
+    private void ConvertSingleBase(Snapshot baseSnap)
+    {
+        try
+        {
+            long sw = Stopwatch.GetTimestamp();
+            // Pre-leased return — dispose the caller's lease immediately;
+            // the repository's dict entry holds its own lease.
+            loader.Convert(baseSnap).Dispose();
+            Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
 
-                snapshotRepository.RemoveAndReleaseInMemoryKnownState(baseSnap.To, SnapshotTier.InMemoryBase);
-            }
-            finally
-            {
-                baseSnap.Dispose();
-            }
+            ArrayPoolList<StateId> single = new(1) { baseSnap.To };
+            compactor.Enqueue(single);
+
+            snapshotRepository.RemoveAndReleaseInMemoryKnownState(baseSnap.To, SnapshotTier.InMemoryBase);
+        }
+        finally
+        {
+            baseSnap.Dispose();
         }
     }
 
@@ -413,6 +417,7 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
+            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (_, TreePath path) = k;
@@ -428,10 +433,9 @@ public class PersistenceManager(
                     }
                 }
 
-                ReadOnlySpan<byte> rlp = node.FullRlp.AsSpan();
-                stateNodesSize += rlp.Length;
+                stateNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, rlp);
+                batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
 
                 node.IsPersisted = true;
                 node.PrunePersistedRecursively(1);
@@ -442,6 +446,7 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long storageNodesSize = 0;
+            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (Hash256 address, TreePath path) = k;
@@ -457,10 +462,9 @@ public class PersistenceManager(
                     }
                 }
 
-                ReadOnlySpan<byte> rlp = node.FullRlp.AsSpan();
-                storageNodesSize += rlp.Length;
+                storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, rlp);
+                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 node.IsPersisted = true;
                 node.PrunePersistedRecursively(1);
             }
