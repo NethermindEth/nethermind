@@ -28,36 +28,9 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class SnapshotRepository : ISnapshotRepository, IDisposable
 {
-    // ---- Edge-priority tables: the parent-edge expansion/lease order for the graph walks, one per
-    // walk mode. Every order is explicit — it does NOT track SnapshotTier's numeric order.
-
-    // ParentCursor full expansion: in-RAM-tier-first, widest-first within a tier. PersistedPersistable
-    // is never expanded here (only leased explicitly via FindSnapshotToPersist).
-    private static readonly SnapshotTier[] FullExpansionPriority =
-    [
-        SnapshotTier.InMemoryCompacted,
-        SnapshotTier.InMemoryBase,
-        SnapshotTier.PersistedCompacted,
-        SnapshotTier.PersistedBase,
-    ];
-
-    // In-memory-only expansion: only the in-memory edges.
-    private static readonly SnapshotTier[] InMemoryExpansionPriority =
-    [
-        SnapshotTier.InMemoryCompacted,
-        SnapshotTier.InMemoryBase,
-    ];
-
-    // fromPersistedEdge == true: `to` was reached over a persisted edge, so persisted snapshots only
-    // chain back to other persisted snapshots — the in-memory edges are guaranteed misses and skipped.
-    private static readonly SnapshotTier[] PersistedContinuationPriority =
-    [
-        SnapshotTier.PersistedCompacted,
-        SnapshotTier.PersistedBase,
-    ];
-
     // FindSnapshotToPersist lease order: persistable, persisted base, in-memory compacted/base, then
     // the >CompactSize persisted compacted (traversed as a skip pointer, never a returnable candidate).
+    // The graph-walk visitors embed their own edge-priority tables (see IParentWalkVisitor.EdgePriority).
     private static readonly SnapshotTier[] PersistEdgePriority =
     [
         SnapshotTier.PersistedPersistable,
@@ -65,16 +38,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         SnapshotTier.InMemoryCompacted,
         SnapshotTier.InMemoryBase,
         SnapshotTier.PersistedCompacted,
-    ];
-
-    // Persisted-only, widest-first compaction expansion: compacted, then the CompactSize-wide
-    // persistable (the only source >CompactSize boundary compaction has), then base. Used by the
-    // compaction mode of ParentCursor / WalkParents.
-    private static readonly SnapshotTier[] CompactionEdgePriority =
-    [
-        SnapshotTier.PersistedCompacted,
-        SnapshotTier.PersistedPersistable,
-        SnapshotTier.PersistedBase,
     ];
 
     private readonly ILogger _logger;
@@ -243,33 +206,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
     }
 
-    /// <summary>
-    /// Edge seam over the two-tier snapshot DAG: given a node, leases the snapshot backing one of
-    /// its parent (<c>From</c>) edges in the given <paramref name="tier"/>. Callers own every lease
-    /// and must dispose it on all paths.
-    /// </summary>
-    /// <remarks>The persisted-tier mapping is not 1:1 with the buckets: <see cref="SnapshotTier.PersistedCompacted"/>
-    /// leases from the compacted then the persistable bucket, so it doubles as the skip-pointer edge.</remarks>
-    private bool TryLeaseParent(in StateId to, SnapshotTier tier, [NotNullWhen(true)] out IDisposable? snapshot, out StateId from)
-    {
-        if (tier.IsPersisted())
-        {
-            if (TryLeasePersistedState(to, tier, out PersistedSnapshot? persisted))
-            {
-                (snapshot, from) = (persisted, persisted.From);
-                return true;
-            }
-        }
-        else if (TryLeaseInMemoryState(to, tier, out Snapshot? inMemory))
-        {
-            (snapshot, from) = (inMemory, inMemory.From);
-            return true;
-        }
-
-        (snapshot, from) = (null, default);
-        return false;
-    }
-
     private readonly struct WalkNode(in StateId current, bool viaPersisted, int parentIndex)
     {
         public readonly StateId Current = current;
@@ -277,27 +213,27 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public readonly int ParentIndex = parentIndex;
     }
 
-    private enum WalkAction { Continue, Stop, Enqueue }
+    private enum WalkAction { Continue, Stop, Traverse }
 
     /// <summary>
     /// Per-edge policy for <see cref="WalkParents{TVisitor}"/>, invoked once per not-yet-seen parent edge
     /// (the driver owns cycle detection — it disposes and skips any edge whose target is already seen, so
     /// the visitor only ever sees a fresh target). The visitor OWNS the lease handed to it: dispose it and
     /// return <see cref="WalkAction.Continue"/> to skip the edge; retain it (e.g. in a visited list), set
-    /// <c>next</c>, and return <see cref="WalkAction.Enqueue"/> to have the driver expand the child; or
+    /// <c>next</c>, and return <see cref="WalkAction.Traverse"/> to have the driver expand the child; or
     /// retain/dispose per its own bookkeeping and return <see cref="WalkAction.Stop"/> to end the whole walk.
     /// </summary>
     private interface IParentWalkVisitor
     {
-        /// <summary>The tier edges to try, in order, when expanding a node. <paramref name="viaPersisted"/>
-        /// is the node's own edge kind (a from-persisted-edge continuation chains only to persisted tiers).
-        /// The visitor may still skip any returned edge by disposing its lease and returning
-        /// <see cref="WalkAction.Continue"/>.</summary>
-        SnapshotTier[] EdgePriority(bool viaPersisted);
+        /// <summary>The tier edges to try, in order, when expanding <paramref name="node"/>. Its
+        /// <see cref="WalkNode.ViaPersisted"/> flag distinguishes a from-persisted-edge continuation
+        /// (persisted snapshots chain only to persisted tiers) from a normal expansion. The visitor may
+        /// still skip any returned edge by disposing its lease and returning <see cref="WalkAction.Continue"/>.</summary>
+        SnapshotTier[] EdgePriority(in WalkNode node);
 
-        /// <summary>Process one parent edge. Returns <see cref="WalkAction.Enqueue"/> with the child node
+        /// <summary>Process one parent edge. Returns <see cref="WalkAction.Traverse"/> with the child node
         /// to expand in <paramref name="next"/>, <see cref="WalkAction.Stop"/> to end the walk, or
-        /// <see cref="WalkAction.Continue"/> to move on without enqueuing (<paramref name="next"/> unused).</summary>
+        /// <see cref="WalkAction.Continue"/> to move on without traversing the child (<paramref name="next"/> unused).</summary>
         WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next);
     }
 
@@ -310,8 +246,15 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         public int WinnerIndex = -1;
 
-        public readonly SnapshotTier[] EdgePriority(bool viaPersisted) =>
-            viaPersisted ? PersistedContinuationPriority : FullExpansionPriority;
+        // In-RAM-tier-first, widest-first within a tier; PersistedPersistable is never expanded here.
+        private static readonly SnapshotTier[] FullExpansion =
+            [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedCompacted, SnapshotTier.PersistedBase];
+        // A persisted edge chains only to other persisted snapshots — in-memory edges are guaranteed misses.
+        private static readonly SnapshotTier[] PersistedContinuation =
+            [SnapshotTier.PersistedCompacted, SnapshotTier.PersistedBase];
+
+        public readonly SnapshotTier[] EdgePriority(in WalkNode node) =>
+            node.ViaPersisted ? PersistedContinuation : FullExpansion;
 
         public WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next)
         {
@@ -335,7 +278,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 return WalkAction.Stop;
             }
             next = new WalkNode(from, tier.IsPersisted(), idx);
-            return WalkAction.Enqueue;
+            return WalkAction.Traverse;
         }
     }
 
@@ -348,7 +291,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public int WinnerIndex = -1;
         public ArrayPoolListRef<(Snapshot Snapshot, int ParentIndex)> Visited = new(estimatedSize);
 
-        public readonly SnapshotTier[] EdgePriority(bool viaPersisted) => InMemoryExpansionPriority;
+        // In-memory-only expansion: only the in-memory edges.
+        private static readonly SnapshotTier[] InMemoryExpansion =
+            [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase];
+
+        public readonly SnapshotTier[] EdgePriority(in WalkNode node) => InMemoryExpansion;
 
         public WalkAction Visit(IDisposable leased, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next)
         {
@@ -366,7 +313,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 return WalkAction.Stop;
             }
             next = new WalkNode(from, tier.IsPersisted(), index); // in-memory only here, so never persisted
-            return WalkAction.Enqueue;
+            return WalkAction.Traverse;
         }
     }
 
@@ -381,7 +328,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public int WinnerIndex = -1;
         private long _winnerBlock = long.MaxValue;
 
-        public readonly SnapshotTier[] EdgePriority(bool viaPersisted) => CompactionEdgePriority;
+        // Persisted-only, widest-first: compacted, then the CompactSize-wide persistable (the only source
+        // >CompactSize boundary compaction has), then base.
+        private static readonly SnapshotTier[] CompactionEdges =
+            [SnapshotTier.PersistedCompacted, SnapshotTier.PersistedPersistable, SnapshotTier.PersistedBase];
+
+        public readonly SnapshotTier[] EdgePriority(in WalkNode node) => CompactionEdges;
 
         public WalkAction Visit(IDisposable leased, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next)
         {
@@ -400,7 +352,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
             if (from.BlockNumber == minBlockNumber) return WalkAction.Stop; // window start — deepest possible
             next = new WalkNode(from, tier.IsPersisted(), index);
-            return WalkAction.Enqueue;
+            return WalkAction.Traverse;
         }
     }
 
@@ -410,8 +362,15 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         public bool Reached = false;
 
-        public readonly SnapshotTier[] EdgePriority(bool viaPersisted) =>
-            viaPersisted ? PersistedContinuationPriority : FullExpansionPriority;
+        // Full two-tier navigation (same policy as AssembleVisitor): in-RAM first, then persisted; a
+        // persisted edge continues persisted-only.
+        private static readonly SnapshotTier[] FullExpansion =
+            [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedCompacted, SnapshotTier.PersistedBase];
+        private static readonly SnapshotTier[] PersistedContinuation =
+            [SnapshotTier.PersistedCompacted, SnapshotTier.PersistedBase];
+
+        public readonly SnapshotTier[] EdgePriority(in WalkNode node) =>
+            node.ViaPersisted ? PersistedContinuation : FullExpansion;
 
         public WalkAction Visit(IDisposable snapshot, in StateId from, SnapshotTier tier, in WalkNode parent, out WalkNode next)
         {
@@ -422,53 +381,103 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             if (from.BlockNumber > target.BlockNumber)
             {
                 next = new WalkNode(from, tier.IsPersisted(), parent.ParentIndex);
-                return WalkAction.Enqueue;
+                return WalkAction.Traverse;
             }
             return WalkAction.Continue;
         }
     }
 
     /// <summary>
-    /// Generic backward BFS over parent (<c>From</c>) edges. Owns the frontier queue, the edge-expansion
-    /// loop, and cycle detection: each edge target is deduped against the visited set (seeded with
-    /// <paramref name="start"/>) before <c>Visit</c>, and an already-seen target's lease is disposed and
-    /// skipped. The visitor only sees fresh targets — it retains kept leases and signals the win.
+    /// Backward BFS (queue frontier) over parent (<c>From</c>) edges. Owns the frontier and the
+    /// edge-expansion loop, plus cycle detection: each edge target is deduped against the visited set
+    /// (seeded with <paramref name="start"/>) before <c>Visit</c>, and an already-seen target's lease is
+    /// disposed and skipped. The visitor only sees fresh targets — it retains kept leases and signals the win.
     /// </summary>
     private void WalkParents<TVisitor>(in StateId start, bool startViaPersisted, ref TVisitor visitor)
         where TVisitor : struct, IParentWalkVisitor, allows ref struct
     {
-        // PooledQueue is a struct, so it cannot be a using variable; dispose it in the finally instead.
-        PooledQueue<WalkNode> queue = new();
+        using PooledQueue<WalkNode> queue = new();
         using PooledSet<StateId> seen = new();
-        try
+
+        seen.Add(start);
+        queue.Enqueue(new WalkNode(start, startViaPersisted, -1));
+
+        while (queue.Count > 0)
         {
-            seen.Add(start);
-            queue.Enqueue(new WalkNode(start, startViaPersisted, -1));
+            WalkNode node = queue.Dequeue();
 
-            while (queue.Count > 0)
+            // The visitor owns the edge priority; node.ViaPersisted lets it distinguish a
+            // from-persisted-edge continuation (persisted snapshots chain only to persisted tiers)
+            // from a normal expansion. The visitor may still skip any of these edges in Visit.
+            SnapshotTier[] priority = visitor.EdgePriority(node);
+
+            foreach (SnapshotTier tier in priority)
             {
-                WalkNode node = queue.Dequeue();
-
-                // The visitor owns the edge priority; node.ViaPersisted lets it distinguish a
-                // from-persisted-edge continuation (persisted snapshots chain only to persisted tiers)
-                // from a normal expansion. The visitor may still skip any of these edges in Visit.
-                SnapshotTier[] priority = visitor.EdgePriority(node.ViaPersisted);
-
-                foreach (SnapshotTier tier in priority)
+                IDisposable snapshot;
+                StateId from;
+                if (tier.IsPersisted())
                 {
-                    if (!TryLeaseParent(node.Current, tier, out IDisposable? snapshot, out StateId from)) continue;
-                    if (!seen.Add(from)) { snapshot!.Dispose(); continue; } // cycle detection
-                    switch (visitor.Visit(snapshot!, from, tier, node, out WalkNode next))
-                    {
-                        case WalkAction.Stop: return;
-                        case WalkAction.Enqueue: queue.Enqueue(next); break;
-                    }
+                    if (!TryLeasePersistedState(node.Current, tier, out PersistedSnapshot? persisted)) continue;
+                    (snapshot, from) = (persisted, persisted.From);
+                }
+                else
+                {
+                    if (!TryLeaseInMemoryState(node.Current, tier, out Snapshot? inMemory)) continue;
+                    (snapshot, from) = (inMemory, inMemory.From);
+                }
+
+                if (!seen.Add(from)) { snapshot.Dispose(); continue; } // cycle detection
+                switch (visitor.Visit(snapshot, from, tier, node, out WalkNode next))
+                {
+                    case WalkAction.Stop: return;
+                    case WalkAction.Traverse: queue.Enqueue(next); break;
                 }
             }
         }
-        finally
+    }
+
+    /// <summary>
+    /// Backward DFS (stack frontier) over parent (<c>From</c>) edges — identical contract to
+    /// <see cref="WalkParents{TVisitor}"/> but with a stack frontier, for order-independent walks such as
+    /// reachability. The visitor is unchanged; the driver pushes instead of enqueues on
+    /// <see cref="WalkAction.Traverse"/>.
+    /// </summary>
+    private void WalkParentsDepthFirst<TVisitor>(in StateId start, bool startViaPersisted, ref TVisitor visitor)
+        where TVisitor : struct, IParentWalkVisitor, allows ref struct
+    {
+        using PooledStack<WalkNode> stack = new();
+        using PooledSet<StateId> seen = new();
+
+        seen.Add(start);
+        stack.Push(new WalkNode(start, startViaPersisted, -1));
+
+        while (stack.Count > 0)
         {
-            queue.Dispose();
+            WalkNode node = stack.Pop();
+            SnapshotTier[] priority = visitor.EdgePriority(node);
+
+            foreach (SnapshotTier tier in priority)
+            {
+                IDisposable snapshot;
+                StateId from;
+                if (tier.IsPersisted())
+                {
+                    if (!TryLeasePersistedState(node.Current, tier, out PersistedSnapshot? persisted)) continue;
+                    (snapshot, from) = (persisted, persisted.From);
+                }
+                else
+                {
+                    if (!TryLeaseInMemoryState(node.Current, tier, out Snapshot? inMemory)) continue;
+                    (snapshot, from) = (inMemory, inMemory.From);
+                }
+
+                if (!seen.Add(from)) { snapshot.Dispose(); continue; } // cycle detection
+                switch (visitor.Visit(snapshot, from, tier, node, out WalkNode next))
+                {
+                    case WalkAction.Stop: return;
+                    case WalkAction.Traverse: stack.Push(next); break;
+                }
+            }
         }
     }
 
@@ -506,7 +515,18 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         {
             foreach (SnapshotTier tier in PersistEdgePriority)
             {
-                if (!TryLeaseParent(current, tier, out IDisposable? snapshot, out StateId from)) continue;
+                IDisposable snapshot;
+                StateId from;
+                if (tier.IsPersisted())
+                {
+                    if (!TryLeasePersistedState(current, tier, out PersistedSnapshot? persisted)) continue;
+                    (snapshot, from) = (persisted, persisted.From);
+                }
+                else
+                {
+                    if (!TryLeaseInMemoryState(current, tier, out Snapshot? inMemory)) continue;
+                    (snapshot, from) = (inMemory, inMemory.From);
+                }
 
                 if (from == currentPersistedState && IsPersistCandidate(tier, current, from, compactSize))
                 {
@@ -827,7 +847,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         if (from.BlockNumber <= target.BlockNumber) return false;
 
         CanReachVisitor visitor = new(target);
-        WalkParents(from, startViaPersisted: false, ref visitor);
+        WalkParentsDepthFirst(from, startViaPersisted: false, ref visitor);
         return visitor.Reached;
     }
 
