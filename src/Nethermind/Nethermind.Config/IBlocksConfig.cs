@@ -46,6 +46,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
+    [ConfigItem(Description = "DIAGNOSTIC: cap how far (in percent of the block's tx count) the speculative prewarmer may run ahead of execution before pausing; it resumes once the lead drains below ~2/5 of this. 0 disables the cap (unbounded lead).", DefaultValue = "0", HiddenFromDocs = true)]
+    int PreWarmLeadCapPercent { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

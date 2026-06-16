@@ -9,6 +9,7 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -34,6 +35,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    // DIAGNOSTIC: when true, prewarm workers cap how far they run ahead of execution.
+    private readonly bool _leadCapEnabled;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -48,7 +51,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _leadCapEnabled = blocksConfig.PreWarmLeadCapPercent > 0;
+        if (_leadCapEnabled) PrewarmThrottle.Configure(blocksConfig.PreWarmLeadCapPercent, blocksConfig.PreWarmLeadCapPercent * 2 / 5);
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -202,6 +210,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
 
+            if (_leadCapEnabled) PrewarmThrottle.StartBlock(block.Transactions.Length);
+
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
             Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
@@ -234,12 +244,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             // DIAGNOSTIC: groupIndex identifies the sender-group; seq is the position within it,
                             // which together explain the out-of-order interleaving of prewarm vs execution.
                             bool logPrewarm = blockState.PreWarmer._logger.IsInfo;
+                            bool throttle = blockState.PreWarmer._leadCapEnabled;
                             int seqInGroup = 0;
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
+                                if (throttle) PrewarmThrottle.WaitIfTooFarAhead(token);
                                 if (logPrewarm) PrewarmDiag.Record(PrewarmDiag.KindPrewarm, blockState.Block.Number, txIndex, groupIndex, seqInGroup);
                                 WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                if (throttle) PrewarmThrottle.OnWarmed();
                                 seqInGroup++;
                             }
                         }

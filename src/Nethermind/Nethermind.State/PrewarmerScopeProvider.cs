@@ -6,6 +6,7 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -137,6 +138,7 @@ public class PrewarmerScopeProvider(
                 if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
+                    if (PrewarmCoverage.Enabled) PrewarmCoverage.RecordAddr(hit: true);
                     baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
                 }
@@ -144,6 +146,7 @@ public class PrewarmerScopeProvider(
                 {
                     account = GetFromBaseTree(in addressAsKey);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
+                    if (PrewarmCoverage.Enabled) PrewarmCoverage.RecordAddr(hit: false);
                 }
                 return account;
             }
@@ -194,12 +197,14 @@ public class PrewarmerScopeProvider(
                 if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
+                    if (PrewarmCoverage.Enabled) PrewarmCoverage.RecordSlot(hit: true);
                     Db.Metrics.IncrementStorageTreeCache();
                 }
                 else
                 {
                     value = LoadFromTreeStorage(in storageCell);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
+                    if (PrewarmCoverage.Enabled) PrewarmCoverage.RecordSlot(hit: false);
                 }
                 return value;
             }
