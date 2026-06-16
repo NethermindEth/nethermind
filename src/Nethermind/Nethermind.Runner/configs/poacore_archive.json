@@ -19,13 +19,13 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "Bloom": {
-    "IndexLevelBucketSizes": [ 16, 16, 16, 16 ]
-  },
   "Pruning": {
     "Mode": "None"
   },
   "Merge": {
     "Enabled": false
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

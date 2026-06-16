@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool.AddPeer(miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After((int)_standardTimeoutUnit.TotalMilliseconds, 100));
-            BlockTestAssertions.AssertBlockHeaderEquivalent(miner1Tree.BestSuggestedHeader, _blockTree.BestSuggestedHeader);
+            Assert.That(miner1Tree.BestSuggestedHeader, Is.EqualTo(_blockTree.BestSuggestedHeader).UsingBlockHeaderComparer());
 
             Block splitBlock = Build.A.Block
                 .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)
@@ -197,11 +197,11 @@ namespace Nethermind.Synchronization.Test
             Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
 
             miner1Tree.SuggestBlock(splitBlock);
-            miner1Tree.UpdateMainChain(splitBlock);
+            miner1Tree.TryUpdateMainChain(splitBlock.Header, true, preloadedBlocks: new[] { splitBlock });
             miner1Tree.SuggestBlock(splitBlockChild);
-            miner1Tree.UpdateMainChain(splitBlockChild);
+            miner1Tree.TryUpdateMainChain(splitBlockChild.Header, true, preloadedBlocks: new[] { splitBlockChild });
 
-            BlockTestAssertions.AssertBlockHeaderEquivalent(splitBlockChild.Header, miner1Tree.BestSuggestedHeader);
+            Assert.That(splitBlockChild.Header, Is.EqualTo(miner1Tree.BestSuggestedHeader).UsingBlockHeaderComparer());
 
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 
@@ -252,7 +252,7 @@ namespace Nethermind.Synchronization.Test
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head!).TestObject;
             minerTree.SuggestBlock(newBlock);
-            minerTree.UpdateMainChain(newBlock);
+            minerTree.TryUpdateMainChain(newBlock.Header, true, preloadedBlocks: new[] { newBlock });
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
@@ -290,7 +290,7 @@ namespace Nethermind.Synchronization.Test
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head!).TestObject;
             minerTree.SuggestBlock(newBlock);
-            minerTree.UpdateMainChain(newBlock);
+            minerTree.TryUpdateMainChain(newBlock.Header, true, preloadedBlocks: new[] { newBlock });
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));

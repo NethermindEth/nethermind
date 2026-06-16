@@ -254,6 +254,8 @@ jobs:
   trigger_node_and_vm_creation:
     needs: create_docker_image
     runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.wait_node.outputs.run_id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -311,6 +313,7 @@ jobs:
             }'
 
       - name: Wait for creation of node
+        id: wait_node
         env:
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
           WORKFLOW_ID: "run-single-node.yml"
@@ -327,6 +330,7 @@ jobs:
           run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
           echo "Run ID extracted is: $run_id"
           echo "RUN_ID=$run_id" >> $GITHUB_ENV
+          echo "run_id=$run_id" >> $GITHUB_OUTPUT
         working-directory: ${{ github.workspace }}
 
       - name: Download machine specs artifact

@@ -114,9 +114,12 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
 
-        Assert.That(blockHeader.GasUsed, Is.EqualTo(negativeLong));
-        Assert.That(blockHeader.Number, Is.EqualTo(negativeLong));
-        Assert.That(blockHeader.GasLimit, Is.EqualTo(negativeLong));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.GasUsed, Is.EqualTo(negativeLong));
+            Assert.That(blockHeader.Number, Is.EqualTo(negativeLong));
+            Assert.That(blockHeader.GasLimit, Is.EqualTo(negativeLong));
+        }
     }
 
     [TestCase(-1)]
@@ -131,9 +134,12 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        Assert.That(blockHeader.GasUsed, Is.EqualTo(negativeLong));
-        Assert.That(blockHeader.Number, Is.EqualTo(negativeLong));
-        Assert.That(blockHeader.GasLimit, Is.EqualTo(negativeLong));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.GasUsed, Is.EqualTo(negativeLong));
+            Assert.That(blockHeader.Number, Is.EqualTo(negativeLong));
+            Assert.That(blockHeader.GasLimit, Is.EqualTo(negativeLong));
+        }
     }
 
     [TestCaseSource(nameof(CancunFieldsSource))]
@@ -150,8 +156,11 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        Assert.That(blockHeader.BlobGasUsed, Is.EqualTo(blobGasUsed));
-        Assert.That(blockHeader.ExcessBlobGas, Is.EqualTo(excessBlobGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockHeader.BlobGasUsed, Is.EqualTo(blobGasUsed));
+            Assert.That(blockHeader.ExcessBlobGas, Is.EqualTo(excessBlobGas));
+        }
     }
 
     [Test]
@@ -187,7 +196,7 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        BlockTestAssertions.AssertBlockHeaderEquivalent(blockHeader, header);
+        Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
 
     [Test]
@@ -234,7 +243,7 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        BlockTestAssertions.AssertBlockHeaderEquivalent(blockHeader, header);
+        Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
     }
 
     public static IEnumerable<object?[]> CancunFieldsSource()

@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
@@ -25,8 +26,16 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         Type typeToConvert,
         JsonSerializerOptions options) => Convert(ref reader);
 
+    /// <summary>Reads a QUANTITY-style hex string (EIP-1474)</summary>
+    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false)
+        => ConvertCore(ref reader, strictHexFormat, requireEvenLength: false);
+
+    /// <summary>Reads a DATA-style hex string (EIP-1474)</summary>
+    public static byte[]? ConvertData(ref Utf8JsonReader reader, bool strictHexFormat = false)
+        => ConvertCore(ref reader, strictHexFormat, requireEvenLength: true);
+
     [SkipLocalsInit]
-    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false, bool requireEvenLength = false)
+    private static byte[]? ConvertCore(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength)
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
@@ -46,8 +55,8 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     [SkipLocalsInit]
-    public static bool TryConvertToExactLength(ref Utf8JsonReader reader, scoped Span<byte> destination, bool strictHexFormat = false, bool requireEvenLength = false) =>
-        TryConvertToSpan(ref reader, destination, out int bytesWritten, strictHexFormat, requireEvenLength) &&
+    public static bool TryConvertToExactLength(ref Utf8JsonReader reader, scoped Span<byte> destination, bool strictHexFormat = false) =>
+        TryConvertToSpan(ref reader, destination, out int bytesWritten, strictHexFormat) &&
         bytesWritten == destination.Length;
 
     [SkipLocalsInit]
@@ -55,8 +64,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         ref Utf8JsonReader reader,
         scoped Span<byte> destination,
         out int bytesWritten,
-        bool strictHexFormat = false,
-        bool requireEvenLength = false)
+        bool strictHexFormat = false)
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
@@ -76,15 +84,14 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             return false;
         }
 
-        return TryConvertValueSpanToSpan(ref reader, destination, out bytesWritten, strictHexFormat, requireEvenLength);
+        return TryConvertValueSpanToSpan(ref reader, destination, out bytesWritten, strictHexFormat);
     }
 
     private static bool TryConvertValueSpanToSpan(
         ref Utf8JsonReader reader,
         scoped Span<byte> destination,
         out int bytesWritten,
-        bool strictHexFormat,
-        bool requireEvenLength)
+        bool strictHexFormat)
     {
         ReadOnlySpan<byte> hex = reader.ValueSpan;
         int length = hex.Length;
@@ -94,7 +101,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             return false;
         }
 
-        hex = GetHexValueSpan(hex, strictHexFormat, requireEvenLength);
+        hex = GetHexValueSpan(hex, strictHexFormat, requireEvenLength: true);
 
         bytesWritten = (hex.Length >> 1) + (hex.Length & 1);
         if (bytesWritten > destination.Length)
@@ -116,7 +123,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
         else if (strictHexFormat)
         {
-            Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
+            throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
         }
 
         if (requireEvenLength && hex.Length % 2 != 0)
@@ -152,12 +159,12 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                 {
                     sr.Rewind(1);
                     if (strictHexFormat)
-                        Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
+                        throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
                 }
             }
             else if (strictHexFormat)
             {
-                Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
+                throw new SafePublicMessageFormatException(Bytes.ErrMissingPrefix);
             }
         }
 
@@ -501,7 +508,7 @@ public class StrictHexByteArrayConverter : JsonConverter<byte[]>
     {
         try
         {
-            return ByteArrayConverter.Convert(ref reader, strictHexFormat: true, requireEvenLength: true);
+            return ByteArrayConverter.ConvertData(ref reader, strictHexFormat: true);
         }
         catch (FormatException e)
         {

@@ -179,7 +179,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = CreateSerializationPayload(chain);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
@@ -195,6 +195,20 @@ public class EthSimulateTestsBlocksAndTransactions
 
     }
 
+
+    [Test]
+    public async Task Test_eth_simulateV1_empty_blockStateCalls_returns_error()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [] };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.False);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.EmptyBlockStateCalls));
+    }
 
     /// <summary>
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
@@ -220,7 +234,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
@@ -261,7 +275,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
@@ -311,52 +325,36 @@ public class EthSimulateTestsBlocksAndTransactions
         return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
     }
 
-    [Test]
-    public async Task Test_eth_simulate_caps_gas_to_gas_cap()
+    [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
+    public async Task Test_eth_simulate_respects_gas_cap(long gasCap, long? requestGas, bool expectCapped)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        long gasCap = 50_000;
         chain.RpcConfig.GasCap = gasCap;
 
-        // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN — returns remaining gas
-        Address contractAddress = new("0xc200000000000000000000000000000000000000");
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { contractAddress, new AccountOverride { Code = Bytes.FromHexString("0x5a60005260206000f3") } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = contractAddress,
-                            Gas = 100_000,
-                            GasPrice = 0
-                        }
-                    ]
-                }
-            ]
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(
+            EthRpcSimulateTestsBase.CreateGasProbePayload(requestGas),
+            BlockParameter.Latest);
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         SimulateCallResult callResult = result.Data.First().Calls.First();
         Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
-        Assert.That(callResult.MaxUsedGas, Is.Not.Null);
-        Assert.That(callResult.GasUsed, Is.Not.Null);
-        ulong maxUsedGas = callResult.MaxUsedGas ?? 0;
-        ulong gasUsed = callResult.GasUsed ?? 0;
-        Assert.That(maxUsedGas, Is.GreaterThanOrEqualTo(gasUsed));
+        Assert.That(callResult.ReturnData, Is.Not.Null, "gas probe call should return the remaining-gas result");
+
+        if (expectCapped)
+        {
+            Assert.That(callResult.MaxUsedGas, Is.Not.Null);
+            Assert.That(callResult.GasUsed, Is.Not.Null);
+            ulong maxUsedGas = callResult.MaxUsedGas ?? 0;
+            ulong gasUsed = callResult.GasUsed ?? 0;
+            Assert.That(maxUsedGas, Is.GreaterThanOrEqualTo(gasUsed));
+        }
 
         UInt256 gasAvailable = new(callResult.ReturnData!, isBigEndian: true);
-        Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        if (expectCapped)
+        {
+            Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));
+        }
+
         Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
     }
 

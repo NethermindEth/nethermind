@@ -162,6 +162,8 @@ public class PersistenceManager(
             if (snapshotToSave is null) return;
             using Snapshot _ = snapshotToSave; // dispose
 
+            snapshotRepository.RemoveSiblingAndDescendents(snapshotToSave.To);
+
             // Add the canon snapshot
             PersistSnapshot(snapshotToSave);
             _currentPersistedStateId = snapshotToSave.To;
@@ -217,6 +219,9 @@ public class PersistenceManager(
             }
 
             using Snapshot _ = snapshotToPersist;
+
+            snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
+
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;
@@ -292,6 +297,7 @@ public class PersistenceManager(
                 batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
 
                 node.IsPersisted = true;
+                node.PrunePersistedRecursively(1);
             }
 
             _trieNodesSortBuffer.Clear();
@@ -319,6 +325,7 @@ public class PersistenceManager(
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 node.IsPersisted = true;
+                node.PrunePersistedRecursively(1);
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));

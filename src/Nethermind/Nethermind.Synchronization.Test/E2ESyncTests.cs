@@ -812,12 +812,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             long finalizedBlockNumber = Math.Max(0, otherBlockTree.Head!.Number - finalizedDistanceFromHead);
             Block finalizedBlock = otherBlockTree.FindBlock(finalizedBlockNumber)!;
             Block headBlock = otherBlockTree.Head!;
-            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
-            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
+            blockCacheService.TryAddBlock(finalizedBlock);
+            blockCacheService.TryAddBlock(headBlock);
             blockCacheService.FinalizedHash = finalizedBlock.Hash!;
 
             await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
-            mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
+            mergeSyncController.InitBeaconHeaderSync(headBlock.Header);
 
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken, finalizedDistanceFromHead);
         }
@@ -1105,9 +1105,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                             $"syncedBalHash={syncedBlock.Header.BlockAccessListHash}");
                     }
 
-                    Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
-                    Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
-                    Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
+                        Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
+                        Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    }
                     return;
                 }
 

@@ -55,8 +55,11 @@ public class JsonConfigProviderTests
         IDiscoveryConfig? networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
         IJsonRpcConfig? jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
 
-        Assert.That(keystoreConfig.KdfparamsDklen, Is.EqualTo(100));
-        Assert.That(keystoreConfig.Cipher, Is.EqualTo("test"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keystoreConfig.KdfparamsDklen, Is.EqualTo(100));
+            Assert.That(keystoreConfig.Cipher, Is.EqualTo("test"));
+        }
 
         Assert.That(jsonRpcConfig.EnabledModules.Length, Is.EqualTo(2));
 

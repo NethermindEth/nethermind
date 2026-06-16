@@ -255,33 +255,36 @@ public class SszGeneratorDiagnosticTest
         CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
         string generated = GetGeneratedSource(source, parseOptions, nameof(Converter_backed_primitive_collections_emit_converter_calls), "Serialization.SszCodec.PrimitiveCollectionContainer.cs");
 
-        Assert.That(generated, Does.Contain("BooleanSszBasicTypeConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("BooleanSszBasicTypeConverter.FromSpan"));
-        Assert.That(generated, Does.Not.Contain("ValidateBooleans"));
-        Assert.That(generated, Does.Not.Contain("ValidateBoolean"));
-        Assert.That(generated, Does.Contain("Int32SszBasicTypeConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("Int32SszBasicTypeConverter.FromSpan"));
-        Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<int>"));
-        Assert.That(generated, Does.Contain("Int64SszBasicTypeConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("Int64SszBasicTypeConverter.FromSpan"));
-        Assert.That(generated, Does.Contain("MerkleizeBasicListWithConverter<long>"));
-        Assert.That(generated, Does.Contain("UInt128SszBasicTypeConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("UInt128SszBasicTypeConverter.FromSpan"));
-        Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<UInt128>"));
-        Assert.That(generated, Does.Contain("UInt32SszBasicTypeConverter.ToSpan"));
-        Assert.That(generated, Does.Contain("UInt32SszBasicTypeConverter.FromSpan"));
-        Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<uint>"));
-        Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeVector"));
-        Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeList"));
-        Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeProgressiveList"));
-        Assert.That(generated, Does.Contain("MemoryMarshal.Cast<PrimitiveEnum, uint>"));
-        Assert.That(generated, Does.Not.Contain("EncodeItemsWithConverter"));
-        Assert.That(generated, Does.Not.Contain("DecodeItemsWithConverter"));
-        Assert.That(generated, Does.Not.Contain("SszLib.Encode"));
-        Assert.That(generated, Does.Not.Contain("SszLib.Decode"));
-        Assert.That(generated, Does.Not.Contain("using Nethermind.Core;"));
-        Assert.That(generated, Does.Not.Contain("using Nethermind.Core.Crypto;"));
-        Assert.That(generated, Does.Not.Contain("using Nethermind.Serialization.Ssz.SszBasicTypeConverters;"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated, Does.Contain("BooleanSszBasicTypeConverter.ToSpan"));
+            Assert.That(generated, Does.Contain("BooleanSszBasicTypeConverter.FromSpan"));
+            Assert.That(generated, Does.Not.Contain("ValidateBooleans"));
+            Assert.That(generated, Does.Not.Contain("ValidateBoolean"));
+            Assert.That(generated, Does.Contain("Int32SszBasicTypeConverter.ToSpan"));
+            Assert.That(generated, Does.Contain("Int32SszBasicTypeConverter.FromSpan"));
+            Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<int>"));
+            Assert.That(generated, Does.Contain("Int64SszBasicTypeConverter.ToSpan"));
+            Assert.That(generated, Does.Contain("Int64SszBasicTypeConverter.FromSpan"));
+            Assert.That(generated, Does.Contain("MerkleizeBasicListWithConverter<long>"));
+            Assert.That(generated, Does.Contain("UInt128SszBasicTypeConverter.ToSpan"));
+            Assert.That(generated, Does.Contain("UInt128SszBasicTypeConverter.FromSpan"));
+            Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<UInt128>"));
+            Assert.That(generated, Does.Contain("UInt32SszBasicTypeConverter.ToSpan"));
+            Assert.That(generated, Does.Contain("UInt32SszBasicTypeConverter.FromSpan"));
+            Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<uint>"));
+            Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeVector"));
+            Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeList"));
+            Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeProgressiveList"));
+            Assert.That(generated, Does.Contain("MemoryMarshal.Cast<PrimitiveEnum, uint>"));
+            Assert.That(generated, Does.Not.Contain("EncodeItemsWithConverter"));
+            Assert.That(generated, Does.Not.Contain("DecodeItemsWithConverter"));
+            Assert.That(generated, Does.Not.Contain("SszLib.Encode"));
+            Assert.That(generated, Does.Not.Contain("SszLib.Decode"));
+            Assert.That(generated, Does.Not.Contain("using Nethermind.Core;"));
+            Assert.That(generated, Does.Not.Contain("using Nethermind.Core.Crypto;"));
+            Assert.That(generated, Does.Not.Contain("using Nethermind.Serialization.Ssz.SszBasicTypeConverters;"));
+        }
     }
 
     private static Diagnostic GetSsz003Diagnostic(string source, CSharpParseOptions parseOptions, string assemblyName)

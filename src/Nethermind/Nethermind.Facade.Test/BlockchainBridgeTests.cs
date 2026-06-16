@@ -808,7 +808,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for gas * price + value"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for gas * price + value"));
     }
 
     [Test]
@@ -895,8 +895,15 @@ public class BlockchainBridgeTests
             TotalGasLeft = 100_000,
             BlockGasLeft = 80_000,
             Validate = true,
-            TxsWithExplicitGas = new[] { true }
         };
+        simulateRequestState.SetTxsWithExplicitGas(
+            [
+                new()
+                {
+                    HadGasLimitInRequest = true,
+                    Transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject
+                }
+            ]);
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())

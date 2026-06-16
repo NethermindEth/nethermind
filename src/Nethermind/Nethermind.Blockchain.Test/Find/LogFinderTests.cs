@@ -20,7 +20,6 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Serialization.Rlp;
@@ -37,16 +36,12 @@ public class LogFinderTests
     private BlockTree _rawBlockTree = null!;
     private IReceiptStorage _receiptStorage = null!;
     private LogFinder _logFinder = null!;
-    private IBloomStorage _bloomStorage = null!;
     private IReceiptsRecovery _receiptsRecovery = null!;
     private Block _headTestBlock = null!;
     private ISpecProvider? _specProvider;
 
     [SetUp]
     public void SetUp() => SetUp(true);
-
-    [TearDown]
-    public void TearDown() => _bloomStorage?.Dispose();
 
     private void SetUp(bool allowReceiptIterator, int chainLength = 5)
     {
@@ -58,7 +53,6 @@ public class LogFinderTests
             .OfChainLength(out _headTestBlock, chainLength)
             .TestObject;
         _blockTree = _rawBlockTree;
-        _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
         _logFinder = CreateLogFinder();
     }
@@ -69,7 +63,7 @@ public class LogFinderTests
             .WithParent(_headTestBlock)
             .TestObject;
         Assert.That(_rawBlockTree.SuggestBlock(blockWithNoTransaction), Is.EqualTo(AddBlockResult.Added));
-        _rawBlockTree.UpdateMainChain(blockWithNoTransaction);
+        _rawBlockTree.TryUpdateMainChain(blockWithNoTransaction.Header, true, preloadedBlocks: new[] { blockWithNoTransaction });
     }
 
     private IEnumerable<LogEntry> LogsForBlockBuilder(Block block, Transaction transaction)
@@ -99,20 +93,10 @@ public class LogFinderTests
         }
     }
 
-    public static IEnumerable WithBloomValues
-    {
-        get
-        {
-            yield return false;
-            yield return true;
-        }
-    }
-
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void filter_all_logs([ValueSource(nameof(WithBloomValues))] bool withBloomDb, [Values(false, true)] bool allowReceiptIterator)
+    public void filter_all_logs([Values(false, true)] bool allowReceiptIterator)
     {
         SetUp(allowReceiptIterator);
-        StoreTreeBlooms(withBloomDb);
         LogFilter logFilter = AllBlockFilter().Build();
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
         Assert.That(logs.Length, Is.EqualTo(5));
@@ -121,7 +105,7 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void filter_all_logs_iteratively([ValueSource(nameof(WithBloomValues))] bool withBloomDb, [Values(false, true)] bool allowReceiptIterator)
+    public void filter_all_logs_iteratively([Values(false, true)] bool allowReceiptIterator)
     {
         SetUp(allowReceiptIterator);
         LogFilter logFilter = AllBlockFilter().Build();
@@ -131,9 +115,8 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void throw_exception_when_receipts_are_missing([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
+    public void throw_exception_when_receipts_are_missing()
     {
-        StoreTreeBlooms(withBloomDb);
         _receiptStorage = NullReceiptStorage.Instance;
         _logFinder = CreateLogFinder();
 
@@ -156,9 +139,8 @@ public class LogFinderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void filter_all_logs_should_throw_when_to_block_is_not_found([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
+    public void filter_all_logs_should_throw_when_to_block_is_not_found()
     {
-        StoreTreeBlooms(withBloomDb);
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         _logFinder = CreateLogFinder(blockFinder);
         LogFilter logFilter = AllBlockFilter().Build();
@@ -172,24 +154,17 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(new[] { TestItem.AddressA }, 2, false).SetName("filter_by_address_A_without_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressB }, 1, false).SetName("filter_by_address_B_without_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressC }, 1, false).SetName("filter_by_address_C_without_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressD }, 1, false).SetName("filter_by_address_D_without_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD }, 4, false).SetName("filter_by_addresses_A_C_D_without_bloom");
-
-            yield return new TestCaseData(new[] { TestItem.AddressA }, 2, true).SetName("filter_by_address_A_with_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressB }, 1, true).SetName("filter_by_address_B_with_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressC }, 1, true).SetName("filter_by_address_C_with_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressD }, 1, true).SetName("filter_by_address_D_with_bloom");
-            yield return new TestCaseData(new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD }, 4, true).SetName("filter_by_addresses_A_C_D_with_bloom");
+            yield return new TestCaseData(new[] { TestItem.AddressA }, 2).SetName("filter_by_address_A");
+            yield return new TestCaseData(new[] { TestItem.AddressB }, 1).SetName("filter_by_address_B");
+            yield return new TestCaseData(new[] { TestItem.AddressC }, 1).SetName("filter_by_address_C");
+            yield return new TestCaseData(new[] { TestItem.AddressD }, 1).SetName("filter_by_address_D");
+            yield return new TestCaseData(new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD }, 4).SetName("filter_by_addresses_A_C_D");
         }
     }
 
     [TestCaseSource(nameof(FilterByAddressTestsData))]
-    public void filter_by_address(Address[] addresses, int expectedCount, bool withBloomDb)
+    public void filter_by_address(Address[] addresses, int expectedCount)
     {
-        StoreTreeBlooms(withBloomDb);
         FilterBuilder filterBuilder = AllBlockFilter();
         filterBuilder = addresses.Length == 1 ? filterBuilder.WithAddress(addresses[0]) : filterBuilder.WithAddresses(addresses);
         LogFilter logFilter = filterBuilder.Build();
@@ -203,26 +178,18 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, false, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, false, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, false, new long[] { 4 }).SetName("filter_by_any_A_any_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, false, new long[] { 4 }).SetName("filter_by_B_any_E_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, false, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B_without_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, false, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B_without_bloom");
-
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, true, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, true, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, true, new long[] { 4 }).SetName("filter_by_any_A_any_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, true, new long[] { 4 }).SetName("filter_by_B_any_E_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, true, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B_with_bloom");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, true, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B_with_bloom");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, new long[] { 4 }).SetName("filter_by_any_A_any");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, new long[] { 4 }).SetName("filter_by_B_any_E");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B");
         }
     }
 
     [TestCaseSource(nameof(FilterByTopicsTestsData))]
-    public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, bool withBloomDb, long[] expectedBlockNumbers)
+    public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, long[] expectedBlockNumbers)
     {
-        StoreTreeBlooms(withBloomDb);
         LogFilter logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
 
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
@@ -235,34 +202,25 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build(), 3, false).SetName("filter_by_latest_to_latest_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToLatestBlock().Build(), 5, false).SetName("filter_by_earliest_to_latest_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToPendingBlock().Build(), 5, false).SetName("filter_by_earliest_to_pending_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToEarliestBlock().Build(), 0, false).SetName("filter_by_earliest_to_earliest_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromBlock(1).ToBlock(1).Build(), 2, false).SetName("filter_by_block_one_without_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToEarliestBlock().Build(), 0, false).SetName("filter_by_wrong_order_without_bloom");
-
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build(), 3, true).SetName("filter_by_latest_to_latest_with_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToLatestBlock().Build(), 5, true).SetName("filter_by_earliest_to_latest_with_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToPendingBlock().Build(), 5, true).SetName("filter_by_earliest_to_pending_with_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToEarliestBlock().Build(), 0, true).SetName("filter_by_earliest_to_earliest_with_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromBlock(1).ToBlock(1).Build(), 2, true).SetName("filter_by_block_one_with_bloom");
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToEarliestBlock().Build(), 0, true).SetName("filter_by_wrong_order_with_bloom");
+            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build(), 3).SetName("filter_by_latest_to_latest");
+            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToLatestBlock().Build(), 5).SetName("filter_by_earliest_to_latest");
+            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToPendingBlock().Build(), 5).SetName("filter_by_earliest_to_pending");
+            yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToEarliestBlock().Build(), 0).SetName("filter_by_earliest_to_earliest");
+            yield return new TestCaseData(FilterBuilder.New().FromBlock(1).ToBlock(1).Build(), 2).SetName("filter_by_block_one");
+            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToEarliestBlock().Build(), 0).SetName("filter_by_wrong_order");
         }
     }
 
     [TestCaseSource(nameof(FilterByBlocksTestsData))]
-    public void filter_by_blocks(LogFilter filter, int expectedCount, bool withBloomDb)
+    public void filter_by_blocks(LogFilter filter, int expectedCount)
     {
-        StoreTreeBlooms(withBloomDb);
         FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
         Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void filter_by_blocks_with_limit([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
+    public void filter_by_blocks_with_limit()
     {
-        StoreTreeBlooms(withBloomDb);
         _logFinder = CreateLogFinder();
         LogFilter filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
         FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
@@ -276,26 +234,17 @@ public class LogFinderTests
         {
             yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                 .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
-                .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2, false).SetName("complex_filter_C_D_without_bloom");
+                .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2).SetName("complex_filter_C_D");
 
             yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                 .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
-                .WithAddresses(TestItem.AddressC).Build(), 1, false).SetName("complex_filter_C_without_bloom");
-
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
-                .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
-                .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2, true).SetName("complex_filter_C_D_with_bloom");
-
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
-                .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
-                .WithAddresses(TestItem.AddressC).Build(), 1, true).SetName("complex_filter_C_with_bloom");
+                .WithAddresses(TestItem.AddressC).Build(), 1).SetName("complex_filter_C");
         }
     }
 
     [TestCaseSource(nameof(ComplexFilterTestsData))]
-    public void complex_filter(LogFilter filter, int expectedCount, bool withBloomDb)
+    public void complex_filter(LogFilter filter, int expectedCount)
     {
-        StoreTreeBlooms(withBloomDb);
         FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
         Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
@@ -307,8 +256,6 @@ public class LogFinderTests
         TimeSpan timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
         using CancellationTokenSource cancellationTokenSource = new(timeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
-
-        StoreTreeBlooms(true);
         _logFinder = CreateLogFinder();
         LogFilter logFilter = AllBlockFilter().Build();
         IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationToken);
@@ -414,7 +361,7 @@ public class LogFinderTests
             .Build();
 
         IndexedLogFinder logFinder = new(
-            _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery,
+            _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
             logIndexStorage, minBlocksToUseIndex: 1
         );
         _ = logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
@@ -442,19 +389,8 @@ public class LogFinderTests
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
 
-    private void StoreTreeBlooms(bool withBloomDb)
-    {
-        if (withBloomDb)
-        {
-            for (int i = 0; i <= _blockTree.Head!.Number; i++)
-            {
-                _bloomStorage.Store(i, _blockTree.FindHeader(i)!.Bloom!);
-            }
-        }
-    }
-
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
-        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);
 
     private PersistentReceiptStorage CreateCompactEncodedReceiptStorage()
     {

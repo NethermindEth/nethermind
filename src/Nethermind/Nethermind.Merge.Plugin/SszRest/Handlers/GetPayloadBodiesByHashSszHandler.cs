@@ -6,7 +6,10 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -16,7 +19,10 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// of <c>engine_getPayloadBodiesByHashV{N}</c>. Generic over a per-version descriptor
 /// so adding a Vn+1 endpoint is one new descriptor + one DI line.
 /// </summary>
-public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineRpcModule engineModule)
+public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
+    IEngineRpcModule engineModule,
+    IBlockFinder blockFinder,
+    ISpecProvider specProvider)
     : SszEndpointHandlerBase
     where TVersion : struct, IPayloadBodiesByHashVersion<TResult>
     where TResult : class
@@ -28,7 +34,25 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineR
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body);
+        if (hashes.Length > SszRestLimits.MaxBodiesRequest)
+        {
+            await WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge,
+                $"hash count {hashes.Length} exceeds the limit of {SszRestLimits.MaxBodiesRequest}",
+                MergeErrorCodes.TooLargeRequest);
+            return;
+        }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
+        if (result.Result.ResultType == ResultType.Success && result.Data is { Count: > 0 } data)
+        {
+            string? urlFork = ctx.Items.TryGetValue("SszRouteFork", out object? f) ? f as string : null;
+            if (urlFork is not null)
+            {
+                TResult?[] filtered = BodiesForkFilter.FilterByHash(data, hashes, urlFork, blockFinder, specProvider);
+                ResultWrapper<IReadOnlyList<TResult?>> wrapped = ResultWrapper<IReadOnlyList<TResult?>>.Success(filtered);
+                wrapped.AddDisposable(result.Dispose);
+                result = wrapped;
+            }
+        }
         await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }
 }

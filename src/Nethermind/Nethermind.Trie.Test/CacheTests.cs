@@ -46,19 +46,28 @@ namespace Nethermind.Trie.Test
             cache.Set(TestItem.KeccakB, []);
             cache.Set(TestItem.KeccakC, []);
 
-            Assert.That(cache.MemorySize, Is.EqualTo(488));
-            Assert.That(cache.Get(TestItem.KeccakA), Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.MemorySize, Is.EqualTo(488));
+                Assert.That(cache.Get(TestItem.KeccakA), Is.Not.Null);
+            }
 
             cache.Set(TestItem.KeccakD, []);
-            Assert.That(cache.MemorySize, Is.EqualTo(488));
-            Assert.That(cache.Get(TestItem.KeccakB), Is.Null);
-            Assert.That(cache.Get(TestItem.KeccakD), Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.MemorySize, Is.EqualTo(488));
+                Assert.That(cache.Get(TestItem.KeccakB), Is.Null);
+                Assert.That(cache.Get(TestItem.KeccakD), Is.Not.Null);
+            }
 
             cache.Set(TestItem.KeccakE, []);
-            Assert.That(cache.MemorySize, Is.EqualTo(488));
-            Assert.That(cache.Get(TestItem.KeccakB), Is.Null);
-            Assert.That(cache.Get(TestItem.KeccakC), Is.Null);
-            Assert.That(cache.Get(TestItem.KeccakE), Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.MemorySize, Is.EqualTo(488));
+                Assert.That(cache.Get(TestItem.KeccakB), Is.Null);
+                Assert.That(cache.Get(TestItem.KeccakC), Is.Null);
+                Assert.That(cache.Get(TestItem.KeccakE), Is.Not.Null);
+            }
         }
 
         [Test]
@@ -71,13 +80,19 @@ namespace Nethermind.Trie.Test
 
             cache.Set(TestItem.KeccakA, null);
 
-            Assert.That(cache.MemorySize, Is.EqualTo(416));
-            Assert.That(cache.Get(TestItem.KeccakA), Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.MemorySize, Is.EqualTo(416));
+                Assert.That(cache.Get(TestItem.KeccakA), Is.Null);
+            }
 
             cache.Set(TestItem.KeccakD, []);
-            Assert.That(cache.MemorySize, Is.EqualTo(488));
-            Assert.That(cache.Get(TestItem.KeccakB), Is.Not.Null);
-            Assert.That(cache.Get(TestItem.KeccakD), Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.MemorySize, Is.EqualTo(488));
+                Assert.That(cache.Get(TestItem.KeccakB), Is.Not.Null);
+                Assert.That(cache.Get(TestItem.KeccakD), Is.Not.Null);
+            }
         }
     }
 }

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -15,14 +17,24 @@ namespace Nethermind.Evm
         public static Address From(Address? deployingAddress, in UInt256 nonce)
         {
             int contentLength = Rlp.LengthOf(deployingAddress) + Rlp.LengthOf(nonce);
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
-            stream.Encode(deployingAddress);
-            stream.Encode(nonce);
+            int totalLength = Rlp.LengthOfSequence(contentLength);
 
-            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
+            byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
+            try
+            {
+                RlpStream stream = new(new CappedArray<byte>(rented, totalLength));
+                stream.StartSequence(contentLength);
+                stream.Encode(deployingAddress);
+                stream.Encode(nonce);
 
-            return new(in contractAddressKeccak);
+                ValueHash256 contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
+
+                return new(in contractAddressKeccak);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
         }
 
         [SkipLocalsInit]

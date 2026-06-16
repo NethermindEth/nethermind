@@ -95,8 +95,8 @@ public class SimulateTxExecutor<TTrace>(
         Dictionary<Address, AccountOverride>? stateOverride = null,
         SearchResult<BlockHeader>? searchResult = null)
     {
-        if (call.BlockStateCalls is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
+        if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
 
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
@@ -202,7 +202,7 @@ public class SimulateTxExecutor<TTrace>(
         Dictionary<Address, AccountOverride>? stateOverride,
         CancellationToken token)
     {
-        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap!.Value, token);
+        SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap.EffectiveGasCap(), token);
 
         foreach (SimulateBlockResult<TTrace> item in results.Items)
         {
@@ -321,4 +321,10 @@ internal static class SimulateErrorMessages
     /// the execution-apis spec.
     /// </summary>
     public const string BlockNumberNotIncreasing = "Block number in sequence did not increase";
+
+    /// <summary>
+    /// Returned when <c>blockStateCalls</c> is an empty array
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string EmptyBlockStateCalls = "empty input";
 }

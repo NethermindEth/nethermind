@@ -20,7 +20,6 @@ namespace Nethermind.Api
     {
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForInit => (this, this);
         (IApiWithStores GetFromApi, IApiWithBlockchain SetInApi) ForBlockchain => (this, this);
-        (IApiWithBlockchain GetFromApi, IApiWithBlockchain SetInApi) ForProducer => (this, this);
 
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue BlockProcessingQueue { get; }

@@ -62,6 +62,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client. Set to `-1` to retry forever (recommended for nodes that may start before the consensus client is available).", DefaultValue = "-1")]
     int MaxAttemptsToUpdatePivot { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Whether to snap-sync state for a fixed, pre-configured pivot (`PivotNumber`/`PivotHash`) served by a peer sitting at that pivot, without requiring a live forkchoice head above the pivot. Used to clone the exact state root of a frozen source node. Requires `SnapSync` to be enabled and `PivotNumber`/`PivotHash` to be set.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool StaticSnapPivot { get; set; }
+
     [ConfigItem(Description = $$"""
         The earliest body downloaded with fast sync when `{{nameof(DownloadBodiesInFastSync)}}` is set to `true`. The actual value is determined as follows:
 
@@ -126,7 +129,8 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to disable some optimizations and do a more extensive sync. Useful when sync state is corrupted.", DefaultValue = "false")]
     public bool StrictMode { get; set; }
 
-    [ConfigItem(Description = $"Whether to operate as a non-validator. If `true`, the `{nameof(DownloadReceiptsInFastSync)}` and `{nameof(DownloadBodiesInFastSync)}` can be set to `false`.", DefaultValue = "false")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated.", DefaultValue = "false", HiddenFromDocs = true)]
     public bool NonValidatorNode { get; set; }
 
     [ConfigItem(Description = "Configure the database for write optimizations during sync. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = nameof(ITunableDb.TuneType.HeavyWrite), HiddenFromDocs = true)]

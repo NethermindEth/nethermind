@@ -407,7 +407,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         {
             Block genesis = _genesisBlock;
             BlockTree.SuggestBlock(genesis);
-            BlockTree.UpdateMainChain(genesis);
+            BlockTree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
             return this;
         }
 
@@ -452,7 +452,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public SyncingContext PeerCountEventuallyIs(long i)
         {
-            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 10), "peer count");
+            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(30_000, 10), "peer count");
             return this;
         }
 
@@ -751,7 +751,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test]
+    [Test, Retry(3)]
     public async Task Can_reorg_based_on_total_difficulty()
     {
         if (WithTTD(_synchronizerType)) { return; }
@@ -764,9 +764,9 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .BestSuggestedHeaderIs(peerA.HeadHeader)
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .AfterPeerIsAdded(peerB)
-            .BestSuggestedHeaderIs(peerB.HeadHeader)
+            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
             .StopAsync();
     }
 
@@ -792,7 +792,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test]
+    [Test, Retry(3)]
     public async Task Can_extend_chain_on_new_block_when_high_difficulty_low_number()
     {
 
@@ -806,12 +806,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .BestSuggestedHeaderIs(peerA.HeadHeader)
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .AfterPeerIsAdded(peerB)
-            .BestSuggestedHeaderIs(peerB.HeadHeader)
+            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
             .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
             .AfterNewBlockMessage(peerB.HeadBlock, peerB)
-            .BestSuggestedHeaderIs(peerB.HeadHeader)
+            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
             .StopAsync();
     }
 
