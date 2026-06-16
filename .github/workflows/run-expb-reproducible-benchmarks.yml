@@ -691,7 +691,7 @@ jobs:
               [[ -z "${_kv}" ]] && continue
               export "${_kv}"
               echo "Exported expb env: ${_kv}"
-            done < <(printf '%s' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
           fi
 
           on_terminate() {
