@@ -23,7 +23,7 @@ public ref struct RefList16<T>
     }
 
     private Inline16 _array;
-    public int Count;
+    public int Count { get; private set; }
 
     public RefList16(int initialSize)
     {
