@@ -592,8 +592,12 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        [SkipLocalsInit]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        /// <summary>
+        /// Determines whether the EVM execution should proceed for the given transaction and execution context.
+        /// This method can be overridden by derived classes to implement custom logic that may conditionally skip EVM execution.
+        /// If this method returns false, the transaction will finish with provided execution result.
+        /// Caller is responsible for any necessary state cleanup in that case (e.g. refunds, nonce increment, etc.) depending on expected result.
+        /// </summary>
         protected virtual bool ShouldExecuteEvm(Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
