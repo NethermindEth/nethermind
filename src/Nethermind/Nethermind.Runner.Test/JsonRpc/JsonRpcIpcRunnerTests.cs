@@ -28,9 +28,6 @@ public class JsonRpcIpcRunnerTests
     [Test]
     public async Task HandleIpcConnection_logs_disconnect_not_server_error_when_client_drops_mid_response()
     {
-        // Reproduces #9514: a client that disconnects while the server is still writing the
-        // response disposes the socket stream mid-send, surfacing an ObjectDisposedException.
-        // That is an expected disconnect and must not be logged as an "IPC server error".
         TestLogger testLogger = new();
         ILogManager logManager = new OneLoggerLogManager(new(testLogger));
 
