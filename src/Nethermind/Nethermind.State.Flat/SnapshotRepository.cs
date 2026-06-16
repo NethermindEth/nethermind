@@ -138,8 +138,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// persistence phases in <see cref="PersistenceManager"/>.
     /// </summary>
     /// <remarks>
-    /// Runs the shared <see cref="WalkAndAssemble{TPolicy}"/> backward walk with <see cref="FindPersistPolicy"/>
-    /// (priority <see cref="PersistEdgePriority"/>): it navigates <c>From</c>-edges from <paramref name="seed"/>
+    /// Runs the shared <see cref="WalkAndAssemble{TPolicy}"/> backward walk with <see cref="FindPersistPolicy"/>:
+    /// it navigates <c>From</c>-edges from <paramref name="seed"/>
     /// down toward <paramref name="currentPersistedState"/> and wins at the first edge reaching it that is a
     /// valid persist candidate. The persisted-small-compacted / persisted-large-compacted tiers and non-boundary
     /// in-memory compacted entries are never returnable candidates but are still traversed as skip-pointers.
@@ -464,10 +464,13 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         seen.Add(from);
         stack.Push(new WalkNode(from, viaPersisted: false, -1));
 
+        // Query expansion order (same as AssemblePolicy): widest skip first for the shortest reachable chain.
+        SnapshotTier[] edgePriority =
+            [SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized, SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedBase];
         while (stack.Count > 0)
         {
             WalkNode node = stack.Pop();
-            foreach (SnapshotTier tier in FullEdgePriority)
+            foreach (SnapshotTier tier in edgePriority)
             {
                 if (node.ViaPersisted && !tier.IsPersisted()) continue;
 
@@ -660,40 +663,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     // ---- Backward-walk infrastructure ----
-    // The edge-priority tables, the per-edge policy, and the shared chain-gathering driver used by the
-    // Assemble* / CanReach / FindSnapshotToPersist walks above. Grouped here so the public surface reads
-    // top-to-bottom without the walk machinery interleaved between methods.
-
-    // Query (assemble/reachability) expansion order: the widest >CompactSize persisted-large-compacted
-    // skip-pointer first, then the CompactSized snapshot, then the in-memory hops, and finally
-    // the narrow persisted small-compacted and the persisted bases — so a read assembles the
-    // shortest chain it can. The walk driver hardcodes the invariant that once an edge crosses into the
-    // persisted tier the in-memory tiers are unreachable, so it drops the in-memory entries for any node
-    // reached over a persisted edge.
-    private static readonly SnapshotTier[] FullEdgePriority =
-    [
-        SnapshotTier.PersistedLargeCompacted,
-        SnapshotTier.PersistedCompactSized,
-        SnapshotTier.InMemoryCompacted,
-        SnapshotTier.InMemoryBase,
-        SnapshotTier.PersistedSmallCompacted,
-        SnapshotTier.PersistedBase,
-    ];
-
-    // FindSnapshotToPersist lease order. CompactSized is tried first because it is the primary persist
-    // candidate — the full CompactSize-wide unit, so returning it advances the persisted state by a whole
-    // compaction boundary in one step; the persisted base and the in-memory tiers are the narrower
-    // candidates. The >CompactSize large-compacted and the sub-CompactSize small-compacted are traversed
-    // only as navigation skip-pointers — never returnable persist candidates.
-    private static readonly SnapshotTier[] PersistEdgePriority =
-    [
-        SnapshotTier.PersistedCompactSized,
-        SnapshotTier.PersistedBase,
-        SnapshotTier.InMemoryCompacted,
-        SnapshotTier.InMemoryBase,
-        SnapshotTier.PersistedLargeCompacted,
-        SnapshotTier.PersistedSmallCompacted,
-    ];
+    // The per-edge policies and the shared chain-gathering driver used by the Assemble* / CanReach /
+    // FindSnapshotToPersist walks above. Grouped here so the public surface reads top-to-bottom without the
+    // walk machinery interleaved between methods. Each policy inlines its own edge-priority order. The walk
+    // driver hardcodes the invariant that once an edge crosses into the persisted tier the in-memory tiers
+    // are unreachable, so it drops the in-memory entries for any node reached over a persisted edge.
 
     private readonly struct WalkNode(in StateId current, bool viaPersisted, int parentIndex)
     {
@@ -737,7 +711,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // sibling fork, not the target, and is skipped).
     private readonly struct AssemblePolicy(StateId target) : IAssemblePolicy
     {
-        public SnapshotTier[] EdgePriority => FullEdgePriority;
+        // Query expansion order: the widest >CompactSize large-compacted skip-pointer first, then the
+        // CompactSized snapshot, then the in-memory hops, and finally the narrow small-compacted and the
+        // persisted bases — so a read assembles the shortest chain it can.
+        public SnapshotTier[] EdgePriority =>
+            [SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized, SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedBase];
 
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
@@ -791,7 +769,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // driver dedups only retained edges, they don't shadow the real candidate edge to the same target.
     private readonly struct FindPersistPolicy(StateId currentPersistedState, int compactSize) : IAssemblePolicy
     {
-        public SnapshotTier[] EdgePriority => PersistEdgePriority;
+        // Lease order: CompactSized first — the primary persist candidate (the full CompactSize-wide unit,
+        // advancing the persisted state by a whole compaction boundary in one step); then the narrower base
+        // and in-memory candidates. Large-compacted and small-compacted are traversed only as navigation
+        // skip-pointers — never returnable persist candidates.
+        public SnapshotTier[] EdgePriority =>
+            [SnapshotTier.PersistedCompactSized, SnapshotTier.PersistedBase, SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedSmallCompacted];
 
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
