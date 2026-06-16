@@ -43,14 +43,9 @@ public class TestingRpcModule(
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
     private readonly SemaphoreSlim _commitLock = new(1, 1);
 
-    // testing_commitBlockV1 makes the produced block canonical without re-processing it
-    // through the main BlockchainProcessor, so the producer pass itself must persist the
-    // block's post-state. Only the main-state env writes through to the state backend and
-    // the real receipt storage; the default producer env executes on a detached world
-    // state whose output is discarded, leaving the next commit without a parent state
-    // to scope (#11979).
-    // Persistent producer env is safe across calls because BranchProcessor.Process opens
-    // a fresh world-state scope on entry, so no mutable state leaks between commits.
+    // The commit pass updates the head without re-processing, so it must run on the main
+    // world state to persist the produced post-state. Reuse across calls is safe because
+    // BranchProcessor.Process opens a fresh world-state scope on entry.
     private readonly IBlockProducerEnv _commitEnv = mainStateBlockProducerEnvFactory.CreatePersistent();
 
     public void Dispose() => _commitLock.Dispose();
