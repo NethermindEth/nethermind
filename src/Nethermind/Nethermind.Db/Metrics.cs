@@ -30,28 +30,28 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
-        public static long StateTreeCache => _mainStateTreeCacheHits + _otherStateTreeCacheHits;
+        public static long StateTreeCache => _mainStateTreeCacheHits + _otherStateTreeCacheHits.Value;
         private static long _mainStateTreeCacheHits;
-        private static long _otherStateTreeCacheHits;
+        private static readonly StripedLongCounter _otherStateTreeCacheHits = new();
         // Exposed so consumers (e.g. ProcessingStats) can compute block-level deltas that exclude
         // background prewarmer activity, which runs with IsBlockProcessingThread = false.
         internal static long MainThreadStateTreeCache => _mainStateTreeCacheHits;
-        internal static void IncrementStateTreeCacheHits() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits : ref _otherStateTreeCacheHits);
+        internal static void IncrementStateTreeCacheHits() { if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStateTreeCacheHits); else _otherStateTreeCacheHits.Increment(); }
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
-        public static long StateTreeReads => _mainStateTreeReads + _otherStateTreeReads;
+        public static long StateTreeReads => _mainStateTreeReads + _otherStateTreeReads.Value;
         private static long _mainStateTreeReads;
-        private static long _otherStateTreeReads;
+        private static readonly StripedLongCounter _otherStateTreeReads = new();
         internal static long MainThreadStateTreeReads => _mainStateTreeReads;
-        internal static void IncrementStateTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeReads : ref _otherStateTreeReads);
+        internal static void IncrementStateTreeReads() { if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStateTreeReads); else _otherStateTreeReads.Increment(); }
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
-        public static long StateReaderReads => _mainStateReaderReads + _otherStateReaderReads;
+        public static long StateReaderReads => _mainStateReaderReads + _otherStateReaderReads.Value;
         private static long _mainStateReaderReads;
-        private static long _otherStateReaderReads;
-        internal static void IncrementStateReaderReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateReaderReads : ref _otherStateReaderReads);
+        private static readonly StripedLongCounter _otherStateReaderReads = new();
+        internal static void IncrementStateReaderReads() { if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStateReaderReads); else _otherStateReaderReads.Increment(); }
 
         [CounterMetric]
         [Description("Number of state trie writes.")]
@@ -71,19 +71,19 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of storage trie cache hits.")]
-        public static long StorageTreeCache => _mainStorageTreeCache + _otherStorageTreeCache;
+        public static long StorageTreeCache => _mainStorageTreeCache + _otherStorageTreeCache.Value;
         private static long _mainStorageTreeCache;
-        private static long _otherStorageTreeCache;
+        private static readonly StripedLongCounter _otherStorageTreeCache = new();
         internal static long MainThreadStorageTreeCache => _mainStorageTreeCache;
-        internal static void IncrementStorageTreeCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeCache : ref _otherStorageTreeCache);
+        internal static void IncrementStorageTreeCache() { if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStorageTreeCache); else _otherStorageTreeCache.Increment(); }
 
         [CounterMetric]
         [Description("Number of storage trie reads.")]
-        public static long StorageTreeReads => _mainStorageTreeReads + _otherStorageTreeReads;
+        public static long StorageTreeReads => _mainStorageTreeReads + _otherStorageTreeReads.Value;
         private static long _mainStorageTreeReads;
-        private static long _otherStorageTreeReads;
+        private static readonly StripedLongCounter _otherStorageTreeReads = new();
         internal static long MainThreadStorageTreeReads => _mainStorageTreeReads;
-        internal static void IncrementStorageTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeReads : ref _otherStorageTreeReads);
+        internal static void IncrementStorageTreeReads() { if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStorageTreeReads); else _otherStorageTreeReads.Increment(); }
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]
