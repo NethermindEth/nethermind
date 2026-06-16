@@ -101,7 +101,7 @@ public class Eth72ProtocolHandlerTests
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _blobCustodyTracker = new BlobCustodyTracker();
-        _sparseBlobPoolPeerRegistry = new SparseBlobPoolPeerRegistry(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        _sparseBlobPoolPeerRegistry = new SparseBlobPoolPeerRegistry(_transactionPool, _blobCustodyTracker, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
 
         _handler = new Eth72ProtocolHandler(
             _session,
@@ -128,6 +128,7 @@ public class Eth72ProtocolHandlerTests
         _handler?.Dispose();
         _session?.Dispose();
         _syncManager?.Dispose();
+        _sparseBlobPoolPeerRegistry?.Dispose();
         _disposables.Dispose();
     }
 
@@ -1625,7 +1626,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void registry_should_request_cells_from_non_preferred_announcing_peer_when_available()
     {
-        SparseBlobPoolPeerRegistry registry = new(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         TestSparseBlobPeer preferredPeer = new(TestItem.PublicKeyA);
         TestSparseBlobPeer otherPeer = new(TestItem.PublicKeyC);
         Hash256 hash = HashFromInt(1);
@@ -1645,7 +1646,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void registry_should_request_only_expanded_custody_delta()
     {
-        SparseBlobPoolPeerRegistry registry = new(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
         Hash256 hash = HashFromInt(1);
         BlobCellMask firstMask = BlobCellMask.FromIndices([4]);
@@ -1665,7 +1666,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void registry_should_remove_tracked_announcements_when_peer_is_removed()
     {
-        SparseBlobPoolPeerRegistry registry = new(_transactionPool, new CapturingBackgroundTaskScheduler(), LimboLogs.Instance);
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), new CapturingBackgroundTaskScheduler(), LimboLogs.Instance);
         TestSparseBlobPeer removedPeer = new(TestItem.PublicKeyC);
         TestSparseBlobPeer remainingPeer = new(TestItem.PublicKeyD);
         Hash256 hash = HashFromInt(1);
@@ -1692,7 +1693,7 @@ public class Eth72ProtocolHandlerTests
     public void registry_should_submit_sparse_blob_tx_only_after_valid_cells_arrive()
     {
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
-        SparseBlobPoolPeerRegistry registry = new(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
         bool submitted = false;
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(_ =>
@@ -1723,7 +1724,7 @@ public class Eth72ProtocolHandlerTests
         tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { CellMask = cellMask, Cells = cells };
         tx.ClearLengthCache();
 
-        SparseBlobPoolPeerRegistry registry = new(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
 
@@ -1749,7 +1750,7 @@ public class Eth72ProtocolHandlerTests
 
         invalidCells[0][0] ^= 1;
 
-        SparseBlobPoolPeerRegistry registry = new(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
         TestSparseBlobPeer otherPeer = new(TestItem.PublicKeyA);
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
@@ -1773,7 +1774,7 @@ public class Eth72ProtocolHandlerTests
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
         CorruptSparseBlobProof(tx, cellMask);
 
-        SparseBlobPoolPeerRegistry registry = new(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         TestSparseBlobPeer txPeer = new(TestItem.PublicKeyC);
         TestSparseBlobPeer cellPeer = new(TestItem.PublicKeyA);
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
@@ -1798,6 +1799,7 @@ public class Eth72ProtocolHandlerTests
         CapturingBackgroundTaskScheduler scheduler = new();
         SparseBlobPoolPeerRegistry registry = new(
             _transactionPool,
+            new BlobCustodyTracker(),
             scheduler,
             LimboLogs.Instance,
             saturationTimeout: TimeSpan.Zero,
@@ -1831,6 +1833,7 @@ public class Eth72ProtocolHandlerTests
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask sampledMask, out byte[][] sampledCells, out byte[][] fullCells);
         SparseBlobPoolPeerRegistry registry = new(
             _transactionPool,
+            new BlobCustodyTracker(),
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             saturationTimeout: TimeSpan.Zero,
@@ -1864,6 +1867,7 @@ public class Eth72ProtocolHandlerTests
         CapturingBackgroundTaskScheduler scheduler = new();
         SparseBlobPoolPeerRegistry registry = new(
             _transactionPool,
+            new BlobCustodyTracker(),
             scheduler,
             LimboLogs.Instance,
             saturationTimeout: TimeSpan.Zero,
@@ -1905,6 +1909,7 @@ public class Eth72ProtocolHandlerTests
         CapturingBackgroundTaskScheduler scheduler = new();
         SparseBlobPoolPeerRegistry registry = new(
             _transactionPool,
+            new BlobCustodyTracker(),
             scheduler,
             LimboLogs.Instance,
             saturationTimeout: TimeSpan.Zero,
@@ -1934,6 +1939,7 @@ public class Eth72ProtocolHandlerTests
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask sampledMask, out byte[][] sampledCells);
         SparseBlobPoolPeerRegistry registry = new(
             _transactionPool,
+            new BlobCustodyTracker(),
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             saturationTimeout: TimeSpan.Zero,
@@ -1979,6 +1985,7 @@ public class Eth72ProtocolHandlerTests
         CapturingBackgroundTaskScheduler scheduler = new();
         SparseBlobPoolPeerRegistry registry = new(
             _transactionPool,
+            new BlobCustodyTracker(),
             scheduler,
             LimboLogs.Instance,
             saturationTimeout: TimeSpan.Zero,
@@ -2009,6 +2016,7 @@ public class Eth72ProtocolHandlerTests
         CapturingBackgroundTaskScheduler scheduler = new();
         SparseBlobPoolPeerRegistry registry = new(
             _transactionPool,
+            new BlobCustodyTracker(),
             scheduler,
             LimboLogs.Instance,
             saturationTimeout: TimeSpan.Zero,

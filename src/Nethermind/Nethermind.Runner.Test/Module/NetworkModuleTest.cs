@@ -13,8 +13,8 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Core.Specs;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Init.Steps;
@@ -258,7 +258,6 @@ public class NetworkModuleTest
                 networkConfig,
                 syncConfig,
                 Substitute.For<IInitConfig>(),
-                Substitute.For<IChainHeadSpecProvider>(),
                 logManager)
     {
         public Task RunInitPeer() => InitPeer();

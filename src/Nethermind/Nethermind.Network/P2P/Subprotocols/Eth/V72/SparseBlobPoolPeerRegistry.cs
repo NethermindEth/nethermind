@@ -17,17 +17,19 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 
-public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
+public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, IDisposable
 {
+    internal const int SupernodeCustodyColumnThreshold = 64;
     private const int MaxTrackedTransactions = 8192;
     private const int MinIndependentProviderAnnouncements = 2;
     private const int MaxFullFallbackRequests = 12;
     private static readonly TimeSpan DefaultSaturationTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ScheduledActionTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DefaultMaxAdmissionDelay = TimeSpan.FromMilliseconds(64);
-    private static readonly PublicKey NoPreferredPeer = new(new byte[PublicKey.LengthInBytes]);
+    private static readonly PublicKey NoLastResortPeer = new(new byte[PublicKey.LengthInBytes]);
 
     private readonly ITxPool _txPool;
+    private readonly IBlobCustodyTracker _blobCustodyTracker;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<PublicKey, ISparseBlobPoolPeer> _peers = new();
@@ -40,14 +42,16 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
 
     public SparseBlobPoolPeerRegistry(
         ITxPool txPool,
+        IBlobCustodyTracker blobCustodyTracker,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager)
-        : this(txPool, backgroundTaskScheduler, logManager, DefaultSaturationTimeout, DefaultMaxAdmissionDelay)
+        : this(txPool, blobCustodyTracker, backgroundTaskScheduler, logManager, DefaultSaturationTimeout, DefaultMaxAdmissionDelay)
     {
     }
 
     internal SparseBlobPoolPeerRegistry(
         ITxPool txPool,
+        IBlobCustodyTracker blobCustodyTracker,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager,
         TimeSpan saturationTimeout,
@@ -64,10 +68,25 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         }
 
         _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+        _blobCustodyTracker = blobCustodyTracker ?? throw new ArgumentNullException(nameof(blobCustodyTracker));
         _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));
         _logger = (logManager ?? throw new ArgumentNullException(nameof(logManager))).GetClassLogger<SparseBlobPoolPeerRegistry>();
         _saturationTimeout = saturationTimeout;
         _maxAdmissionDelay = maxAdmissionDelay;
+        _blobCustodyTracker.CustodyChanged += OnCustodyChanged;
+    }
+
+    public void Dispose() => _blobCustodyTracker.CustodyChanged -= OnCustodyChanged;
+
+    internal static bool HasSupernodeCustody(BlobCellMask custodyMask) => custodyMask.Count >= SupernodeCustodyColumnThreshold;
+
+    private void OnCustodyChanged(object? sender, BlobCellMask custodyMask)
+    {
+        int requests = RequestCellsForCustodyChange(custodyMask, HasSupernodeCustody(custodyMask));
+        if (requests != 0 && _logger.IsDebug)
+        {
+            _logger.Debug($"Scheduled {requests} sparse blob custody cell requests for mask {custodyMask}.");
+        }
     }
 
     public void AddPeer(ISparseBlobPoolPeer peer) => _peers[peer.Id] = peer;
@@ -111,14 +130,14 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         ScheduleSaturationCheck(hash);
     }
 
-    public bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey preferredPeerId)
+    public bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId)
     {
         if (requestMask.IsEmpty || !_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
         {
             return false;
         }
 
-        ISparseBlobPoolPeer? peer = SelectPeer(state, requestMask, preferredPeerId);
+        ISparseBlobPoolPeer? peer = SelectPeer(state, requestMask, lastResortPeerId);
         if (peer is null)
         {
             return false;
@@ -155,7 +174,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
                 continue;
             }
 
-            if (TryRequestCells(hash, requestMask, NoPreferredPeer))
+            if (TryRequestCells(hash, requestMask, NoLastResortPeer))
             {
                 requests++;
             }
@@ -284,7 +303,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         return _transactions[key];
     }
 
-    private ISparseBlobPoolPeer? SelectPeer(TrackedSparseBlobTx state, BlobCellMask requestMask, PublicKey preferredPeerId)
+    private ISparseBlobPoolPeer? SelectPeer(TrackedSparseBlobTx state, BlobCellMask requestMask, PublicKey lastResortPeerId)
     {
         lock (state.Lock)
         {
@@ -293,9 +312,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
                 return null;
             }
 
-            ISparseBlobPoolPeer? preferredPeer = null;
+            ISparseBlobPoolPeer? lastResortPeer = null;
             ISparseBlobPoolPeer? selectedPeer = null;
-            int nonPreferredCount = 0;
+            int candidateCount = 0;
             foreach (KeyValuePair<PublicKey, BlobCellMask> announcement in state.Announcements)
             {
                 if ((announcement.Value & requestMask).IsEmpty
@@ -305,21 +324,21 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
                     continue;
                 }
 
-                if (peer.Id == preferredPeerId)
+                if (peer.Id == lastResortPeerId)
                 {
-                    preferredPeer ??= peer;
+                    lastResortPeer ??= peer;
                     continue;
                 }
 
-                nonPreferredCount++;
-                if (Random.Shared.Next(nonPreferredCount) == 0)
+                candidateCount++;
+                if (Random.Shared.Next(candidateCount) == 0)
                 {
                     selectedPeer = peer;
                 }
             }
 
-            // Prefer a random announced provider rather than always leaning on the first signaler.
-            return selectedPeer ?? preferredPeer;
+            // Prefer a random announced provider rather than always leaning on the same peer.
+            return selectedPeer ?? lastResortPeer;
         }
     }
 
@@ -574,7 +593,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
 
         if (shouldRequestFull)
         {
-            bool requestSent = TryRequestCells(hash, BlobCellMask.Full, NoPreferredPeer);
+            bool requestSent = TryRequestCells(hash, BlobCellMask.Full, NoLastResortPeer);
             if (_logger.IsDebug)
             {
                 _logger.Debug($"Sparse blob tx {hash} full-cell fallback request sent={requestSent}.");

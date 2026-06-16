@@ -12,8 +12,14 @@ public interface ISparseBlobPoolPeerRegistry
     void AddPeer(ISparseBlobPoolPeer peer);
     void RemovePeer(PublicKey peerId);
     void RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask);
-    bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey preferredPeerId);
-    int RequestCellsForCustodyChange(BlobCellMask newCustodyMask, bool requestAllAnnouncedCells);
+    /// <summary>
+    /// Requests cells from a randomly selected announcing peer.
+    /// </summary>
+    /// <param name="lastResortPeerId">
+    /// Peer used only when no other announced provider is available — typically the caller itself
+    /// or the peer whose previous response failed, to avoid leaning on the same source again.
+    /// </param>
+    bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId);
     bool HasRecordedTransaction(Hash256 hash);
     int GetFullProviderAnnouncementCount(Hash256 hash);
     AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction);

@@ -341,11 +341,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             BlobCellMask candidateMask = candidate.Wrapper.GetAvailableCellMask() & requestedMask;
             if (candidateMask.IsEmpty)
             {
-                if (!hasFallback)
-                {
-                    hasFallback = true;
-                }
-
+                hasFallback = true;
                 continue;
             }
 
@@ -356,10 +352,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                 return true;
             }
 
-            if (!hasFallback)
-            {
-                hasFallback = true;
-            }
+            hasFallback = true;
         }
 
         if (hasFallback)
