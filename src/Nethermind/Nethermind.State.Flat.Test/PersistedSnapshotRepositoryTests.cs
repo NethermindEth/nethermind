@@ -530,4 +530,49 @@ public class PersistedSnapshotRepositoryTests
         using (persistableAt8)
             Assert.That(persistableAt8!.Bloom.Count, Is.GreaterThan(0), "persistable at ids[8] must have a real bloom");
     }
+
+    // With bloom disabled (bits-per-key 0) the loader's Convert path uses the AlwaysTrue
+    // sentinel and ReconstructBloom returns early on restart — data must still survive.
+    [Test]
+    public void LoadFromCatalog_BloomDisabled_SkipsReconstructionButDataSurvives()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("nb1"));
+        MemDb catalogDb = new();
+
+        using (FlatTestContainer tier1 = new(
+            config: new FlatDbConfig { PersistedSnapshotBloomBitsPerKey = 0 },
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            tier1.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA)).Dispose();
+        }
+
+        using FlatTestContainer tier2 = new(
+            config: new FlatDbConfig { PersistedSnapshotBloomBitsPerKey = 0 },
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
+
+        Assert.That(tier2.Repository.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? p), Is.True);
+        using (p)
+        {
+            Assert.That(p!.Bloom.Count, Is.EqualTo(0), "bloom disabled → AlwaysTrue sentinel, no reconstruction");
+            Assert.That(p.TryGetAccount(TestItem.AddressA, out _), Is.True, "data must survive restart with bloom disabled");
+        }
+    }
+
+    // With validation enabled, Convert runs PersistedSnapshotUtils.ValidatePersistedSnapshot
+    // on the freshly written base; a valid snapshot must convert and round-trip without throwing.
+    [Test]
+    public void ConvertToPersistedBase_WithValidationEnabled_RoundTrips()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("val1"));
+
+        using FlatTestContainer tier = new(
+            config: new FlatDbConfig { ValidatePersistedSnapshot = true },
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir);
+
+        using PersistedSnapshot p = tier.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA, 77));
+        Assert.That(p.TryGetAccount(TestItem.AddressA, out Account? acc), Is.True);
+        Assert.That(acc!.Balance, Is.EqualTo((UInt256)77));
+    }
 }
