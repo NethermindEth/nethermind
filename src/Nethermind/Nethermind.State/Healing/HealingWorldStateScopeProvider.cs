@@ -16,10 +16,5 @@ public class HealingWorldStateScopeProvider(ITrieStore trieStore, IKeyValueStore
 
     protected override StateTree CreateStateTree() => new HealingStateTree(_trieStore, nodeStorage, recovery, _logManager);
 
-    protected override StorageTree CreateStorageTree(Address address, Hash256 storageRoot, WitnessNodeSink? witnessSink = null)
-    {
-        IScopedTrieStore store = _trieStore.GetTrieStore(address);
-        if (witnessSink is not null) store = new WitnessCapturingScopedTrieStore(store, witnessSink);
-        return new HealingStorageTree(store, nodeStorage, storageRoot, _logManager, address, _backingStateTree.RootHash, recovery);
-    }
+    protected override StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new HealingStorageTree(_trieStore.GetTrieStore(address), nodeStorage, storageRoot, _logManager, address, _backingStateTree.RootHash, recovery);
 }

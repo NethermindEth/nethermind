@@ -44,8 +44,7 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             warmReadPool: _warmReadPool,
-            isReadOnly: isReadOnly,
-            trackWitness: trackWitness);
+            isReadOnly: isReadOnly);
     }
 
     public void Dispose()

@@ -10,7 +10,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -37,8 +36,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ConcurrencyController concurrencyQuota,
         Hash256 storageRoot,
         Address address,
-        ILogManager logManager,
-        WitnessNodeSink? witnessSink = null)
+        ILogManager logManager)
     {
         _scope = scope;
         _trieCacheWarmer = trieCacheWarmer;
@@ -47,8 +45,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _addressHash = address.ToAccountPath.ToHash256();
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
-        IScopedTrieStore storageTrieAdapter = new StorageTrieStoreAdapter(bundle, concurrencyQuota, _addressHash);
-        if (witnessSink is not null) storageTrieAdapter = new WitnessCapturingScopedTrieStore(storageTrieAdapter, witnessSink);
+        StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
         StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
         _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)

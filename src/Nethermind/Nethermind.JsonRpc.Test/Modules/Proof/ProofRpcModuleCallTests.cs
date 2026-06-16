@@ -224,7 +224,7 @@ public class ProofRpcModuleCallTests
     /// the cached write is discarded and the trie is never traversed during the call. The witness must
     /// still include the storage trie nodes for the slot — SSTORE reads the current value for gas, so the
     /// scope sees the slot, and <c>TrieWitnessScopeProvider</c> re-walks the touched keys via
-    /// <c>MultiAccountProofCollector</c> to capture them. A cross-client (geth) verifier cannot reconstruct
+    /// <c>PatriciaTrieWitnessGenerator</c> to capture them. A cross-client (geth) verifier cannot reconstruct
     /// the slot without these nodes.
     /// </summary>
     [TestCase(false)]
@@ -296,7 +296,7 @@ public class ProofRpcModuleCallTests
             "the contract should have a non-empty storage proof for slot 0 in the parent state");
 
         // The witness must contain every expected storage trie node by hash. If the
-        // MultiAccountProofCollector / per-account AccountProofCollector re-walk were dropped, this
+        // PatriciaTrieWitnessGenerator re-walk were dropped, this
         // would fail because the SSTORE was reverted (the trie was never traversed during the call)
         // and only the re-walk could have captured these nodes.
         HashSet<Hash256> witnessNodeHashes = result.Witness.State
@@ -475,8 +475,8 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression guard: a single-slot call must still capture the state-root node (via the
-    /// <c>MultiAccountProofCollector</c> walk); without it, tiny-call witnesses fail stateless re-execution.
+    /// Regression guard: a single-slot call must still capture the state-root node (the
+    /// <c>PatriciaTrieWitnessGenerator</c> reports the root first); without it, tiny-call witnesses fail stateless re-execution.
     /// </summary>
     [TestCase(false)]
     [TestCase(true)]
@@ -539,9 +539,9 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression: a call touching two accounts must capture the storage trie for both. The pre-fix
-    /// <c>MultiAccountProofCollector</c> keyed its storage-walk discriminator by an address hash
-    /// the visitor never provided, so the second account's storage was silently dropped.
+    /// Regression: a call touching two accounts must capture the storage trie for both — the witness
+    /// runs a separate <c>PatriciaTrieWitnessGenerator</c> storage walk per touched account, and dropping
+    /// the second account's walk would leave its storage unprovable.
     /// </summary>
     [TestCase(false)]
     [TestCase(true)]
