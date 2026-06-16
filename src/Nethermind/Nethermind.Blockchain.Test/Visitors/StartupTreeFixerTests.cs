@@ -60,9 +60,9 @@ public class StartupTreeFixerTests
         tree.SuggestBlock(block4);
         tree.SuggestHeader(block5.Header);
 
-        tree.UpdateMainChain(block0);
-        tree.UpdateMainChain(block1);
-        tree.UpdateMainChain(block2);
+        tree.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
+        tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
+        tree.TryUpdateMainChain(block2.Header, true, preloadedBlocks: new[] { block2 });
 
         blockInfosDb.Delete(3);
 
@@ -194,7 +194,7 @@ public class StartupTreeFixerTests
         tree.SuggestHeader(block4.Header);
         tree.SuggestBlock(block5);
 
-        tree.UpdateMainChain(block2);
+        tree.TryUpdateMainChain(block2.Header, true, preloadedBlocks: new[] { block2 });
 
         using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
