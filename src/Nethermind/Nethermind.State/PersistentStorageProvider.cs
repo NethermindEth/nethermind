@@ -30,8 +30,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope _currentScope;
-    // When set, every slot/account touched is reported to the scope for storage-witness tracking. Off the hot path.
-    private bool _trackWitness;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
@@ -57,16 +55,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope scope, bool trackWitness = false)
-    {
-        _currentScope = scope;
-        _trackWitness = trackWitness;
-    }
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         EvmMetrics.IncrementStorageWrites();
-        if (_trackWitness) _currentScope.ReportRead(in storageCell);
         base.Set(in storageCell, newValue);
     }
 
@@ -75,11 +68,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
-    {
-        if (_trackWitness) _currentScope.ReportRead(in storageCell);
-        return TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
-    }
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
+        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -88,7 +78,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns></returns>
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        if (_trackWitness) _currentScope.ReportRead(in storageCell);
         if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
@@ -110,11 +99,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
-    public bool IsStorageEmpty(Address address)
-    {
-        if (_trackWitness) _currentScope.ReportRead(address);
-        return GetOrCreateStorage(address).IsEmpty;
-    }
+    public bool IsStorageEmpty(Address address) => GetOrCreateStorage(address).IsEmpty;
 
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
@@ -321,7 +306,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <param name="address">Contract address</param>
     public override void ClearStorage(Address address)
     {
-        if (_trackWitness) _currentScope.ReportRead(address);
         base.ClearStorage(address);
 
         _toUpdateRoots.TryAdd(address, true);

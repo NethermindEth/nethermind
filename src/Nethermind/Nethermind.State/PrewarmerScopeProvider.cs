@@ -152,12 +152,6 @@ public class PrewarmerScopeProvider(
 
         public ScopeWitness? Witness => baseScope.Witness;
 
-        // Reads served from preBlockCache here still call ReportRead from StateProvider/PersistentStorageProvider
-        // (which sit above this cache), so a hit can't hide a touch from the witness; just forward to baseScope.
-        public void ReportRead(Address address) => baseScope.ReportRead(address);
-
-        public void ReportRead(in StorageCell storageCell) => baseScope.ReportRead(in storageCell);
-
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             sink ??= new CacheSink(preBlockCache, storageCache);

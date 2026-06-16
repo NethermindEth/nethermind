@@ -55,10 +55,6 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public ScopeWitness? Witness => innerScope.Witness;
 
-        public void ReportRead(Address address) => innerScope.ReportRead(address);
-
-        public void ReportRead(in StorageCell storageCell) => innerScope.ReportRead(in storageCell);
-
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => innerScope.HintBal(bal, sink);
 

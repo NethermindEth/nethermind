@@ -217,8 +217,8 @@ public class ProofRpcModuleCallTests
     /// Regression guard for the deleted <c>Debug_witness_includes_trie_nodes_for_storage_set_without_prior_read_then_reverted</c>:
     /// when a slot is written (via SSTORE → WorldState.Set) and then reverted (via REVERT → WorldState.Restore),
     /// the cached write is discarded and the trie is never traversed during the call. The witness must
-    /// still include the storage trie nodes for the slot — the scope reports the written slot via
-    /// <c>ReportRead</c> and <c>WitnessScopeProvider</c> re-walks the touched keys via
+    /// still include the storage trie nodes for the slot — SSTORE reads the current value for gas, so the
+    /// scope sees the slot, and <c>WitnessScopeProvider</c> re-walks the touched keys via
     /// <c>MultiAccountProofCollector</c> to capture them. A cross-client (geth) verifier cannot reconstruct
     /// the slot without these nodes.
     /// </summary>
@@ -229,9 +229,9 @@ public class ProofRpcModuleCallTests
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(useFlatDb).Build();
 
         // Runtime: SSTORE(0, 0xEE) then REVERT with empty data. The slot is written then reverted
-        // in the same call — the trie is never traversed during the call. The only way the witness
-        // covers slot 0's storage trie is via the post-execution re-walk of touched keys in
-        // WitnessScopeProvider.
+        // in the same call — the value never reaches the write batch. The witness still covers slot 0
+        // because SSTORE reads the slot for gas, so WitnessScopeProvider records it and re-walks the
+        // touched keys post-execution.
         byte[] runtimeCode = Prepare.EvmCode
             .PushData(0xEE)
             .PushData(0)

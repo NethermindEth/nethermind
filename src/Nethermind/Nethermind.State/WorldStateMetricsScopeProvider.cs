@@ -38,10 +38,6 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public ScopeWitness? Witness => baseScope.Witness;
 
-        public void ReportRead(Address address) => baseScope.ReportRead(address);
-
-        public void ReportRead(in StorageCell storageCell) => baseScope.ReportRead(in storageCell);
-
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);

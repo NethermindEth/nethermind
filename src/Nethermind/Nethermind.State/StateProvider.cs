@@ -53,10 +53,6 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
-    // When set, every account touched (read or write) is reported to the scope so the storage witness
-    // sees touches the scope's own Get never observes (cache hits, writes). False on the hot path.
-    private bool _trackWitness;
-
     public void RecalculateStateRoot()
     {
         _tree.UpdateRootHash();
@@ -77,11 +73,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
     public int ChangedAccountCount => _blockChanges.Count;
 
-    public void SetScope(IWorldStateScopeProvider.IScope? scope, bool trackWitness = false)
+    public void SetScope(IWorldStateScopeProvider.IScope? scope)
     {
         _tree = scope;
         _codeDb = scope?.CodeDb;
-        _trackWitness = trackWitness;
     }
 
     public bool IsContract(Address address)
@@ -180,9 +175,6 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, out UInt256 oldBalance)
     {
         _needsStateRootUpdate = true;
-        // Reported here (not via GetThroughCache) so a zero-value add/subtract that returns early still
-        // records the touch, matching the unconditional record the witness world state did.
-        if (_trackWitness) _tree!.ReportRead(address);
 
         Account GetThroughCacheCheckExists()
         {
@@ -336,7 +328,6 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     public void DeleteAccount(Address address)
     {
         _needsStateRootUpdate = true;
-        if (_trackWitness) _tree!.ReportRead(address);
         PushDelete(address);
     }
 
@@ -432,7 +423,6 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         _needsStateRootUpdate = true;
-        if (_trackWitness) _tree!.ReportRead(address);
         if (_logger.IsTrace) Trace(address, balance, nonce);
 
         Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
@@ -446,7 +436,6 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     // used by Arbitrum
     public void CreateEmptyAccountIfDeletedOrNew(Address address)
     {
-        if (_trackWitness) _tree!.ReportRead(address);
         if (_intraTxCache.TryGetValue(address, out StackList<int> value))
         {
             //we only want to persist empty accounts if they were deleted or created as empty
@@ -778,13 +767,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         return account;
     }
 
-    internal Account? GetThroughCache(Address address)
-    {
-        if (_trackWitness) _tree!.ReportRead(address);
-        return _intraTxCache.TryGetValue(address, out StackList<int> value)
+    internal Account? GetThroughCache(Address address) =>
+        _intraTxCache.TryGetValue(address, out StackList<int> value)
             ? _changes[value.Peek()].Account
             : GetAndAddToCache(address);
-    }
 
     private void PushJustCache(Address address, Account account)
         => Push(address, account, ChangeType.JustCache);

@@ -236,8 +236,8 @@ namespace Nethermind.State
             {
                 _trackWitness = trackWitness;
                 _currentScope = ScopeProvider.BeginScope(baseBlock, trackWitness);
-                _stateProvider.SetScope(_currentScope, trackWitness);
-                _persistentStorageProvider.SetBackendScope(_currentScope, trackWitness);
+                _stateProvider.SetScope(_currentScope);
+                _persistentStorageProvider.SetBackendScope(_currentScope);
             }
             catch
             {

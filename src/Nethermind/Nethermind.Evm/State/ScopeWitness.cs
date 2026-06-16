@@ -12,11 +12,10 @@ namespace Nethermind.Evm.State;
 /// contract bytecode read during execution.
 /// </summary>
 /// <remarks>
-/// Built lazily by <see cref="IWorldStateScopeProvider.IScope.Witness"/> from the keys reported via
-/// <see cref="IWorldStateScopeProvider.IScope.ReportRead(Nethermind.Core.Address)"/> /
-/// <see cref="IWorldStateScopeProvider.IScope.ReportRead(in Nethermind.Core.StorageCell)"/> and the code
-/// read through the scope's code database. The consensus layer assembles the full execution witness
-/// (adding block headers) from this — see <c>WitnessAssembler</c>.
+/// Built lazily by <see cref="IWorldStateScopeProvider.IScope.Witness"/> from the accounts/slots the scope
+/// observed being read (the EVM reads every key before writing it) and the code read through the scope's code
+/// database. The consensus layer assembles the full execution witness (adding block headers) from this — see
+/// <c>WitnessAssembler</c>.
 /// </remarks>
 public sealed class ScopeWitness
 {
