@@ -236,6 +236,26 @@ namespace Nethermind.Core.Test.Encoding
             AssertStorageReceipt(txReceipt, deserialized);
         }
 
+        [Test]
+        public void Rejects_compact_receipt_with_oversized_log_data()
+        {
+            CompactReceiptStorageDecoder decoder = new();
+
+            Assert.Throws<RlpLimitException>(() =>
+            {
+                Rlp.ValueDecoderContext ctx = CreateCompactReceipt(CreateMalformedCompactLogEntry(RlpLimit.DefaultLimit.Limit + 1L)).Bytes.AsRlpValueContext();
+                decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            });
+        }
+
+        [Test]
+        public void Rejects_compact_log_entry_struct_ref_with_oversized_log_data() =>
+            Assert.Throws<RlpLimitException>(() =>
+            {
+                Rlp.ValueDecoderContext ctx = CreateMalformedCompactLogEntry(RlpLimit.DefaultLimit.Limit + 1L).Bytes.AsRlpValueContext();
+                CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.Storage, out _);
+            });
+
         private void AssertStorageReceipt(TxReceipt txReceipt, TxReceipt? deserialized)
         {
             using (Assert.EnterMultipleScope())
@@ -271,6 +291,18 @@ namespace Nethermind.Core.Test.Encoding
                 Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
             }
         }
+
+        private static Rlp CreateCompactReceipt(Rlp logEntry) => Rlp.Encode(
+            Rlp.Encode(1),
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.Encode(1L),
+            Rlp.Encode(new[] { logEntry }));
+
+        private static Rlp CreateMalformedCompactLogEntry(long zeroPrefix) => Rlp.Encode(
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.OfEmptyList,
+            Rlp.Encode(zeroPrefix),
+            Rlp.OfEmptyByteArray);
 
     }
 }
