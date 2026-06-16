@@ -16,7 +16,7 @@ public class StatusMessageSerializer69 :
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        ValueRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
 
         writer.Encode(message.ProtocolVersion);

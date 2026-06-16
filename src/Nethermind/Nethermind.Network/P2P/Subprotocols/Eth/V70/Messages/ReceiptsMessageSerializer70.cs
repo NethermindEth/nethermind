@@ -16,7 +16,7 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, ReceiptsMessage70 message)
     {
-        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        ValueRlpWriter writer = new(byteBuffer);
         writer.Encode(message.LastBlockIncomplete ? 1 : 0);
         ReceiptsInnerMessage69 inner = new(message.TxReceipts);
         _receiptsSerializer.Serialize(byteBuffer, inner);

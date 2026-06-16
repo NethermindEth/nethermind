@@ -17,7 +17,7 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
     {
-        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        ValueRlpWriter writer = new(byteBuffer);
         writer.Encode(message.FirstBlockReceiptIndex);
         int hashesContentLength = GetHashesContentLength(message.Hashes);
         writer.StartSequence(hashesContentLength);

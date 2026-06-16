@@ -23,7 +23,7 @@ public class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        ValueRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
         Encode(ref writer, msg.FarAddress, farAddressLength);
         writer.Encode(msg.PingMdc);

@@ -87,27 +87,27 @@ public class RlpByteArrayListTests
     }
 
     [TestCaseSource(nameof(TestCases))]
-    public void NettyRlpStream_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    public void ByteBuffer_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
     {
         using RlpByteArrayList list = CreateList(items);
         byte[] expected = EncodeItems(items);
 
         using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
-        NettyRlpStream.WriteByteArrayList(byteBuffer, list);
+        byteBuffer.WriteRlpByteArrayList(list);
 
         Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
         Assert.That(byteBuffer.AsSpan().ToArray(), Is.EqualTo(expected));
     }
 
     [TestCaseSource(nameof(TestCases))]
-    public void DerivedRlpStream_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    public void ByteBuffer_ValueRlpWriter_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
     {
         using RlpByteArrayList list = CreateList(items);
         byte[] expected = EncodeItems(items);
 
         using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
-        using NettyRlpStream stream = new(byteBuffer);
-        stream.WriteByteArrayList(list);
+        ValueRlpWriter writer = new(byteBuffer);
+        writer.WriteByteArrayList(list);
 
         Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
         Assert.That(byteBuffer.AsSpan().ToArray(), Is.EqualTo(expected));

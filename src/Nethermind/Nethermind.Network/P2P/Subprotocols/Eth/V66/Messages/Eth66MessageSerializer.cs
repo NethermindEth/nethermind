@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+            ValueRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
             _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);

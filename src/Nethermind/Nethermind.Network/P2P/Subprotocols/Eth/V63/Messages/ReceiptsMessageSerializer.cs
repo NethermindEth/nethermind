@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             int totalLength = GetLength(message, out int contentLength);
 
             byteBuffer.EnsureWritable(totalLength);
-            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+            ValueRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
 
             // Track the last ‐ seen block number & its RLP behavior

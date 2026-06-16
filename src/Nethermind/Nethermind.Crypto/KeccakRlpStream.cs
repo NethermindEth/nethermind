@@ -26,8 +26,6 @@ namespace Nethermind.Crypto
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly BlockAccessListDecoder _blockAccessListDecoder = BlockAccessListDecoder.Instance;
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
-        private static readonly ValueRlpWriteSink _writeToKeccak = WriteToKeccak;
-        private static readonly ValueRlpWriteByteSink _writeByteToKeccak = WriteByteToKeccak;
 
         private readonly KeccakHash? _keccakHash;
 
@@ -283,12 +281,6 @@ namespace Nethermind.Crypto
             }
         }
 
-        public ValueRlpWriter AsValueWriter() => new(Hash, _writeToKeccak, _writeByteToKeccak);
-
-        private static void WriteToKeccak(object sink, ReadOnlySpan<byte> bytesToWrite) =>
-            ((KeccakHash)sink).Update(bytesToWrite);
-
-        private static void WriteByteToKeccak(object sink, byte byteToWrite) =>
-            ((KeccakHash)sink).Update(MemoryMarshal.CreateReadOnlySpan(ref byteToWrite, 1));
+        public ValueRlpWriter AsValueWriter() => new(Hash);
     }
 }

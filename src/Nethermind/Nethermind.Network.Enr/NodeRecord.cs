@@ -224,7 +224,7 @@ public class NodeRecord
         IByteBuffer buffer = NethermindBuffers.Default.Buffer(rlpLength);
         try
         {
-            ValueRlpWriter writer = NettyRlpStream.CreateWriter(buffer);
+            ValueRlpWriter writer = new(buffer);
             Encode(ref writer);
             IByteBuffer resultBuffer = Base64.Encode(buffer, Base64Dialect.URL_SAFE);
             try

@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             using ArrayPoolSpan<int> returnAccountSlotsLengths = accountSlotsLengths;
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+            ValueRlpWriter writer = new(byteBuffer);
 
             writer.StartSequence(contentLength);
 

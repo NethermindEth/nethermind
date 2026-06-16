@@ -41,7 +41,7 @@ public class NeighborsMsgSerializer(
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        ValueRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
         if (msg.Nodes.Count != 0)
         {

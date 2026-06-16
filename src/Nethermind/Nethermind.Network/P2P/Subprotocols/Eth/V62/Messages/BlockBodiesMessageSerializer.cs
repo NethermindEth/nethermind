@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+            ValueRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
             foreach (BlockBody? body in message.Bodies.Bodies)
             {

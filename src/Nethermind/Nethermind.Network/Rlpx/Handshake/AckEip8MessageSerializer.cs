@@ -24,7 +24,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             totalLength += Rlp.LengthOf(msg.Version);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+            ValueRlpWriter writer = new(byteBuffer);
             writer.StartSequence(totalLength);
             writer.Encode(msg.EphemeralPublicKey.Bytes);
             writer.Encode(msg.Nonce);

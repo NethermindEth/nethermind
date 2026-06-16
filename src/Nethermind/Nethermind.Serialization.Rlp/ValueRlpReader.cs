@@ -18,7 +18,7 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Rlp;
 
 /// <summary>
-/// Span-backed RLP decoder cursor used by decoders that do not need the class-based <see cref="RlpStream"/>.
+/// Span-backed RLP decoder cursor used by value-based decoders.
 /// </summary>
 /// <remarks>
 /// The reader never owns the backing bytes. When constructed from <see cref="Memory{T}"/>, callers may opt in to

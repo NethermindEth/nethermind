@@ -17,7 +17,7 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+        ValueRlpWriter writer = new(byteBuffer);
         _voteDecoder.Encode(ref writer, message.Vote);
     }
 

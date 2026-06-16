@@ -8,6 +8,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -17,12 +18,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp;
 
-public delegate void ValueRlpWriteSink(object sink, ReadOnlySpan<byte> bytesToWrite);
-
-public delegate void ValueRlpWriteByteSink(object sink, byte byteToWrite);
-
 /// <summary>
-/// Value-type RLP writer for pre-sized buffers.
+/// Value-type RLP writer for pre-sized buffers and direct write targets.
 /// </summary>
 /// <remarks>
 /// The writer does not allocate or grow its backing span. Use <see cref="WrittenSpan"/> for the encoded output; the
@@ -31,9 +28,8 @@ public delegate void ValueRlpWriteByteSink(object sink, byte byteToWrite);
 public ref struct ValueRlpWriter
 {
     private Span<byte> _data;
-    private object? _sink;
-    private ValueRlpWriteSink? _writeSink;
-    private ValueRlpWriteByteSink? _writeByteSink;
+    private IByteBuffer? _byteBuffer;
+    private KeccakHash? _keccakHash;
     private int _position;
 
     /// <summary>
@@ -42,9 +38,8 @@ public ref struct ValueRlpWriter
     public ValueRlpWriter(Span<byte> data)
     {
         _data = data;
-        _sink = null;
-        _writeSink = null;
-        _writeByteSink = null;
+        _byteBuffer = null;
+        _keccakHash = null;
         _position = 0;
     }
 
@@ -73,18 +68,28 @@ public ref struct ValueRlpWriter
     }
 
     /// <summary>
-    /// Initializes a writer adapter over an existing callback sink.
+    /// Initializes a writer over a DotNetty buffer, advancing its writer index as bytes are written.
     /// </summary>
-    public ValueRlpWriter(object sink, ValueRlpWriteSink writeSink, ValueRlpWriteByteSink writeByteSink)
+    public ValueRlpWriter(IByteBuffer byteBuffer)
     {
-        ArgumentNullException.ThrowIfNull(sink);
-        ArgumentNullException.ThrowIfNull(writeSink);
-        ArgumentNullException.ThrowIfNull(writeByteSink);
+        ArgumentNullException.ThrowIfNull(byteBuffer);
 
         _data = Span<byte>.Empty;
-        _sink = sink;
-        _writeSink = writeSink;
-        _writeByteSink = writeByteSink;
+        _byteBuffer = byteBuffer;
+        _keccakHash = null;
+        _position = 0;
+    }
+
+    /// <summary>
+    /// Initializes a writer that feeds encoded bytes directly into a Keccak accumulator.
+    /// </summary>
+    public ValueRlpWriter(KeccakHash keccakHash)
+    {
+        ArgumentNullException.ThrowIfNull(keccakHash);
+
+        _data = Span<byte>.Empty;
+        _byteBuffer = null;
+        _keccakHash = keccakHash;
         _position = 0;
     }
 
@@ -92,34 +97,36 @@ public ref struct ValueRlpWriter
     /// Full caller-provided output span.
     /// </summary>
     public readonly Span<byte> Data =>
-        _sink is null ? _data : throw new InvalidOperationException("Data is available only for span-backed writers.");
+        IsSpanBacked ? _data : throw new InvalidOperationException("Data is available only for span-backed writers.");
 
     /// <summary>
     /// Bytes written so far.
     /// </summary>
     public readonly ReadOnlySpan<byte> WrittenSpan =>
-        _sink is null ? _data[.._position] : throw new InvalidOperationException("WrittenSpan is available only for span-backed writers.");
+        IsSpanBacked ? _data[.._position] : throw new InvalidOperationException("WrittenSpan is available only for span-backed writers.");
 
     /// <summary>
     /// Current write position in <see cref="Data"/>.
     /// </summary>
     public int Position
     {
-        readonly get => _sink is null ? _position : ThrowSinkPositionNotSupported();
+        readonly get => IsSpanBacked ? _position : ThrowPositionNotSupported();
         set
         {
-            if (_sink is null)
+            if (IsSpanBacked)
             {
                 _position = value;
             }
             else
             {
-                ThrowSinkPositionNotSupported();
+                ThrowPositionNotSupported();
             }
         }
     }
 
-    public readonly int Length => _sink is null ? _data.Length : ThrowSinkPositionNotSupported();
+    public readonly int Length => IsSpanBacked ? _data.Length : ThrowPositionNotSupported();
+
+    private readonly bool IsSpanBacked => _byteBuffer is null && _keccakHash is null;
 
     public void StartByteArray(int contentLength, bool firstByteLessThan128)
     {
@@ -187,9 +194,18 @@ public ref struct ValueRlpWriter
 
     public void WriteByte(byte byteToWrite)
     {
-        if (_sink is { } sink)
+        if (_byteBuffer is { } byteBuffer)
         {
-            _writeByteSink!(sink, byteToWrite);
+            byteBuffer.EnsureWritable(1);
+            byteBuffer.WriteByte(byteToWrite);
+            _position++;
+            return;
+        }
+
+        if (_keccakHash is { } keccakHash)
+        {
+            keccakHash.Update(MemoryMarshal.CreateReadOnlySpan(ref byteToWrite, 1));
+            _position++;
             return;
         }
 
@@ -201,9 +217,31 @@ public ref struct ValueRlpWriter
 
     public void Write(scoped ReadOnlySpan<byte> bytesToWrite)
     {
-        if (_sink is { } sink)
+        if (_byteBuffer is { } byteBuffer)
         {
-            _writeSink!(sink, bytesToWrite);
+            byteBuffer.EnsureWritable(bytesToWrite.Length);
+            if (byteBuffer.HasArray)
+            {
+                Span<byte> target = byteBuffer.Array.AsSpan(byteBuffer.ArrayOffset + byteBuffer.WriterIndex, bytesToWrite.Length);
+                bytesToWrite.CopyTo(target);
+                byteBuffer.SetWriterIndex(byteBuffer.WriterIndex + bytesToWrite.Length);
+            }
+            else
+            {
+                for (int i = 0; i < bytesToWrite.Length; i++)
+                {
+                    byteBuffer.WriteByte(bytesToWrite[i]);
+                }
+            }
+
+            _position += bytesToWrite.Length;
+            return;
+        }
+
+        if (_keccakHash is { } keccakHash)
+        {
+            keccakHash.Update(bytesToWrite);
+            _position += bytesToWrite.Length;
             return;
         }
 
@@ -240,9 +278,17 @@ public ref struct ValueRlpWriter
 
     private void WriteZero(int length)
     {
-        if (_sink is { } sink)
+        if (_byteBuffer is { } byteBuffer)
         {
-            WriteZero(sink, _writeSink!, length);
+            byteBuffer.EnsureWritable(length);
+            byteBuffer.WriteZero(length);
+            _position += length;
+            return;
+        }
+
+        if (_keccakHash is { } keccakHash)
+        {
+            WriteZero(keccakHash, length);
             return;
         }
 
@@ -250,14 +296,14 @@ public ref struct ValueRlpWriter
         _position += length;
     }
 
-    private static void WriteZero(object sink, ValueRlpWriteSink writeSink, int length)
+    private static void WriteZero(KeccakHash keccakHash, int length)
     {
         Span<byte> zeros = stackalloc byte[Math.Min(length, 256)];
         zeros.Clear();
         while (length > 0)
         {
             int chunkLength = Math.Min(length, zeros.Length);
-            writeSink(sink, zeros[..chunkLength]);
+            keccakHash.Update(zeros[..chunkLength]);
             length -= chunkLength;
         }
     }
@@ -576,11 +622,13 @@ public ref struct ValueRlpWriter
     private const byte EmptyArrayByte = 128;
     private const byte EmptySequenceByte = 192;
 
-    public override readonly string ToString() => _sink is null
-        ? $"[{nameof(ValueRlpWriter)}|{_position}/{Length}]"
-        : $"[{nameof(ValueRlpWriter)}|{_sink.GetType().Name}]";
+    public override readonly string ToString() => _byteBuffer is null
+        ? _keccakHash is null
+            ? $"[{nameof(ValueRlpWriter)}|{_position}/{Length}]"
+            : $"[{nameof(ValueRlpWriter)}|{_keccakHash.GetType().Name}|{_position}]"
+        : $"[{nameof(ValueRlpWriter)}|{_byteBuffer.GetType().Name}|{_position}]";
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ThrowSinkPositionNotSupported()
-        => throw new InvalidOperationException("Position and Length are unavailable for sink-backed writers.");
+    private static int ThrowPositionNotSupported()
+        => throw new InvalidOperationException("Position and Length are unavailable for non-span-backed writers.");
 }

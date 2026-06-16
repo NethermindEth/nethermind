@@ -18,7 +18,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             int totalLength = GetLength(msg);
             // TODO: Account for the padding
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            ValueRlpWriter writer = NettyRlpStream.CreateWriter(byteBuffer);
+            ValueRlpWriter writer = new(byteBuffer);
             writer.StartSequence(totalLength);
             writer.Encode(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId));
             writer.Encode(msg.PublicKey.Bytes);
