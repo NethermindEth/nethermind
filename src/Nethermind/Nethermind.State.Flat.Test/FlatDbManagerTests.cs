@@ -47,9 +47,8 @@ public class FlatDbManagerTests
     }
 
     [TearDown]
-    public async Task TearDown()
+    public void TearDown()
     {
-        await _persistenceManager.DisposeAsync();
         _persistedSnapshotLoader.Dispose();
         _cts.Cancel();
         _cts.Dispose();

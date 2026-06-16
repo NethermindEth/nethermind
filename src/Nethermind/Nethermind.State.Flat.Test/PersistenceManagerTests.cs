@@ -76,7 +76,6 @@ public class PersistenceManagerTests
     [TearDown]
     public async Task TearDown()
     {
-        await _persistenceManager.DisposeAsync();
         await _persistedSnapshotCompactor.DisposeAsync();
         _tier.Dispose();
     }
@@ -183,11 +182,10 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public async Task DetermineSnapshotAction_LongFinalityDisabled_SkipsConversionPath()
+    public void DetermineSnapshotAction_LongFinalityDisabled_SkipsConversionPath()
     {
         // In-memory depth ~301, finality stalled at block 10. With EnableLongFinality off, the
         // conversion path must not fire and we must not invoke the converter.
-        await _persistenceManager.DisposeAsync();
         _config.EnableLongFinality = false;
         _persistenceManager = new PersistenceManager(
             _config,

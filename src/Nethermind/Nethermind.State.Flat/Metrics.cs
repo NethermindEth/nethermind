@@ -254,13 +254,13 @@ public static class Metrics
     public static IMetricObserver ReadOnlySnapshotBundleSkipTime { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
-    [Description("Time to convert one in-memory snapshot into a persisted snapshot, by part")]
-    [ExponentialPowerHistogramMetric(LabelNames = ["part"], Start = 1, Factor = 1.5, Count = 30)]
+    [Description("Time to convert one in-memory snapshot into a persisted snapshot")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
     public static IMetricObserver PersistedSnapshotConvertTime { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
-    [Description("Persisted-snapshot byte size, by tier")]
-    [ExponentialPowerHistogramMetric(LabelNames = ["tier"], Start = 1, Factor = 1.5, Count = 30)]
+    [Description("Persisted-snapshot byte size")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
     public static IMetricObserver PersistedSnapshotSize { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]

@@ -25,6 +25,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// one compacted snapshot when at least two are available — the window need not be fully
 /// populated.
 /// </summary>
+/// <remarks>
+/// Takes a dependency on <see cref="IPersistedSnapshotLoader"/> purely to order shutdown: the
+/// edge makes DI activate the loader first and so dispose this compactor before it, draining the
+/// bucket-touching worker tasks (via <see cref="DisposeAsync"/>) before the loader's
+/// <c>Dispose</c> runs <see cref="ISnapshotRepository.MarkPersistedTierForShutdown"/>. Without it
+/// a worker could index a new persisted snapshot after the tier is marked, losing its files.
+/// </remarks>
 public class PersistedSnapshotCompactor(
     ISnapshotRepository snapshotRepository,
     IArenaManager arenaManager,
@@ -32,8 +39,11 @@ public class PersistedSnapshotCompactor(
     SnapshotCatalog catalog,
     IFlatDbConfig config,
     ICompactionSchedule schedule,
+    IPersistedSnapshotLoader loader,
     ILogManager logManager) : IPersistedSnapshotCompactor
 {
+    // Held only to anchor the disposal order documented above (loader disposed after this).
+    private readonly IPersistedSnapshotLoader _disposeOrderingAnchor = loader;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly SnapshotCatalog _catalog = catalog;
     private readonly ICompactionSchedule _schedule = schedule;

@@ -18,9 +18,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// <inheritdoc cref="IPersistedSnapshotLoader"/>
 /// <remarks>
 /// A registered singleton that depends on <see cref="ISnapshotRepository"/> and the arena/blob/catalog
-/// stores. Because it depends on the repository, DI disposes it before the repository, and the manager
-/// (which depends on this loader and awaits its background workers on shutdown) is disposed before it —
-/// so <see cref="Dispose"/> tears the persisted tier down only after all bucket-touching work has stopped.
+/// stores. Because it depends on the repository, DI disposes it before the repository; and because the
+/// compactor depends on this loader, DI disposes the compactor (draining its bucket-touching workers)
+/// before it — so <see cref="Dispose"/> tears the persisted tier down only after all such work has stopped.
 /// </remarks>
 public sealed class PersistedSnapshotLoader(
     ISnapshotRepository repository,
@@ -37,8 +37,6 @@ public sealed class PersistedSnapshotLoader(
     // Heartbeat for the progress logger inside the parallel sections. The logger
     // itself dedups via state-change comparison, so sub-second ticks are cheap.
     private const int ProgressLogIntervalMs = 1000;
-
-    private static readonly StringLabel _tierLabel = new("persisted");
 
     private readonly SnapshotCatalog _catalog = catalog;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
@@ -208,7 +206,7 @@ public sealed class PersistedSnapshotLoader(
         {
             PersistedSnapshotBuilder.Build<ArenaBufferWriter>(
                 snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
-            Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written, _tierLabel);
+            Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written);
             (location, reservation) = arenaWriter.Complete();
         }
         blobWriter.Complete();
