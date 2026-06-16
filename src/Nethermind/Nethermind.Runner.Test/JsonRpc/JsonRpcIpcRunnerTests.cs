@@ -42,7 +42,7 @@ public class JsonRpcIpcRunnerTests
                 Arg.Any<IJsonRpcResponseSink>(),
                 Arg.Any<JsonRpcProcessingOptions>(),
                 Arg.Any<CancellationToken>())
-            .Returns(_ => ValueTask.FromException(new ObjectDisposedException(nameof(IpcSocketMessageStream))));
+            .Returns(_ => ValueTask.FromException(new ObjectDisposedException(typeof(IpcSocketMessageStream).FullName)));
 
         IConfigProvider configProvider = Substitute.For<IConfigProvider>();
         configProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig());

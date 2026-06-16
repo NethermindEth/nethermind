@@ -138,10 +138,11 @@ namespace Nethermind.Runner.JsonRpc
             {
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
-            catch (ObjectDisposedException ex) when (ex.ObjectName is null or nameof(NetworkStream) or nameof(IpcSocketMessageStream))
+            catch (ObjectDisposedException ex) when (ex.ObjectName == typeof(IpcSocketMessageStream).FullName)
             {
-                // The client closed the connection while a response was still being written,
-                // disposing the underlying socket stream mid-send. This is an expected disconnect, not a server fault.
+                // Client closed the connection while a response was still being written, disposing the
+                // socket stream mid-send. The disposed stream sets ObjectName to its own type, so any other
+                // disposal (e.g. a service torn down during shutdown) still surfaces as a server error.
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
             catch (SocketException ex)
