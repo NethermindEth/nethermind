@@ -197,6 +197,15 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockTreeBuilder OfChainLength(ulong chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
+        {
+            OfChainLength(out _, (int)chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
+            return this;
+        }
+
+        public BlockTreeBuilder OfChainLength(out Block headBlock, ulong chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries) =>
+            OfChainLength(out headBlock, (int)chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);
+
         public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, bool withWithdrawals = false, params Address[] blockBeneficiaries)
         {
             OfChainLength(out _, chainLength, splitVariant, splitFrom, withWithdrawals, blockBeneficiaries);

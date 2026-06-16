@@ -51,7 +51,7 @@ public class WriteBatchBenchmark
 
         int totalAccountCount = 0;
 
-        for (int block = 0; block < SnapshotCount; block++)
+        for (ulong block = 0; block < SnapshotCount; block++)
         {
             int accountCount = 500;
             int storageAccountCount = 10;
@@ -116,7 +116,7 @@ public class WriteBatchBenchmark
                 });
             }
 
-            scope.Commit(blockNumber: (ulong)(block + 1));
+            scope.Commit(blockNumber: block + 1);
 
             FlatSnapshot snapshot = commitTarget.LastSnapshot
                 ?? throw new InvalidOperationException(
@@ -124,7 +124,7 @@ public class WriteBatchBenchmark
             snapshot.TryAcquire();
             _baseSnapshots.Add(snapshot);
 
-            _currentStateId = new StateId((ulong)(block + 1), scope.RootHash);
+            _currentStateId = new StateId(block + 1, scope.RootHash);
             totalAccountCount += accountCount;
         }
 

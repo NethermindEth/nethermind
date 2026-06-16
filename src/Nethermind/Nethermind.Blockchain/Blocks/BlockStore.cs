@@ -14,13 +14,13 @@ namespace Nethermind.Blockchain.Blocks;
 
 public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder? headerDecoder = null) : IBlockStore, IClearableCache
 {
-    public const ulong CacheSize = 128 + 32;
+    public const int CacheSize = 128 + 32;
 
     private readonly IDb _blockDb = blockDb;
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
     private readonly AssociativeCache<ValueHash256, Block>
-        _blockCache = new((int)CacheSize);
+        _blockCache = new(CacheSize);
 
     public void SetMetadata(byte[] key, byte[] value) => _blockDb.Set(key, value);
 

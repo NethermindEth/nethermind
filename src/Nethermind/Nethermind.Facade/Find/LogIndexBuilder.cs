@@ -351,19 +351,10 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
             ProcessingQueue queue = Direction(isForward).Queue!;
 
-            int? next = GetNextBlockNumber(isForward);
-            int start;
-            if (next is not { } startFromStorage)
-            {
-                // Cast to int is safe here: LogIndex storage uses int block numbers for performance.
-                // pivotNumber is bounded by MaxTargetBlockNumber which is derived from BestKnownNumber
-                // and will not exceed int.MaxValue in practice (~2 billion blocks).
-                start = isForward ? (int)pivotNumber : (int)pivotNumber - 1;
-            }
-            else
-            {
-                start = startFromStorage;
-            }
+            // Cast to int is safe here: LogIndex storage uses int block numbers for performance.
+            // pivotNumber is bounded by MaxTargetBlockNumber which is derived from BestKnownNumber
+            // and will not exceed int.MaxValue in practice (~2 billion blocks).
+            int start = GetNextBlockNumber(isForward) ?? (isForward ? (int)pivotNumber : (int)pivotNumber - 1);
 
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)

@@ -333,10 +333,10 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
     }
 
-    [TestCase(1)]
-    [TestCase(10)]
-    [TestCase(99)]
-    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(int count)
+    [TestCase(1ul)]
+    [TestCase(10ul)]
+    [TestCase(99ul)]
+    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(ulong count)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -345,8 +345,8 @@ internal class TransactionProcessorEip7702Tests
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount * (ulong)count)
-            .WithAuthorizationCode(Enumerable.Range(0, count)
+            .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount * count)
+            .WithAuthorizationCode(Enumerable.Range(0, (int)count)
                                              .Select(i => _ethereumEcdsa.Sign(
                                                  signer,
                                                  _specProvider.ChainId,
@@ -363,7 +363,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.NewAccount * (ulong)count));
+        Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.NewAccount * count));
     }
 
     public void Execute_TxHasDifferentAmount()

@@ -107,13 +107,11 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// Creation tx is accepted at inclusion because the EIP-8037 formula subtracts
-    /// <c>intrinsic.state</c>. With actual post-execution gas modest
-    /// (the create succeeds well under cap), <c>IncrementalValidation</c> also accepts.
-    /// This test verifies acceptance.
+    /// Creation tx is rejected at inclusion because the corrected EIP-8037 formula
+    /// does not subtract <c>intrinsic.state</c> from the raw <c>tx.gas</c>.
     /// </summary>
     [Test]
-    public void Eip8037_creation_tx_regular_check_actual_usage_modest_accepts()
+    public void Eip8037_creation_tx_regular_check_without_subtraction_rejects()
     {
         ulong blockGasLimit = 16_777_216ul + 53_000ul + 1ul; // cap + intrinsic_regular + 1
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
@@ -128,7 +126,7 @@ public class Eip8037BlockGasIntegrationTests
         results[0].TrySetResult(GasResult(block, 0, 16_777_216ul, 0ul));
         results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
 
-        Assert.DoesNotThrow(() =>
+        Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None));
     }
 
@@ -157,7 +155,7 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
-            "EIP-8037 requires rejection at inclusion when tx.gas - intrinsic.regular > block_gas_limit");
+            "EIP-8037 requires rejection at inclusion when tx.gas > state_gas_available");
     }
 
     /// <summary>

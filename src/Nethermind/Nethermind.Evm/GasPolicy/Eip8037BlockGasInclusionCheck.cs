@@ -13,6 +13,22 @@ public static class Eip8037BlockGasInclusionCheck
 {
     public enum Outcome { Ok, RegularDimensionExceeded, StateDimensionExceeded }
 
+    /// <summary>
+    /// Validates if a transaction can be included in a block under EIP-8037 pre-inclusion check.
+    /// </summary>
+    /// <remarks>
+    /// Checks that the transaction's maximum possible contribution to both regular and state gas dimensions
+    /// does not exceed the remaining available space for those dimensions in the block.
+    /// Refer to EIP-8037 section "Transaction validation":
+    /// min(TX_MAX_GAS_LIMIT, tx.gas) &lt;= regular_gas_available and tx.gas &lt;= state_gas_available.
+    /// </remarks>
+    /// <param name="blockGasLimit">The block's gas limit.</param>
+    /// <param name="cumulativeBlockRegular">The block's cumulative regular gas used.</param>
+    /// <param name="cumulativeBlockState">The block's cumulative state gas used.</param>
+    /// <param name="txGas">The transaction's gas limit.</param>
+    /// <param name="intrinsicRegular">Unused. Kept for backward compatibility.</param>
+    /// <param name="intrinsicState">Unused. Kept for backward compatibility.</param>
+    /// <returns>An Outcome representing the validation result.</returns>
     public static Outcome Validate(
         ulong blockGasLimit,
         ulong cumulativeBlockRegular,
@@ -24,16 +40,11 @@ public static class Eip8037BlockGasInclusionCheck
         ulong regularAvailable = blockGasLimit - cumulativeBlockRegular;
         ulong stateAvailable = blockGasLimit - cumulativeBlockState;
 
-        // Keep below-intrinsic txs from producing a negative worst-case regular dimension.
-        ulong worstCaseRegular = txGas > intrinsicState ? txGas - intrinsicState : 0UL;
-        if (worstCaseRegular > Eip7825Constants.DefaultTxGasLimitCap)
-            worstCaseRegular = Eip7825Constants.DefaultTxGasLimitCap;
+        ulong worstCaseRegular = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
         if (worstCaseRegular > regularAvailable)
             return Outcome.RegularDimensionExceeded;
 
-        // The state dimension has no per-tx equivalent of EIP-7825's DefaultTxGasLimitCap;
-        // state-heavy work may be funded by the state reservoir above that regular-dimension cap.
-        ulong worstCaseState = txGas > intrinsicRegular ? txGas - intrinsicRegular : 0UL;
+        ulong worstCaseState = txGas;
         if (worstCaseState > stateAvailable)
             return Outcome.StateDimensionExceeded;
 

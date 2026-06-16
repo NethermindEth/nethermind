@@ -27,31 +27,31 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private ulong _minBlock = ulong.MaxValue;
     private Task _pruningTask = Task.CompletedTask;
 
-    public Hash256? GetHash(BlockHeader headBlock, int depth) =>
+    public Hash256? GetHash(BlockHeader headBlock, ulong depth) =>
         depth == 0 ? headBlock.Hash
         : depth == 1 ? headBlock.ParentHash
-        : (ulong)depth > MaxDepth ? null
-        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[depth - 2]
+        : depth > MaxDepth ? null
+        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[(int)depth - 2]
         : Load(headBlock, depth, out _)?.Hash;
 
-    private CacheNode? Load(BlockHeader blockHeader, int depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
+    private CacheNode? Load(BlockHeader blockHeader, ulong depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
     {
         hashes = null;
-        if ((ulong)depth > MaxDepth) return null;
-        bool alwaysAdd = (ulong)depth == MaxDepth;
-        using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new(depth + 1);
+        if (depth > MaxDepth) return null;
+        bool alwaysAdd = depth == MaxDepth;
+        using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new((int)depth + 1);
         Hash256 currentHash = blockHeader.Hash!;
         CacheNode currentNode = null;
         bool needToAddAny = false;
-        int skipped = 0;
-        for (int i = 0; i <= depth && !cancellationToken.IsCancellationRequested; i++)
+        ulong skipped = 0;
+        for (ulong i = 0; i <= depth && !cancellationToken.IsCancellationRequested; i++)
         {
             bool needToAdd = false;
             if (currentNode is null)
             {
                 if (!_blocks.TryGetValue(currentHash, out currentNode))
                 {
-                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - (ulong)i);
+                    BlockHeader? currentHeader = i == 0 ? blockHeader : headerFinder.Get(currentHash, blockHeader.Number - i);
                     if (currentHeader is null)
                     {
                         break;
@@ -115,7 +115,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        int index = depth - skipped;
+        int index = (int)depth - (int)skipped;
         return index < 0 ? currentNode // if index <0 then we skipped everything and got it from cache
             : blocks.Count > index
                 ? blocks[index].Node
@@ -148,7 +148,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                     }
                     else
                     {
-                        Load(blockHeader, (int)MaxDepth, out hashes, cancellationToken);
+                        Load(blockHeader, MaxDepth, out hashes, cancellationToken);
                     }
                 }
             }
@@ -266,7 +266,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             nodes++;
         }
 
-        return new Stats(nodes, parents.Values.Count(p => p == 0), _flatCache.Count);
+        return new Stats((ulong)nodes, (ulong)parents.Values.Count(p => p == 0), (ulong)_flatCache.Count);
     }
 
     /// <summary>
@@ -280,5 +280,5 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         public CacheNode? Parent { get; set; } = parent;
     }
 
-    public record struct Stats(int Nodes, int Roots, int FlatCache);
+    public record struct Stats(ulong Nodes, ulong Roots, ulong FlatCache);
 }

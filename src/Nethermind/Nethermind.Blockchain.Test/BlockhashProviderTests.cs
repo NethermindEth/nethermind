@@ -181,7 +181,7 @@ public class BlockhashProviderTests
     public void Blockhash_lookup_with_full_chain(ulong chainLength, int lookupOffset, bool expectNonNull)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfChainLength((int)chainLength);
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfChainLength(chainLength);
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
@@ -225,7 +225,7 @@ public class BlockhashProviderTests
     public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash(ulong chainLength)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength((int)chainLength);
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
         BlockTree tree = blockTreeBuilder.TestObject;
 
         BlockHeader? head = tree.FindHeader(chainLength - 1ul, BlockTreeLookupOptions.None);
@@ -273,7 +273,7 @@ public class BlockhashProviderTests
     {
         ulong chainLength = 42ul;
         Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength((int)chainLength).TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
 
         BlockHeader? head = tree.FindHeader(chainLength - 1ul, BlockTreeLookupOptions.None);
         // number = chainLength

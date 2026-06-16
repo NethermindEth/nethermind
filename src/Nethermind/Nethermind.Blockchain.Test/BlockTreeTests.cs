@@ -1368,7 +1368,7 @@ public class BlockTreeTests
 
         for (ulong i = beginIndex; i > beginIndex - insertedBlocks; i--)
         {
-            tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty((long)i).TestObject);
+            tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
         }
 
         builder.MetadataDb.Delete(MetadataDbKeys.LowestInsertedFastHeaderHash);
@@ -1911,17 +1911,18 @@ public class BlockTreeTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(10, false, 10000000ul)]
-    [TestCase(4, false, 4000000ul)]
-    [TestCase(10, true, 10000000ul)]
-    public void Recovers_total_difficulty(int chainLength, bool deleteAllLevels, ulong expectedTotalDifficulty)
+    [TestCase(10ul, false, 10000000ul)]
+    [TestCase(4ul, false, 4000000ul)]
+    [TestCase(10ul, true, 10000000ul)]
+    public void Recovers_total_difficulty(ulong chainLength, bool deleteAllLevels, ulong expectedTotalDifficulty)
     {
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength);
         BlockTree blockTree = blockTreeBuilder.TestObject;
-        int chainLeft = deleteAllLevels ? 0 : 1;
-        for (int i = chainLength - 1; i >= chainLeft; i--)
+        ulong chainLeft = deleteAllLevels ? 0UL : 1UL;
+        for (ulong i = chainLength; i > chainLeft;)
         {
-            ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel((ulong)i);
+            i--;
+            ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
             if (level is not null)
             {
                 for (int j = 0; j < level.BlockInfos.Length; j++)
@@ -1934,15 +1935,16 @@ public class BlockTreeTests
                     }
                 }
 
-                blockTreeBuilder.ChainLevelInfoRepository.Delete((ulong)i);
+                blockTreeBuilder.ChainLevelInfoRepository.Delete(i);
             }
         }
 
         Assert.That(blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.EqualTo(new UInt256(expectedTotalDifficulty)));
 
-        for (int i = chainLength - 1; i >= 0; i--)
+        for (ulong i = chainLength; i > 0;)
         {
-            ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel((ulong)i);
+            i--;
+            ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
 
             Assert.That(level, Is.Not.Null);
             Assert.That(level!.BlockInfos.Length, Is.EqualTo(1));
@@ -2171,7 +2173,7 @@ public class BlockTreeTests
         {
             currentHeader = Build.A.BlockHeader
                 .WithDifficulty(1)
-                .WithTotalDifficulty((long)(currentHeader.TotalDifficulty + 1)!)
+                .WithTotalDifficulty((ulong)(currentHeader.TotalDifficulty + 1)!)
                 .WithParent(currentHeader)
                 .TestObject;
             batch.Add(currentHeader);
@@ -2454,11 +2456,11 @@ public class BlockTreeTests
         }
     }
 
-    [TestCase(1, false, TestName = "SingleDescendant")]
-    [TestCase(3, false, TestName = "MultipleDescendants")]
-    [TestCase(3, true, TestName = "MultipleDescendantsWithGap")]
+    [TestCase(1ul, false, TestName = "SingleDescendant")]
+    [TestCase(3ul, false, TestName = "MultipleDescendants")]
+    [TestCase(3ul, true, TestName = "MultipleDescendantsWithGap")]
     [MaxTime(Timeout.MaxTestTime)]
-    public void UpdateMainChain_WhenBeaconSyncMarksThenReorgsToSibling_ClearsStaleMarkers(int descendantCount, bool simulateGap)
+    public void UpdateMainChain_WhenBeaconSyncMarksThenReorgsToSibling_ClearsStaleMarkers(ulong descendantCount, bool simulateGap)
     {
         // Beacon sync marks N descendants canonical (wereProcessed=false, Head stays stale at H=1).
         // FCU reorgs to sibling at the same height. All stale markers must be cleared.
@@ -2469,7 +2471,7 @@ public class BlockTreeTests
         Block headBlock = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xAA]).TestObject;
         blockTree.SuggestBlock(headBlock);
 
-        Block[] descendants = BuildAndSuggestChain(blockTree, headBlock, descendantCount);
+        Block[] descendants = BuildAndSuggestChain(blockTree, headBlock, (int)descendantCount);
 
         // FCU sets Head to headBlock at H=1
         blockTree.UpdateMainChain(new[] { headBlock }, wereProcessed: true, forceUpdateHeadBlock: true);
@@ -2508,7 +2510,7 @@ public class BlockTreeTests
         }
 
         // FindCanonicalBlockInfo must return null for all orphaned heights
-        for (ulong h = 2ul; h <= (ulong)descendantCount + 1ul; h++)
+        for (ulong h = 2; h <= descendantCount + 1; h++)
         {
             Assert.That(blockTree.FindCanonicalBlockInfo(h), Is.Null, $"H={h} must return null — orphaned after reorg");
         }

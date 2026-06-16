@@ -217,10 +217,10 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         remove => throw new NotSupportedException();
     }
 
-    public Hash256? GetHash(BlockHeader headBlock, int depth) =>
+    public Hash256? GetHash(BlockHeader headBlock, ulong depth) =>
         depth == 0
             ? headBlock.Hash
-            : _numberToHeader.TryGetValue(headBlock.Number - (ulong)depth, out BlockHeader? header)
+            : _numberToHeader.TryGetValue(headBlock.Number - depth, out BlockHeader? header)
                 ? header?.Hash
                 : null;
 

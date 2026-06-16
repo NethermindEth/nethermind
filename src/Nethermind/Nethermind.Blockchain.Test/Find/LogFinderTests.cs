@@ -389,7 +389,6 @@ public class LogFinderTests
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
 
-
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
         new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);
 

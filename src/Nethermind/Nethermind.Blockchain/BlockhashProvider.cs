@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
                 1UL => currentBlock.ParentHash,
                 _ => hashes is not null
                     ? hashes[(int)(depth - 1)]
-                    : blockhashCache.GetHash(currentBlock, (int)depth)
+                    : blockhashCache.GetHash(currentBlock, depth)
                       ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation")
             };
         }

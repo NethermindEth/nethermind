@@ -162,7 +162,7 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
             .TestObject;
 
-        tx.Value = (ulong)(AccountBalance - GasCostOf.Transaction);
+        tx.Value = AccountBalance - GasCostOf.Transaction;
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
         TransactionResult result = Execute(tx, block);

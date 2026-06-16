@@ -134,6 +134,12 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
+    public BlockHeaderBuilder WithTotalDifficulty(ulong totalDifficulty)
+    {
+        TestObjectInternal.TotalDifficulty = totalDifficulty;
+        return this;
+    }
+
     public BlockHeaderBuilder WithGasLimit(ulong gasLimit)
     {
         TestObjectInternal.GasLimit = gasLimit;

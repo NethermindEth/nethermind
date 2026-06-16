@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain;
 
 public interface IBlockhashCache
 {
-    Hash256? GetHash(BlockHeader headBlock, int depth);
+    Hash256? GetHash(BlockHeader headBlock, ulong depth);
     Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken);
 
     /// <summary>Drops all cached block-hash chains.</summary>
