@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api;
@@ -336,7 +337,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorageRaw(addrHash, slotHash, SlotValue.FromBytes(storageValue));
+            ReadOnlySpan<byte> stripped = ((ReadOnlySpan<byte>)storageValue).WithoutLeadingZeros();
+            writer.SetStorageRawEncoded(addrHash, slotHash, Rlp.Encode(stripped).Bytes);
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())

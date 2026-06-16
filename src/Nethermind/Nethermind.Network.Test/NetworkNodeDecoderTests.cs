@@ -17,17 +17,12 @@ namespace Nethermind.Network.Test
     [TestFixture]
     public class NetworkNodeDecoderTests
     {
-        [Test]
-        public void Can_do_roundtrip()
+        [TestCase("127.0.0.1", 30303, 100L)]
+        [TestCase("127.0.0.1", 30303, -100L)]
+        [TestCase("127.0.0.1", -1, -100L)]
+        public void Can_do_roundtrip(string host, int port, long reputation)
         {
-            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
-            AssertRoundtripPreservesFields(node);
-        }
-
-        [Test]
-        public void Can_do_roundtrip_negative_reputation()
-        {
-            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, -100L);
+            NetworkNode node = new(TestItem.PublicKeyA, host, port, reputation);
             AssertRoundtripPreservesFields(node);
         }
 
@@ -47,17 +42,10 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test]
-        public void Negative_port_just_in_case_for_resilience()
-        {
-            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", -1, -100L);
-            AssertRoundtripPreservesFields(node);
-        }
-
         private static void AssertRoundtripPreservesFields(NetworkNode node)
         {
             NetworkNodeDecoder networkNodeDecoder = new();
-            Rlp encoded = Rlp.Encode(node);
+            Rlp encoded = networkNodeDecoder.Encode(node);
             Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
             using (Assert.EnterMultipleScope())
@@ -79,7 +67,7 @@ namespace Nethermind.Network.Test
                 Reputation = 100L
             };
 
-            Rlp encoded = Rlp.Encode(node);
+            Rlp encoded = networkNodeDecoder.Encode(node);
             Rlp.ValueDecoderContext context = encoded.Bytes.AsRlpValueContext();
             NetworkNode decoded = networkNodeDecoder.Decode(ref context);
 

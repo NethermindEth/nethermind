@@ -24,7 +24,7 @@ public sealed class NodeSource(
 
     private readonly ILogger _logger = logManager.GetClassLogger<NodeSource>();
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.IdHash;
-    private readonly int _recentNodeLimit = Math.Max(ChannelCapacity, kademliaConfig.KSize * Hash256KademliaDistance.Instance.MaxDistance);
+    private readonly int _recentNodeLimit = RecentNodeFilter.GetLimit(kademliaConfig.KSize, Hash256KademliaDistance.Instance.MaxDistance, ChannelCapacity);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {

@@ -11,12 +11,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
     public class NetworkStorage(IFullDb? fullDb, ILogManager? logManager) : INetworkStorage
     {
+        private static readonly NetworkNodeDecoder NodeDecoder = NetworkNodeDecoder.Instance;
+
         private readonly Lock _lock = new();
         private readonly IFullDb _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
         private readonly ILogger _logger = logManager?.GetClassLogger<NetworkStorage>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -92,7 +93,7 @@ namespace Nethermind.Network
         {
             lock (_lock)
             {
-                byte[] rlp = Rlp.Encode(node).Bytes;
+                byte[] rlp = NodeDecoder.Encode(node).Bytes;
                 UpdateNodeImpl(node, rlp);
             }
         }
@@ -121,7 +122,7 @@ namespace Nethermind.Network
             List<(NetworkNode Node, byte[] Rlp)> encodedNodes = [];
             foreach (NetworkNode node in nodes)
             {
-                encodedNodes.Add((node, Rlp.Encode(node).Bytes));
+                encodedNodes.Add((node, NodeDecoder.Encode(node).Bytes));
             }
 
             lock (_lock)
@@ -224,7 +225,7 @@ namespace Nethermind.Network
 
         private static NetworkNode GetNode(byte[] networkNodeRaw)
         {
-            NetworkNode persistedNode = Rlp.Decode<NetworkNode>(networkNodeRaw);
+            NetworkNode persistedNode = NodeDecoder.DecodeComplete(networkNodeRaw);
             return persistedNode;
         }
 

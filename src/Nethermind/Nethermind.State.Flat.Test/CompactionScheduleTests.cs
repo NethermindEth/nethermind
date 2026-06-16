@@ -44,6 +44,33 @@ public class CompactionScheduleTests
         Assert.That(after, Is.EqualTo(before));
     }
 
+    [Test]
+    public void Constructor_ConfiguredOffset_UsedWithoutTouchingDb()
+    {
+        MemDb metadataDb = new();
+        FlatDbConfig config = new() { CompactSize = 32, CompactionOffset = 7 };
+
+        CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
+
+        Assert.That(schedule.Offset, Is.EqualTo(7));
+        Assert.That(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset), Is.Null);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Constructor_ConfiguredOffset_TakesPrecedenceOverStoredValue(bool regenerateFlag)
+    {
+        MemDb metadataDb = new();
+        metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, EncodedOffset(5));
+        FlatDbConfig config = new() { CompactSize = 32, CompactionOffset = 7, RegenerateCompactionOffset = regenerateFlag };
+
+        CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
+
+        Assert.That(schedule.Offset, Is.EqualTo(7));
+        long stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!.AsRlpValueContext().DecodeLong();
+        Assert.That(stored, Is.EqualTo(5), "configured offset should not modify the stored offset");
+    }
+
     [TestCase(1_000_000L)]
     [TestCase(int.MaxValue - 1L)]
     public void Constructor_StoredLargePositiveValue_KeptAsIs(long stored)

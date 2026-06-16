@@ -77,8 +77,8 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     public virtual int TryGetBlobsAndProofsV1(
         byte[][] requestedBlobVersionedHashes,
-        byte[]?[] blobs,
-        ReadOnlyMemory<byte[]>[] proofs)
+        Span<byte[]?> blobs,
+        Span<ReadOnlyMemory<byte[]>> proofs)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
         int found = 0;

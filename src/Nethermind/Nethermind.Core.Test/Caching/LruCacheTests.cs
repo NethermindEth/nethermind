@@ -312,25 +312,10 @@ namespace Nethermind.Core.Test.Caching
             }
         }
 
-        [Test]
-        public async Task Clear_invokes_eviction_callback_outside_lock()
-        {
-            LruCache<int, int> cache = null!;
-            TaskCompletionSource<bool> callbackResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            cache = new LruCache<int, int>(2, "test", _ => callbackResult.SetResult(cache.Contains(1)));
-            cache.Set(1, 10);
-
-            Task clearTask = Task.Run(cache.Clear);
-            Task completedTask = await Task.WhenAny(clearTask, Task.Delay(TimeSpan.FromSeconds(5)));
-
-            Assert.That(completedTask, Is.SameAs(clearTask));
-            await clearTask;
-            Assert.That(await callbackResult.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.False);
-        }
-
         [TestCase(EvictionOperation.Delete, false)]
         [TestCase(EvictionOperation.ReplaceExisting, true)]
         [TestCase(EvictionOperation.ReplaceOldest, false)]
+        [TestCase(EvictionOperation.Clear, false)]
         public async Task Eviction_callback_is_invoked_outside_lock(EvictionOperation operation, bool expectedContainsResult)
         {
             LruCache<int, int> cache = null!;
@@ -404,6 +389,9 @@ namespace Nethermind.Core.Test.Caching
                 case EvictionOperation.ReplaceOldest:
                     cache.Set(3, 30);
                     return;
+                case EvictionOperation.Clear:
+                    cache.Clear();
+                    return;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
             }
@@ -413,7 +401,8 @@ namespace Nethermind.Core.Test.Caching
         {
             Delete,
             ReplaceExisting,
-            ReplaceOldest
+            ReplaceOldest,
+            Clear
         }
     }
 }

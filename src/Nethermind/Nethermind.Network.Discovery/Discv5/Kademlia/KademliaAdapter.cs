@@ -166,6 +166,14 @@ public sealed class KademliaAdapter(
                 {
                     await HandlePacket(result, token);
                 }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Error handling discv5 packet from {result.RemoteEndPoint}: {e}");
+                }
                 finally
                 {
                     result.Dispose();
