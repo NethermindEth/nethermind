@@ -44,9 +44,7 @@ public class CountingStreamPipeWriterTests
         Assert.That(written.AsSpan(first, second).ToArray(), Is.All.EqualTo((byte)0xCD));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Large_payload_round_trips(bool useAsync)
+    public async Task Large_payload_round_trips([Values] bool useAsync)
     {
         string[] payload = Enumerable.Range(0, 100_000).Select(i => $"item-{i:D6}").ToArray();
 
