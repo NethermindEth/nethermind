@@ -33,21 +33,19 @@ public sealed class ArenaManager : IArenaManager
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
     private readonly PageResidencyTracker _pageTracker;
-    // Null when the tracker is disabled.
-    private readonly Timer? _metricsTimer;
-    // Page-eviction machinery (queue ring, background drain, dispatch, counters); null when the
-    // tracker is disabled (no pages tracked → no evictions to dispatch).
-    private readonly EvictionDispatcher? _evictor;
+    // Kernel page-residency machinery: eviction ring + drain, sibling warming, and the resident-bytes
+    // metric timer. Null when the tracker is disabled (no pages tracked).
+    private readonly PageResidencyAdvisor? _pageAdvisor;
     private int _nextArenaId;
     private bool _disposed;
     // 1 while fallocate(PUNCH_HOLE) is usable on the arena filesystem; latched to 0 the
     // first time the kernel reports it permanently unsupported.
     private int _punchHoleSupported = 1;
 
-    internal long EvictionsQueued => _evictor?.Queued ?? 0;
-    internal long EvictionsInlineFallback => _evictor?.InlineFallback ?? 0;
-    internal long EvictionsSkippedRetouched => _evictor?.SkippedRetouched ?? 0;
-    internal long EvictionsDispatched => _evictor?.Dispatched ?? 0;
+    internal long EvictionsQueued => _pageAdvisor?.Queued ?? 0;
+    internal long EvictionsInlineFallback => _pageAdvisor?.InlineFallback ?? 0;
+    internal long EvictionsSkippedRetouched => _pageAdvisor?.SkippedRetouched ?? 0;
+    internal long EvictionsDispatched => _pageAdvisor?.Dispatched ?? 0;
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
@@ -61,23 +59,21 @@ public sealed class ArenaManager : IArenaManager
         _logger = logManager.GetClassLogger<ArenaManager>();
         Directory.CreateDirectory(basePath);
         _pageTracker = PageResidencyTracker.FromByteBudget(config.PersistedSnapshotArenaPageCacheBytes);
-        // ResidentBytes is refreshed by _metricsTimer below; seed to 0 so the gauge appears immediately.
-        Metrics.PageTrackerResidentBytes = 0L;
         Metrics.PageTrackerMetadataBytes = _pageTracker.MetadataBytes;
-        // Poll _residentPages once a second rather than pushing on every Inserted — keeps the
-        // hot path untouched; the gauge lags by at most ~1s. Skip when the tracker is disabled.
-        if (_pageTracker.MaxCapacity > 0)
-            _metricsTimer = new Timer(RefreshResidencyMetric, null,
-                dueTime: TimeSpan.FromSeconds(1), period: TimeSpan.FromSeconds(1));
 
-        // Eviction queue sized at 10% of the tracker's slot capacity (rounded up to the next
-        // power of two, floored at 64). Skip the ring + drain task when the tracker is disabled.
+        // The advisor owns the kernel page-residency machinery — the eviction ring + drain, sibling
+        // warming, and the resident-bytes metric timer. Skipped entirely when the tracker is disabled.
         if (_pageTracker.MaxCapacity > 0)
         {
-            int ringCapacity = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(64, _pageTracker.MaxCapacity / 10));
-            _evictor = new EvictionDispatcher(this, ringCapacity);
+            // Eviction queue sized at ~1% of the tracker's slot capacity, floored at 128 cache lines
+            // (1024 8-byte entries) and rounded up to the next power of two.
+            const int minRingEntries = 128 * (CacheLineBytes / sizeof(long));
+            int ringCapacity = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(minRingEntries, _pageTracker.MaxCapacity / 100));
+            _pageAdvisor = new PageResidencyAdvisor(this, ringCapacity);
         }
     }
+
+    private const int CacheLineBytes = 64;
 
     /// <summary>
     /// Initialize from existing arena files and catalog entries.
@@ -85,7 +81,7 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries)
     {
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             // Open existing arena files. Defer the per-file metric push until after frontier
             // computation so the initial ArenaAllocatedBytes delta reflects the
@@ -138,7 +134,7 @@ public sealed class ArenaManager : IArenaManager
             {
                 liveSizes.TryGetValue(kv.Key, out long live);
                 kv.Value.DeadBytes = kv.Value.Frontier - live;
-                OnArenaAdded(kv.Value);
+                kv.Value.ReportAdded();
             }
         }
     }
@@ -152,7 +148,7 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     public ArenaWriter CreateWriter(long estimatedSize)
     {
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             bool dedicated = estimatedSize >= _dedicatedArenaThreshold;
             ArenaFile file = dedicated
@@ -176,7 +172,7 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     internal void OnWriteCompleted(ArenaFile file, bool hasHeadroom)
     {
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             if (hasHeadroom) _mutableArenas.Add(file.Id);
             // Ratchet ArenaAllocatedBytes up to file.Frontier (post-write high-water): push the
@@ -197,7 +193,7 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     internal void OnWriteCancelledShared(int arenaId)
     {
-        lock (_lock) _mutableArenas.Add(arenaId);
+        using (_lock.EnterScope()) _mutableArenas.Add(arenaId);
     }
 
     /// <summary>
@@ -209,10 +205,10 @@ public sealed class ArenaManager : IArenaManager
     /// </summary>
     internal void OnWriteCancelledDedicated(ArenaFile file)
     {
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             _arenas.TryRemove(file.Id, out _);
-            OnArenaRemoved(file);
+            file.ReportRemoved();
         }
     }
 
@@ -244,7 +240,7 @@ public sealed class ArenaManager : IArenaManager
     /// </returns>
     public bool MarkDead(ArenaFile file, long deadSize)
     {
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             // After Dispose, on-disk files must be preserved for the next session — skip
             // dead-byte accounting and file deletion entirely. Reporting "not surviving"
@@ -256,7 +252,7 @@ public sealed class ArenaManager : IArenaManager
             _mutableArenas.Remove(file.Id);
             if (_arenas.TryRemove(file.Id, out _))
             {
-                OnArenaRemoved(file);
+                file.ReportRemoved();
                 file.Dispose();
             }
             return false;
@@ -298,31 +294,10 @@ public sealed class ArenaManager : IArenaManager
         // The kernel has just dropped many pages at once (whole-range MADV_DONTNEED at the call
         // sites) — refresh resident pages proportionally so its LRU doesn't bleed into our
         // working set. Same 1:2 drop-to-warm ratio as the single-page dispatch path.
-        TouchWarmPages((int)Math.Min(int.MaxValue, pageCount * 2));
+        _pageAdvisor?.TouchWarmPages((int)Math.Min(int.MaxValue, pageCount * 2));
     }
 
-    public void QueueEviction(int arenaId, int pageIdx) => _evictor?.Queue(arenaId, pageIdx);
-
-    // Refresh up to <paramref name="targetTouches"/> resident pages' kernel-side LRU position
-    // so MADV_DONTNEED on a sibling doesn't pull them out of the page cache under memory
-    // pressure. Called from the single-page dispatch path (background drain + ring-full inline
-    // fallback) and from the bulk ForgetTrackerRange path, with the count scaled to the number
-    // of pages just dropped. Exits early if the tracker has nothing to pick.
-    private void TouchWarmPages(int targetTouches)
-    {
-        for (int i = 0; i < targetTouches; i++)
-        {
-            if (!_pageTracker.TryPickResidentPage(out int warmArenaId, out int warmPageIdx)) return;
-            if (!_arenas.TryGetValue(warmArenaId, out ArenaFile? warmArena)) continue;
-            long warmOffset = (long)warmPageIdx * Environment.SystemPageSize;
-            if (warmOffset >= warmArena.MappedSize) continue;
-            // Userspace load on a torn-down mapping would SIGSEGV (madvise tolerates a bad
-            // pointer; a raw load does not) — pin the file for the duration of the read.
-            if (!warmArena.TryAcquireLease()) continue;
-            try { warmArena.TouchByte(warmOffset); }
-            finally { warmArena.Dispose(); }
-        }
-    }
+    public void QueueEviction(int arenaId, int pageIdx) => _pageAdvisor?.Queue(arenaId, pageIdx);
 
     private ArenaFile GetOrCreateArena(long requiredSize)
     {
@@ -361,37 +336,8 @@ public sealed class ArenaManager : IArenaManager
         _arenas[id] = arena;
         // Fresh shared file isn't added to _mutableArenas — the writer that just took it
         // is its "owner". The writer's Complete / Cancel adds it (if room remains).
-        OnArenaAdded(arena);
+        arena.ReportAdded();
         return arena;
-    }
-
-    // Push-style gauge updates, called under _lock at every file add / remove site. The bytes
-    // gauge tracks **allocated** bytes (file.Frontier — what's been written), not the
-    // pre-extended mmap region.
-    private static void OnArenaAdded(ArenaFile file)
-    {
-        Interlocked.Increment(ref Metrics._arenaFileCount);
-        long frontier = file.Frontier;
-        file.ReportedFrontier = frontier;
-        if (frontier > 0)
-            Interlocked.Add(ref Metrics._arenaAllocatedBytes, frontier);
-    }
-
-    private static void OnArenaRemoved(ArenaFile file)
-    {
-        Interlocked.Decrement(ref Metrics._arenaFileCount);
-        long reported = file.ReportedFrontier;
-        file.ReportedFrontier = 0;
-        if (reported > 0)
-            Interlocked.Add(ref Metrics._arenaAllocatedBytes, -reported);
-    }
-
-    // Mirror the tracker's resident-bytes counter into the gauge from a 1s timer. ResidentBytes
-    // is a single Volatile.Read, safe against the hot Inserted path.
-    private void RefreshResidencyMetric(object? _)
-    {
-        if (_disposed) return;
-        Metrics.PageTrackerResidentBytes = _pageTracker.ResidentBytes;
     }
 
     private static int ParseArenaId(string filePath, bool dedicated)
@@ -405,23 +351,21 @@ public sealed class ArenaManager : IArenaManager
     public void Dispose()
     {
         // Idempotent — owners higher up may also Dispose us through their own teardown.
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             if (_disposed) return;
             _disposed = true;
         }
 
-        _metricsTimer?.Dispose();
+        // Stop the residency-metric timer + drain task and flush leftover evictions before the arenas
+        // below are torn down (the drain dispatches against them).
+        _pageAdvisor?.Dispose();
 
-        // Stop the drain task and flush leftover evictions before the arenas below are torn
-        // down (the drain dispatches against them).
-        _evictor?.Dispose();
-
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
             {
-                OnArenaRemoved(kv.Value);
+                kv.Value.ReportRemoved();
                 kv.Value.Dispose();
             }
             _arenas.Clear();
@@ -434,18 +378,22 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <summary>
-    /// Owns the page-eviction queue and its background drain. Producers call <see cref="Queue"/>
-    /// to enqueue <c>(arenaId, pageIdx)</c> onto a bounded MPSC ring; a worker drains it and runs
-    /// the <c>madvise(MADV_DONTNEED)</c> (and optional <c>posix_fadvise</c>) syscalls off the
-    /// producer thread, re-checking residency and warming siblings via the owning manager.
+    /// Advises the kernel about arena page residency. Producers call <see cref="Queue"/> to enqueue
+    /// <c>(arenaId, pageIdx)</c> evictions onto a bounded MPSC ring; a background worker drains it and runs
+    /// the <c>madvise(MADV_DONTNEED)</c> (and optional <c>posix_fadvise</c>) syscalls off the producer
+    /// thread, re-checking residency and warming siblings (<see cref="TouchWarmPages"/>) so the kernel LRU
+    /// doesn't bleed into our working set. Also owns the 1s timer that publishes the resident-bytes gauge.
     /// </summary>
-    private sealed class EvictionDispatcher : IDisposable
+    private sealed class PageResidencyAdvisor : IDisposable
     {
         private readonly ArenaManager _manager;
         private readonly MpmcRingBuffer<long> _ring;
         private readonly SemaphoreSlim _wake = new(0, int.MaxValue);
         private readonly CancellationTokenSource _drainCts = new();
         private readonly Task _drainTask;
+        // Mirrors the tracker's resident-bytes counter into the gauge on a 1s tick.
+        private readonly Timer _metricsTimer;
+        private volatile bool _disposed;
         // 0 = drain may sleep, 1 = at least one item is queued. Producers flip 0→1 and Release; the
         // drain resets it to 0 before draining and re-checks after to close the lost-wakeup race.
         private int _signal;
@@ -455,11 +403,43 @@ public sealed class ArenaManager : IArenaManager
         private long _skippedRetouched;
         private long _dispatched;
 
-        public EvictionDispatcher(ArenaManager manager, int ringCapacity)
+        public PageResidencyAdvisor(ArenaManager manager, int ringCapacity)
         {
             _manager = manager;
             _ring = new MpmcRingBuffer<long>(ringCapacity);
             _drainTask = Task.Run(() => DrainAsync(_drainCts.Token));
+            // Poll resident pages once a second rather than pushing on every Inserted — keeps the hot
+            // path untouched; the gauge lags by at most ~1s. Seed to 0 so it appears immediately.
+            Metrics.PageTrackerResidentBytes = 0L;
+            _metricsTimer = new Timer(RefreshResidencyMetric, null,
+                dueTime: TimeSpan.FromSeconds(1), period: TimeSpan.FromSeconds(1));
+        }
+
+        // Refresh up to <paramref name="targetTouches"/> resident pages' kernel-side LRU position so
+        // MADV_DONTNEED on a sibling doesn't pull them out of the page cache under memory pressure. Called
+        // from the single-page dispatch path (drain + ring-full inline fallback) and from the bulk
+        // ForgetTrackerRange path, scaled to the number of pages just dropped. Exits early if the tracker
+        // has nothing to pick.
+        public void TouchWarmPages(int targetTouches)
+        {
+            for (int i = 0; i < targetTouches; i++)
+            {
+                if (!_manager._pageTracker.TryPickResidentPage(out int warmArenaId, out int warmPageIdx)) return;
+                if (!_manager._arenas.TryGetValue(warmArenaId, out ArenaFile? warmArena)) continue;
+                long warmOffset = (long)warmPageIdx * Environment.SystemPageSize;
+                if (warmOffset >= warmArena.MappedSize) continue;
+                // Userspace load on a torn-down mapping would SIGSEGV (madvise tolerates a bad pointer; a
+                // raw load does not) — pin the file for the duration of the read.
+                if (!warmArena.TryAcquireLease()) continue;
+                try { warmArena.TouchByte(warmOffset); }
+                finally { warmArena.Dispose(); }
+            }
+        }
+
+        private void RefreshResidencyMetric(object? _)
+        {
+            if (_disposed) return;
+            Metrics.PageTrackerResidentBytes = _manager._pageTracker.ResidentBytes;
         }
 
         public long Queued => Volatile.Read(ref _queued);
@@ -535,12 +515,16 @@ public sealed class ArenaManager : IArenaManager
                 arena.FadviseDontNeed(offset, pageSize);
 
             // 1:2 drop-to-warm ratio (one dropped page → two refreshed pages).
-            _manager.TouchWarmPages(2);
+            TouchWarmPages(2);
         }
 
         public void Dispose()
         {
-            // Stop the drain task first so it doesn't race with the manager's arena disposal.
+            // Stop the residency-metric timer first; the flag makes any in-flight tick a no-op.
+            _disposed = true;
+            _metricsTimer.Dispose();
+
+            // Stop the drain task next so it doesn't race with the manager's arena disposal.
             _drainCts.Cancel();
             try { _wake.Release(); } catch (ObjectDisposedException) { /* concurrent dispose */ }
             try { _drainTask.GetAwaiter().GetResult(); }

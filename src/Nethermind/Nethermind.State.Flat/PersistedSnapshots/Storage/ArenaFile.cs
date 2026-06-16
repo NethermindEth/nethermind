@@ -72,6 +72,31 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     internal long ReportedFrontier { get; set; }
 
+    // Push-style gauge updates, called by ArenaManager under its lock at every file add / remove site.
+    // The bytes gauge tracks **allocated** bytes (Frontier — what's been written), not the pre-extended
+    // mmap region.
+
+    /// <summary>Bump the arena-file count and report this file's allocated bytes (its
+    /// <see cref="Frontier"/>), seeding <see cref="ReportedFrontier"/>.</summary>
+    internal void ReportAdded()
+    {
+        Interlocked.Increment(ref Metrics._arenaFileCount);
+        long frontier = Frontier;
+        ReportedFrontier = frontier;
+        if (frontier > 0)
+            Interlocked.Add(ref Metrics._arenaAllocatedBytes, frontier);
+    }
+
+    /// <summary>Drop the arena-file count and back out this file's last reported allocated bytes.</summary>
+    internal void ReportRemoved()
+    {
+        Interlocked.Decrement(ref Metrics._arenaFileCount);
+        long reported = ReportedFrontier;
+        ReportedFrontier = 0;
+        if (reported > 0)
+            Interlocked.Add(ref Metrics._arenaAllocatedBytes, -reported);
+    }
+
     public ArenaFile(int id, string path, long mappedSize)
     {
         Id = id;
