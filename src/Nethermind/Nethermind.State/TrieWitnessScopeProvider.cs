@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -38,7 +39,8 @@ public class TrieWitnessScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, bool trackWitness = false) =>
         trackWitness
-            ? new TrieWitnessScope(baseProvider.BeginScope(baseBlock, false), baseBlock, readOnlyTrieStoreFactory, logManager)
+            // Propagate trackWitness so the backend captures the structural nodes read during its commit.
+            ? new TrieWitnessScope(baseProvider.BeginScope(baseBlock, true), baseBlock, readOnlyTrieStoreFactory, logManager)
             : baseProvider.BeginScope(baseBlock, false);
 
     private sealed class TrieWitnessScope(
@@ -76,15 +78,28 @@ public class TrieWitnessScopeProvider(
 
         private IReadOnlyList<byte[]> BuildWitness()
         {
-            // Walk a fresh read-only view at the base state root (flat: a fresh snapshot bundle; trie: the
-            // shared read-only store) — never the live scope, which a block-level witness mutates on commit.
+            // Read proofs: walk a fresh read-only view at the base state root (flat: a fresh snapshot bundle;
+            // trie: the shared read-only store) — never the live scope, which a block-level witness mutates.
             IReadOnlyTrieStore roStore = readOnlyTrieStoreFactory();
             using IDisposable _ = roStore.BeginScope(baseBlock);
-            return StorageWitnessCollector.Collect(
+            IReadOnlyList<byte[]> walk = StorageWitnessCollector.Collect(
                 roStore.GetTrieStore(null),
                 baseBlock?.StateRoot ?? Keccak.EmptyTreeHash,
                 _touchedKeys,
                 logManager);
+
+            // Structural nodes: the sibling/collapse nodes the backend captured while recomputing the
+            // post-state root at commit — not on any touched-key path, but required for stateless re-execution.
+            IReadOnlyList<byte[]>? commitNodes = baseScope.Witness;
+            if (commitNodes is null || commitNodes.Count == 0) return walk;
+
+            HashSet<byte[]> seen = new(Bytes.EqualityComparer);
+            List<byte[]> merged = new(walk.Count + commitNodes.Count);
+            foreach (byte[] node in walk)
+                if (seen.Add(node)) merged.Add(node);
+            foreach (byte[] node in commitNodes)
+                if (seen.Add(node)) merged.Add(node);
+            return merged;
         }
 
         // The rest is plain delegation to the wrapped backend scope.

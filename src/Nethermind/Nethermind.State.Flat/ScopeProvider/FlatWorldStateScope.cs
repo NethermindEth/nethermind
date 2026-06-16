@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -15,6 +16,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -44,6 +46,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
+    // Non-null only when the scope is opened with trackWitness: collects the trie nodes read while
+    // recomputing the post-state root at commit (structural/sibling nodes a stateless verifier needs).
+    private readonly WitnessNodeSink? _witnessSink;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     public FlatWorldStateScope(
@@ -55,16 +61,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        bool trackWitness = false)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
+        _witnessSink = trackWitness ? new WitnessNodeSink() : null;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
+        IScopedTrieStore stateStore = new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota);
+        if (_witnessSink is not null) stateStore = new WitnessCapturingScopedTrieStore(stateStore, _witnessSink);
         _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
+            stateStore,
             logManager
         )
         {
@@ -137,6 +147,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
     public void UpdateRootHash() => _stateTree.UpdateRootHash();
+
+    // Storage witness: the structural trie nodes read while recomputing the post-state root at commit.
+    // The touched-key read proofs are added on top by the witness wrapper (TrieWitnessScopeProvider).
+    public IReadOnlyList<byte[]>? Witness => _witnessSink?.Nodes;
 
     public Account? Get(Address address)
     {
@@ -351,7 +365,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
-            _logManager);
+            _logManager,
+            _witnessSink);
 
         return storage;
     }

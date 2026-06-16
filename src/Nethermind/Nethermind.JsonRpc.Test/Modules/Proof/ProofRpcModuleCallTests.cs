@@ -6,15 +6,20 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -690,6 +695,55 @@ public class ProofRpcModuleCallTests
 
         (long, byte)[] all = await Task.WhenAll(tasks);
         Assert.That(all.Length, Is.EqualTo(requestCount));
+    }
+
+    /// <summary>
+    /// Regression guard for block-level (committing) witnesses: a stateless verifier re-applies the block's
+    /// writes and recomputes the post-state root, which reads structural nodes a touched-key proof walk omits.
+    /// Here calling the contract SSTOREs slot 0 to zero — deleting it and collapsing the storage branch, so
+    /// recomputing the storage root must read slot 1's sibling leaf, which is NOT on the deleted key's path.
+    /// The witness must include it (captured while the block's commit recomputes the root), else stateless
+    /// re-execution throws MissingTrieNode / yields a wrong root. proof_call cannot catch this: it never commits.
+    /// </summary>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Block_witness_round_trips_through_stateless_reexecution_for_a_storage_deletion(bool useFlatDb)
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(useFlatDb).Build();
+
+        byte[] runtimeCode = Prepare.EvmCode
+            .PushData(0).PushData(0).Op(Instruction.SSTORE) // SSTORE(slot 0, 0) — delete slot 0
+            .Op(Instruction.STOP).Done;
+        byte[] initCode = Prepare.EvmCode
+            .PushData(0x11).PushData(0).Op(Instruction.SSTORE) // slot 0 = 0x11
+            .PushData(0x22).PushData(1).Op(Instruction.SSTORE) // slot 1 = 0x22
+            .ForInitOf(runtimeCode).Done;
+
+        UInt256 deployNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Address contract = ContractAddress.From(TestItem.PrivateKeyA.Address, deployNonce);
+        await blockchain.AddBlock(Build.A.Transaction
+            .WithNonce(deployNonce).WithCode(initCode).WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+
+        UInt256 callNonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        await blockchain.AddBlock(Build.A.Transaction
+            .WithNonce(callNonce).To(contract).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+
+        Block block = blockchain.BlockTree.Head!;
+        BlockHeader parent = blockchain.BlockTree.FindHeader(block.ParentHash!)!;
+
+        using Witness witness = blockchain.Bridge.GenerateExecutionWitness(parent, block);
+
+        // Re-execute the block against a world state backed ONLY by the witness nodes and assert it
+        // recomputes the same post-state root (no MissingTrieNode).
+        ISpecProvider specProvider = blockchain.SpecProvider;
+        StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, LimboLogs.Instance);
+        using IDisposable scope = env.WorldState.BeginScope(parent);
+        (Block processed, _) = env.BlockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
+
+        Assert.That(processed.Header.StateRoot, Is.EqualTo(block.Header.StateRoot),
+            "stateless re-execution must recompute the block's post-state root from the witness alone");
     }
 
     private static async Task<Address> DeploySloadReturningContract(TestRpcBlockchain blockchain, byte markerValue)
