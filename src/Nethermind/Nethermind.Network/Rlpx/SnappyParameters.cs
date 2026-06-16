@@ -7,6 +7,6 @@ namespace Nethermind.Network.Rlpx
 {
     public static class SnappyParameters
     {
-        public const int MaxSnappyLength = (int)(16 * MemorySizes.MiB);
+        public const int MaxSnappyLength = 16 * MemorySizes.MiB;
     }
 }

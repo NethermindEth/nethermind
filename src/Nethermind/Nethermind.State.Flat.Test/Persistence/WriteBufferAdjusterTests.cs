@@ -15,9 +15,9 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class WriteBufferAdjusterTests
 {
-    private const long MinWriteBufferSize = 16L * MemorySizes.MiB;
-    private const long AccountMaxWriteBufferSize = 32L * MemorySizes.MiB;
-    private const long StorageMaxWriteBufferSize = 64L * MemorySizes.MiB;
+    private const long MinWriteBufferSize = 16 * MemorySizes.MiB;
+    private const long AccountMaxWriteBufferSize = 32 * MemorySizes.MiB;
+    private const long StorageMaxWriteBufferSize = 64 * MemorySizes.MiB;
 
     private IColumnsDb<FlatDbColumns> _db = null!;
     private IDb _columnDb = null!;
@@ -112,7 +112,7 @@ public class WriteBufferAdjusterTests
     [Test]
     public void OnBatchDisposed_WithRaisedFloor_DoesNotShrinkBelowFloor()
     {
-        const long floor = 128L * MemorySizes.MiB;
+        const long floor = 128 * MemorySizes.MiB;
         WriteBufferAdjuster sut = new(_db, floor);
 
         // A tiny batch would normally be clamped down to the 16 MB default floor; the configured floor wins.
@@ -126,7 +126,7 @@ public class WriteBufferAdjusterTests
     [Test]
     public void OnBatchDisposed_WithFloorAboveCap_AllowsGrowthUpToFloor()
     {
-        const long floor = 512L * MemorySizes.MiB; // above every per-column cap
+        const long floor = 512 * MemorySizes.MiB; // above every per-column cap
         WriteBufferAdjuster sut = new(_db, floor);
 
         // With floor above the per-column cap, the effective range collapses to [floor, floor]; any write must not

@@ -26,7 +26,7 @@ public sealed class E2StoreReader : IDisposable
     private const int MinComponentCount = 3; // post-merge: header, body, receipts
     private const int MaxComponentCount = 5; // future: transition with both TD and proof
     private const int ComponentsWithTotalDifficulty = 4; // pre-merge or transition epoch
-    private const int ValueSizeLimit = (int)(50 * MemorySizes.MiB);
+    private const int ValueSizeLimit = 50 * MemorySizes.MiB;
 
     private readonly SafeFileHandle _file;
     private readonly long _fileLength;

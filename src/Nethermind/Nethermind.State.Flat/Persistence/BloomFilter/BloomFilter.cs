@@ -26,7 +26,7 @@ public sealed unsafe class BloomFilter : IDisposable
 
     // Linux THP constants
     private const int MADV_HUGEPAGE = 14;
-    private const nuint HugePageSize = (nuint)(2 * MemorySizes.MiB);
+    private const nuint HugePageSize = 2 * MemorySizes.MiB;
 
     [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
     private static extern int Madvise(void* addr, nuint length, int advice);
@@ -102,7 +102,7 @@ public sealed unsafe class BloomFilter : IDisposable
             {
                 // chunk clear for huge allocations
                 long off = 0;
-                const int Chunk = (int)(8 * MemorySizes.MiB);
+                const int Chunk = 8 * MemorySizes.MiB;
                 while (off < totalBytes)
                 {
                     int len = (int)Math.Min(Chunk, totalBytes - off);
@@ -189,7 +189,7 @@ public sealed unsafe class BloomFilter : IDisposable
 
         long totalBytes = DataBytes;
         long off = 0;
-        const int Chunk = (int)(8 * MemorySizes.MiB);
+        const int Chunk = 8 * MemorySizes.MiB;
         while (off < totalBytes)
         {
             int len = (int)Math.Min(Chunk, totalBytes - off);

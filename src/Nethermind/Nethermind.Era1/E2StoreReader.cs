@@ -22,7 +22,7 @@ public class E2StoreReader : IDisposable
     private const int IndexSectionCount = 8;
     private const int IndexSectionStartBlock = 8;
     private const int IndexOffsetSize = 8;
-    private const int ValueSizeLimit = (int)(50 * MemorySizes.MiB);
+    private const int ValueSizeLimit = 50 * MemorySizes.MiB;
 
     private readonly SafeFileHandle _file;
 

@@ -39,7 +39,7 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
         return memory;
     }
 
-    private const int MemoryPadLimit = (int)MemorySizes.MiB;
+    private const int MemoryPadLimit = MemorySizes.MiB;
     public ReadOnlySpan<byte> Slice(int start, int length, bool limit = true)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));

@@ -149,7 +149,7 @@ public class DbPersistingBlockTracerTests
             {
                 caught = ex;
             }
-        }, maxStackSize: (int)(4 * MemorySizes.MiB));
+        }, maxStackSize: 4 * MemorySizes.MiB);
         thread.Start();
         thread.Join();
         if (caught is not null) throw caught;

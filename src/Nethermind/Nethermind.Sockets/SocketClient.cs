@@ -19,7 +19,7 @@ public class SocketClient<TStream>(
     : ISocketsClient
     where TStream : Stream, IMessageBorderPreservingStream
 {
-    public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = (int)(128 * MemorySizes.MiB);
+    public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = 128 * MemorySizes.MiB;
 
     protected readonly TStream _stream = stream;
     protected readonly IJsonSerializer _jsonSerializer = jsonSerializer;

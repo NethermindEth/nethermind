@@ -36,7 +36,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     /// <summary>
     /// Recommended soft limit for BlockAccessLists responses (10 MiB per EIP-8159).
     /// </summary>
-    private const int BalResponseSoftLimit = (int)(10 * MemorySizes.MiB);
+    private const int BalResponseSoftLimit = 10 * MemorySizes.MiB;
 
     public Eth71ProtocolHandler(
         ISession session,

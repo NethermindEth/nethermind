@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.FastSync
 {
     public class TreeSync
     {
-        public const int AlreadySavedCapacity = (int)MemorySizes.MiB;
+        public const int AlreadySavedCapacity = MemorySizes.MiB;
         public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
 
         private const StateSyncBatch EmptyBatch = null;
