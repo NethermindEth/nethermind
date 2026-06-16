@@ -1,10 +1,9 @@
-name: Measure Pyspec v732
+name: Measure Pyspec v732 (prebuild)
 
-# Reproduces master's exact pyspec NUnit job set (the 16 patricia chunks from
-# nethermind-tests.yml + the 112 flat chunks from nethermind-tests-flat.yml =
-# 128 jobs) against tests-bal@v7.3.2 (pinned in Constants.cs on this branch),
-# so the cost can be measured without also running the ~240 unrelated unit-test
-# jobs in those two workflows. Config-variant filters mirror the originals exactly.
+# Same 128-job pyspec matrix as the baseline, but with nethtest-style PREBUILD:
+# one build job compiles Ethereum.Blockchain.Pyspec.Test once and uploads the
+# artifacts (bin+obj); every test job downloads it and runs `dotnet test --no-build`.
+# Measures how much of nethtest's runner-minute advantage is just build-once.
 
 on:
   workflow_dispatch:
@@ -18,8 +17,36 @@ defaults:
     shell: bash
 
 jobs:
+  build:
+    name: Prebuild Pyspec.Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Pyspec.Test
+        working-directory: src/Nethermind/Ethereum.Blockchain.Pyspec.Test
+        run: dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v7
+        with:
+          name: pyspec-build
+          path: |
+            src/Nethermind/artifacts/bin
+            src/Nethermind/artifacts/obj
+          retention-days: 1
+          include-hidden-files: true
+
   pyspec:
     name: Pyspec ${{ matrix.variant.label }} (${{ matrix.chunk }})
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -29,9 +56,7 @@ jobs:
       matrix:
         chunk: [1of16, 2of16, 3of16, 4of16, 5of16, 6of16, 7of16, 8of16, 9of16, 10of16, 11of16, 12of16, 13of16, 14of16, 15of16, 16of16]
         variant:
-          # patricia (nethermind-tests.yml): unfiltered, default layout — runs every class incl. variants
           - { label: PatriciaSeq, flat: '', filter: '' }
-          # flat (nethermind-tests-flat.yml): Sequential excludes the variant classes
           - { label: FlatSeq, flat: '1', filter: 'FullyQualifiedName!~AmsterdamParallel&FullyQualifiedName!~AmsterdamBatchRead' }
           - { label: Parallel, flat: '1', filter: 'FullyQualifiedName~AmsterdamParallelBlockchainTests' }
           - { label: BatchRead, flat: '1', filter: 'FullyQualifiedName~AmsterdamBatchReadBlockchainTests' }
@@ -55,13 +80,18 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
+      - name: Download prebuilt output
+        uses: actions/download-artifact@v8
+        with:
+          name: pyspec-build
+          path: src/Nethermind/artifacts
+
       - name: Pyspec ${{ matrix.variant.label }} (${{ matrix.chunk }})
         working-directory: src/Nethermind/Ethereum.Blockchain.Pyspec.Test
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
           TEST_USE_FLAT: ${{ matrix.variant.flat }}
         run: |
-          dotnet build Ethereum.Blockchain.Pyspec.Test.csproj -c release
           if [ -n "${{ matrix.variant.filter }}" ]; then
             dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release --no-build --no-restore --filter "${{ matrix.variant.filter }}"
           else
