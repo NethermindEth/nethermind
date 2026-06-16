@@ -306,8 +306,9 @@ public ref partial struct HsstBTreeBuilder<TWriter>
 
         if ((uint)rootSize > ushort.MaxValue)
             throw new InvalidOperationException($"Root node size {rootSize} exceeds u16 trailer field");
-        if ((uint)rootPrefixLen > byte.MaxValue)
-            throw new InvalidOperationException($"Root prefix length {rootPrefixLen} exceeds u8 trailer field");
+        // The root prefix is a common prefix over keys of length _keyLength <= 255, so it can
+        // never exceed the u8 trailer field — assert the invariant rather than guard at runtime.
+        Debug.Assert((uint)rootPrefixLen <= byte.MaxValue, $"Root prefix length {rootPrefixLen} exceeds u8 trailer field");
 
         // Trailer: [RootPrefix bytes][RootPrefixLen u8][RootSize u16 LE][KeyLength u8][IndexType u8],
         // IndexType last. Empty build (_keyLength still -1) records KeyLength = RootPrefixLen = 0;

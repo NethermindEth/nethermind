@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -204,28 +203,6 @@ public static class PersistedSnapshotReader
         bound = r.GetBound();
         if (bound.Length == 0) { bound = default; return false; }
         return true;
-    }
-
-    internal static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        using HsstReader<TReader, TPin> r = new(in reader);
-        if (!r.TrySeek(PersistedSnapshotTags.MetadataTag, out _) ||
-            !r.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out _))
-            return null;
-        Bound b = r.GetBound();
-        if (b.Length == 0 || b.Length % 2 != 0) return null;
-        int len = checked((int)b.Length);
-        int count = len / 2;
-        Span<byte> buf = stackalloc byte[256];
-        if (len > buf.Length)
-            buf = new byte[len];
-        if (!reader.TryRead(b.Offset, buf[..len])) return null;
-        ushort[] ids = new ushort[count];
-        for (int i = 0; i < count; i++)
-            ids[i] = BinaryPrimitives.ReadUInt16LittleEndian(buf.Slice(i * 2, 2));
-        return ids;
     }
 
     private static bool TryGetFromColumn<TReader, TPin>(in TReader reader, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> entityKey, out Bound bound)

@@ -41,7 +41,7 @@ internal static class TestFixtureHelpers
     {
         using WholeReadSession session = reservation.BeginWholeReadSession();
         WholeReadSessionReader reader = session.CreateReader();
-        ushort[]? ids = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+        ushort[]? ids = ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
         if (ids is null) return;
         foreach (ushort id in ids)
         {
@@ -49,6 +49,34 @@ internal static class TestFixtureHelpers
                 throw new System.InvalidOperationException(
                     $"Test fixture's BlobArenaManager has no slot for id {id}; did Build() use a different manager?");
         }
+    }
+
+    /// <summary>
+    /// Read the snapshot's <c>ref_ids</c> metadata entry (column 0x00) as a <c>ushort[]</c>,
+    /// or <c>null</c> when the entry is absent or malformed. Test-only convenience for
+    /// asserting the referenced blob-arena id set; production resolves ref-ids lazily through
+    /// <c>PersistedSnapshot</c>'s internal ref-ids enumerator instead.
+    /// </summary>
+    public static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        using HsstReader<TReader, TPin> r = new(in reader);
+        if (!r.TrySeek(PersistedSnapshotTags.MetadataTag, out _) ||
+            !r.TrySeek(PersistedSnapshotTags.MetadataRefIdsKey, out _))
+            return null;
+        Bound b = r.GetBound();
+        if (b.Length == 0 || b.Length % 2 != 0) return null;
+        int len = checked((int)b.Length);
+        int count = len / 2;
+        Span<byte> buf = stackalloc byte[256];
+        if (len > buf.Length)
+            buf = new byte[len];
+        if (!reader.TryRead(b.Offset, buf[..len])) return null;
+        ushort[] ids = new ushort[count];
+        for (int i = 0; i < count; i++)
+            ids[i] = BinaryPrimitives.ReadUInt16LittleEndian(buf.Slice(i * 2, 2));
+        return ids;
     }
 
     /// <summary>

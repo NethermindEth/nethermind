@@ -343,7 +343,7 @@ public class PersistedSnapshotCompactorTests
             {
                 using WholeReadSession session = baseSnap!.BeginWholeReadSession();
                 WholeReadSessionReader reader = session.CreateReader();
-                ushort[]? ids = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+                ushort[]? ids = TestFixtureHelpers.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
                 Assert.That(ids, Is.Not.Null.And.Length.EqualTo(1),
                     $"Base snapshot {i} must carry exactly one blob-arena ref_id");
                 baseRefIds.Add(ids![0]);
@@ -357,7 +357,7 @@ public class PersistedSnapshotCompactorTests
         {
             using WholeReadSession session = compacted!.BeginWholeReadSession();
             WholeReadSessionReader reader = session.CreateReader();
-            ushort[]? mergedIds = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+            ushort[]? mergedIds = TestFixtureHelpers.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
             Assert.That(mergedIds, Is.Not.Null);
             Assert.That(new HashSet<ushort>(mergedIds!), Is.EquivalentTo(baseRefIds),
                 "Compacted ref_ids must equal the union of source base blob-arena ids");
@@ -992,6 +992,107 @@ public class PersistedSnapshotCompactorTests
             Assert.That(compacted.To.BlockNumber, Is.EqualTo(45));
             Assert.That(compacted.To.BlockNumber - compacted.From.BlockNumber, Is.EqualTo(16),
                 "compacted span must equal alignment, not (blockNumber mod alignment)");
+        }
+        finally { compacted!.Dispose(); }
+    }
+
+    private static FlatTestContainer NewTier(int compactSize) => new(
+        arenaFileSizeBytes: 256 * 1024,
+        blobFileSizeBytes: 4 * 1024 * 1024,
+        configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = compactSize }, 0)));
+
+    // DoCompactSnapshot must no-op when the block's natural window is a single snapshot
+    // (size <= 1) or fewer than two persisted snapshots exist to merge.
+    [Test]
+    public void DoCompactSnapshot_NoOp_WhenWindowSizeOneOrTooFewSnapshots()
+    {
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        // Block 1: natural window size is 1 → nothing to merge.
+        compactor.DoCompactSnapshot(new StateId(1, Keccak.Compute("b1")));
+        // Block 4: window size 4, but the empty repo has < 2 snapshots.
+        compactor.DoCompactSnapshot(new StateId(4, Keccak.Compute("b4")));
+
+        Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no compaction should have run");
+    }
+
+    // DoCompactPersistable must no-op off a CompactSize boundary, and on a boundary with
+    // fewer than two persisted snapshots.
+    [Test]
+    public void DoCompactPersistable_NoOp_WhenNotBoundaryOrTooFewSnapshots()
+    {
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        compactor.DoCompactPersistable(new StateId(3, Keccak.Compute("b3"))); // not a boundary
+        compactor.DoCompactPersistable(new StateId(4, Keccak.Compute("b4"))); // boundary, but empty repo
+
+        Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no persistable should have been produced");
+    }
+
+    // DoCompactPersistable at a boundary with enough sources produces a PersistedPersistable
+    // snapshot covering the whole CompactSize window (and warms its address column index).
+    [Test]
+    public void DoCompactPersistable_AtBoundary_ProducesPersistableSnapshot()
+    {
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        StateId tip = prev;
+        for (int i = 1; i <= 4; i++)
+        {
+            tip = new(i, Keccak.Compute($"p{i}"));
+            SnapshotContent c = new();
+            c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
+            tier.ConvertToPersistedBase(new Snapshot(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = tip;
+        }
+
+        compactor.DoCompactPersistable(tip);
+
+        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedPersistable, out PersistedSnapshot? persistable), Is.True);
+        try
+        {
+            Assert.That(persistable!.From.BlockNumber, Is.EqualTo(0));
+            Assert.That(persistable.To.BlockNumber, Is.EqualTo(4));
+            for (int i = 1; i <= 4; i++)
+                Assert.That(persistable.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True, $"account from block {i} missing");
+        }
+        finally { persistable!.Dispose(); }
+    }
+
+    // A boundary compaction of snapshots that carry only state-trie nodes (no address column)
+    // exercises WarmAddressColumnIndex's early-return when the address column is absent.
+    [Test]
+    public void DoCompactSnapshot_AtBoundary_NoAddressColumn_WarmsGracefully()
+    {
+        using FlatTestContainer tier = NewTier(compactSize: 2);
+        SnapshotRepository repo = tier.Repository;
+        PersistedSnapshotCompactor compactor = tier.Compactor;
+
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        StateId tip = prev;
+        for (int i = 1; i <= 2; i++)
+        {
+            tip = new(i, Keccak.Compute($"sn{i}"));
+            SnapshotContent c = new();
+            TreePath path = new(Keccak.Compute($"node{i}"), 4);
+            c.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, (byte)i]);
+            tier.ConvertToPersistedBase(new Snapshot(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+            prev = tip;
+        }
+
+        compactor.DoCompactSnapshot(tip); // block 2 is a CompactSize=2 boundary → WarmAddressColumnIndex path
+
+        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompacted, out PersistedSnapshot? compacted), Is.True);
+        try
+        {
+            Assert.That(compacted!.To.BlockNumber, Is.EqualTo(2));
+            TreePath probe = new(Keccak.Compute("node2"), 4);
+            Assert.That(compacted.TryLoadStateNodeRlp(probe, out _), Is.True, "state node must survive the no-address-column compaction");
         }
         finally { compacted!.Dispose(); }
     }

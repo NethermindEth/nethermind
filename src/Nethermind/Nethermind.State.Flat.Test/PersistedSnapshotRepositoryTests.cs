@@ -530,4 +530,100 @@ public class PersistedSnapshotRepositoryTests
         using (persistableAt8)
             Assert.That(persistableAt8!.Bloom.Count, Is.GreaterThan(0), "persistable at ids[8] must have a real bloom");
     }
+
+    // With bloom disabled (bits-per-key 0) the loader's Convert path uses the AlwaysTrue
+    // sentinel and ReconstructBloom returns early on restart — data must still survive.
+    [Test]
+    public void LoadFromCatalog_BloomDisabled_SkipsReconstructionButDataSurvives()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("nb1"));
+        MemDb catalogDb = new();
+
+        using (FlatTestContainer tier1 = new(
+            config: new FlatDbConfig { PersistedSnapshotBloomBitsPerKey = 0 },
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            tier1.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA)).Dispose();
+        }
+
+        using FlatTestContainer tier2 = new(
+            config: new FlatDbConfig { PersistedSnapshotBloomBitsPerKey = 0 },
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
+
+        Assert.That(tier2.Repository.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? p), Is.True);
+        using (p)
+        {
+            Assert.That(p!.Bloom.Count, Is.EqualTo(0), "bloom disabled → AlwaysTrue sentinel, no reconstruction");
+            Assert.That(p.TryGetAccount(TestItem.AddressA, out _), Is.True, "data must survive restart with bloom disabled");
+        }
+    }
+
+    // With validation enabled, Convert runs PersistedSnapshotUtils.ValidatePersistedSnapshot
+    // on the freshly written base; a valid snapshot must convert and round-trip without throwing.
+    [Test]
+    public void ConvertToPersistedBase_WithValidationEnabled_RoundTrips()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("val1"));
+
+        using FlatTestContainer tier = new(
+            config: new FlatDbConfig { ValidatePersistedSnapshot = true },
+            arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir);
+
+        using PersistedSnapshot p = tier.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA, 77));
+        Assert.That(p.TryGetAccount(TestItem.AddressA, out Account? acc), Is.True);
+        Assert.That(acc!.Balance, Is.EqualTo((UInt256)77));
+    }
+
+    // A converted base records a contiguous trie-RLP blob run, so its blob-range advise calls
+    // hit the non-empty fadvise branch (a no-op against the test arena, but must not throw).
+    [Test]
+    public void AdviseBlobRange_OnConvertedBaseWithTrieNodes_DoesNotThrow()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("blob1"));
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir);
+
+        SnapshotContent content = new();
+        Nethermind.Trie.TreePath path = new(Keccak.Compute("bp"), 4);
+        content.StateNodes[path] = new Nethermind.Trie.TrieNode(Nethermind.Trie.NodeType.Leaf, [0xC2, 0x80, 0x80]);
+        using PersistedSnapshot p = tier.ConvertToPersistedBase(
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+        Assert.DoesNotThrow(() => p.AdviseWillNeedBlobRange());
+        Assert.DoesNotThrow(() => p.AdviseDontNeedBlobRange());
+        Assert.That(p.TryLoadStateNodeRlp(path, out _), Is.True);
+    }
+
+    // End-to-end-ish read-through: a base converted with a REAL bloom (default config),
+    // wrapped in a PersistedSnapshotStack, resolves a present account/slot and skips absent
+    // addresses — exercising the stack's real-bloom gate (MightContain == false → continue).
+    [Test]
+    public void Stack_RealBloom_AdmitsPresentSkipsAbsentAddresses()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("rb1"));
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir);
+
+        SnapshotContent content = new();
+        content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(123).TestObject;
+        byte[] slot = new byte[32]; slot[31] = 0x55;
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slot);
+        PersistedSnapshot persisted = tier.ConvertToPersistedBase(
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+        PersistedSnapshotList list = new(1) { persisted };
+        using PersistedSnapshotStack stack = new(list, recordDetailedMetrics: false);
+
+        Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+        Assert.That(a!.Balance, Is.EqualTo((UInt256)123));
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv), Is.True);
+        Assert.That(sv![^1], Is.EqualTo((byte)0x55));
+
+        // Absent addresses: the real bloom excludes them (or the snapshot misses) → fall through.
+        foreach (Address absent in new[] { TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF })
+            Assert.That(stack.TryGetAccount(absent, out _), Is.False, $"{absent} must not resolve");
+    }
 }
