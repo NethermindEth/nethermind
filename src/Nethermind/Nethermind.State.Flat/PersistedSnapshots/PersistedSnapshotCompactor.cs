@@ -291,7 +291,10 @@ public class PersistedSnapshotCompactor(
                     sessionsList.AsSpan(), ref arenaWriter.GetWriter(), mergedBloom);
 
                 long len = arenaWriter.GetWriter().Written;
-                StringLabel sizeLabel = GetSizeLabel(compactSize);
+                // The assembled window is best-effort and may fall short of compactSize, so label by the
+                // actual compacted block span rounded up to the next power of two, not the target size.
+                int actualSize = (int)BitOperations.RoundUpToPowerOf2((ulong)(to.BlockNumber - from.BlockNumber));
+                StringLabel sizeLabel = GetSizeLabel(actualSize);
                 Metrics.PersistedSnapshotCompactedSize.Observe(len, sizeLabel);
                 Metrics.PersistedSnapshotCompactTime.Observe(Stopwatch.GetTimestamp() - sw, sizeLabel);
 
