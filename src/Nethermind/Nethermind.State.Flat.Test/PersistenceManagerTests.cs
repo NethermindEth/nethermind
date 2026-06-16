@@ -530,19 +530,25 @@ public class PersistenceManagerTests
         toPersist!.Dispose();
     }
 
+    #region PersistSnapshot Tests
+
     [Test]
     public void PersistSnapshot_WithAccountsStorageAndTrieNodes_WritesToBatch()
     {
+        // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
+        // Add accounts
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
         snapshot.Content.Accounts[TestItem.AddressB] = new Account(2, 200);
 
+        // Add storage
         snapshot.Content.Storages[(TestItem.AddressA, (UInt256)1)] = SlotValue.FromSpanWithoutLeadingZero([42]);
         snapshot.Content.Storages[(TestItem.AddressA, (UInt256)2)] = SlotValue.FromSpanWithoutLeadingZero([99]);
 
+        // Add trie nodes
         TreePath path = TreePath.Empty;
         TrieNode node = new(NodeType.Leaf, Keccak.Zero);
         snapshot.Content.StateNodes[path] = node;
@@ -550,8 +556,10 @@ public class PersistenceManagerTests
         FakeWriteBatch writeBatch = new();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
+        // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
+        // Assert
         Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressA));
         Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressB));
         Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
@@ -563,6 +571,7 @@ public class PersistenceManagerTests
     [Test]
     public void PersistSnapshot_WithSelfDestructedAddresses_CallsSelfDestruct()
     {
+        // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
         using Snapshot snapshot = CreateSnapshotWithSelfDestruct(from, to);
@@ -570,14 +579,17 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
+        // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
+        // Assert
         writeBatch.Received().SelfDestruct(TestItem.AddressA);
     }
 
     [Test]
     public void PersistSnapshot_EmptySnapshot_CreatesWriteBatch()
     {
+        // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -585,10 +597,14 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);
 
+        // Act
         _persistenceManager.PersistSnapshot(snapshot);
 
+        // Assert
         _persistence.Received(1).CreateWriteBatch(from, to);
     }
+
+    #endregion
 
     [Test]
     public void AddToPersistence_WithAvailableSnapshot_PersistsAndUpdatesState()
@@ -613,13 +629,18 @@ public class PersistenceManagerTests
         Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(to));
     }
 
+    #region FlushToPersistence Tests
+
     [Test]
     public void FlushToPersistence_NoSnapshots_ReturnsCurrentPersistedState()
     {
+        // Arrange - no snapshots added
         StateId persisted = Block0;
 
+        // Act
         StateId result = _persistenceManager.FlushToPersistence();
 
+        // Assert
         Assert.That(result, Is.EqualTo(persisted));
     }
 
@@ -739,6 +760,8 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
     }
 
+    #endregion
+
     private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
     {
         // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the
@@ -759,6 +782,8 @@ public class PersistenceManagerTests
         method.Invoke(_persistenceManager, [compacted]);
     }
 
+    #region Helper Classes
+
     private class TestFinalizedStateProvider : IFinalizedStateProvider
     {
         private long _finalizedBlockNumber;
@@ -774,4 +799,5 @@ public class PersistenceManagerTests
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
     }
 
+    #endregion
 }

@@ -35,8 +35,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
     {
         builder
 
+            // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
+
+            // Stub out the pruning trie store admin RPC with a disabled response.
             .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
@@ -80,6 +83,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 : ctx => ctx.Resolve<TrieWarmer>())
             .AddSingleton<TrieWarmer>()
             .Add<FlatOverridableWorldScope>()
+
+            // Sync components
             .AddSingleton<FlatSnapTrieFactory>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
@@ -87,6 +92,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatTreeSyncStore>()
             .AddSingleton<FlatFullStateFinder>()
 
+            // Persistences
             .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
             // Persisted snapshot catalog: dedicated RocksDB co-located with the arena/blob files it
             // indexes under <BaseDbPath>/persisted_snapshot/catalog/. Wiping persisted_snapshot/

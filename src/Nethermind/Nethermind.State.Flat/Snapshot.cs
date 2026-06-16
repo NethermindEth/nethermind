@@ -14,8 +14,12 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Written keys between state <paramref name="from"/> and state <paramref name="to"/>.
+/// Snapshot are written keys between state From to state To
 /// </summary>
+/// <param name="From"></param>
+/// <param name="To"></param>
+/// <param name="Accounts"></param>
+/// <param name="Storages"></param>
 public class Snapshot(
     StateId from,
     StateId to,
@@ -96,6 +100,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
     /// by non-compacted snapshots (compacted snapshots share these references with the original snapshots).
     /// </summary>
     public long EstimateCompactedMemory() =>
+        // ConcurrentDictionary entry overhead ~48 bytes
+        // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
         Accounts.Count * 68 +                          // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48)
             Storages.Count * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
             SelfDestructedStorageAddresses.Count * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)

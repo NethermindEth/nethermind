@@ -76,6 +76,7 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
                 .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 
+            // Register keyed IDb for code database
             _containerBuilder.RegisterInstance<IDb>(new TestMemDb()).Keyed<IDb>(DbNames.Code);
         }
 
@@ -113,6 +114,7 @@ public class FlatOverridableWorldScopeTests
         byte[] storageValue1 = [1, 2, 3, 4];
         byte[] storageValue2 = [5, 6, 7, 8, 9, 10];
 
+        // Write account and storage, then commit
         BlockHeader? baseBlock = null;
         using (IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(null))
         {
@@ -130,6 +132,7 @@ public class FlatOverridableWorldScopeTests
             baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(scope.RootHash).TestObject;
         }
 
+        // Verify account readable within new scope
         using (IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(baseBlock))
         {
             Account? readAccount = scope.Get(testAddress);
@@ -137,6 +140,7 @@ public class FlatOverridableWorldScopeTests
             Assert.That(readAccount!.Balance, Is.EqualTo(testAccount.Balance));
         }
 
+        // Verify account readable through GlobalStateReader
         bool hasAccount = overridableScope.GlobalStateReader.TryGetAccount(baseBlock, testAddress, out AccountStruct acc);
         using (Assert.EnterMultipleScope())
         {
@@ -144,6 +148,7 @@ public class FlatOverridableWorldScopeTests
             Assert.That(acc.Balance, Is.EqualTo(testAccount.Balance));
         }
 
+        // Verify storage readable through GlobalStateReader
         ReadOnlySpan<byte> readValue1 = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex1);
         ReadOnlySpan<byte> readValue2 = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex2);
         using (Assert.EnterMultipleScope())
@@ -152,6 +157,7 @@ public class FlatOverridableWorldScopeTests
             Assert.That(readValue2.ToArray(), Is.EqualTo(storageValue2), "Storage slot 2 should be readable");
         }
 
+        // Verify non-existent slot returns zeros
         ReadOnlySpan<byte> nonExistent = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, 999);
         Assert.That(nonExistent.ToArray().All(b => b == 0), Is.True, "Non-existent storage slot should return zeros");
     }
@@ -175,7 +181,8 @@ public class FlatOverridableWorldScopeTests
             scope.Commit(1);
         }
 
-        // Commits go to FlatOverridableWorldScope's local _snapshots dictionary, not the main FlatDbManager.
+        // The main FlatDbManager should NOT receive any AddSnapshot calls
+        // because commits go to FlatOverridableWorldScope's local _snapshots dictionary
         Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
     }
 
@@ -192,6 +199,7 @@ public class FlatOverridableWorldScopeTests
         Account accountB = TestItem.GenerateRandomAccount();
         Account accountC = TestItem.GenerateRandomAccount();
 
+        // Commit block 1 with account A
         BlockHeader? block1 = null;
         using (IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(null))
         {
@@ -203,6 +211,7 @@ public class FlatOverridableWorldScopeTests
             block1 = Build.A.BlockHeader.WithNumber(1).WithStateRoot(scope.RootHash).TestObject;
         }
 
+        // Commit block 2 with account B (building on block 1)
         BlockHeader? block2 = null;
         using (IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(block1))
         {
@@ -214,6 +223,7 @@ public class FlatOverridableWorldScopeTests
             block2 = Build.A.BlockHeader.WithNumber(2).WithStateRoot(scope.RootHash).TestObject;
         }
 
+        // Commit block 3 with account C (building on block 2)
         BlockHeader? block3 = null;
         using (IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(block2))
         {
@@ -227,6 +237,7 @@ public class FlatOverridableWorldScopeTests
 
         using (Assert.EnterMultipleScope())
         {
+            // Verify final state (block 3) sees all three accounts
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressA, out AccountStruct accA3), Is.True, "Block 3 should see account A");
             Assert.That(accA3.Balance, Is.EqualTo(accountA.Balance));
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressB, out AccountStruct accB3), Is.True, "Block 3 should see account B");
@@ -234,17 +245,20 @@ public class FlatOverridableWorldScopeTests
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressC, out AccountStruct accC3), Is.True, "Block 3 should see account C");
             Assert.That(accC3.Balance, Is.EqualTo(accountC.Balance));
 
+            // Verify intermediate state (block 2) sees A+B but not C
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressA, out AccountStruct accA2), Is.True, "Block 2 should see account A");
             Assert.That(accA2.Balance, Is.EqualTo(accountA.Balance));
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressB, out AccountStruct accB2), Is.True, "Block 2 should see account B");
             Assert.That(accB2.Balance, Is.EqualTo(accountB.Balance));
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressC, out _), Is.False, "Block 2 should NOT see account C");
 
+            // Verify initial state (block 1) sees only A
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressA, out AccountStruct accA1), Is.True, "Block 1 should see account A");
             Assert.That(accA1.Balance, Is.EqualTo(accountA.Balance));
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressB, out _), Is.False, "Block 1 should NOT see account B");
             Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressC, out _), Is.False, "Block 1 should NOT see account C");
 
+            // Verify no calls to main FlatDbManager
             Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
         }
     }
@@ -258,6 +272,7 @@ public class FlatOverridableWorldScopeTests
         Address testAddress = TestItem.AddressA;
         Account testAccount = TestItem.GenerateRandomAccount();
 
+        // Commit multiple states
         BlockHeader? block1 = null;
         using (IWorldStateScopeProvider.IScope scope = overridableScope.WorldState.BeginScope(null))
         {
@@ -269,8 +284,10 @@ public class FlatOverridableWorldScopeTests
             block1 = Build.A.BlockHeader.WithNumber(1).WithStateRoot(scope.RootHash).TestObject;
         }
 
+        // Verify state exists before reset
         Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, testAddress, out _), Is.True, "Should see account before reset");
 
+        // Reset overrides
         overridableScope.ResetOverrides();
 
         // After reset, the local snapshots are cleared, so state falls through to main FlatDbManager

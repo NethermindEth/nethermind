@@ -130,6 +130,7 @@ public class WriteBatchBenchmark
             totalAccountCount += accountCount;
         }
 
+        // Pre-compute addresses for benchmark iterations
         _addresses = new Address[AccountCount];
         Parallel.For(0, AccountCount, i =>
         {

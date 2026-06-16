@@ -145,7 +145,7 @@ public class CompactionScheduleTests
 
     [TestCase(0, 1)]    // block 0 always 1
     [TestCase(13, 16)]  // 13+3 = 16 -> full
-    [TestCase(16, 1)]   // 16+3 = 19 -> 19 & -19 = 1
+    [TestCase(16, 1)]   // 16+3 = 19 -> 19 & -19 = 1 (caller treats as no compaction)
     [TestCase(5, 8)]    // 5+3 = 8
     [TestCase(29, 16)]  // 29+3 = 32 -> 32 & -32 = 32, capped at 16
     public void GetCompactSize_WithOffset3_ShiftsBoundaries(long blockNumber, int expected)

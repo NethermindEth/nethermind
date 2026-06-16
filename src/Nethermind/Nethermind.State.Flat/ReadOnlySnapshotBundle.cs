@@ -222,6 +222,8 @@ public sealed class ReadOnlySnapshotBundle(
 
         snapshots.Dispose();
         persistedSnapshots.Dispose();
+
+        // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();
     }
 }

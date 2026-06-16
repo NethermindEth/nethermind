@@ -164,8 +164,10 @@ public class FlatDbManagerTests
 
         await using FlatDbManager manager = CreateManager();
 
+        // First call populates the cache
         using (ReadOnlySnapshotBundle bundle1 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
 
+        // Second call should hit cache (no new LeaseReader call)
         _persistenceManager.ClearReceivedCalls();
         using (ReadOnlySnapshotBundle bundle2 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
         _persistenceManager.DidNotReceive().LeaseReader();
@@ -173,6 +175,7 @@ public class FlatDbManagerTests
         // Wait for periodic clear (15s + margin)
         await Task.Delay(TimeSpan.FromSeconds(17));
 
+        // After cache clear, next call needs a new reader
         _persistenceManager.ClearReceivedCalls();
         using (ReadOnlySnapshotBundle bundle3 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
         _persistenceManager.Received(1).LeaseReader();

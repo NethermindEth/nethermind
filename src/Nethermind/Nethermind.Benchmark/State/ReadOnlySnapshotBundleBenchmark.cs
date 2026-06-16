@@ -110,6 +110,7 @@ public class ReadOnlySnapshotBundleBenchmark
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch =
                 scope.StartWriteBatch(accountCount))
             {
+                // Phase 1 (sequential): set accounts and create storage write batches
                 IWorldStateScopeProvider.IStorageWriteBatch[] storageBatches =
                     new IWorldStateScopeProvider.IStorageWriteBatch[storageAccountCount];
                 for (int i = 0; i < accountCount; i++)
@@ -123,7 +124,7 @@ public class ReadOnlySnapshotBundleBenchmark
                     }
                 }
 
-                // Parallel: each FlatStorageTree is independent
+                // Phase 2 (parallel): fill storage slots — each FlatStorageTree is independent
                 int slots = slotsPerStorageAccount;
                 Parallel.For(0, storageAccountCount, i =>
                 {
@@ -184,6 +185,7 @@ public class ReadOnlySnapshotBundleBenchmark
             _hitSlots[i] = (DeriveAddress(storageAccountIndex), slot);
         }
 
+        // Collect state/storage trie nodes from all snapshots
         List<TreePath> shortPaths = new(ArraySize);
         List<TreePath> longPaths = new(ArraySize);
         List<(Hash256, TreePath)> storageNodesList = new(ArraySize);
@@ -278,6 +280,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
         _index = 0;
 
+        // Verify hit arrays are populated
         if (_hitAccounts.Length == 0)
             throw new InvalidOperationException("Hit accounts array is empty");
         if (_hitSlots.Length == 0)
@@ -291,6 +294,7 @@ public class ReadOnlySnapshotBundleBenchmark
             throw new InvalidOperationException(
                 "No same-account storage trie nodes found for hot-contract pattern benchmark");
 
+        // Verify miss keys are actually absent
         if (_bundle.GetAccount(_missAccounts[0]) is not null)
             throw new InvalidOperationException(
                 "Miss account should not be found in snapshot bundle");

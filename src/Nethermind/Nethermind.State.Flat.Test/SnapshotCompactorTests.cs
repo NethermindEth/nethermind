@@ -112,15 +112,19 @@ public class SnapshotCompactorTests
         SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
         SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
 
+        // Add accounts
         snapshot.Content.Accounts[address1] = new Account(1, 100);
         snapshot.Content.Accounts[address2] = new Account(2, 200);
 
+        // Add storage values
         snapshot.Content.Storages[(address1, storageIndex1)] = slotValue1;
         snapshot.Content.Storages[(address2, storageIndex2)] = slotValue2;
 
+        // Add state nodes
         snapshot.Content.StateNodes[statePath1] = new TrieNode(NodeType.Leaf, storageNodeHash1);
         snapshot.Content.StateNodes[statePath2] = new TrieNode(NodeType.Branch, storageNodeHash2);
 
+        // Add storage nodes
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
         snapshot.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, storageNodeHash1);
@@ -133,6 +137,7 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
+        // Verify all data types are preserved
         Assert.That(compacted.AccountsCount, Is.EqualTo(2));
         AssertAccountSame(new Account(1, 100), compacted.Content.Accounts[address1]);
         AssertAccountSame(new Account(2, 200), compacted.Content.Accounts[address2]);
@@ -162,6 +167,7 @@ public class SnapshotCompactorTests
         SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
         SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
 
+        // First snapshot
         StateId from0 = new(0, Keccak.Zero);
         StateId to0 = new(1, Keccak.Zero);
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -171,6 +177,7 @@ public class SnapshotCompactorTests
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
         snapshot0.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
 
+        // Second snapshot with different items
         StateId from1 = new(1, Keccak.Zero);
         StateId to1 = new(2, Keccak.Zero);
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -188,6 +195,7 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
+        // Verify all items from both snapshots are merged
         Assert.That(compacted.AccountsCount, Is.EqualTo(2));
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
         Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
@@ -204,6 +212,7 @@ public class SnapshotCompactorTests
         SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
         SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
 
+        // First snapshot with initial values
         StateId from0 = new(0, Keccak.Zero);
         StateId to0 = new(1, Keccak.Zero);
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -213,6 +222,7 @@ public class SnapshotCompactorTests
         Hash256 addressHash = address.ToAccountPath.ToCommitment();
         snapshot0.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
 
+        // Second snapshot with updated values for same keys
         StateId from1 = new(1, Keccak.Zero);
         StateId to1 = new(2, Keccak.Zero);
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -229,6 +239,7 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
+        // Verify latest values override earlier ones
         Assert.That(compacted.AccountsCount, Is.EqualTo(1));
         AssertAccountSame(new Account(2, 200), compacted.Content.Accounts[address]);
 
@@ -296,7 +307,9 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
+        // New account marked as self-destructed should be tracked
         Assert.That(compacted.Content.SelfDestructedStorageAddresses.Count, Is.GreaterThan(0));
+        // Verify at least one entry has true value
         Assert.That(compacted.Content.SelfDestructedStorageAddresses.Any(static kvp => kvp.Value), Is.True);
     }
 

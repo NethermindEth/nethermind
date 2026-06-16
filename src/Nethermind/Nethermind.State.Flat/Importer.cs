@@ -62,7 +62,7 @@ public class Importer(
             {
                 tree.Accept(visitor, to.StateRoot.ToHash256(), new VisitingOptions()
                 {
-                    MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount), // trie visits are I/O-bound; more threads add contention without throughput gain
+                    MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount), // Tend to be faster with low thread
                 });
             }
             finally
@@ -94,9 +94,10 @@ public class Importer(
         if (_logger.IsInfo) _logger.Info($"Ingest thread started");
 
         int currentItemSize = 0;
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // from→from: state ID advance is deferred to Copy() after all data is written
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes from initial state to initial state.
         await foreach ((Hash256? address, TreePath path, TrieNode node) in channelReader.ReadAllAsync(cancellationToken))
         {
+            // Write it
             Metrics.ImporterEntriesCount++;
 
             if (address is null)
@@ -139,7 +140,7 @@ public class Importer(
             {
                 writeBatch.Dispose();
                 persistence.Flush();
-                writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // from→from: state ID advance is deferred to Copy() after all data is written
+                writeBatch = persistence.CreateWriteBatch(from, from, WriteFlags.DisableWAL); // It writes form initial state to initial state.
                 currentItemSize = 0;
             }
 
