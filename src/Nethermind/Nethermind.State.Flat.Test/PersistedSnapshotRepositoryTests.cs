@@ -575,4 +575,24 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(p.TryGetAccount(TestItem.AddressA, out Account? acc), Is.True);
         Assert.That(acc!.Balance, Is.EqualTo((UInt256)77));
     }
+
+    // A converted base records a contiguous trie-RLP blob run, so its blob-range advise calls
+    // hit the non-empty fadvise branch (a no-op against the test arena, but must not throw).
+    [Test]
+    public void AdviseBlobRange_OnConvertedBaseWithTrieNodes_DoesNotThrow()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("blob1"));
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir);
+
+        SnapshotContent content = new();
+        Nethermind.Trie.TreePath path = new(Keccak.Compute("bp"), 4);
+        content.StateNodes[path] = new Nethermind.Trie.TrieNode(Nethermind.Trie.NodeType.Leaf, [0xC2, 0x80, 0x80]);
+        using PersistedSnapshot p = tier.ConvertToPersistedBase(
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+        Assert.DoesNotThrow(() => p.AdviseWillNeedBlobRange());
+        Assert.DoesNotThrow(() => p.AdviseDontNeedBlobRange());
+        Assert.That(p.TryLoadStateNodeRlp(path, out _), Is.True);
+    }
 }

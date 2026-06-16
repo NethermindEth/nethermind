@@ -354,6 +354,83 @@ public class PersistedSnapshotTests
         Assert.That(storageNodes, Is.EqualTo(1), "only the fallback-tier storage node, top/compact sub-tags absent");
     }
 
+    // Exercises the read-path miss branches: a present snapshot queried for keys that are
+    // absent at every level — unknown address, present-address/absent-slot, present-address/
+    // no-self-destruct, absent state node, absent storage addressHash, and present-addressHash/
+    // absent-path (same and different sub-tag tier).
+    [Test]
+    public void Queries_ForAbsentKeys_ReturnMisses()
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("miss"));
+
+        byte[] slotVal = new byte[32]; slotVal[31] = 0x07;
+        SnapshotContent content = new();
+        content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(5).TestObject;
+        content.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(9).TestObject; // 2nd address → real address BTree
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal);
+        content.SelfDestructedStorageAddresses[TestItem.AddressA] = true;
+        TreePath statePath = new(Keccak.Compute("sp"), 4);
+        content.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+        Hash256 storageHashObj = Keccak.Compute("sh");
+        TreePath storagePath = new(Keccak.Compute("stp"), 4);
+        content.StorageNodes[(storageHashObj, storagePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
+
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        SlotValue sv = default;
+        // Unknown address: BTree seek misses.
+        Assert.That(persisted.TryGetAccount(TestItem.AddressB, out Account? accB), Is.False);
+        Assert.That(accB, Is.Null);
+        Assert.That(persisted.TryGetSlot(TestItem.AddressB, (UInt256)1, ref sv), Is.False);
+        Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressB), Is.Null);
+
+        // Present address, absent slot index; present address with no slot/self-destruct sub-tag.
+        Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)999, ref sv), Is.False);
+        Assert.That(persisted.TryGetSlot(TestItem.AddressC, (UInt256)1, ref sv), Is.False);
+        Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressC), Is.Null);
+
+        // Absent state node.
+        Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("absent"), 4), out byte[]? sn), Is.False);
+        Assert.That(sn, Is.Null);
+
+        // Storage node: absent addressHash; present addressHash with absent path in the same
+        // sub-tag tier and in a different (absent) tier.
+        ValueHash256 storageHash = new(storageHashObj.Bytes);
+        Assert.That(persisted.TryLoadStorageNodeRlp(new ValueHash256(Keccak.Compute("nope").Bytes), storagePath, out _), Is.False);
+        Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, new TreePath(Keccak.Compute("absentSameTier"), 4), out _), Is.False);
+        Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, new TreePath(Keccak.Compute("absentDeep"), 18), out _), Is.False);
+
+        // Sanity: the present entries still resolve.
+        Assert.That(persisted.TryGetAccount(TestItem.AddressA, out _), Is.True);
+        Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, storagePath, out _), Is.True);
+    }
+
+    // An empty snapshot has no address column (cached BTree bound is empty) and no node
+    // columns, so every read returns a miss without faulting.
+    [Test]
+    public void Queries_OnEmptySnapshot_ReturnMisses()
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("empty-reads"));
+        Snapshot snapshot = new(from, to, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        SlotValue sv = default;
+        Assert.That(persisted.TryGetAccount(TestItem.AddressA, out _), Is.False);
+        Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref sv), Is.False);
+        Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressA), Is.Null);
+        Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("p"), 4), out _), Is.False);
+        Assert.That(persisted.TryLoadStorageNodeRlp(new ValueHash256(Keccak.Compute("h").Bytes), new TreePath(Keccak.Compute("p"), 4), out _), Is.False);
+
+        // Build-based snapshots carry no blob_range metadata → BlobRange.None → advise is a no-op.
+        Assert.DoesNotThrow(() => persisted.AdviseWillNeedBlobRange());
+        Assert.DoesNotThrow(() => persisted.AdviseDontNeedBlobRange());
+    }
+
     [Test]
     public void ActivePersistedSnapshotCount_TracksConstructionAndDisposal()
     {
