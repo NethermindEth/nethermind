@@ -612,25 +612,50 @@ public class AdminModuleTests
         Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32).ToArray(), Is.EqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
     }
 
-    [Test]
-    public void Admin_blockProcessing_pauseAndResume_delegatesToControlAndReportsState()
+    [TestCase(true, TestName = "pause delegates to Pause and reports the paused state")]
+    [TestCase(false, TestName = "resume delegates to Resume and reports the running state")]
+    public void Admin_blockProcessingVerb_delegatesToControlAndReportsState(bool pause)
     {
-        IBlockProcessingPauseControl pauseControl = Substitute.For<IBlockProcessingPauseControl>();
-        IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: pauseControl);
+        IBlockProcessingPauseControl control = Substitute.For<IBlockProcessingPauseControl>();
+        IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: control);
+        control.IsPaused.Returns(pause);
 
-        pauseControl.IsPaused.Returns(true);
-        ResultWrapper<bool> paused = module.admin_pauseBlockProcessing();
-        pauseControl.Received(1).Pause();
-        Assert.That(paused.Data, Is.True, "pause must report the processor as paused after the call");
+        ResultWrapper<bool> result = pause
+            ? module.admin_pauseBlockProcessing()
+            : module.admin_resumeBlockProcessing();
 
-        ResultWrapper<bool> queried = module.admin_isBlockProcessingPaused();
-        pauseControl.DidNotReceive().Resume();
-        Assert.That(queried.Data, Is.True, "the query must reflect the paused state without mutating it");
+        using (Assert.EnterMultipleScope())
+        {
+            if (pause)
+            {
+                control.Received(1).Pause();
+                control.DidNotReceive().Resume();
+            }
+            else
+            {
+                control.Received(1).Resume();
+                control.DidNotReceive().Pause();
+            }
 
-        pauseControl.IsPaused.Returns(false);
-        ResultWrapper<bool> resumed = module.admin_resumeBlockProcessing();
-        pauseControl.Received(1).Resume();
-        Assert.That(resumed.Data, Is.False, "resume must report the processor as running after the call");
+            Assert.That(result.Data, Is.EqualTo(pause), "the verb returns the resulting paused state");
+        }
+    }
+
+    [Test]
+    public void Admin_isBlockProcessingPaused_returnsStateWithoutMutating()
+    {
+        IBlockProcessingPauseControl control = Substitute.For<IBlockProcessingPauseControl>();
+        IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: control);
+        control.IsPaused.Returns(true);
+
+        ResultWrapper<bool> result = module.admin_isBlockProcessingPaused();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.True, "the query reflects the paused state");
+            control.DidNotReceive().Pause();
+            control.DidNotReceive().Resume();
+        }
     }
 
     private IAdminRpcModule BuildAdminRpcModuleWith(
