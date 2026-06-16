@@ -221,7 +221,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (_disposed) return;
         _disposed = true;
 
-        // Unblock the loop in case it is parked on a pause, so shutdown cannot deadlock.
         _pauseGate.Resume();
 
         bool isStarted = _processorTask is not null;
@@ -341,7 +340,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
-            // Park here while paused; enqueued blocks accumulate in the queue until resumed.
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
@@ -375,7 +373,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
-        // Re-check the pause before each dequeue so a mid-drain pause takes effect at the next block boundary.
         while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out BlockRef blockRef))
         {
             try
@@ -540,8 +537,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
         _processorTask?.IsCompleted == false && _recoveryTask?.IsCompleted == false &&
-        // A deliberate pause is not a stall: while paused the processor stops advancing on purpose,
-        // so the staleness check is bypassed to avoid tripping liveness/health probes.
         (_pauseGate.IsPaused || maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow);
 
     private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)

@@ -618,7 +618,6 @@ public class AdminModuleTests
     {
         IBlockProcessingPauseControl control = Substitute.For<IBlockProcessingPauseControl>();
         IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: control);
-        // Simulate the control reaching the requested state after the call.
         control.IsPaused.Returns(pause);
 
         ResultWrapper<bool> result = pause
