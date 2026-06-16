@@ -19,9 +19,9 @@ namespace Nethermind.State;
 /// account's storage trie, collecting the trie-node RLP along the path to each touched account and slot.
 /// </summary>
 /// <remarks>
-/// Shared by the flat and trie backend scopes — each supplies an <see cref="IScopedTrieStore"/> over a fresh
-/// read-only view at the scope's base state root (independent of any in-flight execution mutations), so the
-/// witness reflects the pre-execution state regardless of writes/commits done during the scope's lifetime.
+/// The caller (<c>WitnessScopeProvider</c>) supplies an <see cref="IScopedTrieStore"/> over a fresh read-only
+/// view at the scope's base state root (independent of any in-flight execution mutations), so the witness
+/// reflects the pre-execution state regardless of writes/commits done during the scope's lifetime.
 /// </remarks>
 public static class StorageWitnessCollector
 {
@@ -29,6 +29,7 @@ public static class StorageWitnessCollector
         IScopedTrieStore stateStore,
         Hash256 stateRoot,
         IReadOnlyDictionary<AddressAsKey, HashSet<UInt256>> touchedKeys,
+        IReadOnlyCollection<byte[]> codes,
         ILogManager logManager)
     {
         MultiAccountProofCollector collector = new(touchedKeys);
@@ -64,6 +65,6 @@ public static class StorageWitnessCollector
             foreach (UInt256 slot in kvp.Value) keys.Add(slot.ToBigEndian());
         }
 
-        return new ScopeWitness { StateNodes = stateNodes, Keys = keys };
+        return new ScopeWitness { StateNodes = stateNodes, Keys = keys, Codes = codes };
     }
 }

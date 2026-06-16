@@ -70,20 +70,23 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private PooledEntry BuildEntry()
     {
-        // Execute against the real (flat-capable) scope provider so reads use the fast path; the storage
-        // witness is produced by the scope itself (opened with trackWitness) from the keys touched during
-        // execution. No capturing trie store — execution no longer detours through trie traversal.
-        IWorldStateScopeProvider scopeProvider = worldStateManager.CreateResettableWorldState();
-        IWorldState baseWorldState = new WorldState(scopeProvider, logManager);
+        // Execute against the real (flat-capable) scope provider so reads use the fast path; the witness is
+        // tracked by a thin WitnessScopeProvider wrapper (opened with trackWitness) and produced from the keys
+        // and code touched during execution. No capturing trie store — execution no longer detours through
+        // trie traversal; the witness state nodes are walked once post-execution against a fresh base view.
+        IWorldStateScopeProvider scopeProvider = new WitnessScopeProvider(
+            worldStateManager.CreateResettableWorldState(),
+            worldStateManager.CreateReadOnlyTrieStore,
+            logManager);
+        IWorldState worldState = new WorldState(scopeProvider, logManager);
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
         WitnessGeneratingHeaderFinder headerFinder = new(headerStore);
-        WitnessGeneratingWorldState witnessWorldState = new(baseWorldState, headerFinder);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
             .AddScoped<IStateReader>(worldStateManager.GlobalStateReader)
-            .AddScoped<IWorldState>(witnessWorldState)
-            .AddScoped<WitnessGeneratingWorldState>(witnessWorldState)
+            .AddScoped<IWorldState>(worldState)
+            .AddScoped<WitnessGeneratingHeaderFinder>(headerFinder)
             .AddScoped<IHeaderFinder>(headerFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
@@ -93,7 +96,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IWitnessGeneratingBlockProcessingEnv env = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
         IBlockhashCache blockhashCache = envLifetimeScope.Resolve<IBlockhashCache>();
-        return new PooledEntry(envLifetimeScope, witnessWorldState, headerFinder, blockhashCache, env);
+        return new PooledEntry(envLifetimeScope, headerFinder, blockhashCache, env);
     }
 
     private void Return(PooledEntry entry)
@@ -146,7 +149,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private sealed class PooledEntry(
         ILifetimeScope scope,
-        WitnessGeneratingWorldState worldState,
         WitnessGeneratingHeaderFinder headerFinder,
         IBlockhashCache blockhashCache,
         IWitnessGeneratingBlockProcessingEnv env)
@@ -156,14 +158,13 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         /// <summary>Wipes per-call accumulators so the entry is safe for the next rent.</summary>
         /// <remarks>
-        /// The inner WorldState's per-call caches are already cleared by <c>WorldState.BeginScope</c>'s
-        /// scope-exit <c>Reset(true)</c>, and the touched-key set lives on the per-scope object that is
-        /// recreated each <c>BeginScope</c>; only the witness bytecode accumulator is cleared here. The
-        /// blockhash cache is content-addressed (never stale) but grows per entry, so it's cleared too.
+        /// The witness's touched-key, code, and node buffers all live on the per-scope WitnessScope that is
+        /// recreated each <c>BeginScope</c>, and the inner WorldState's caches are cleared by its own scope
+        /// exit — so only the header finder needs clearing here. The blockhash cache is content-addressed
+        /// (never stale) but grows per entry, so it's cleared too.
         /// </remarks>
         public void Reset()
         {
-            worldState.Reset();
             headerFinder.Reset();
             blockhashCache.Clear();
         }

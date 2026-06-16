@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Stateless;
@@ -14,14 +15,15 @@ public interface IWitnessGeneratingBlockProcessingEnv
 }
 
 public class WitnessGeneratingBlockProcessingEnv(
-    WitnessGeneratingWorldState witnessWorldState,
+    IWorldState worldState,
+    WitnessGeneratingHeaderFinder headerFinder,
     IBlockProcessor blockProcessor,
     ITransactionProcessor transactionProcessor,
     ISpecProvider specProvider) : IWitnessGeneratingBlockProcessingEnv
 {
     public IExistingBlockWitnessCollector CreateExistingBlockWitnessCollector()
-        => new WitnessCollector(witnessWorldState, blockProcessor, specProvider);
+        => new WitnessCollector(worldState, headerFinder, blockProcessor, specProvider);
 
     public ISingleCallWitnessCollector CreateSingleCallWitnessCollector()
-        => new SingleCallWitnessCollector(witnessWorldState, transactionProcessor);
+        => new SingleCallWitnessCollector(worldState, headerFinder, transactionProcessor);
 }

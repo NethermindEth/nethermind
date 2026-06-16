@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -41,7 +42,8 @@ public interface ISingleCallWitnessCollector
 }
 
 public class SingleCallWitnessCollector(
-    WitnessGeneratingWorldState worldState,
+    IWorldState worldState,
+    WitnessGeneratingHeaderFinder headerFinder,
     ITransactionProcessor transactionProcessor) : ISingleCallWitnessCollector
 {
     public SingleCallWitnessResult ExecuteCallAndCollectWitness(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken = default)
@@ -63,11 +65,12 @@ public class SingleCallWitnessCollector(
         CallOutputTracer tracer = new();
         TransactionResult txResult = transactionProcessor.CallAndRestore(transaction, blockHeader, tracer.WithCancellation(cancellationToken));
 
+        ScopeWitness scopeWitness = worldState.Witness ?? throw new InvalidOperationException("Witness tracking was not enabled for this scope.");
         return new SingleCallWitnessResult(
             Output: tracer.ReturnValue,
             Error: txResult.GetErrorMessage(tracer.Error),
             ExecutionReverted: txResult.EvmExceptionType == EvmExceptionType.Revert,
             InputError: !txResult.TransactionExecuted,
-            Witness: worldState.GetWitness(blockHeader));
+            Witness: WitnessAssembler.Build(scopeWitness, headerFinder, blockHeader));
     }
 }

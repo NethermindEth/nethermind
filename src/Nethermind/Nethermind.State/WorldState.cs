@@ -35,6 +35,7 @@ namespace Nethermind.State
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope;
+        private bool _trackWitness;
         private readonly ILogger _logger;
 
         public Hash256 StateRoot
@@ -233,6 +234,7 @@ namespace Nethermind.State
 
             try
             {
+                _trackWitness = trackWitness;
                 _currentScope = ScopeProvider.BeginScope(baseBlock, trackWitness);
                 _stateProvider.SetScope(_currentScope, trackWitness);
                 _persistentStorageProvider.SetBackendScope(_currentScope, trackWitness);
@@ -265,7 +267,15 @@ namespace Nethermind.State
             {
                 _currentScope = null;
                 _isInScope = false;
+                _trackWitness = false;
             }
+        }
+
+        // BlockhashStore hints that an address's bytecode is accessed (EIP-2935 history contract). When tracking
+        // a witness, force a code read so it is captured in the witness; otherwise a no-op like the default.
+        public void RecordBytecodeAccess(Address address)
+        {
+            if (_trackWitness) GetCode(address);
         }
 
         public bool IsInScope => _currentScope is not null;

@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -15,7 +16,8 @@ public interface IExistingBlockWitnessCollector
 }
 
 public class WitnessCollector(
-    WitnessGeneratingWorldState worldState,
+    IWorldState worldState,
+    WitnessGeneratingHeaderFinder headerFinder,
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider) : IExistingBlockWitnessCollector
 {
@@ -23,6 +25,7 @@ public class WitnessCollector(
     {
         using IDisposable? scope = worldState.BeginScope(parentHeader, trackWitness: true);
         blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
-        return worldState.GetWitness(parentHeader);
+        ScopeWitness scopeWitness = worldState.Witness ?? throw new InvalidOperationException("Witness tracking was not enabled for this scope.");
+        return WitnessAssembler.Build(scopeWitness, headerFinder, parentHeader);
     }
 }
