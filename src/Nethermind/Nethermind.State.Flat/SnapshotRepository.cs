@@ -28,31 +28,6 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public class SnapshotRepository : ISnapshotRepository, IDisposable
 {
-    // Query (assemble/reachability) expansion order: widest skip-pointers first across both tiers
-    // (in-memory then persisted compacted), then the CompactSize-wide persistable, then the narrow bases —
-    // so a read assembles the shortest chain it can. The walk driver hardcodes the invariant that once an
-    // edge crosses into the persisted tier the in-memory tiers are unreachable, so it drops the in-memory
-    // entries for any node reached over a persisted edge.
-    private static readonly SnapshotTier[] FullEdgePriority =
-    [
-        SnapshotTier.InMemoryCompacted,
-        SnapshotTier.PersistedCompacted,
-        SnapshotTier.PersistedPersistable,
-        SnapshotTier.InMemoryBase,
-        SnapshotTier.PersistedBase,
-    ];
-
-    // FindSnapshotToPersist lease order: persistable, persisted base, in-memory compacted/base, then
-    // the >CompactSize persisted compacted (traversed as a skip pointer, never a returnable candidate).
-    private static readonly SnapshotTier[] PersistEdgePriority =
-    [
-        SnapshotTier.PersistedPersistable,
-        SnapshotTier.PersistedBase,
-        SnapshotTier.InMemoryCompacted,
-        SnapshotTier.InMemoryBase,
-        SnapshotTier.PersistedCompacted,
-    ];
-
     private readonly ILogger _logger;
 
     // ---- Persisted tier: three buckets keyed by StateId.To, plus the arena/blob/catalog stores.
@@ -150,188 +125,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         AssembledSnapshotResult result = WalkAndAssemble(baseBlock, estimatedSize, ref policy);
         result.Persisted.Dispose(); // in-memory-only policy never yields persisted entries
         return result.InMemory;
-    }
-
-    private readonly struct WalkNode(in StateId current, bool viaPersisted, int parentIndex)
-    {
-        public readonly StateId Current = current;
-        public readonly bool ViaPersisted = viaPersisted;
-        public readonly int ParentIndex = parentIndex;
-    }
-
-    private enum AssembleStep { Skip, Traverse, Win, WinAndStop }
-
-    /// <summary>
-    /// Per-edge policy for <see cref="WalkAndAssemble{TPolicy}"/>: the edge-priority table to expand and a
-    /// per-edge <see cref="Decide"/> verdict. The driver owns all storage, lease handling, cycle detection,
-    /// winner tracking, and chain reconstruction — the policy only inspects each candidate parent edge and
-    /// returns whether to skip it, traverse it, mark it the (current) winner, or mark-and-stop.
-    /// </summary>
-    private interface IAssemblePolicy
-    {
-        SnapshotTier[] EdgePriority { get; }
-        AssembleStep Decide(in StateId from, SnapshotTier tier);
-    }
-
-    // Full dual-tier walk for AssembleSnapshots. The driver hardcodes the in-mem-cannot-follow-persisted
-    // invariant (drops in-memory tiers once on a persisted edge), so this only filters by block: an
-    // overshooting persisted snapshot is accepted as the terminal element, an overshooting in-memory edge
-    // is unusable, and reaching the target's block wins.
-    private readonly struct AssemblePolicy(StateId target) : IAssemblePolicy
-    {
-        public SnapshotTier[] EdgePriority => FullEdgePriority;
-
-        public AssembleStep Decide(in StateId from, SnapshotTier tier)
-        {
-            if (from.BlockNumber < target.BlockNumber)
-                return tier.IsPersisted() ? AssembleStep.WinAndStop : AssembleStep.Skip;
-            return from == target || from.BlockNumber == target.BlockNumber
-                ? AssembleStep.WinAndStop
-                : AssembleStep.Traverse;
-        }
-    }
-
-    // In-memory-only walk for AssembleInMemorySnapshotsForCompaction: widest-jump first, pruning edges
-    // below minBlockNumber; wins at the first node reaching minBlockNumber.
-    private readonly struct InMemoryCompactionPolicy(long minBlockNumber) : IAssemblePolicy
-    {
-        private static readonly SnapshotTier[] InMemoryExpansion =
-            [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase];
-
-        public SnapshotTier[] EdgePriority => InMemoryExpansion;
-
-        public AssembleStep Decide(in StateId from, SnapshotTier tier) =>
-            from.BlockNumber < minBlockNumber ? AssembleStep.Skip
-            : from.BlockNumber == minBlockNumber ? AssembleStep.WinAndStop
-            : AssembleStep.Traverse;
-    }
-
-    // Best-effort persisted-only compaction walk: prunes edges overshooting minBlockNumber and marks the
-    // deepest (lowest-block) node reached as the winner. Widest-first + BFS means the first path to each
-    // depth is the widest; the window need not be fully populated.
-    private struct PersistedCompactionPolicy(long minBlockNumber) : IAssemblePolicy
-    {
-        private long _winnerBlock = long.MaxValue;
-
-        private static readonly SnapshotTier[] CompactionEdges =
-            [SnapshotTier.PersistedCompacted, SnapshotTier.PersistedPersistable, SnapshotTier.PersistedBase];
-
-        public readonly SnapshotTier[] EdgePriority => CompactionEdges;
-
-        public AssembleStep Decide(in StateId from, SnapshotTier tier)
-        {
-            if (from.BlockNumber < minBlockNumber) return AssembleStep.Skip;
-            if (from.BlockNumber == minBlockNumber) return AssembleStep.WinAndStop; // window start — deepest possible
-            if (from.BlockNumber < _winnerBlock)
-            {
-                _winnerBlock = from.BlockNumber;
-                return AssembleStep.Win;
-            }
-            return AssembleStep.Traverse;
-        }
-    }
-
-    /// <summary>
-    /// Backward BFS over parent (<c>From</c>) edges that gathers the winning chain directly into an
-    /// <see cref="AssembledSnapshotResult"/> (in-memory + persisted lists, oldest-first). Owns the frontier
-    /// queue, the visited buffer, cycle detection, winner tracking, and reconstruction. Hardcodes the
-    /// invariant that once an edge crosses into the persisted tier the in-memory tiers are unreachable, so
-    /// in-memory edges are skipped for any node reached over a persisted edge. The <paramref name="policy"/>
-    /// only supplies the edge-priority table and a per-edge verdict.
-    /// </summary>
-    private AssembledSnapshotResult WalkAndAssemble<TPolicy>(in StateId start, int estimatedSize, ref TPolicy policy)
-        where TPolicy : struct, IAssemblePolicy
-    {
-        using PooledQueue<WalkNode> queue = new();
-        using PooledSet<StateId> seen = new();
-        // visited owns a lease on every retained edge; GatherChain re-leases the winning path before the
-        // finally releases all of them (the same ownership handoff the per-method reconstruction used).
-        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = new(estimatedSize);
-        try
-        {
-            int winnerIndex = -1;
-            seen.Add(start);
-            // The root starts in the in-memory tier; ViaPersisted flips on as the walk crosses a persisted
-            // edge. A persisted-only policy simply has no in-memory tiers to expand.
-            queue.Enqueue(new WalkNode(start, viaPersisted: false, -1));
-
-            while (queue.Count > 0)
-            {
-                WalkNode node = queue.Dequeue();
-
-                foreach (SnapshotTier tier in policy.EdgePriority)
-                {
-                    // Hardcoded invariant: a node reached over a persisted edge chains only to persisted tiers.
-                    if (node.ViaPersisted && !tier.IsPersisted()) continue;
-
-                    IDisposable snapshot;
-                    StateId from;
-                    if (tier.IsPersisted())
-                    {
-                        if (!TryLeasePersistedState(node.Current, tier, out PersistedSnapshot? persisted)) continue;
-                        (snapshot, from) = (persisted, persisted.From);
-                    }
-                    else
-                    {
-                        if (!TryLeaseInMemoryState(node.Current, tier, out Snapshot? inMemory)) continue;
-                        (snapshot, from) = (inMemory, inMemory.From);
-                    }
-
-                    if (!seen.Add(from)) { snapshot.Dispose(); continue; } // cycle detection
-
-                    AssembleStep step = policy.Decide(from, tier);
-                    if (step == AssembleStep.Skip) { snapshot.Dispose(); continue; }
-
-                    int idx = visited.Count;
-                    visited.Add((snapshot, node.ParentIndex));
-                    if (step != AssembleStep.Traverse) winnerIndex = idx; // Win or WinAndStop
-                    if (step == AssembleStep.WinAndStop) return GatherChain(visited, winnerIndex, estimatedSize);
-
-                    queue.Enqueue(new WalkNode(from, tier.IsPersisted(), idx));
-                }
-            }
-
-            return GatherChain(visited, winnerIndex, estimatedSize);
-        }
-        finally
-        {
-            for (int i = 0; i < visited.Count; i++) visited[i].snapshot.Dispose();
-            visited.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Reconstruct the winner→root path into oldest-first in-memory + persisted lists, re-leasing each
-    /// snapshot so it survives the caller's release of the visited buffer. The winner is the terminus
-    /// (oldest), and the in-mem-before-persisted invariant keeps each tier contiguous, so both lists come
-    /// out ascending without a reversal. Returns two empty lists when no winner was found.
-    /// </summary>
-    private static AssembledSnapshotResult GatherChain(
-        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited, int winnerIndex, int estimatedSize)
-    {
-        if (winnerIndex < 0)
-            return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
-
-        SnapshotPooledList inMemory = new(estimatedSize);
-        PersistedSnapshotList persisted = new(estimatedSize);
-        for (int walk = winnerIndex; walk >= 0; walk = visited[walk].parentIndex)
-        {
-            switch (visited[walk].snapshot)
-            {
-                case PersistedSnapshot ps:
-                    // visited still holds a lease, so re-acquire cannot fail.
-                    bool pAcquired = ps.TryAcquire();
-                    Debug.Assert(pAcquired, "TryAcquire failed despite held lease");
-                    persisted.Add(ps);
-                    break;
-                case Snapshot s:
-                    bool sAcquired = s.TryAcquire();
-                    Debug.Assert(sAcquired, "TryAcquire failed despite held lease");
-                    inMemory.Add(s);
-                    break;
-            }
-        }
-        return new AssembledSnapshotResult(inMemory, persisted);
     }
 
     /// <summary>
@@ -877,5 +670,217 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _base.DisposeAndClear();
         _compacted.DisposeAndClear();
         _persistable.DisposeAndClear();
+    }
+
+    // ---- Backward-walk infrastructure ----
+    // The edge-priority tables, the per-edge policy, and the shared chain-gathering driver used by the
+    // Assemble* / CanReach / FindSnapshotToPersist walks above. Grouped here so the public surface reads
+    // top-to-bottom without the walk machinery interleaved between methods.
+
+    // Query (assemble/reachability) expansion order: widest skip-pointers first across both tiers
+    // (in-memory then persisted compacted), then the CompactSize-wide persistable, then the narrow bases —
+    // so a read assembles the shortest chain it can. The walk driver hardcodes the invariant that once an
+    // edge crosses into the persisted tier the in-memory tiers are unreachable, so it drops the in-memory
+    // entries for any node reached over a persisted edge.
+    private static readonly SnapshotTier[] FullEdgePriority =
+    [
+        SnapshotTier.InMemoryCompacted,
+        SnapshotTier.PersistedCompacted,
+        SnapshotTier.PersistedPersistable,
+        SnapshotTier.InMemoryBase,
+        SnapshotTier.PersistedBase,
+    ];
+
+    // FindSnapshotToPersist lease order: persistable, persisted base, in-memory compacted/base, then
+    // the >CompactSize persisted compacted (traversed as a skip pointer, never a returnable candidate).
+    private static readonly SnapshotTier[] PersistEdgePriority =
+    [
+        SnapshotTier.PersistedPersistable,
+        SnapshotTier.PersistedBase,
+        SnapshotTier.InMemoryCompacted,
+        SnapshotTier.InMemoryBase,
+        SnapshotTier.PersistedCompacted,
+    ];
+
+    private readonly struct WalkNode(in StateId current, bool viaPersisted, int parentIndex)
+    {
+        public readonly StateId Current = current;
+        public readonly bool ViaPersisted = viaPersisted;
+        public readonly int ParentIndex = parentIndex;
+    }
+
+    private enum AssembleStep { Skip, Traverse, Win, WinAndStop }
+
+    /// <summary>
+    /// Per-edge policy for <see cref="WalkAndAssemble{TPolicy}"/>: the edge-priority table to expand and a
+    /// per-edge <see cref="Decide"/> verdict. The driver owns all storage, lease handling, cycle detection,
+    /// winner tracking, and chain reconstruction — the policy only inspects each candidate parent edge and
+    /// returns whether to skip it, traverse it, mark it the (current) winner, or mark-and-stop.
+    /// </summary>
+    private interface IAssemblePolicy
+    {
+        SnapshotTier[] EdgePriority { get; }
+        AssembleStep Decide(in StateId from, SnapshotTier tier);
+    }
+
+    // Full dual-tier walk for AssembleSnapshots. The driver hardcodes the in-mem-cannot-follow-persisted
+    // invariant (drops in-memory tiers once on a persisted edge), so this only filters by block: an
+    // overshooting persisted snapshot is accepted as the terminal element, an overshooting in-memory edge
+    // is unusable, and reaching the target's block wins.
+    private readonly struct AssemblePolicy(StateId target) : IAssemblePolicy
+    {
+        public SnapshotTier[] EdgePriority => FullEdgePriority;
+
+        public AssembleStep Decide(in StateId from, SnapshotTier tier)
+        {
+            if (from.BlockNumber < target.BlockNumber)
+                return tier.IsPersisted() ? AssembleStep.WinAndStop : AssembleStep.Skip;
+            return from == target || from.BlockNumber == target.BlockNumber
+                ? AssembleStep.WinAndStop
+                : AssembleStep.Traverse;
+        }
+    }
+
+    // In-memory-only walk for AssembleInMemorySnapshotsForCompaction: widest-jump first, pruning edges
+    // below minBlockNumber; wins at the first node reaching minBlockNumber.
+    private readonly struct InMemoryCompactionPolicy(long minBlockNumber) : IAssemblePolicy
+    {
+        private static readonly SnapshotTier[] InMemoryExpansion =
+            [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase];
+
+        public SnapshotTier[] EdgePriority => InMemoryExpansion;
+
+        public AssembleStep Decide(in StateId from, SnapshotTier tier) =>
+            from.BlockNumber < minBlockNumber ? AssembleStep.Skip
+            : from.BlockNumber == minBlockNumber ? AssembleStep.WinAndStop
+            : AssembleStep.Traverse;
+    }
+
+    // Best-effort persisted-only compaction walk: prunes edges overshooting minBlockNumber and marks the
+    // deepest (lowest-block) node reached as the winner. Widest-first + BFS means the first path to each
+    // depth is the widest; the window need not be fully populated.
+    private struct PersistedCompactionPolicy(long minBlockNumber) : IAssemblePolicy
+    {
+        private long _winnerBlock = long.MaxValue;
+
+        private static readonly SnapshotTier[] CompactionEdges =
+            [SnapshotTier.PersistedCompacted, SnapshotTier.PersistedPersistable, SnapshotTier.PersistedBase];
+
+        public readonly SnapshotTier[] EdgePriority => CompactionEdges;
+
+        public AssembleStep Decide(in StateId from, SnapshotTier tier)
+        {
+            if (from.BlockNumber < minBlockNumber) return AssembleStep.Skip;
+            if (from.BlockNumber == minBlockNumber) return AssembleStep.WinAndStop; // window start — deepest possible
+            if (from.BlockNumber < _winnerBlock)
+            {
+                _winnerBlock = from.BlockNumber;
+                return AssembleStep.Win;
+            }
+            return AssembleStep.Traverse;
+        }
+    }
+
+    /// <summary>
+    /// Backward BFS over parent (<c>From</c>) edges that gathers the winning chain directly into an
+    /// <see cref="AssembledSnapshotResult"/> (in-memory + persisted lists, oldest-first). Owns the frontier
+    /// queue, the visited buffer, cycle detection, winner tracking, and reconstruction. Hardcodes the
+    /// invariant that once an edge crosses into the persisted tier the in-memory tiers are unreachable, so
+    /// in-memory edges are skipped for any node reached over a persisted edge. The <paramref name="policy"/>
+    /// only supplies the edge-priority table and a per-edge verdict.
+    /// </summary>
+    private AssembledSnapshotResult WalkAndAssemble<TPolicy>(in StateId start, int estimatedSize, ref TPolicy policy)
+        where TPolicy : struct, IAssemblePolicy
+    {
+        using PooledQueue<WalkNode> queue = new();
+        using PooledSet<StateId> seen = new();
+        // visited owns a lease on every retained edge; GatherChain re-leases the winning path before the
+        // finally releases all of them (the same ownership handoff the per-method reconstruction used).
+        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = new(estimatedSize);
+        try
+        {
+            int winnerIndex = -1;
+            seen.Add(start);
+            // The root starts in the in-memory tier; ViaPersisted flips on as the walk crosses a persisted
+            // edge. A persisted-only policy simply has no in-memory tiers to expand.
+            queue.Enqueue(new WalkNode(start, viaPersisted: false, -1));
+
+            while (queue.Count > 0)
+            {
+                WalkNode node = queue.Dequeue();
+
+                foreach (SnapshotTier tier in policy.EdgePriority)
+                {
+                    // Hardcoded invariant: a node reached over a persisted edge chains only to persisted tiers.
+                    if (node.ViaPersisted && !tier.IsPersisted()) continue;
+
+                    IDisposable snapshot;
+                    StateId from;
+                    if (tier.IsPersisted())
+                    {
+                        if (!TryLeasePersistedState(node.Current, tier, out PersistedSnapshot? persisted)) continue;
+                        (snapshot, from) = (persisted, persisted.From);
+                    }
+                    else
+                    {
+                        if (!TryLeaseInMemoryState(node.Current, tier, out Snapshot? inMemory)) continue;
+                        (snapshot, from) = (inMemory, inMemory.From);
+                    }
+
+                    if (!seen.Add(from)) { snapshot.Dispose(); continue; } // cycle detection
+
+                    AssembleStep step = policy.Decide(from, tier);
+                    if (step == AssembleStep.Skip) { snapshot.Dispose(); continue; }
+
+                    int idx = visited.Count;
+                    visited.Add((snapshot, node.ParentIndex));
+                    if (step != AssembleStep.Traverse) winnerIndex = idx; // Win or WinAndStop
+                    if (step == AssembleStep.WinAndStop) return GatherChain(visited, winnerIndex, estimatedSize);
+
+                    queue.Enqueue(new WalkNode(from, tier.IsPersisted(), idx));
+                }
+            }
+
+            return GatherChain(visited, winnerIndex, estimatedSize);
+        }
+        finally
+        {
+            for (int i = 0; i < visited.Count; i++) visited[i].snapshot.Dispose();
+            visited.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reconstruct the winner→root path into oldest-first in-memory + persisted lists, re-leasing each
+    /// snapshot so it survives the caller's release of the visited buffer. The winner is the terminus
+    /// (oldest), and the in-mem-before-persisted invariant keeps each tier contiguous, so both lists come
+    /// out ascending without a reversal. Returns two empty lists when no winner was found.
+    /// </summary>
+    private static AssembledSnapshotResult GatherChain(
+        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited, int winnerIndex, int estimatedSize)
+    {
+        if (winnerIndex < 0)
+            return new AssembledSnapshotResult(SnapshotPooledList.Empty(), PersistedSnapshotList.Empty());
+
+        SnapshotPooledList inMemory = new(estimatedSize);
+        PersistedSnapshotList persisted = new(estimatedSize);
+        for (int walk = winnerIndex; walk >= 0; walk = visited[walk].parentIndex)
+        {
+            switch (visited[walk].snapshot)
+            {
+                case PersistedSnapshot ps:
+                    // visited still holds a lease, so re-acquire cannot fail.
+                    bool pAcquired = ps.TryAcquire();
+                    Debug.Assert(pAcquired, "TryAcquire failed despite held lease");
+                    persisted.Add(ps);
+                    break;
+                case Snapshot s:
+                    bool sAcquired = s.TryAcquire();
+                    Debug.Assert(sAcquired, "TryAcquire failed despite held lease");
+                    inMemory.Add(s);
+                    break;
+            }
+        }
+        return new AssembledSnapshotResult(inMemory, persisted);
     }
 }
