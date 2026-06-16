@@ -431,6 +431,79 @@ public class PersistedSnapshotTests
         Assert.DoesNotThrow(() => persisted.AdviseDontNeedBlobRange());
     }
 
+    // Drives PersistedSnapshotStack's newest-first probe loops over a two-snapshot stack:
+    // hits in the newer and (after a newer miss) the older snapshot, full misses, the
+    // self-destruct slot boundary, and the detailed-metrics observations.
+    [Test]
+    public void Stack_ProbesNewestFirst_AcrossAllKinds()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("st1"));
+        StateId s2 = new(2, Keccak.Compute("st2"));
+
+        byte[] v1 = new byte[32]; v1[31] = 0x11;
+        byte[] v2 = new byte[32]; v2[31] = 0x22;
+
+        // Older snapshot: AddressA (bal 100) + slot 1, AddressD only here, self-destruct on A,
+        // a state node and a storage node.
+        SnapshotContent older = new();
+        older.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
+        older.Accounts[TestItem.AddressD] = Build.An.Account.WithBalance(40).TestObject;
+        older.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(v1);
+        older.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
+        TreePath statePath = new(Keccak.Compute("st-p"), 4);
+        older.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+        Hash256 storageHashObj = Keccak.Compute("st-sh");
+        TreePath storagePath = new(Keccak.Compute("st-sp"), 4);
+        older.StorageNodes[(storageHashObj, storagePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
+
+        // Newer snapshot: AddressA overridden (bal 200), AddressB new, slot 2.
+        SnapshotContent newer = new();
+        newer.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(200).TestObject;
+        newer.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(7).TestObject;
+        newer.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(v2);
+
+        byte[] olderData = PersistedSnapshotBuilderTestExtensions.Build(
+            new Snapshot(s0, s1, older, _resourcePool, ResourcePool.Usage.MainBlockProcessing), _blobs);
+        byte[] newerData = PersistedSnapshotBuilderTestExtensions.Build(
+            new Snapshot(s1, s2, newer, _resourcePool, ResourcePool.Usage.MainBlockProcessing), _blobs);
+
+        PersistedSnapshotList list = new(2) { CreatePersistedSnapshot(s0, s1, olderData), CreatePersistedSnapshot(s1, s2, newerData) };
+        using PersistedSnapshotStack stack = new(list, recordDetailedMetrics: true);
+
+        // Account: newest wins; older-only address resolves after the newer miss; full miss.
+        Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+        Assert.That(a!.Balance, Is.EqualTo((UInt256)200), "newest snapshot wins");
+        Assert.That(stack.TryGetAccount(TestItem.AddressD, out Account? d), Is.True);
+        Assert.That(d!.Balance, Is.EqualTo((UInt256)40), "older-only address resolves after newer miss");
+        Assert.That(stack.TryGetAccount(TestItem.AddressF, out _), Is.False);
+
+        // Self-destruct: only the older snapshot carries it.
+        Assert.That(stack.TryGetSelfDestruct(TestItem.AddressA, out int sdIdx), Is.True);
+        Assert.That(sdIdx, Is.EqualTo(0));
+        Assert.That(stack.TryGetSelfDestruct(TestItem.AddressF, out _), Is.False);
+
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        // Slot: newer holds slot 2, older holds slot 1; both resolve.
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)2, -1, start, out byte[]? sv2), Is.True);
+        Assert.That(sv2![^1], Is.EqualTo((byte)0x22)); // ToEvmBytes strips leading zeros
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv1), Is.True);
+        Assert.That(sv1![^1], Is.EqualTo((byte)0x11));
+        // Slot below the self-destruct boundary resolves to null (storage wiped).
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)999, 0, start, out byte[]? svNull), Is.True);
+        Assert.That(svNull, Is.Null);
+        // Slot fully absent (no boundary) falls through.
+        Assert.That(stack.TryGetSlot(TestItem.AddressF, (UInt256)1, -1, start, out _), Is.False);
+
+        // State / storage node RLP: present (in older) and absent.
+        Assert.That(stack.TryLoadStateRlp(statePath, out byte[]? srlp), Is.True);
+        Assert.That(srlp, Is.Not.Null);
+        Assert.That(stack.TryLoadStateRlp(new TreePath(Keccak.Compute("nope-st"), 4), out _), Is.False);
+        Assert.That(stack.TryLoadStorageRlp(storageHashObj, storagePath, out byte[]? strlp), Is.True);
+        Assert.That(strlp, Is.Not.Null);
+        Assert.That(stack.TryLoadStorageRlp(storageHashObj, new TreePath(Keccak.Compute("nope-sp"), 4), out _), Is.False);
+    }
+
     [Test]
     public void ActivePersistedSnapshotCount_TracksConstructionAndDisposal()
     {

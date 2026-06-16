@@ -595,4 +595,35 @@ public class PersistedSnapshotRepositoryTests
         Assert.DoesNotThrow(() => p.AdviseDontNeedBlobRange());
         Assert.That(p.TryLoadStateNodeRlp(path, out _), Is.True);
     }
+
+    // End-to-end-ish read-through: a base converted with a REAL bloom (default config),
+    // wrapped in a PersistedSnapshotStack, resolves a present account/slot and skips absent
+    // addresses — exercising the stack's real-bloom gate (MightContain == false → continue).
+    [Test]
+    public void Stack_RealBloom_AdmitsPresentSkipsAbsentAddresses()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("rb1"));
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir);
+
+        SnapshotContent content = new();
+        content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(123).TestObject;
+        byte[] slot = new byte[32]; slot[31] = 0x55;
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slot);
+        PersistedSnapshot persisted = tier.ConvertToPersistedBase(
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+
+        PersistedSnapshotList list = new(1) { persisted };
+        using PersistedSnapshotStack stack = new(list, recordDetailedMetrics: false);
+
+        Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+        Assert.That(a!.Balance, Is.EqualTo((UInt256)123));
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv), Is.True);
+        Assert.That(sv![^1], Is.EqualTo((byte)0x55));
+
+        // Absent addresses: the real bloom excludes them (or the snapshot misses) → fall through.
+        foreach (Address absent in new[] { TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF })
+            Assert.That(stack.TryGetAccount(absent, out _), Is.False, $"{absent} must not resolve");
+    }
 }
