@@ -235,7 +235,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected void Handle(TransactionsMessage msg)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), _handleSlow, "Transactions"))
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), _handleSlow))
             {
                 iList.Dispose();
             }
@@ -263,7 +263,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         }
 
                         // Reschedule remaining transactions with a different start index
-                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, i), _handleSlow, "Transactions"))
+                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, i), _handleSlow))
                         {
                             transactions.Dispose();
                         }
