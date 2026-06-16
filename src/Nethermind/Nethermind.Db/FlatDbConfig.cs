@@ -18,6 +18,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int MaxInFlightCompactJob { get; set; } = 32;
     public int MaxReorgDepth { get; set; } = 256;
     public int MinReorgDepth { get; set; } = 128;
+    public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public int WarmReadConcurrency { get; set; } = -1;
     public long BlockCacheSizeBudget { get; set; } = 1.GiB;

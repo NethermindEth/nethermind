@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -218,6 +219,6 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     {
         if (_pipeWriter is null) return;
         _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).GetAwaiter().GetResult();
+        _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
     }
 }

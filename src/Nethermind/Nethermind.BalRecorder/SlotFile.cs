@@ -7,6 +7,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core;
 
 namespace Nethermind.BalRecorder;
 
@@ -50,7 +51,7 @@ public sealed class SlotFile : IDisposable
             if (offset == 0) return false;
             size = BinaryPrimitives.ReadUInt32BigEndian(entry[4..]);
         }
-        if (size == 0 || size > 64 * 1024 * 1024) return false;
+        if (size == 0 || size > 64 * MemorySizes.MiB) return false;
 
         byte[] rented = ArrayPool<byte>.Shared.Rent((int)size);
         try

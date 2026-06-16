@@ -336,7 +336,7 @@ public class SyncServerTests
             .WithTotalDifficulty(ctx.LocalBlockTree.Head!.TotalDifficulty)
             .TestObject;
         ctx.LocalBlockTree.SuggestBlock(newPostMergeBlock);
-        ctx.LocalBlockTree.UpdateMainChain(new[] { newPostMergeBlock }, true, true);
+        ctx.LocalBlockTree.TryUpdateMainChain(newPostMergeBlock.Header, true, true, preloadedBlocks: new[] { newPostMergeBlock });
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
