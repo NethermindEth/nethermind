@@ -347,14 +347,12 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 TrieNode fakeRoot = new(NodeType.Leaf, []); // 192B
                 fakeRoot.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
-                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, fakeRoot))
+                using ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, fakeRoot);
+                for (int j = 0; j < 1 + i % 3; j++)
                 {
-                    for (int j = 0; j < 1 + i % 3; j++)
-                    {
-                        TrieNode trieNode = new(NodeType.Leaf, []); // 192B
-                        trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
-                        committer.CommitNode(ref emptyPath, trieNode);
-                    }
+                    TrieNode trieNode = new(NodeType.Leaf, []); // 192B
+                    trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
+                    committer.CommitNode(ref emptyPath, trieNode);
                 }
             }
 
@@ -658,8 +656,7 @@ namespace Nethermind.Trie.Test.Pruning
                     committer.CommitNode(ref emptyPath, storage1);
                 }
 
-                using (ICommitter _ = trieStore.BeginCommit(a)) { }
-
+                using ICommitter _ = trieStore.BeginCommit(a);
             }
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(2, a)) { }
@@ -1232,10 +1229,8 @@ namespace Nethermind.Trie.Test.Pruning
             for (int i = 0; i < 2; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
-                using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node))
-                {
-                    committer.CommitNode(ref emptyPath, node);
-                }
+                using ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node);
+                committer.CommitNode(ref emptyPath, node);
             }
 
             fullTrieStore.Dispose();
@@ -1742,7 +1737,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             Action commitBlock1 = () =>
             {
-                using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(1, trieNode)) { }
+                using ICommitter _ = fullTrieStore.BeginStateBlockCommit(1, trieNode);
             };
 
             Assert.That(commitBlock1, Throws.Nothing);

@@ -195,19 +195,17 @@ namespace Nethermind.Core.Test
 
             try
             {
-                using (MemoryStream ms = new())
-                {
-                    sw = new StreamWriter(ms);
-                    sr = new StreamReader(ms);
+                using MemoryStream ms = new();
+                sw = new StreamWriter(ms);
+                sr = new StreamReader(ms);
 
-                    bytes.StreamHex(sw);
-                    sw.Flush();
+                bytes.StreamHex(sw);
+                sw.Flush();
 
-                    ms.Position = 0;
+                ms.Position = 0;
 
-                    string result = sr.ReadToEnd();
-                    Assert.That(result, Is.EqualTo("0f10ff"));
-                }
+                string result = sr.ReadToEnd();
+                Assert.That(result, Is.EqualTo("0f10ff"));
             }
             finally
             {

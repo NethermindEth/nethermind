@@ -121,11 +121,9 @@ public class FlatOverridableWorldScopeTests
             {
                 writeBatch.Set(testAddress, testAccount);
 
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 2))
-                {
-                    storageBatch.Set(storageIndex1, storageValue1);
-                    storageBatch.Set(storageIndex2, storageValue2);
-                }
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 2);
+                storageBatch.Set(storageIndex1, storageValue1);
+                storageBatch.Set(storageIndex2, storageValue2);
             }
             scope.Commit(1);
             baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(scope.RootHash).TestObject;
