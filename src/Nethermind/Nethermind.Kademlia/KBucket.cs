@@ -8,8 +8,11 @@ public class KBucket<TNode, TKadKey>(int k)
     where TNode : notnull
     where TKadKey : notnull
 {
+    public const int DefaultReplacementCacheSize = 16;
+
     private readonly DoubleEndedLru<TKadKey, TNode> _items = new(k);
-    private readonly DoubleEndedLru<TKadKey, TNode> _replacement = new(k);
+    private readonly DoubleEndedLru<TKadKey, TNode> _replacement = new(GetReplacementCacheSize(k));
+    private readonly bool _cacheItems = k <= DefaultReplacementCacheSize;
 
     public int Count => _items.Count;
 
@@ -25,8 +28,9 @@ public class KBucket<TNode, TKadKey>(int k)
     public BucketAddResult TryAddOrRefresh(in TKadKey hash, TNode item, out TNode? toRefresh)
     {
         BucketAddResult addResult = _items.AddOrRefresh(hash, item, out TNode? previous);
-        if (addResult == BucketAddResult.Added ||
-            (addResult == BucketAddResult.Refreshed && ShouldUpdateCachedArray(previous, item)))
+        if (_cacheItems
+            && (addResult == BucketAddResult.Added
+                || (addResult == BucketAddResult.Refreshed && ShouldUpdateCachedArray(previous, item))))
         {
             _cachedArray = _items.GetAll();
         }
@@ -43,7 +47,7 @@ public class KBucket<TNode, TKadKey>(int k)
         return BucketAddResult.Full;
     }
 
-    public TNode[] GetAll() => _cachedArray;
+    public TNode[] GetAll() => _cacheItems ? _cachedArray : _items.GetAll();
 
     public (TKadKey, TNode)[] GetAllWithHash() => _items.GetAllWithKey();
 
@@ -57,7 +61,11 @@ public class KBucket<TNode, TKadKey>(int k)
         {
             _items.AddOrRefresh(replacementHash, replacement!);
         }
-        _cachedArray = _items.GetAll();
+
+        if (_cacheItems)
+        {
+            _cachedArray = _items.GetAll();
+        }
 
         return true;
     }
@@ -78,4 +86,7 @@ public class KBucket<TNode, TKadKey>(int k)
             (typeof(TNode).IsValueType
             ? !EqualityComparer<TNode>.Default.Equals(previous, item)
             : !ReferenceEquals(previous, item));
+
+    private static int GetReplacementCacheSize(int bucketSize)
+        => bucketSize < DefaultReplacementCacheSize ? bucketSize : DefaultReplacementCacheSize;
 }

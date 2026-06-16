@@ -3,12 +3,21 @@
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
+internal static class RecentNodeFilter
+{
+    private const int MaxBucketSizeForLimit = 16;
+
+    public static int GetLimit(int bucketSize, int maxDistance, int minimumCount)
+        => Math.Max(minimumCount, Math.Min(bucketSize, MaxBucketSizeForLimit) * maxDistance);
+}
+
 internal sealed class RecentNodeFilter<TKey>(int maxCount)
     where TKey : notnull
 {
-    private readonly LinkedList<TKey> _recentNodes = [];
-    private readonly Dictionary<TKey, LinkedListNode<TKey>> _nodes = new(maxCount);
+    private readonly Dictionary<TKey, long> _nodes = new(maxCount);
     private readonly Lock _lock = new();
+    private Queue<(TKey NodeId, long Generation)> _recentNodes = new(maxCount);
+    private long _generation;
 
     public bool TryReserve(TKey nodeId)
     {
@@ -19,14 +28,10 @@ internal sealed class RecentNodeFilter<TKey>(int maxCount)
                 return false;
             }
 
-            LinkedListNode<TKey> listNode = _recentNodes.AddLast(nodeId);
-            _nodes.Add(nodeId, listNode);
-            while (_nodes.Count > maxCount)
-            {
-                LinkedListNode<TKey> oldestNode = _recentNodes.First!;
-                _recentNodes.RemoveFirst();
-                _nodes.Remove(oldestNode.Value);
-            }
+            long generation = unchecked(++_generation);
+            _nodes.Add(nodeId, generation);
+            _recentNodes.Enqueue((nodeId, generation));
+            Trim();
 
             return true;
         }
@@ -36,10 +41,47 @@ internal sealed class RecentNodeFilter<TKey>(int maxCount)
     {
         lock (_lock)
         {
-            if (_nodes.Remove(nodeId, out LinkedListNode<TKey>? listNode))
+            _nodes.Remove(nodeId);
+            DropReleasedHeadEntries();
+            if (_recentNodes.Count > Math.Max(maxCount * 2, 256))
             {
-                _recentNodes.Remove(listNode);
+                CompactQueue();
             }
         }
+    }
+
+    private void Trim()
+    {
+        DropReleasedHeadEntries();
+        while (_nodes.Count > maxCount && _recentNodes.TryDequeue(out (TKey NodeId, long Generation) oldestNode))
+        {
+            if (_nodes.TryGetValue(oldestNode.NodeId, out long generation) && generation == oldestNode.Generation)
+            {
+                _nodes.Remove(oldestNode.NodeId);
+            }
+        }
+    }
+
+    private void DropReleasedHeadEntries()
+    {
+        while (_recentNodes.TryPeek(out (TKey NodeId, long Generation) oldestNode) &&
+               (!_nodes.TryGetValue(oldestNode.NodeId, out long generation) || generation != oldestNode.Generation))
+        {
+            _recentNodes.Dequeue();
+        }
+    }
+
+    private void CompactQueue()
+    {
+        Queue<(TKey NodeId, long Generation)> compacted = new(_nodes.Count);
+        foreach ((TKey NodeId, long Generation) node in _recentNodes)
+        {
+            if (_nodes.TryGetValue(node.NodeId, out long generation) && generation == node.Generation)
+            {
+                compacted.Enqueue(node);
+            }
+        }
+
+        _recentNodes = compacted;
     }
 }

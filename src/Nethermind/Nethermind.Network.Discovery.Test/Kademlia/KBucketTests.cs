@@ -41,6 +41,19 @@ public class KBucketTests
     }
 
     [Test]
+    public void GetAll_should_not_keep_cached_array_for_large_bucket()
+    {
+        KBucket<ValueHash256, Hash256> bucket = new(KBucket<ValueHash256, Hash256>.DefaultReplacementCacheSize + 1);
+        AddNodes(bucket, Enumerable.Range(0, KBucket<ValueHash256, Hash256>.DefaultReplacementCacheSize + 1)
+            .Select(static k => ValueKeccak.Compute(k.ToString()))
+            .ToArray());
+
+        ValueHash256[] nodes = bucket.GetAll();
+
+        Assert.That(bucket.GetAll(), Is.Not.SameAs(nodes));
+    }
+
+    [Test]
     public void TryAddOrRefresh_ShouldReplaceCachedNode_WhenRefreshingSameHashWithNewInstance()
     {
         KBucket<string, Hash256> bucket = new(5);
@@ -64,6 +77,25 @@ public class KBucketTests
         ValueHash256[] expected = [.. toAdd[1..5], toAdd[9]];
         Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(expected.ToHashSet()));
         Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(expected.Select(static it => (IdentityNodeHashProvider.ToHash(it), it)).ToHashSet()));
+    }
+
+    [Test]
+    public void Replacement_cache_should_not_scale_with_large_bucket_size()
+    {
+        const int bucketSize = KBucket<ValueHash256, Hash256>.DefaultReplacementCacheSize * 2;
+
+        KBucket<ValueHash256, Hash256> bucket = new(bucketSize);
+        ValueHash256[] nodes = Enumerable.Range(0, bucketSize + KBucket<ValueHash256, Hash256>.DefaultReplacementCacheSize + 1)
+            .Select(static k => ValueKeccak.Compute(k.ToString()))
+            .ToArray();
+
+        AddNodes(bucket, nodes);
+        foreach (ValueHash256 node in nodes[..bucketSize])
+        {
+            bucket.RemoveAndReplace(IdentityNodeHashProvider.ToHash(node));
+        }
+
+        Assert.That(bucket.Count, Is.EqualTo(KBucket<ValueHash256, Hash256>.DefaultReplacementCacheSize));
     }
 
     private static (KBucket<ValueHash256, Hash256> Bucket, ValueHash256[] Nodes) BuildFullBucket()
