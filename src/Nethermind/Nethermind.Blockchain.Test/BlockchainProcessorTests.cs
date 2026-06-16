@@ -212,6 +212,7 @@ public class BlockchainProcessorTests
         private Hash256? _headBefore;
         private int _processingQueueEmptyFired;
         private const int ProcessingWait = 10_000;
+        private const int NegativeProcessingWait = 200;
         private const int MockRecheckInterval = 200;
 
         public ProcessingTestContext(bool startProcessor)
@@ -469,18 +470,20 @@ public class BlockchainProcessorTests
             _recoveryStep.Allow(block.Hash!);
             _branchProcessor.Allow(block.Hash!);
 
-            // Give the (paused) processing loop ample opportunity to pick the block up.
-            Thread.Sleep(500);
-
+            // Processing the block would surface a new head and set _resetEvent; drain stale signals,
+            // then confirm none fires within the window.
+            _resetEvent.Reset();
+            Assert.That(_resetEvent.WaitOne(NegativeProcessingWait), Is.False, "Block was processed while paused");
             Assert.That(_processor.IsProcessingPaused, Is.True, "Processing should still be paused");
-            // BranchProcessorMock records a hash as soon as Process() starts, so an empty entry
-            // proves the parked loop never dispatched the block.
             Assert.That(_branchProcessor.Processed, Does.Not.Contain(block.Hash), "Block was processed while paused");
             Assert.That(_blockTree.Head?.Hash, Is.Not.EqualTo(block.Hash), "Block became head while paused");
             return this;
         }
 
-        public ProcessingTestContext ThenBecomesNewHead(Block block)
+        public ProcessingTestContext ThenBecomesNewHead(Block block) =>
+            WaitForHead(block, "Block did not become head after resume");
+
+        private ProcessingTestContext WaitForHead(Block block, string message)
         {
             long deadline = Environment.TickCount64 + ProcessingWait;
             while (_blockTree.Head?.Hash != block.Hash)
@@ -491,7 +494,7 @@ public class BlockchainProcessorTests
                 _resetEvent.WaitOne((int)remaining);
             }
 
-            Assert.That(_blockTree.Head?.Hash, Is.EqualTo(block.Hash), "Block did not become head after resume");
+            Assert.That(_blockTree.Head?.Hash, Is.EqualTo(block.Hash), message);
             return this;
         }
 
@@ -512,21 +515,7 @@ public class BlockchainProcessorTests
             public ProcessingTestContext BecomesNewHead()
             {
                 _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to become the new head block");
-                // Loop on the auto-reset event: a single WaitOne may consume a stale or
-                // unrelated NewHeadBlock signal, so keep waiting until the expected block
-                // is the head or the overall timeout expires.
-                long deadline = Environment.TickCount64 + ProcessingWait;
-                while (processingTestContext._blockTree.Head?.Hash != block.Header.Hash)
-                {
-                    long remaining = deadline - Environment.TickCount64;
-                    if (remaining <= 0)
-                        break;
-                    processingTestContext._resetEvent.WaitOne((int)remaining);
-                }
-
-                Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(block.Header.Hash),
-                    $"Expected {block.ToString(Block.Format.Short)} to become the head");
-                return processingTestContext;
+                return processingTestContext.WaitForHead(block, $"Expected {block.ToString(Block.Format.Short)} to become the head");
             }
 
             public ProcessingTestContext IsKeptOnBranch()

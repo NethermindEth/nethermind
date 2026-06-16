@@ -211,15 +211,19 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void PauseProcessing()
     {
+        bool transitioned;
         lock (_pauseLock)
         {
+            transitioned = _resumeSignal is null;
             _resumeSignal ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        if (_logger.IsInfo) _logger.Info("Block processing paused.");
+        if (transitioned && _logger.IsInfo) _logger.Info("Block processing paused.");
     }
 
-    public void ResumeProcessing()
+    public void ResumeProcessing() => ResumeProcessing(duringShutdown: false);
+
+    private void ResumeProcessing(bool duringShutdown)
     {
         TaskCompletionSource? signal;
         lock (_pauseLock)
@@ -231,7 +235,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (signal is null) return;
 
         signal.TrySetResult();
-        if (_logger.IsInfo) _logger.Info("Block processing resumed.");
+        if (!duringShutdown && _logger.IsInfo) _logger.Info("Block processing resumed.");
     }
 
     public async Task StopAsync(bool processRemainingBlocks = false)
@@ -240,7 +244,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _disposed = true;
 
         // Unblock the processing loop in case it is parked on a pause, so shutdown can complete.
-        ResumeProcessing();
+        ResumeProcessing(duringShutdown: true);
 
         bool isStarted = _processorTask is not null;
         if (isStarted)
@@ -396,7 +400,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
-        while (_blockQueue.Reader.TryRead(out BlockRef blockRef))
+        // Re-check pause before each dequeue so a mid-drain pause takes effect at the next block boundary.
+        while (!IsProcessingPaused && _blockQueue.Reader.TryRead(out BlockRef blockRef))
         {
             try
             {
