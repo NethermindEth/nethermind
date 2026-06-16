@@ -612,12 +612,13 @@ public class AdminModuleTests
         Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32).ToArray(), Is.EqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
     }
 
-    [TestCase(true, TestName = "pause delegates to Pause and reports the paused state")]
-    [TestCase(false, TestName = "resume delegates to Resume and reports the running state")]
-    public void Admin_blockProcessingVerb_delegatesToControlAndReportsState(bool pause)
+    [TestCase(true, TestName = "pause delegates to Pause")]
+    [TestCase(false, TestName = "resume delegates to Resume")]
+    public void Admin_blockProcessingVerb_delegatesToControlAndReportsAccepted(bool pause)
     {
         IBlockProcessingPauseControl control = Substitute.For<IBlockProcessingPauseControl>();
         IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: control);
+        // Simulate the control reaching the requested state after the call.
         control.IsPaused.Returns(pause);
 
         ResultWrapper<bool> result = pause
@@ -637,7 +638,7 @@ public class AdminModuleTests
                 control.DidNotReceive().Pause();
             }
 
-            Assert.That(result.Data, Is.EqualTo(pause), "the verb returns the resulting paused state");
+            Assert.That(result.Data, Is.True, "the verb returns true once the processor reached the requested state");
         }
     }
 

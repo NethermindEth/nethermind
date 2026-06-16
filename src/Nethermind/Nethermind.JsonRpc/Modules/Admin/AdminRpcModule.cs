@@ -79,7 +79,7 @@ public class AdminRpcModule : IAdminRpcModule
     public ResultWrapper<bool> admin_resumeBlockProcessing()
     {
         _blockProcessingPauseControl.Resume();
-        return ResultWrapper<bool>.Success(_blockProcessingPauseControl.IsPaused);
+        return ResultWrapper<bool>.Success(!_blockProcessingPauseControl.IsPaused);
     }
 
     public ResultWrapper<bool> admin_isBlockProcessingPaused() =>

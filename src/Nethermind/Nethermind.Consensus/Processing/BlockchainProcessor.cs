@@ -540,8 +540,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
         _processorTask?.IsCompleted == false && _recoveryTask?.IsCompleted == false &&
-        // user does not setup interval and we cannot set interval time based on chainspec
-        (maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow);
+        // A deliberate pause is not a stall: while paused the processor stops advancing on purpose,
+        // so the staleness check is bypassed to avoid tripping liveness/health probes.
+        (_pauseGate.IsPaused || maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow);
 
     private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
     {
