@@ -80,6 +80,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<IMainProcessingContext, MainProcessingContext>()
             // Then component that has no ambiguity is extracted back out.
             .Map<IBlockProcessingQueue, MainProcessingContext>(ctx => (IBlockProcessingQueue)ctx.BlockchainProcessor)
+            .Map<IBlockProcessingPauseControl, MainProcessingContext>(ctx => (IBlockProcessingPauseControl)ctx.BlockchainProcessor)
             .Bind<IMainProcessingContext, MainProcessingContext>()
 
             // Some configuration that applies to validation and rpc but not to block producer. Plugins can add

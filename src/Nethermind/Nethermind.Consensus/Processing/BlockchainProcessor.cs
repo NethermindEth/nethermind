@@ -30,7 +30,7 @@ using static Nethermind.Core.Threading.ProcessingThread;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
+public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue, IBlockProcessingPauseControl
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
@@ -79,6 +79,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private const int MaxBranchSize = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
+    private readonly BlockProcessingPauseGate _pauseGate = new();
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
     public event EventHandler<BlockStatistics>? NewProcessingStatistics;
@@ -203,10 +204,25 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         static void ThrowAlreadyStarted() => throw new InvalidOperationException($"{nameof(BlockchainProcessor)} already started");
     }
 
+    public bool IsPaused => _pauseGate.IsPaused;
+
+    public void Pause()
+    {
+        if (_pauseGate.Pause() && _logger.IsInfo) _logger.Info("Block processing paused.");
+    }
+
+    public void Resume()
+    {
+        if (_pauseGate.Resume() && _logger.IsInfo) _logger.Info("Block processing resumed.");
+    }
+
     public async Task StopAsync(bool processRemainingBlocks = false)
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Unblock the loop in case it is parked on a pause, so shutdown cannot deadlock.
+        _pauseGate.Resume();
 
         bool isStarted = _processorTask is not null;
         if (isStarted)
@@ -325,6 +341,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
+            // Park here while paused; enqueued blocks accumulate in the queue until resumed.
+            await _pauseGate.WaitWhilePausedAsync(CancellationToken);
+
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
@@ -356,7 +375,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
-        while (_blockQueue.Reader.TryRead(out BlockRef blockRef))
+        // Re-check the pause before each dequeue so a mid-drain pause takes effect at the next block boundary.
+        while (!_pauseGate.IsPaused && _blockQueue.Reader.TryRead(out BlockRef blockRef))
         {
             try
             {

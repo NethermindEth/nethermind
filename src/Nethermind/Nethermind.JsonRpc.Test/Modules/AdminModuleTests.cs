@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -100,7 +101,8 @@ public class AdminModuleTests
             new ChainSpec { Parameters = new ChainParameters() }.Parameters,
             Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingPauseControl>());
         _adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 
         _serializer = new EthereumJsonSerializer();
@@ -610,10 +612,32 @@ public class AdminModuleTests
         Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32).ToArray(), Is.EqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
     }
 
+    [Test]
+    public void Admin_blockProcessing_pauseAndResume_delegatesToControlAndReportsState()
+    {
+        IBlockProcessingPauseControl pauseControl = Substitute.For<IBlockProcessingPauseControl>();
+        IAdminRpcModule module = BuildAdminRpcModuleWith(blockProcessingPauseControl: pauseControl);
+
+        pauseControl.IsPaused.Returns(true);
+        ResultWrapper<bool> paused = module.admin_pauseBlockProcessing();
+        pauseControl.Received(1).Pause();
+        Assert.That(paused.Data, Is.True, "pause must report the processor as paused after the call");
+
+        ResultWrapper<bool> queried = module.admin_isBlockProcessingPaused();
+        pauseControl.DidNotReceive().Resume();
+        Assert.That(queried.Data, Is.True, "the query must reflect the paused state without mutating it");
+
+        pauseControl.IsPaused.Returns(false);
+        ResultWrapper<bool> resumed = module.admin_resumeBlockProcessing();
+        pauseControl.Received(1).Resume();
+        Assert.That(resumed.Data, Is.False, "resume must report the processor as running after the call");
+    }
+
     private IAdminRpcModule BuildAdminRpcModuleWith(
         IStaticNodesManager? staticNodesManager = null,
         ITrustedNodesManager? trustedNodesManager = null,
-        IPeerPool? peerPool = null)
+        IPeerPool? peerPool = null,
+        IBlockProcessingPauseControl? blockProcessingPauseControl = null)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
@@ -627,7 +651,8 @@ public class AdminModuleTests
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            blockProcessingPauseControl ?? Substitute.For<IBlockProcessingPauseControl>());
     }
 
     private JsonRpcResult RaisePeerEventAndCapture(Action raiseEvent, out string subscriptionId, bool disposeSubscription = false, bool shouldReceive = true)
@@ -689,7 +714,8 @@ public class AdminModuleTests
             new ChainParameters(),
             Substitute.For<ITrustedNodesManager>(),
             subscriptionManager,
-            new JsonRpcConfig());
+            new JsonRpcConfig(),
+            Substitute.For<IBlockProcessingPauseControl>());
     }
 
     private static IPeerPool CreatePeerPool(Peer peer)
