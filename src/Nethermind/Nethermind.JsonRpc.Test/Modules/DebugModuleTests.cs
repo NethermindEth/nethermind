@@ -478,13 +478,16 @@ public class DebugModuleTests
     {
         yield return new TestCaseData(
             (Action<IDebugBridge>)(b => b.GetBlock(new BlockParameter(1L)).ReturnsNull()),
-            "debug_getRawBlock", (object)"0x1") { TestName = "RawBlock_ByNumber" };
+            "debug_getRawBlock", (object)"0x1")
+        { TestName = "RawBlock_ByNumber" };
         yield return new TestCaseData(
             (Action<IDebugBridge>)(b => b.GetBlock(new BlockParameter(Keccak.Zero)).ReturnsNull()),
-            "debug_getRawBlock", (object)Keccak.Zero) { TestName = "RawBlock_ByHash" };
+            "debug_getRawBlock", (object)Keccak.Zero)
+        { TestName = "RawBlock_ByHash" };
         yield return new TestCaseData(
             (Action<IDebugBridge>)(b => b.GetTransactionFromHash(Keccak.Zero).ReturnsNull()),
-            "debug_getRawTransaction", (object)Keccak.Zero) { TestName = "RawTransaction" };
+            "debug_getRawTransaction", (object)Keccak.Zero)
+        { TestName = "RawTransaction" };
     }
 
     private static IEnumerable<TestCaseData> RawBlockAccessListErrorCases()
