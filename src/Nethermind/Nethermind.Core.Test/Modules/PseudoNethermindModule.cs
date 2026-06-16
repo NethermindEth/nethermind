@@ -67,6 +67,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             {
                 // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
+                flatDbConfig.WarmReadConcurrency = 2;
             })
 
             // Rpc

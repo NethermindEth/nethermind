@@ -76,8 +76,8 @@ internal static class FlatEntryWriter
             try
             {
                 path.AppendMut(node.Key);
-                Rlp.ValueDecoderContext ctx = ((ReadOnlySpan<byte>)node.Value).AsRlpValueContext();
-                writeBatch.SetStorageRaw(address, path.Path, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+                // node.Value is already RLP(stripped) — store verbatim when wrapping, skipping decode + re-encode.
+                writeBatch.SetStorageRawEncoded(address, path.Path, node.Value);
             }
             finally
             {
@@ -91,8 +91,7 @@ internal static class FlatEntryWriter
             BranchInlineChildLeafEnumerator enumerator = new(ref path, node);
             while (enumerator.MoveNext())
             {
-                Rlp.ValueDecoderContext ctx = enumerator.CurrentValue.AsRlpValueContext();
-                writeBatch.SetStorageRaw(address, enumerator.CurrentPath, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+                writeBatch.SetStorageRawEncoded(address, enumerator.CurrentPath, enumerator.CurrentValue);
             }
         }
         else if (node.IsExtension)

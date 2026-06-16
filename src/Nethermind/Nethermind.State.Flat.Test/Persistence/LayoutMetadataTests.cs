@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
@@ -29,6 +30,18 @@ public class LayoutMetadataTests
         BasePersistence.SetLayout(metadata, layout);
 
         Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(layout));
+    }
+
+    [Test]
+    public void SetLayout_AlsoRecords_RlpSlotEncoding()
+    {
+        using MemColumnsDb<FlatDbColumns> db = new();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+
+        BasePersistence.SetLayout(metadata, FlatLayout.Flat);
+
+        Assert.That(metadata.Get(Keccak.Compute("SlotEncoding").BytesToArray()),
+            Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
     }
 
     [TestCase(FlatLayout.Flat)]

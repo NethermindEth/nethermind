@@ -81,17 +81,24 @@ public sealed class EraStore : IEraStore
         foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileNameWithoutExtension(file).Split(_eraSeparator);
-            if (parts.Length != 3 || !int.TryParse(parts[1], out int epoch) || epoch < 0)
+            if (parts.Length < 3 || !int.TryParse(parts[1], out int epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed EraE file '{file}'.", file);
 
-            _epochs[epoch] = file;
+            // When both the canonical .ere and the legacy .erae exist for an epoch, prefer .ere
+            // so selection is deterministic regardless of filesystem enumeration order.
+            if (!_epochs.TryGetValue(epoch, out string? existing) ||
+                (EraPathUtils.IsCanonicalEraFile(file) && !EraPathUtils.IsCanonicalEraFile(existing)))
+            {
+                _epochs[epoch] = file;
+            }
+
             hasEraFile = true;
             if (epoch > LastEpoch) LastEpoch = epoch;
             if (epoch < FirstEpoch) FirstEpoch = epoch;
         }
 
         if (!hasEraFile)
-            throw new EraException($"No relevant erae files in directory {directory}.");
+            throw new EraException($"No relevant era files (.ere or .erae) found for network '{networkName}' in directory {directory}.");
 
         _blockRange = new Lazy<(long, long)>(() =>
         {

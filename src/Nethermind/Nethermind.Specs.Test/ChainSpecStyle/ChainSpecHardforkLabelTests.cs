@@ -100,8 +100,11 @@ public class ChainSpecHardforkLabelTests
             string releaseProperty = $"IsEip{eip}Enabled";
             PropertyInfo? prop = typeof(ReleaseSpec).GetProperty(releaseProperty);
             Assert.That(prop, Is.Not.Null, $"ReleaseSpec should expose {releaseProperty} for label '{label.LabelName}'");
-            Assert.That((bool)prop!.GetValue(fork)!, Is.EqualTo(!isDisableLabel),
-                $"label '{label.LabelName}' covers EIP-{eip}, but {fork.Name}.{releaseProperty} is {prop.GetValue(fork)}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((bool)prop!.GetValue(fork)!, Is.EqualTo(!isDisableLabel),
+                    $"label '{label.LabelName}' covers EIP-{eip}, but {fork.Name}.{releaseProperty} is {prop.GetValue(fork)}");
+            }
         }
     }
 
@@ -139,8 +142,11 @@ public class ChainSpecHardforkLabelTests
     {
         ChainSpec spec = Load("\"cancun\": \"0x100\", \"eip4844TransitionTimestamp\": \"0x100\"");
 
-        Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x100));
-        Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.EqualTo(0x100));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x100));
+            Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.EqualTo(0x100));
+        }
     }
 
     // NamedForks is initialized with StringComparer.OrdinalIgnoreCase — these all resolve to the same label.
@@ -151,8 +157,11 @@ public class ChainSpecHardforkLabelTests
     {
         ChainSpec spec = Load(paramsJson);
 
-        Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x100));
-        Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.EqualTo(0x100));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x100));
+            Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.EqualTo(0x100));
+        }
     }
 
     [Test]
@@ -170,9 +179,12 @@ public class ChainSpecHardforkLabelTests
     {
         ChainSpec spec = Load("\"shanghai\": \"0x0\", \"cancun\": \"0x0\", \"prague\": \"0x0\"");
 
-        Assert.That(spec.Genesis.Header.WithdrawalsRoot, Is.Not.Null);
-        Assert.That(spec.Genesis.Header.ParentBeaconBlockRoot, Is.Not.Null);
-        Assert.That(spec.Genesis.Header.RequestsHash, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.Genesis.Header.WithdrawalsRoot, Is.Not.Null);
+            Assert.That(spec.Genesis.Header.ParentBeaconBlockRoot, Is.Not.Null);
+            Assert.That(spec.Genesis.Header.RequestsHash, Is.Not.Null);
+        }
     }
 
     [Test]
@@ -180,10 +192,13 @@ public class ChainSpecHardforkLabelTests
     {
         ChainSpec spec = Load("\"eip4844TransitionTimestamp\": \"0x55\", \"eip4788TransitionTimestamp\": \"0x55\"");
 
-        Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x55));
-        Assert.That(spec.Parameters.Eip4788TransitionTimestamp, Is.EqualTo(0x55));
-        // Sibling EIPs not part of this declaration stay null.
-        Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.Parameters.Eip4844TransitionTimestamp, Is.EqualTo(0x55));
+            Assert.That(spec.Parameters.Eip4788TransitionTimestamp, Is.EqualTo(0x55));
+            // Sibling EIPs not part of this declaration stay null.
+            Assert.That(spec.Parameters.Eip1153TransitionTimestamp, Is.Null);
+        }
     }
 
     private static string ToCamelCase(string name) =>
