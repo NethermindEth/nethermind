@@ -366,6 +366,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             RemoveAndReleaseInMemoryKnownState(stateToRemove, SnapshotTier.InMemoryCompacted);
             RemoveAndReleaseInMemoryKnownState(stateToRemove, SnapshotTier.InMemoryBase);
         }
+
+        // A persist also supersedes the persisted tier: drop persisted snapshots strictly below the
+        // block (the base at the persisted block stays as a read/compaction source until the state
+        // advances past it). One unified prune so callers don't pair this with a separate persisted-tier call.
+        RemovePersistedStatesUntil(blockNumber);
     }
 
     private const int PruneBatchSize = 1000;

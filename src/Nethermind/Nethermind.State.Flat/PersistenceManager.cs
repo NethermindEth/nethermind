@@ -208,7 +208,7 @@ public class PersistenceManager(
                 _snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                 PersistSnapshot(toPersist);
                 _currentPersistedStateId = toPersist.To;
-                PrunePersistedTierBefore(toPersist.To);
+                _snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
             }
             else if (persistedToPersist is not null)
             {
@@ -216,7 +216,7 @@ public class PersistenceManager(
                 _snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                 PersistPersistedSnapshot(persistedToPersist);
                 _currentPersistedStateId = persistedToPersist.To;
-                PrunePersistedTierBefore(persistedToPersist.To);
+                _snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
             }
             else if (toConvert is not null)
             {
@@ -227,24 +227,7 @@ public class PersistenceManager(
                 break;
             }
         }
-
-        // Prune the in-memory tier for everything the now-advanced persisted state supersedes — the
-        // post-persist step that previously lived in FlatDbManager.PersistIfNeeded. The persisted
-        // tier is pruned per-persist above via PrunePersistedTierBefore.
-        if (_currentPersistedStateId != StateId.PreGenesis)
-            _snapshotRepository.RemoveStatesUntil(_currentPersistedStateId.BlockNumber);
     }
-
-    /// <summary>
-    /// Drop persisted-snapshot tier entries whose <c>To.BlockNumber &lt; newPersisted.BlockNumber</c>.
-    /// Called after every successful RocksDB persist (in-memory or tier source) so the tier
-    /// doesn't accumulate entries that RocksDB has already superseded.
-    /// </summary>
-    /// <remarks>
-    /// The per-removal metric updates (count / memory / prunes) happen delta-wise inside the
-    /// repo's <c>RemoveStatesUntil</c>, so no metric recompute is needed here.
-    /// </remarks>
-    private void PrunePersistedTierBefore(StateId newPersisted) => _snapshotRepository.RemovePersistedStatesUntil(newPersisted.BlockNumber);
 
     private void DoConvert(ConversionCandidate candidate)
     {
@@ -327,9 +310,16 @@ public class PersistenceManager(
     }
 
     /// <summary>
-    /// Force persist all snapshots regardless of finalization status.
-    /// Used by FlushCache to ensure all state is persisted before clearing caches.
+    /// Walk and persist every snapshot up to the current tip, ignoring the finality gate, and return
+    /// the resulting persisted state.
     /// </summary>
+    /// <remarks>
+    /// Called only by the genesis loader (via <c>FlatDbManager.FlushCache</c>), for sync compatibility:
+    /// it advances the persisted RocksDB state all the way to the tip and prunes both tiers behind it,
+    /// leaving only the persisted state that the sync pipeline reads directly. Unlike
+    /// <see cref="AddToPersistence"/> it has no per-call drain bound and seeds the walk from the
+    /// finalized state when available, falling back to the in-memory then tier-aware latest tip.
+    /// </remarks>
     public StateId FlushToPersistence()
     {
         using Lock.Scope scope = _persistenceLock.EnterScope();
@@ -373,7 +363,7 @@ public class PersistenceManager(
                 PersistPersistedSnapshot(persisted);
                 _currentPersistedStateId = persisted.To;
                 currentPersistedState = _currentPersistedStateId;
-                PrunePersistedTierBefore(persisted.To);
+                _snapshotRepository.RemoveStatesUntil(persisted.To.BlockNumber);
                 continue;
             }
 
@@ -385,14 +375,8 @@ public class PersistenceManager(
             PersistSnapshot(snapshotToPersist);
             _currentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = _currentPersistedStateId;
-            PrunePersistedTierBefore(snapshotToPersist.To);
+            _snapshotRepository.RemoveStatesUntil(snapshotToPersist.To.BlockNumber);
         }
-
-        // Prune the in-memory tier for everything the now-advanced persisted state supersedes — the
-        // post-flush step that previously lived in FlatDbManager.FlushCache. The persisted tier is
-        // pruned per-persist above via PrunePersistedTierBefore.
-        if (currentPersistedState != StateId.PreGenesis)
-            _snapshotRepository.RemoveStatesUntil(currentPersistedState.BlockNumber);
 
         return currentPersistedState;
     }

@@ -102,8 +102,10 @@ public interface ISnapshotRepository
     /// <paramref name="blockNumber"/>. Caller disposes the list.</summary>
     ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber);
 
-    /// <summary>Remove and release all in-memory snapshots (both tiers) with <c>To.BlockNumber</c> up to and
-    /// including <paramref name="blockNumber"/>.</summary>
+    /// <summary>Remove every snapshot a persist to <paramref name="blockNumber"/> supersedes: in-memory
+    /// snapshots (both tiers) with <c>To.BlockNumber</c> up to and including <paramref name="blockNumber"/>,
+    /// and persisted-tier snapshots with <c>To.BlockNumber</c> strictly below it (the base at the persisted
+    /// block stays until the state advances past it). Folds in <see cref="RemovePersistedStatesUntil"/>.</summary>
     void RemoveStatesUntil(long blockNumber);
 
     /// <summary>
