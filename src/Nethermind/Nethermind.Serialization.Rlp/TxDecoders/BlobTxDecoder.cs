@@ -59,7 +59,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         }
     }
 
-    protected override void EncodeTypedWrapped(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
+    protected override void EncodeTypedWrapped<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
     {
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
@@ -78,7 +78,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             EncodeShardBlobNetworkWrapper(transaction, ref writer);
         }
 
-        static void EncodeShardBlobNetworkWrapper(Transaction transaction, ref ValueRlpWriter writer)
+        static void EncodeShardBlobNetworkWrapper(Transaction transaction, ref ValueRlpWriter<TBackend> writer)
         {
             ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
             if (networkWrapper.Version > ProofVersion.V0)
@@ -100,7 +100,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
     }
 
-    protected override void EncodePayload(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.EncodePayload(transaction, ref writer, rlpBehaviors);
         writer.Encode(transaction.MaxFeePerBlobGas!.Value);

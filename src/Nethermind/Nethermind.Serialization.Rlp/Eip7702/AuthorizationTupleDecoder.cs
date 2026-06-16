@@ -38,7 +38,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
-    public override void Encode(ref ValueRlpWriter writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item);
         writer.StartSequence(contentLength);
@@ -50,7 +50,8 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.Encode(new UInt256(item.AuthoritySignature.S.Span, true));
     }
 
-    public static void EncodeWithoutSignature(ref ValueRlpWriter writer, UInt256 chainId, Address codeAddress, ulong nonce)
+    public static void EncodeWithoutSignature<TBackend>(ref ValueRlpWriter<TBackend> writer, UInt256 chainId, Address codeAddress, ulong nonce)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         writer.StartSequence(contentLength);
@@ -59,7 +60,8 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.Encode(nonce);
     }
 
-    public void EncodeArray(ref ValueRlpWriter writer, AuthorizationTuple[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void EncodeArray<TBackend>(ref ValueRlpWriter<TBackend> writer, AuthorizationTuple[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         if (items is null)
         {

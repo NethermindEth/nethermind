@@ -323,7 +323,7 @@ internal class VotesManager(
     private bool TrySign(Vote vote)
     {
         KeccakRlpStream stream = new();
-        ValueRlpWriter writer = stream.AsValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
         _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
         ValueHash256 hash = stream.GetValueHash();
         if (!_signer.TrySign(in hash, out Signature signature))

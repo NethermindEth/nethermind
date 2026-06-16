@@ -16,7 +16,7 @@ public class EthEntry(byte[] forkHash, long nextBlock) : EnrContentEntry<ForkId>
                 Rlp.LengthOfSequence(
                     5 + Rlp.LengthOf(Value.NextBlock)));
 
-    protected override void EncodeValue(ref ValueRlpWriter writer)
+    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer)
     {
         // I am just guessing this one
         int contentLength = 5 + Rlp.LengthOf(Value.NextBlock);

@@ -44,7 +44,8 @@ namespace Ethereum.Rlp.Test
             int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
             byte[] buffer = new byte[total + 8];
             Array.Fill(buffer, (byte)0xAB);
-            ValueRlpWriter writer = new(buffer) { Position = 5 };
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
+            writer.Position = 5;
             writer.Encode(Bloom.Empty);
 
             Assert.That(writer.Position, Is.EqualTo(5 + total));
@@ -61,7 +62,7 @@ namespace Ethereum.Rlp.Test
         {
             int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
             byte[] bytes = new byte[total];
-            ValueRlpWriter writer = new(bytes);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
             writer.Encode(Bloom.Empty);
 
             Assert.That(bytes.Length, Is.EqualTo(total));

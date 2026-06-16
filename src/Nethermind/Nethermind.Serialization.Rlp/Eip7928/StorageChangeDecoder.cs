@@ -12,7 +12,7 @@ public class StorageChangeDecoder : IndexedChangeDecoder<StorageChange>
     protected override StorageChange DecodeFields(ref ValueRlpReader ctx)
         => new(ctx.DecodeUInt(), ctx.DecodeEvmWord());
 
-    protected override void EncodeValue(ref ValueRlpWriter writer, StorageChange item)
+    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer, StorageChange item)
         => writer.Encode(item.Value);
 
     protected override int GetValueLength(StorageChange item)

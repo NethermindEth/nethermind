@@ -12,14 +12,15 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 {
     public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public abstract void Encode(ref ValueRlpWriter stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    public abstract void Encode<TBackend>(ref ValueRlpWriter<TBackend> stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TBackend : IValueRlpWriteBackend, allows ref struct;
 
     protected abstract T DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public virtual Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForArray(bytes);
         Encode(ref writer, item, rlpBehaviors);
         return new Rlp(bytes);
     }
@@ -32,7 +33,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         }
 
         byte[] bytes = new byte[GetLength(items, rlpBehaviors)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForArray(bytes);
         Encode(ref writer, items, rlpBehaviors);
         return new Rlp(bytes);
     }
@@ -126,12 +127,13 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     {
         int size = GetLength(item, rlpBehaviors);
         CappedArray<byte> buffer = bufferPool.SafeRent(size);
-        ValueRlpWriter writer = new(buffer);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForCappedArray(in buffer);
         Encode(ref writer, item, rlpBehaviors);
         return buffer;
     }
 
-    public virtual void Encode(ref ValueRlpWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+    public virtual void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         if (items is null)
         {

@@ -98,7 +98,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        public override void Encode(ref ValueRlpWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

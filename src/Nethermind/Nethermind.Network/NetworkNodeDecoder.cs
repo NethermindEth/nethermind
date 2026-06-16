@@ -36,7 +36,7 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public override void Encode(ref ValueRlpWriter writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
             writer.StartSequence(contentLength);

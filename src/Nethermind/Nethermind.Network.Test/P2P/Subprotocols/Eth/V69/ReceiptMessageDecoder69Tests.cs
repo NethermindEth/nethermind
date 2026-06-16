@@ -26,7 +26,7 @@ public class ReceiptMessageDecoder69Tests
         ReceiptMessageDecoder69 decoder = new();
         int length = decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts);
         byte[] encoded = new byte[length];
-        ValueRlpWriter writer = new(encoded);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(encoded);
         decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
 
         ValueRlpReader context = encoded.AsRlpValueContext();

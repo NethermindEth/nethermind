@@ -16,7 +16,7 @@ public class StatusMessageSerializer69 :
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        ValueRlpWriter writer = new(byteBuffer);
+        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
         writer.StartSequence(contentLength);
 
         writer.Encode(message.ProtocolVersion);
@@ -61,7 +61,8 @@ public class StatusMessageSerializer69 :
         };
     }
 
-    private static void EncodeForkId(ref ValueRlpWriter writer, ForkId forkId)
+    private static void EncodeForkId<TBackend>(ref ValueRlpWriter<TBackend> writer, ForkId forkId)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         int forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
         writer.StartSequence(forkIdContentLength);

@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int codesLength = Rlp.LengthOfByteArrayList(message.Codes);
             int contentLength = Rlp.LengthOf(message.RequestId) + codesLength;
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
             writer.WriteByteArrayList(message.Codes);

@@ -150,12 +150,12 @@ namespace Nethermind.Serialization.Rlp
 
             int length = GetLength(item, rlpBehaviors);
             byte[] bytes = new byte[length];
-            ValueRlpWriter writer = bytes.AsRlpValueWriter();
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
             Encode(ref writer, item, rlpBehaviors);
             return bytes;
         }
 
-        public override void Encode(ref ValueRlpWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

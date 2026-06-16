@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public override void Encode(ref ValueRlpWriter writer, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int signersLength, int votesLength, int tallyLength) =
                 GetContentLength(item, rlpBehaviors);
@@ -131,7 +131,8 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private static void EncodeSigners(ref ValueRlpWriter writer, SortedList<Address, long> signers, int contentLength)
+        private static void EncodeSigners<TBackend>(ref ValueRlpWriter<TBackend> writer, SortedList<Address, long> signers, int contentLength)
+            where TBackend : IValueRlpWriteBackend, allows ref struct
         {
             writer.StartSequence(contentLength);
             int signerCount = signers.Count;
@@ -158,7 +159,8 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private static void EncodeVotes(ref ValueRlpWriter writer, List<Vote> votes, int contentLength)
+        private static void EncodeVotes<TBackend>(ref ValueRlpWriter<TBackend> writer, List<Vote> votes, int contentLength)
+            where TBackend : IValueRlpWriteBackend, allows ref struct
         {
             writer.StartSequence(contentLength);
             int voteCount = votes.Count;
@@ -187,7 +189,8 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private static void EncodeTally(ref ValueRlpWriter writer, Dictionary<Address, Tally> tally, int contentLength)
+        private static void EncodeTally<TBackend>(ref ValueRlpWriter<TBackend> writer, Dictionary<Address, Tally> tally, int contentLength)
+            where TBackend : IValueRlpWriteBackend, allows ref struct
         {
             writer.StartSequence(contentLength);
             int tallyCount = tally.Count;

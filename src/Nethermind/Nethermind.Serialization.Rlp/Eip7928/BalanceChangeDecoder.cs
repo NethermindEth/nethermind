@@ -12,7 +12,7 @@ public class BalanceChangeDecoder : IndexedChangeDecoder<BalanceChange>
     protected override BalanceChange DecodeFields(ref ValueRlpReader ctx)
         => new(ctx.DecodeUInt(), ctx.DecodeUInt256());
 
-    protected override void EncodeValue(ref ValueRlpWriter writer, BalanceChange item)
+    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer, BalanceChange item)
         => writer.Encode(item.Value);
 
     protected override int GetValueLength(BalanceChange item)

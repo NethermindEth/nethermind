@@ -22,13 +22,13 @@ public static class RlpDecoderArrayPoolExtensions
         if (item is null)
         {
             ArrayPoolSpan<byte> empty = new(1);
-            ValueRlpWriter emptyWriter = new((Span<byte>)empty);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> emptyWriter = RlpWriter.ForSpan((Span<byte>)empty);
             emptyWriter.WriteByte(Rlp.EmptyListByte);
             return empty;
         }
 
         ArrayPoolSpan<byte> encoded = new(decoder.GetLength(item, rlpBehaviors));
-        ValueRlpWriter writer = new((Span<byte>)encoded);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan((Span<byte>)encoded);
         decoder.Encode(ref writer, item, rlpBehaviors);
         return encoded;
     }
@@ -39,7 +39,7 @@ public static class RlpDecoderArrayPoolExtensions
     public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan(this BlockAccessListDecoder decoder, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArrayPoolSpan<byte> encoded = new(decoder.GetLength(item, rlpBehaviors));
-        ValueRlpWriter writer = new((Span<byte>)encoded);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan((Span<byte>)encoded);
         decoder.Encode(ref writer, item, rlpBehaviors);
         return encoded;
     }
@@ -52,7 +52,7 @@ public static class RlpDecoderArrayPoolExtensions
         if (items is null)
         {
             ArrayPoolSpan<byte> empty = new(1);
-            ValueRlpWriter emptyWriter = new((Span<byte>)empty);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> emptyWriter = RlpWriter.ForSpan((Span<byte>)empty);
             emptyWriter.WriteByte(Rlp.EmptyListByte);
             return empty;
         }
@@ -66,7 +66,7 @@ public static class RlpDecoderArrayPoolExtensions
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
         ArrayPoolSpan<byte> encoded = new(bufferLength);
-        ValueRlpWriter writer = new((Span<byte>)encoded);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan((Span<byte>)encoded);
         writer.StartSequence(totalLength);
 
         for (int i = 0; i < items.Length; i++)
@@ -85,7 +85,7 @@ public static class RlpDecoderArrayPoolExtensions
         if (items is null)
         {
             ArrayPoolSpan<byte> empty = new(1);
-            ValueRlpWriter emptyWriter = new((Span<byte>)empty);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> emptyWriter = RlpWriter.ForSpan((Span<byte>)empty);
             emptyWriter.WriteByte(Rlp.EmptyListByte);
             return empty;
         }
@@ -99,7 +99,7 @@ public static class RlpDecoderArrayPoolExtensions
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
         ArrayPoolSpan<byte> encoded = new(bufferLength);
-        ValueRlpWriter writer = new((Span<byte>)encoded);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan((Span<byte>)encoded);
         writer.StartSequence(totalLength);
 
         for (int i = 0; i < items.Count; i++)
@@ -124,7 +124,7 @@ public static class RlpDecoderArrayPoolExtensions
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
         ArrayPoolSpan<byte> encoded = new(bufferLength);
-        ValueRlpWriter writer = new((Span<byte>)encoded);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan((Span<byte>)encoded);
         writer.StartSequence(totalLength);
 
         for (int i = 0; i < items.Count; i++)
@@ -135,7 +135,8 @@ public static class RlpDecoderArrayPoolExtensions
         return encoded;
     }
 
-    private static void EncodeNullable<T>(IRlpDecoder<T> decoder, ref ValueRlpWriter writer, T? item, RlpBehaviors behaviors)
+    private static void EncodeNullable<TBackend, T>(IRlpDecoder<T> decoder, ref ValueRlpWriter<TBackend> writer, T? item, RlpBehaviors behaviors)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         if (item is null)
         {

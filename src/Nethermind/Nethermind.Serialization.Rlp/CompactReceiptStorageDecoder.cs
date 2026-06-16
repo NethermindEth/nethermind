@@ -124,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;
 
-        public override void Encode(ref ValueRlpWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

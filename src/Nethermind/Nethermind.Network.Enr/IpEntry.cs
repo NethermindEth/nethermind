@@ -15,7 +15,7 @@ public class IpEntry(IPAddress ipAddress) : EnrContentEntry<IPAddress>(ipAddress
 
     protected override int GetRlpLengthOfValue() => 5;
 
-    protected override void EncodeValue(ref ValueRlpWriter writer)
+    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer)
     {
         Span<byte> bytes = stackalloc byte[4];
         Value.MapToIPv4().TryWriteBytes(bytes, out int _);

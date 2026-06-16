@@ -28,7 +28,7 @@ internal sealed class XdcBlockInfoDecoder : RlpDecoder<BlockRoundInfo>
         return new BlockRoundInfo(new Hash256(hashBytes), round, number);
     }
 
-    public override void Encode(ref ValueRlpWriter writer, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

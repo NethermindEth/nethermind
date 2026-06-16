@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.FastSync
 
             int contentLength = GetLength(progress);
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            ValueRlpWriter writer = bytes.AsRlpValueWriter();
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
             writer.StartSequence(contentLength);
             foreach (long entry in progress)
             {

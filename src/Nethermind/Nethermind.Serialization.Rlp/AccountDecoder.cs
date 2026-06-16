@@ -42,7 +42,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        public override void Encode(ref ValueRlpWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -53,7 +53,8 @@ namespace Nethermind.Serialization.Rlp
             Encode(item, ref writer);
         }
 
-        public void Encode(Account account, ref ValueRlpWriter writer, int? contentLength = null)
+        public void Encode<TBackend>(Account account, ref ValueRlpWriter<TBackend> writer, int? contentLength = null)
+            where TBackend : IValueRlpWriteBackend, allows ref struct
         {
             contentLength ??= GetContentLength(account);
 

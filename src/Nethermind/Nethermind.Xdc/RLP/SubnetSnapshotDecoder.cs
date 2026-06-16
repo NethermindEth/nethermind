@@ -20,7 +20,7 @@ internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot
         return subnetSnapshot;
     }
 
-    protected override void EncodeContent(ref ValueRlpWriter writer, SubnetSnapshot item, RlpBehaviors rlpBehaviors)
+    protected override void EncodeContent<TBackend>(ref ValueRlpWriter<TBackend> writer, SubnetSnapshot item, RlpBehaviors rlpBehaviors)
     {
         base.EncodeContent(ref writer, item, rlpBehaviors);
 

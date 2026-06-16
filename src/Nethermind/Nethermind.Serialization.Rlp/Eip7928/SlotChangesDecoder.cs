@@ -58,14 +58,15 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
     public int GetLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public override void Encode(ref ValueRlpWriter writer, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetContentLength(item, rlpBehaviors));
         writer.Encode(item.Key);
         EncodeStorageChanges(ref writer, item.Changes, rlpBehaviors);
     }
 
-    public void Encode(ref ValueRlpWriter writer, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(GetContentLength(item, rlpBehaviors));
         writer.Encode(item.Key);
@@ -88,7 +89,8 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return Rlp.LengthOfSequence(len);
     }
 
-    private static void EncodeStorageChanges(ref ValueRlpWriter writer, IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    private static void EncodeStorageChanges<TBackend>(ref ValueRlpWriter<TBackend> writer, IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         int len = 0;
         foreach (StorageChange c in changes) len += StorageChangeDecoder.Instance.GetLength(c, rlpBehaviors);

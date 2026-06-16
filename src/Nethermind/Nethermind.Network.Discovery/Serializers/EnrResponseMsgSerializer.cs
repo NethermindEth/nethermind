@@ -24,7 +24,7 @@ public class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ValueRlpWriter writer = new(byteBuffer);
+        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
         writer.StartSequence(contentLength);
         writer.Encode(msg.RequestKeccak);
         msg.NodeRecord.Encode(ref writer);

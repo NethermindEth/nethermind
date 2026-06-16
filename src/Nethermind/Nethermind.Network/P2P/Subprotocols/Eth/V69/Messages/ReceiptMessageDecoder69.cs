@@ -123,7 +123,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         return Rlp.LengthOfSequence(total);
     }
 
-    public override void Encode(ref ValueRlpWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

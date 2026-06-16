@@ -13,7 +13,7 @@ namespace Nethermind.Serialization.Rlp
     {
         public static BlockInfoDecoder Instance { get; } = new();
 
-        public override void Encode(ref ValueRlpWriter writer, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

@@ -77,7 +77,7 @@ namespace Nethermind.Network.Rlpx
                         contentLength += Rlp.LengthOf(totalPayloadSize);
                     }
                     output.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                    ValueRlpWriter writer = new(output);
+                    ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(output);
                     writer.StartSequence(contentLength);
                     writer.Encode(0);
                     writer.Encode(_contextId);

@@ -90,7 +90,7 @@ namespace Nethermind.Serialization.Rlp
             return blockHeader;
         }
 
-        public override void Encode(ref ValueRlpWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (header is null)
             {
@@ -162,7 +162,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-            ValueRlpWriter writer = bytes.AsRlpValueWriter();
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
             Encode(ref writer, item, rlpBehaviors);
 
             return new Rlp(bytes);

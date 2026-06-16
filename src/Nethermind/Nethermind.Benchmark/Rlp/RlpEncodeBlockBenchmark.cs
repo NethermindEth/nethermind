@@ -69,7 +69,7 @@ namespace Nethermind.Benchmarks.Rlp
         {
             int length = _blockDecoder.GetLength(_block, RlpBehaviors.None);
             byte[] bytes = new byte[length];
-            ValueRlpWriter writer = new(bytes);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
             _blockDecoder.Encode(ref writer, _block);
             return Bytes.Empty;
         }

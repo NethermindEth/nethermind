@@ -257,7 +257,7 @@ public class RlpItemListTests
         int innerSeqLen = Rlp.LengthOfSequence(contentLength);
         int outerSeqLen = Rlp.LengthOfSequence(innerSeqLen);
         byte[] expected = new byte[outerSeqLen];
-        ValueRlpWriter expectedWriter = expected.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> expectedWriter = expected.AsRlpValueWriter();
         expectedWriter.StartSequence(innerSeqLen);
         expectedWriter.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
@@ -267,7 +267,7 @@ public class RlpItemListTests
         Assert.That(view.RlpLength, Is.EqualTo(outerSeqLen));
 
         byte[] actual = new byte[view.RlpLength];
-        ValueRlpWriter writer = new(actual);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(actual);
         view.Write(ref writer);
         Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expected));
     }
@@ -332,7 +332,7 @@ public class RlpItemListTests
         byte[] expectedBytes = [0xc2, 0x01, 0x02];
         Assert.That(inner0.RlpLength, Is.EqualTo(expectedBytes.Length));
         byte[] actual = new byte[inner0.RlpLength];
-        ValueRlpWriter writer = new(actual);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(actual);
         inner0.Write(ref writer);
         Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expectedBytes));
     }
@@ -347,7 +347,7 @@ public class RlpItemListTests
 
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] data = new byte[totalLength];
-        ValueRlpWriter writer = data.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = data.AsRlpValueWriter();
 
         writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
@@ -379,7 +379,7 @@ public class RlpItemListTests
 
         int totalLength = Rlp.LengthOfSequence(outerContentLength);
         byte[] data = new byte[totalLength];
-        ValueRlpWriter writer = data.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = data.AsRlpValueWriter();
 
         writer.StartSequence(outerContentLength);
         for (int i = 0; i < nestedItems.Length; i++)

@@ -52,7 +52,7 @@ internal sealed class StateCompositionSnapshotStore(
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
         try
         {
-            ValueRlpWriter writer = new(buffer.AsSpan(0, length));
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer.AsSpan(0, length));
             Decoder.Encode(ref writer, snapshot);
             db.PutSpan(key, buffer.AsSpan(0, length));
         }

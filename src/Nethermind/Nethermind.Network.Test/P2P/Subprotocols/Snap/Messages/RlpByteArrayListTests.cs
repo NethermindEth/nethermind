@@ -79,7 +79,7 @@ public class RlpByteArrayListTests
         byte[] expected = EncodeItems(items);
 
         byte[] buffer = new byte[list.RlpLength];
-        ValueRlpWriter writer = new(buffer);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
         writer.WriteByteArrayList(list);
 
         Assert.That(writer.Position, Is.EqualTo(expected.Length));
@@ -106,7 +106,7 @@ public class RlpByteArrayListTests
         byte[] expected = EncodeItems(items);
 
         using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
-        ValueRlpWriter writer = new(byteBuffer);
+        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
         writer.WriteByteArrayList(list);
 
         Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
@@ -175,7 +175,7 @@ public class RlpByteArrayListTests
         int contentLength = count * Rlp.LengthOf(new byte[] { 0x42 });
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] encoded = new byte[totalLength];
-        ValueRlpWriter writer = encoded.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = encoded.AsRlpValueWriter();
         writer.StartSequence(contentLength);
         for (int i = 0; i < count; i++)
         {
@@ -201,7 +201,7 @@ public class RlpByteArrayListTests
 
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] encoded = new byte[totalLength];
-        ValueRlpWriter writer = encoded.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = encoded.AsRlpValueWriter();
 
         writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)

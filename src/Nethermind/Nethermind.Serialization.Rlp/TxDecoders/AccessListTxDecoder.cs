@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFactory = null)
     : BaseTxDecoder<T>(txType, transactionFactory) where T : Transaction, new()
 {
-    public override void Encode(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         int contentLength = GetContentLength(transaction, rlpBehaviors, forSigning);
@@ -25,7 +25,8 @@ public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFacto
         EncodeTypedWrapped(transaction, ref writer, rlpBehaviors, forSigning, contentLength);
     }
 
-    protected virtual void EncodeTypedWrapped(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
+    protected virtual void EncodeTypedWrapped<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(contentLength);
         EncodePayload(transaction, ref writer, rlpBehaviors);
@@ -49,7 +50,7 @@ public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFacto
         transaction.AccessList = AccessListDecoder.Instance.Decode(ref decoderContext, rlpBehaviors);
     }
 
-    protected override void EncodePayload(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.Encode(transaction.ChainId ?? 0);
         base.EncodePayload(transaction, ref writer, rlpBehaviors);

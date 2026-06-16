@@ -82,7 +82,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, L1O
 
         try
         {
-            ValueRlpWriter writer = buffer.AsRlpValueWriter();
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = buffer.AsRlpValueWriter();
             decoder.Encode(ref writer, l1Origin);
             db.PutSpan(key, buffer.AsSpan(0, encodedL1OriginLength));
         }

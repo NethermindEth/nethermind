@@ -12,11 +12,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         protected abstract T Deserialize(ref ValueRlpReader ctx);
         public abstract int GetLength(T message, out int contentLength);
 
-        protected ValueRlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, T msg)
+        protected ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, T msg)
         {
             int totalLength = GetLength(msg, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
             writer.StartSequence(contentLength);
 
             return writer;

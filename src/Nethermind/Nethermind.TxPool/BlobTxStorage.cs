@@ -193,7 +193,7 @@ public class BlobTxStorage : IBlobTxStorage
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         writer.StartSequence(contentLength);
         for (int i = 0; i < blockBlobTransactions.Count; i++)
         {

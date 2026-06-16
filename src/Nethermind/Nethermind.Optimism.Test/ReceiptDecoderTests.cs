@@ -19,7 +19,7 @@ public class ReceiptDecoderTests
             ValueRlpReader ctx = new(rlp);
             OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
 
-            ValueRlpWriter encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> encodedRlp = RlpWriter.ForLength(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
             decoder.Encode(ref encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
             byte[] encodedBytes = encodedRlp.WrittenSpan.ToArray();
 
@@ -38,7 +38,7 @@ public class ReceiptDecoderTests
             OptimismCompactReceiptStorageDecoder decoder = new();
 
             byte[] encodedRlp = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            ValueRlpWriter writer = new(encodedRlp);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(encodedRlp);
             decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             ValueRlpReader valueDecoderCtx = new(encodedRlp);
@@ -57,7 +57,7 @@ public class ReceiptDecoderTests
         {
             OptimismReceiptTrieDecoder trieDecoder = new();
             byte[] encodedTrieRlp = new byte[trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            ValueRlpWriter writer = new(encodedTrieRlp);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(encodedTrieRlp);
 
             trieDecoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 

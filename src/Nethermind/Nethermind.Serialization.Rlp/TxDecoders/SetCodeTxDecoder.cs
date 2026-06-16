@@ -23,7 +23,7 @@ public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.AuthorizationList = decoderContext.DecodeArray(AuthTupleDecoder, limit: AuthorizationListLimit);
     }
 
-    protected override void EncodePayload(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.EncodePayload(transaction, ref writer, rlpBehaviors);
         AuthTupleDecoder.EncodeArray(ref writer, transaction.AuthorizationList, rlpBehaviors);

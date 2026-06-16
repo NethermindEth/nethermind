@@ -93,38 +93,41 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     public int GetLength(GeneratedAccountChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public override void Encode(ref ValueRlpWriter writer, ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         EncodingLengths lengths = PrepareEncodingLengths(item, rlpBehaviors);
         EncodePrepared(ref writer, item, in lengths, rlpBehaviors);
     }
 
-    public void Encode(ref ValueRlpWriter writer, GeneratedAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, GeneratedAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         EncodingLengths lengths = PrepareEncodingLengths(item, rlpBehaviors);
         EncodePrepared(ref writer, item, in lengths, rlpBehaviors);
     }
 
-    internal void EncodePrepared(
-        ref ValueRlpWriter writer,
+    internal void EncodePrepared<TBackend>(
+        ref ValueRlpWriter<TBackend> writer,
         ReadOnlyAccountChanges item,
         in EncodingLengths lengths,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(lengths.ContentLength);
         writer.Encode(item.Address);
         EncodeSlotChanges(ref writer, item.StorageChanges, lengths.StorageChangesContentLength, rlpBehaviors);
         EncodeStorageReads(ref writer, item.StorageReads, lengths.StorageReadsContentLength, rlpBehaviors);
-        EncodeIndexed<BalanceChange>(ref writer, item.BalanceChanges, lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<NonceChange>(ref writer, item.NonceChanges, lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<CodeChange>(ref writer, item.CodeChanges, lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TBackend, BalanceChange>(ref writer, item.BalanceChanges, lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TBackend, NonceChange>(ref writer, item.NonceChanges, lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TBackend, CodeChange>(ref writer, item.CodeChanges, lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
     }
 
-    internal void EncodePrepared(
-        ref ValueRlpWriter writer,
+    internal void EncodePrepared<TBackend>(
+        ref ValueRlpWriter<TBackend> writer,
         GeneratedAccountChanges item,
         in EncodingLengths lengths,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(lengths.ContentLength);
         writer.Encode(item.Address);
@@ -136,9 +139,9 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         {
             EncodeStorageReads(ref writer, sortedReads.AsSpan(), lengths.StorageReadsContentLength, rlpBehaviors);
         }
-        EncodeIndexed<BalanceChange>(ref writer, CollectionsMarshal.AsSpan(item.BalanceChanges), lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<NonceChange>(ref writer, CollectionsMarshal.AsSpan(item.NonceChanges), lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<CodeChange>(ref writer, CollectionsMarshal.AsSpan(item.CodeChanges), lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TBackend, BalanceChange>(ref writer, CollectionsMarshal.AsSpan(item.BalanceChanges), lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TBackend, NonceChange>(ref writer, CollectionsMarshal.AsSpan(item.NonceChanges), lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TBackend, CodeChange>(ref writer, CollectionsMarshal.AsSpan(item.CodeChanges), lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
     }
 
     public static int GetContentLength(ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors)
@@ -226,7 +229,8 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return len;
     }
 
-    private static void EncodeSlotChanges(ref ValueRlpWriter writer, ReadOnlySpan<ReadOnlySlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeSlotChanges<TBackend>(ref ValueRlpWriter<TBackend> writer, ReadOnlySpan<ReadOnlySlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
         writer.StartSequence(contentLength);
@@ -236,7 +240,8 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
     }
 
-    private static void EncodeGeneratedSlotChanges(ref ValueRlpWriter writer, ReadOnlySpan<GeneratedSlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeGeneratedSlotChanges<TBackend>(ref ValueRlpWriter<TBackend> writer, ReadOnlySpan<GeneratedSlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
         writer.StartSequence(contentLength);
@@ -246,7 +251,8 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
     }
 
-    private static void EncodeStorageReads(ref ValueRlpWriter writer, ReadOnlySpan<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeStorageReads<TBackend>(ref ValueRlpWriter<TBackend> writer, ReadOnlySpan<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
@@ -255,7 +261,8 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
     }
 
-    private static void EncodeIndexed<T>(ref ValueRlpWriter writer, ReadOnlySpan<T> items, int contentLength, IndexedChangeDecoder<T> encoder, RlpBehaviors rlpBehaviors)
+    private static void EncodeIndexed<TBackend, T>(ref ValueRlpWriter<TBackend> writer, ReadOnlySpan<T> items, int contentLength, IndexedChangeDecoder<T> encoder, RlpBehaviors rlpBehaviors)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
         where T : struct, IIndexedChange
     {
         writer.StartSequence(contentLength);

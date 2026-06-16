@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message)
         {
-            ValueRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = GetRlpWriterAndStartSequence(byteBuffer, message);
 
             writer.Encode(message.RequestId);
             writer.Encode(message.StorageRange.RootHash);

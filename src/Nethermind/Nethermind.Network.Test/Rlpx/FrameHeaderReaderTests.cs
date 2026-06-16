@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.Rlpx
 
                 int contentLength = Rlp.LengthOf(0) + Rlp.LengthOf(1) + Rlp.LengthOf(totalPacketSize);
                 buffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                ValueRlpWriter writer = new(buffer);
+                ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(buffer);
                 writer.StartSequence(contentLength);
                 writer.Encode(0);
                 writer.Encode(1);

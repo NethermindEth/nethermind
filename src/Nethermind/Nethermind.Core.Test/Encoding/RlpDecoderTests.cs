@@ -45,7 +45,7 @@ public class RlpDecoderTests
         }
 
         byte[] bytes = new byte[decoder.GetLength(withdrawals)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         decoder.Encode(ref writer, withdrawals);
         ValueRlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
@@ -167,7 +167,7 @@ public class RlpDecoderTests
             return Rlp.OfEmptyByteArray.Length;
         }
 
-        public override void Encode(ref ValueRlpWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
             writer.Encode(Rlp.OfEmptyByteArray);

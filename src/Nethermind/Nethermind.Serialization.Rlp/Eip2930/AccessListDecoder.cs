@@ -70,7 +70,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public override void Encode(ref ValueRlpWriter writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

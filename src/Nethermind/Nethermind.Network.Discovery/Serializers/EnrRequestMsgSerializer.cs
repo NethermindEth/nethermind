@@ -18,7 +18,7 @@ public class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateK
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
-        ValueRlpWriter writer = new(byteBuffer);
+        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
         writer.StartSequence(contentLength);
         writer.Encode(msg.ExpirationTime);
 

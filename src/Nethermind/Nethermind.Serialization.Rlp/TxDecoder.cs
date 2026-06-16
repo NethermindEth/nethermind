@@ -37,7 +37,8 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     /// Writes a pre-encoded CL-format transaction in block format.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteWrappedFormat(ref ValueRlpWriter writer, TxType type, byte[] clEncoded)
+    public static void WriteWrappedFormat<TBackend>(ref ValueRlpWriter<TBackend> writer, TxType type, byte[] clEncoded)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         if (type != TxType.Legacy)
             writer.StartByteArray(clEncoded.Length, false);
@@ -124,13 +125,13 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
-    public override void Encode(ref ValueRlpWriter writer, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => EncodeTx(ref writer, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
     public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         Encode(ref writer, item, rlpBehaviors);
         return new Rlp(bytes);
     }
@@ -138,7 +139,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         return new Rlp(bytes);
     }
@@ -148,7 +149,8 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     /// </summary>
     public override int GetLength(T tx, RlpBehaviors rlpBehaviors) => GetLength(tx, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
-    public void EncodeTx(ref ValueRlpWriter writer, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    public void EncodeTx<TBackend>(ref ValueRlpWriter<TBackend> writer, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         if (item is null)
         {

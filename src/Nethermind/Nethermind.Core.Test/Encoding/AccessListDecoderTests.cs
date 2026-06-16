@@ -89,7 +89,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip((string TestName, AccessList? AccessList) testCase)
         {
             byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
-            ValueRlpWriter writer = new(bytes);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
             _decoder.Encode(ref writer, testCase.AccessList);
             ValueRlpReader ctx = new(bytes);
             AccessList decoded = _decoder.Decode(ref ctx)!;
@@ -107,7 +107,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_value((string TestName, AccessList? AccessList) testCase)
         {
             byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
-            ValueRlpWriter writer = new(bytes);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
             _decoder.Encode(ref writer, testCase.AccessList);
             ValueRlpReader ctx = bytes.AsSpan().AsRlpValueContext();
             AccessList decoded = _decoder.Decode(ref ctx)!;

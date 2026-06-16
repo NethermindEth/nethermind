@@ -49,13 +49,13 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         Encode(ref writer, item, rlpBehaviors);
 
         return new Rlp(bytes);
     }
 
-    public override void Encode(ref ValueRlpWriter writer, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
 
             writer.StartSequence(contentLength);
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();

@@ -274,7 +274,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             CappedArray<byte> buffer = bufferPool.SafeRent(LengthOf(item));
-            ValueRlpWriter writer = buffer.AsRlpValueWriter();
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = buffer.AsRlpValueWriter();
             writer.Encode(item);
             return buffer;
         }
@@ -917,7 +917,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int size = LengthOf(i);
                 byte[] buffer = new byte[size];
-                ValueRlpWriter writer = buffer.AsRlpValueWriter();
+                ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = buffer.AsRlpValueWriter();
                 writer.Encode(i);
                 cache[i] = new CappedArray<byte>(buffer);
             }

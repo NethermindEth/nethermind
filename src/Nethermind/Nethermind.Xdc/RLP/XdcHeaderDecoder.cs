@@ -37,7 +37,7 @@ public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
         }
     }
 
-    protected override void EncodeHeaderSpecificFields(ref ValueRlpWriter writer, XdcBlockHeader header, RlpBehaviors rlpBehaviors)
+    protected override void EncodeHeaderSpecificFields<TBackend>(ref ValueRlpWriter<TBackend> writer, XdcBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         writer.Encode(header.Validators);
         if (!IsForSealing(rlpBehaviors))

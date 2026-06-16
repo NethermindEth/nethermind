@@ -8,9 +8,11 @@ namespace Nethermind.Serialization.Rlp
 {
     public static class ByteArrayExtensions
     {
-        public static ValueRlpWriter AsRlpValueWriter(this byte[]? bytes) => new(bytes ?? []);
+        public static ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> AsRlpValueWriter(this byte[]? bytes) =>
+            RlpWriter.ForArray(bytes);
 
-        public static ValueRlpWriter AsRlpValueWriter(in this CappedArray<byte> bytes) => new(in bytes.IsNotNull ? ref bytes : ref CappedArray<byte>.Empty);
+        public static ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> AsRlpValueWriter(in this CappedArray<byte> bytes) =>
+            RlpWriter.ForCappedArray(in bytes);
 
         public static ValueRlpReader AsRlpValueContext(this byte[]? bytes) => new(bytes ?? []);
 

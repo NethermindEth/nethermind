@@ -44,12 +44,13 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
     private const byte SchemaVersion = 1;
 
     private delegate TValue DecodeValueDelegate<TValue>(ref ValueRlpReader ctx);
-    private delegate void EncodeValueDelegate<TValue>(ref ValueRlpWriter writer, TValue value);
+    private delegate void EncodeValueDelegate<TBackend, TValue>(ref ValueRlpWriter<TBackend> writer, TValue value)
+        where TBackend : IValueRlpWriteBackend, allows ref struct;
 
     /// <summary>
     /// Encodes a snapshot into an RLP value writer.
     /// </summary>
-    public override void Encode(ref ValueRlpWriter writer, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetContentLength(item));
         EncodeOrLength(ref writer, write: true, item);
@@ -62,7 +63,8 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
     /// Having a single method for both roles eliminates two parallel field lists that used to drift
     /// when the schema changed.
     /// </summary>
-    private static int EncodeOrLength(ref ValueRlpWriter writer, bool write, StateCompositionSnapshot item)
+    private static int EncodeOrLength<TBackend>(ref ValueRlpWriter<TBackend> writer, bool write, StateCompositionSnapshot item)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         int length = 0;
 
@@ -116,33 +118,36 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
             length += EncodeLong(ref writer, write, hist.IsDefault ? 0L : hist[i]);
 
         length += EncodeOrLengthMap(ref writer, write, item.SlotCountByAddress,
-            static (ref ValueRlpWriter w, long v) => w.Encode(v), static v => Rlp.LengthOf(v));
+            static (ref ValueRlpWriter<TBackend> w, long v) => w.Encode(v), static v => Rlp.LengthOf(v));
         length += EncodeOrLengthMap(ref writer, write, item.CodeHashRefcounts,
-            static (ref ValueRlpWriter w, int v) => w.Encode(v), static v => Rlp.LengthOf(v));
+            static (ref ValueRlpWriter<TBackend> w, int v) => w.Encode(v), static v => Rlp.LengthOf(v));
         length += EncodeOrLengthMap(ref writer, write, item.CodeHashSizes,
-            static (ref ValueRlpWriter w, int v) => w.Encode(v), static v => Rlp.LengthOf(v));
+            static (ref ValueRlpWriter<TBackend> w, int v) => w.Encode(v), static v => Rlp.LengthOf(v));
 
         return length;
     }
 
-    private static int EncodeLong(ref ValueRlpWriter writer, bool write, long value)
+    private static int EncodeLong<TBackend>(ref ValueRlpWriter<TBackend> writer, bool write, long value)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         if (write) writer.Encode(value);
         return Rlp.LengthOf(value);
     }
 
-    private static int EncodeInt(ref ValueRlpWriter writer, bool write, int value)
+    private static int EncodeInt<TBackend>(ref ValueRlpWriter<TBackend> writer, bool write, int value)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         if (write) writer.Encode(value);
         return Rlp.LengthOf(value);
     }
 
-    private static int EncodeOrLengthMap<TValue>(
-        ref ValueRlpWriter writer,
+    private static int EncodeOrLengthMap<TBackend, TValue>(
+        ref ValueRlpWriter<TBackend> writer,
         bool write,
         IReadOnlyDictionary<ValueHash256, TValue> map,
-        EncodeValueDelegate<TValue> encodeValue,
+        EncodeValueDelegate<TBackend, TValue> encodeValue,
         System.Func<TValue, int> lengthOfValue)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         int total = EncodeInt(ref writer, write, map.Count);
         foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
@@ -175,7 +180,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
 
     private static int GetContentLength(StateCompositionSnapshot item)
     {
-        ValueRlpWriter writer = new(Span<byte>.Empty);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(Span<byte>.Empty);
         return EncodeOrLength(ref writer, write: false, item);
     }
 

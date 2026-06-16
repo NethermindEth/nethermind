@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
     public sealed class ChainLevelDecoder() : RlpDecoder<ChainLevelInfo>
     {
-        public override void Encode(ref ValueRlpWriter writer, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

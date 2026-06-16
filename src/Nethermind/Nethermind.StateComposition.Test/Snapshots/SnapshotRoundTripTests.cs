@@ -73,7 +73,7 @@ public class SnapshotRoundTripTests
     {
         StateCompositionSnapshotDecoder decoder = StateCompositionSnapshotDecoder.Instance;
         byte[] buffer = new byte[decoder.GetLength(original, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(buffer);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
         decoder.Encode(ref writer, original);
 
         ValueRlpReader ctx = buffer.AsRlpValueContext();

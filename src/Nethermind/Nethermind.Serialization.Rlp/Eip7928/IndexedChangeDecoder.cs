@@ -30,7 +30,7 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
         return result;
     }
 
-    public override void Encode(ref ValueRlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
         writer.StartSequence(GetContentLength(item, rlpBehaviors));
@@ -49,7 +49,8 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     /// <summary>
     /// Encode only the value field (Index is handled by the base).
     /// </summary>
-    protected abstract void EncodeValue(ref ValueRlpWriter writer, T item);
+    protected abstract void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer, T item)
+        where TBackend : IValueRlpWriteBackend, allows ref struct;
 
     /// <summary>
     /// Return the RLP length of the value field.

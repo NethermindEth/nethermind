@@ -18,5 +18,5 @@ public class IdEntry : EnrContentEntry<string>
 
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue(ref ValueRlpWriter writer) => writer.Encode("v4");
+    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer) => writer.Encode("v4");
 }

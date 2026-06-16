@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
 
             writer.StartSequence(contentLength);
             if (message.StartBlockHash is null)

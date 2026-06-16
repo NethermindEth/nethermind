@@ -21,7 +21,8 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
 
     public int RlpLength => _inner.RlpLength;
 
-    public void Write(ref ValueRlpWriter writer) => _inner.Write(ref writer);
+    public void Write<TBackend>(ref ValueRlpWriter<TBackend> writer)
+        where TBackend : IValueRlpWriteBackend, allows ref struct => _inner.Write(ref writer);
 
     public static RlpByteArrayList DecodeList(ref ValueRlpReader ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null)
     {

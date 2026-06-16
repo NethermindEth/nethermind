@@ -15,5 +15,5 @@ public class SecP256k1Entry(CompressedPublicKey publicKey) : EnrContentEntry<Com
 
     protected override int GetRlpLengthOfValue() => CompressedPublicKey.LengthInBytes + 1;
 
-    protected override void EncodeValue(ref ValueRlpWriter writer) => writer.Encode(Value.Bytes);
+    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer) => writer.Encode(Value.Bytes);
 }

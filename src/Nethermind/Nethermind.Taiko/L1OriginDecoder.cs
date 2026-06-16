@@ -43,12 +43,12 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         Encode(ref writer, item, rlpBehaviors);
         return new(bytes);
     }
 
-    public override void Encode(ref ValueRlpWriter writer, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetContentLength(item, rlpBehaviors));
 

@@ -27,7 +27,8 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         byte[]? extraData);
 
     protected abstract void DecodeHeaderSpecificFields(ref ValueRlpReader decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
-    protected abstract void EncodeHeaderSpecificFields(ref ValueRlpWriter writer, TH header, RlpBehaviors rlpBehaviors);
+    protected abstract void EncodeHeaderSpecificFields<TBackend>(ref ValueRlpWriter<TBackend> writer, TH header, RlpBehaviors rlpBehaviors)
+        where TBackend : IValueRlpWriteBackend, allows ref struct;
     protected abstract int GetHeaderSpecificContentLength(TH header, RlpBehaviors rlpBehaviors);
 
     protected override BlockHeader? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -81,7 +82,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         return header;
     }
 
-    public override void Encode(ref ValueRlpWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
@@ -125,7 +126,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         Encode(ref writer, item, rlpBehaviors);
         return new Rlp(bytes);
     }

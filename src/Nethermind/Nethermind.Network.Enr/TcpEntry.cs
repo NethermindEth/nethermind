@@ -14,5 +14,5 @@ public class TcpEntry(int portNumber) : EnrContentEntry<int>(portNumber)
 
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue(ref ValueRlpWriter writer) => writer.Encode(Value);
+    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer) => writer.Encode(Value);
 }

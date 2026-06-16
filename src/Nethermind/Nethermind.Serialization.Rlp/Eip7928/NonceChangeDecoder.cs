@@ -12,7 +12,7 @@ public class NonceChangeDecoder : IndexedChangeDecoder<NonceChange>
     protected override NonceChange DecodeFields(ref ValueRlpReader ctx)
         => new(ctx.DecodeUInt(), ctx.DecodeULong());
 
-    protected override void EncodeValue(ref ValueRlpWriter writer, NonceChange item)
+    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer, NonceChange item)
         => writer.Encode(item.Value);
 
     protected override int GetValueLength(NonceChange item)

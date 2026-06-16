@@ -58,7 +58,7 @@ public class VoteDecoderTests
 
         VoteDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(vote, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         decoder.Encode(ref writer, vote);
 
         ValueRlpReader decoderContext = new(bytes);

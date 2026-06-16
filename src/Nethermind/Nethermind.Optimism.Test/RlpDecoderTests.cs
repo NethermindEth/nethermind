@@ -26,7 +26,7 @@ public class RlpDecoderTests
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
 
-        ValueRlpWriter rlpStream = new(_decoder.GetLength(tx, RlpBehaviors.None));
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> rlpStream = RlpWriter.ForLength(_decoder.GetLength(tx, RlpBehaviors.None));
         _decoder.Encode(ref rlpStream, tx);
         rlpStream.Reset();
 
@@ -43,7 +43,7 @@ public class RlpDecoderTests
 
         Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
 
-        ValueRlpWriter rlpStream = new(_decoder.GetLength(tx, RlpBehaviors.None));
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> rlpStream = RlpWriter.ForLength(_decoder.GetLength(tx, RlpBehaviors.None));
         _decoder.Encode(ref rlpStream, tx);
 
         Transaction? decodedTx = Rlp.Decode<Transaction?>(rlpStream.Data);

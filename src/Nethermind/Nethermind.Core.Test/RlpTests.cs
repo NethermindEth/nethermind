@@ -74,7 +74,7 @@ namespace Nethermind.Core.Test
             int length = Rlp.LengthOf(value);
 
             byte[] buffer = new byte[length];
-            ValueRlpWriter writer = new(buffer);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
             writer.Encode((ReadOnlySpan<byte>)value);
 
             AssertValueWriterMatchesExpected(writer, Rlp.Encode((ReadOnlySpan<byte>)value).Bytes);
@@ -92,7 +92,7 @@ namespace Nethermind.Core.Test
             int length = Rlp.LengthOf(value);
 
             byte[] buffer = new byte[length];
-            ValueRlpWriter writer = new(buffer);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
             writer.Encode(value);
 
             Span<byte> expected = stackalloc byte[9];
@@ -106,7 +106,7 @@ namespace Nethermind.Core.Test
             int length = Rlp.LengthOf(value);
 
             byte[] buffer = new byte[length];
-            ValueRlpWriter writer = new(buffer);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
             writer.Encode(in value);
 
             AssertValueWriterMatchesExpected(writer, Rlp.Encode(in value).Bytes);
@@ -118,7 +118,7 @@ namespace Nethermind.Core.Test
             int length = Rlp.LengthOf(value);
 
             byte[] buffer = new byte[length];
-            ValueRlpWriter writer = new(buffer);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
             writer.Encode(value);
 
             AssertValueWriterMatchesExpected(writer, Rlp.Encode(value).Bytes);
@@ -130,7 +130,7 @@ namespace Nethermind.Core.Test
             int length = Rlp.LengthOf(in value);
 
             byte[] buffer = new byte[length];
-            ValueRlpWriter writer = new(buffer);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
             writer.Encode(in value);
 
             AssertValueWriterMatchesExpected(writer, ExpectedValueHash(value));
@@ -142,7 +142,7 @@ namespace Nethermind.Core.Test
             int length = Rlp.LengthOf(value);
 
             byte[] buffer = new byte[length];
-            ValueRlpWriter writer = new(buffer);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
             writer.Encode(value);
 
             AssertValueWriterMatchesExpected(writer, ExpectedAddress(value));
@@ -154,7 +154,7 @@ namespace Nethermind.Core.Test
             int length = Rlp.LengthOf(value);
 
             byte[] buffer = new byte[length];
-            ValueRlpWriter writer = new(buffer);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
             writer.Encode(value);
 
             AssertValueWriterMatchesExpected(writer, ExpectedBloom(value));
@@ -166,10 +166,23 @@ namespace Nethermind.Core.Test
             int length = Rlp.LengthOf(value);
 
             byte[] buffer = new byte[length];
-            ValueRlpWriter writer = new(buffer);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
             writer.Encode(value);
 
             AssertValueWriterMatchesExpected(writer, Rlp.Encode(value.Select(Rlp.Encode).ToArray()).Bytes);
+        }
+
+        [Test]
+        public void ValueRlpWriter_custom_backend_receives_encoded_bytes_and_is_disposed()
+        {
+            TestValueRlpWriteBackend backend = new();
+            using (ValueRlpWriter<IValueRlpWriteBackend.CustomBackend> writer = RlpWriter.ForBackend(backend))
+            {
+                writer.Encode(Bloom.Empty);
+            }
+
+            Assert.That(backend.Bytes.ToArray(), Is.EqualTo(ExpectedBloom(Bloom.Empty)));
+            Assert.That(backend.Disposed, Is.True);
         }
 
         [Test]
@@ -511,7 +524,7 @@ namespace Nethermind.Core.Test
 
             int requiredLength = Rlp.LengthOf(randomBytes) * 3;
             byte[] encoded = new byte[requiredLength];
-            ValueRlpWriter writer = encoded.AsRlpValueWriter();
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = encoded.AsRlpValueWriter();
             writer.Encode(randomBytes);
             writer.Encode(randomBytes);
             writer.Encode(randomBytes);
@@ -556,7 +569,7 @@ namespace Nethermind.Core.Test
         //[Test]
         //public void Encode_stream_with_null_items_produces_empty_list()
         //{
-        //    ValueRlpWriter stream = new(Rlp.OfEmptyList.Length);
+        //    ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> stream = RlpWriter.ForSpan(Rlp.OfEmptyList.Length);
         //    TransactionDecoder.Encode(stream, (Transaction[]?)null);
         //    Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
         //}
@@ -643,7 +656,7 @@ namespace Nethermind.Core.Test
 
             int requiredLength = Rlp.LengthOf(randomBytes);
             byte[] rlp = new byte[requiredLength];
-            ValueRlpWriter writer = rlp.AsRlpValueWriter();
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = rlp.AsRlpValueWriter();
             writer.Encode(randomBytes);
             return rlp;
         }
@@ -864,7 +877,8 @@ namespace Nethermind.Core.Test
             return expected;
         }
 
-        private static void AssertValueWriterMatchesExpected(ValueRlpWriter writer, ReadOnlySpan<byte> expected)
+        private static void AssertValueWriterMatchesExpected<TBackend>(ValueRlpWriter<TBackend> writer, ReadOnlySpan<byte> expected)
+            where TBackend : IValueRlpWriteBackend, allows ref struct
         {
             Assert.That(writer.Position, Is.EqualTo(expected.Length));
             Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expected.ToArray()));
@@ -923,6 +937,33 @@ namespace Nethermind.Core.Test
         {
             yield return [];
             yield return [[1], [128], Enumerable.Repeat((byte)0xab, 56).ToArray()];
+        }
+
+        private sealed class TestValueRlpWriteBackend : IValueRlpWriteBackend
+        {
+            public List<byte> Bytes { get; } = [];
+
+            public bool Disposed { get; private set; }
+
+            public void WriteByte(byte byteToWrite) => Bytes.Add(byteToWrite);
+
+            public void Write(ReadOnlySpan<byte> bytesToWrite)
+            {
+                for (int i = 0; i < bytesToWrite.Length; i++)
+                {
+                    Bytes.Add(bytesToWrite[i]);
+                }
+            }
+
+            public void WriteZero(int length)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    Bytes.Add(0);
+                }
+            }
+
+            public void Dispose() => Disposed = true;
         }
 
         private static void AssertItemCount(byte[] rlp, int expected)

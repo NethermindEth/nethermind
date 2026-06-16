@@ -17,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
 
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
             SerializeInternal(byteBuffer, message);

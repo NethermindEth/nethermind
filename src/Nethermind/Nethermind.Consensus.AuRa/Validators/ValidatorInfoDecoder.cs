@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
 
-        public override void Encode(ref ValueRlpWriter writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

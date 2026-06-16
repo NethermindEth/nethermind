@@ -82,7 +82,7 @@ namespace Nethermind.Serialization.Rlp
             return topics.ToArray();
         }
 
-        public override void Encode(ref ValueRlpWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

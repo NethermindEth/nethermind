@@ -290,7 +290,7 @@ public sealed class EraWriter : IDisposable
             totalLength += Rlp.LengthOfSequence(GetReceiptContentLength(receipt, isEip658));
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(totalLength)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         writer.StartSequence(totalLength);
         foreach (TxReceipt receipt in receipts)
             WriteReceipt(ref writer, receipt, isEip658);
@@ -310,7 +310,8 @@ public sealed class EraWriter : IDisposable
         return 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
     }
 
-    private static void WriteReceipt(ref ValueRlpWriter writer, TxReceipt receipt, bool isEip658)
+    private static void WriteReceipt<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt receipt, bool isEip658)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         int logsLength = 0;
         if (receipt.Logs is not null)

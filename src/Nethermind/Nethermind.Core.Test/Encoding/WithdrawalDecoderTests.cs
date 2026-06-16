@@ -55,7 +55,7 @@ public class WithdrawalDecoderTests
         };
         WithdrawalDecoder codec = new();
         byte[] bytes = new byte[codec.GetLength(withdrawal, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
 
         codec.Encode(ref writer, withdrawal);
 

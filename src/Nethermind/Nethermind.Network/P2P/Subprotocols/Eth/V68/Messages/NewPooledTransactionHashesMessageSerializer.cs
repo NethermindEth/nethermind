@@ -47,7 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
             byteBuffer.EnsureWritable(totalSize);
 
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
 
             writer.StartSequence(totalSize);
             writer.Encode(message.Types.AsSpan());

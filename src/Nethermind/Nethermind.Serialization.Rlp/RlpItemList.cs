@@ -73,7 +73,8 @@ public sealed class RlpItemList : IRlpItemList
     public int RlpLength => _rlpRegion.Length;
     public ReadOnlySpan<byte> RlpSpan => _rlpRegion.Span;
 
-    public void Write(ref ValueRlpWriter writer) => writer.Write(_rlpRegion.Span);
+    public void Write<TBackend>(ref ValueRlpWriter<TBackend> writer)
+        where TBackend : IValueRlpWriteBackend, allows ref struct => writer.Write(_rlpRegion.Span);
 
     public ReadOnlySpan<byte> ReadContent(int index)
     {

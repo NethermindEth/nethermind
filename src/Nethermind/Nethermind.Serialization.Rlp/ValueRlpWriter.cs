@@ -8,9 +8,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -25,108 +23,38 @@ namespace Nethermind.Serialization.Rlp;
 /// The writer does not allocate or grow its backing span. Use <see cref="WrittenSpan"/> for the encoded output; the
 /// full <see cref="Data"/> span may contain unwritten bytes.
 /// </remarks>
-public ref struct ValueRlpWriter
+public ref struct ValueRlpWriter<TBackend> : IDisposable
+    where TBackend : IValueRlpWriteBackend, allows ref struct
 {
-    private Span<byte> _data;
-    private IByteBuffer? _byteBuffer;
-    private KeccakHash? _keccakHash;
-    private int _position;
+    private TBackend _backend;
 
     /// <summary>
-    /// Initializes a writer over a caller-owned output span.
+    /// Initializes a writer over a backend.
     /// </summary>
-    public ValueRlpWriter(Span<byte> data)
-    {
-        _data = data;
-        _byteBuffer = null;
-        _keccakHash = null;
-        _position = 0;
-    }
-
-    /// <summary>
-    /// Initializes a writer over a caller-owned output array.
-    /// </summary>
-    public ValueRlpWriter(byte[] data)
-        : this(data.AsSpan())
-    {
-    }
-
-    /// <summary>
-    /// Initializes a writer over a caller-owned capped array.
-    /// </summary>
-    public ValueRlpWriter(in CappedArray<byte> data)
-        : this(data.AsSpan())
-    {
-    }
-
-    /// <summary>
-    /// Initializes a writer over a caller-owned capped array.
-    /// </summary>
-    public ValueRlpWriter(int length)
-        : this(new byte[length])
-    {
-    }
-
-    /// <summary>
-    /// Initializes a writer over a DotNetty buffer, advancing its writer index as bytes are written.
-    /// </summary>
-    public ValueRlpWriter(IByteBuffer byteBuffer)
-    {
-        ArgumentNullException.ThrowIfNull(byteBuffer);
-
-        _data = Span<byte>.Empty;
-        _byteBuffer = byteBuffer;
-        _keccakHash = null;
-        _position = 0;
-    }
-
-    /// <summary>
-    /// Initializes a writer that feeds encoded bytes directly into a Keccak accumulator.
-    /// </summary>
-    public ValueRlpWriter(KeccakHash keccakHash)
-    {
-        ArgumentNullException.ThrowIfNull(keccakHash);
-
-        _data = Span<byte>.Empty;
-        _byteBuffer = null;
-        _keccakHash = keccakHash;
-        _position = 0;
-    }
+    internal ValueRlpWriter(TBackend backend) => _backend = backend;
 
     /// <summary>
     /// Full caller-provided output span.
     /// </summary>
     public readonly Span<byte> Data =>
-        IsSpanBacked ? _data : throw new InvalidOperationException("Data is available only for span-backed writers.");
+        _backend.Data;
 
     /// <summary>
     /// Bytes written so far.
     /// </summary>
     public readonly ReadOnlySpan<byte> WrittenSpan =>
-        IsSpanBacked ? _data[.._position] : throw new InvalidOperationException("WrittenSpan is available only for span-backed writers.");
+        _backend.WrittenSpan;
 
     /// <summary>
     /// Current write position in <see cref="Data"/>.
     /// </summary>
     public int Position
     {
-        readonly get => IsSpanBacked ? _position : ThrowPositionNotSupported();
-        set
-        {
-            if (IsSpanBacked)
-            {
-                _position = value;
-            }
-            else
-            {
-                ThrowPositionNotSupported();
-            }
-        }
+        readonly get => _backend.Position;
+        set => _backend.Position = value;
     }
 
-    public readonly int Length => IsSpanBacked ? _data.Length : ThrowPositionNotSupported();
-
-    private readonly bool IsSpanBacked => _byteBuffer is null && _keccakHash is null;
+    public readonly int Length => _backend.Length;
 
     public void StartByteArray(int contentLength, bool firstByteLessThan128)
     {
@@ -192,62 +120,12 @@ public ref struct ValueRlpWriter
         }
     }
 
-    public void WriteByte(byte byteToWrite)
-    {
-        if (_byteBuffer is { } byteBuffer)
-        {
-            byteBuffer.EnsureWritable(1);
-            byteBuffer.WriteByte(byteToWrite);
-            _position++;
-            return;
-        }
-
-        if (_keccakHash is { } keccakHash)
-        {
-            keccakHash.Update(MemoryMarshal.CreateReadOnlySpan(ref byteToWrite, 1));
-            _position++;
-            return;
-        }
-
-        _data[_position++] = byteToWrite;
-    }
+    public void WriteByte(byte byteToWrite) => _backend.WriteByte(byteToWrite);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Write(byte[] bytesToWrite) => Write(bytesToWrite.AsSpan());
 
-    public void Write(scoped ReadOnlySpan<byte> bytesToWrite)
-    {
-        if (_byteBuffer is { } byteBuffer)
-        {
-            byteBuffer.EnsureWritable(bytesToWrite.Length);
-            if (byteBuffer.HasArray)
-            {
-                Span<byte> target = byteBuffer.Array.AsSpan(byteBuffer.ArrayOffset + byteBuffer.WriterIndex, bytesToWrite.Length);
-                bytesToWrite.CopyTo(target);
-                byteBuffer.SetWriterIndex(byteBuffer.WriterIndex + bytesToWrite.Length);
-            }
-            else
-            {
-                for (int i = 0; i < bytesToWrite.Length; i++)
-                {
-                    byteBuffer.WriteByte(bytesToWrite[i]);
-                }
-            }
-
-            _position += bytesToWrite.Length;
-            return;
-        }
-
-        if (_keccakHash is { } keccakHash)
-        {
-            keccakHash.Update(bytesToWrite);
-            _position += bytesToWrite.Length;
-            return;
-        }
-
-        bytesToWrite.CopyTo(_data.Slice(_position, bytesToWrite.Length));
-        _position += bytesToWrite.Length;
-    }
+    public void Write(scoped ReadOnlySpan<byte> bytesToWrite) => _backend.Write(bytesToWrite);
 
     public void WriteByteArrayList(IByteArrayList? list)
     {
@@ -276,37 +154,7 @@ public ref struct ValueRlpWriter
         }
     }
 
-    private void WriteZero(int length)
-    {
-        if (_byteBuffer is { } byteBuffer)
-        {
-            byteBuffer.EnsureWritable(length);
-            byteBuffer.WriteZero(length);
-            _position += length;
-            return;
-        }
-
-        if (_keccakHash is { } keccakHash)
-        {
-            WriteZero(keccakHash, length);
-            return;
-        }
-
-        _data.Slice(_position, length).Clear();
-        _position += length;
-    }
-
-    private static void WriteZero(KeccakHash keccakHash, int length)
-    {
-        Span<byte> zeros = stackalloc byte[Math.Min(length, 256)];
-        zeros.Clear();
-        while (length > 0)
-        {
-            int chunkLength = Math.Min(length, zeros.Length);
-            keccakHash.Update(zeros[..chunkLength]);
-            length -= chunkLength;
-        }
-    }
+    private void WriteZero(int length) => _backend.WriteZero(length);
 
     public void Encode(Hash256? keccak)
     {
@@ -619,16 +467,13 @@ public ref struct ValueRlpWriter
 
     public void EncodeEmptyByteArray() => WriteByte(EmptyArrayByte);
 
+    /// <summary>
+    /// Disposes the custom backend if this writer was created with one.
+    /// </summary>
+    public void Dispose() => _backend.Dispose();
+
     private const byte EmptyArrayByte = 128;
     private const byte EmptySequenceByte = 192;
 
-    public override readonly string ToString() => _byteBuffer is null
-        ? _keccakHash is null
-            ? $"[{nameof(ValueRlpWriter)}|{_position}/{Length}]"
-            : $"[{nameof(ValueRlpWriter)}|{_keccakHash.GetType().Name}|{_position}]"
-        : $"[{nameof(ValueRlpWriter)}|{_byteBuffer.GetType().Name}|{_position}]";
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int ThrowPositionNotSupported()
-        => throw new InvalidOperationException("Position and Length are unavailable for non-span-backed writers.");
+    public override readonly string ToString() => $"[{nameof(ValueRlpWriter<TBackend>)}|{Position}]";
 }

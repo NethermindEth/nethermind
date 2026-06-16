@@ -90,7 +90,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
             byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            ValueRlpWriter writer = new(bytes);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
             ValueRlpReader ctx = new(bytes);
             Transaction? decoded = _txDecoder.Decode(ref ctx);
@@ -104,7 +104,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_ValueRlpReader((Transaction Tx, string Description) testCase)
         {
             byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            ValueRlpWriter writer = new(bytes);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
 
             Span<byte> spanIncomingTxRlp = bytes.AsSpan();
@@ -120,7 +120,7 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_ValueRlpReader_WithMemorySlice((Transaction Tx, string Description) testCase)
         {
             byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            ValueRlpWriter writer = new(bytes);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
 
             ValueRlpReader decoderContext = new(bytes.ToArray(), true);
@@ -137,7 +137,7 @@ namespace Nethermind.Core.Test.Encoding
             if (testCase.Tx.Data.Length == 0) return;
 
             byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            ValueRlpWriter writer = new(bytes);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
 
             ValueRlpReader decoderContext = new(bytes.ToArray(), true);
@@ -161,7 +161,7 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(decoded.CalculateHash(), Is.EqualTo(testCase.Hash));
 
             byte[] ourRlpOutput = new byte[_txDecoder.GetLength(decoded, RlpBehaviors.None)];
-            ValueRlpWriter writer = new(ourRlpOutput);
+            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(ourRlpOutput);
             _txDecoder.Encode(ref writer, decoded);
 
             string ourRlpHex = ourRlpOutput.AsSpan(0, incomingTxRlpBytes.Length).ToHexString();

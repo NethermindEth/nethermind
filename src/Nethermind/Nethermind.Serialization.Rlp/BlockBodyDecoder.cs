@@ -109,7 +109,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    public override void Encode(ref ValueRlpWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetBodyLength(body));
         writer.StartSequence(GetTxLength(body.Transactions));

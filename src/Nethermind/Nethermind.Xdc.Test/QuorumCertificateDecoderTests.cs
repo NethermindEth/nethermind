@@ -31,7 +31,7 @@ internal class QuorumCertificateDecoderTests
     {
         QuorumCertificateDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         decoder.Encode(ref writer, quorumCert);
         ValueRlpReader ctx = new(bytes);
         QuorumCertificate decoded = decoder.Decode(ref ctx);
@@ -45,7 +45,7 @@ internal class QuorumCertificateDecoderTests
         QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         decoder.Encode(ref writer, quorumCert);
         ValueRlpReader decoderContext = bytes.AsRlpValueContext();
         QuorumCertificate decoded = decoder.Decode(ref decoderContext);

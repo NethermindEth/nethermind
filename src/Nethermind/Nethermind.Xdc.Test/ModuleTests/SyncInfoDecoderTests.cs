@@ -86,7 +86,7 @@ public class SyncInfoDecoderTests
 
         SyncInfoDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(syncInfo, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         decoder.Encode(ref writer, syncInfo);
 
         ValueRlpReader decoderContext = new(bytes);

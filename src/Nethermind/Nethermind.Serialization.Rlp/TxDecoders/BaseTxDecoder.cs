@@ -70,7 +70,8 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
     }
 
-    public virtual void Encode(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+    public virtual void Encode<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         int contentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
 
@@ -109,7 +110,8 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     protected virtual Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? fallbackSignature;
 
-    protected virtual void EncodePayload(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected virtual void EncodePayload<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         writer.Encode(transaction.Nonce);
         EncodeGasPrice(transaction, ref writer);
@@ -119,7 +121,8 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         writer.Encode(transaction.Data);
     }
 
-    protected virtual void EncodeGasPrice(Transaction transaction, ref ValueRlpWriter writer) => writer.Encode(transaction.GasPrice);
+    protected virtual void EncodeGasPrice<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer)
+        where TBackend : IValueRlpWriteBackend, allows ref struct => writer.Encode(transaction.GasPrice);
 
     protected virtual int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
         GetPayloadLength(transaction) + GetSignatureLength(transaction.Signature, forSigning, isEip155Enabled, chainId);
@@ -157,7 +160,8 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     protected virtual ulong GetSignatureFirstElement(Signature signature) => signature.RecoveryId;
 
-    protected virtual void EncodeSignature(Signature? signature, ref ValueRlpWriter writer, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+    protected virtual void EncodeSignature<TBackend>(Signature? signature, ref ValueRlpWriter<TBackend> writer, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+        where TBackend : IValueRlpWriteBackend, allows ref struct
     {
         if (!forSigning)
         {

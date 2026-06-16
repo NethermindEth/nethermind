@@ -14,7 +14,7 @@ public sealed class ByteStreamDecoder : RlpDecoder<byte>
     protected override byte DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         decoderContext.DecodeByte();
 
-    public override void Encode(ref ValueRlpWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         writer.Encode(item);
 }
 
@@ -26,7 +26,7 @@ public sealed class ShortStreamDecoder : RlpDecoder<short>
     protected override short DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         (short)decoderContext.DecodeLong();
 
-    public override void Encode(ref ValueRlpWriter writer, short item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, short item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         writer.Encode(item);
 }
 
@@ -38,7 +38,7 @@ public sealed class UShortStreamDecoder : RlpDecoder<ushort>
     protected override ushort DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         (ushort)decoderContext.DecodeLong();
 
-    public override void Encode(ref ValueRlpWriter writer, ushort item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ushort item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         writer.Encode(item);
 }
 
@@ -50,7 +50,7 @@ public sealed class IntStreamDecoder : RlpDecoder<int>
     protected override int DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         decoderContext.DecodeInt();
 
-    public override void Encode(ref ValueRlpWriter writer, int item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, int item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         writer.Encode(item);
 }
 
@@ -62,7 +62,7 @@ public sealed class UIntStreamDecoder : RlpDecoder<uint>
     protected override uint DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         decoderContext.DecodeUInt();
 
-    public override void Encode(ref ValueRlpWriter writer, uint item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, uint item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         writer.Encode(item);
 }
 
@@ -74,6 +74,6 @@ public sealed class ULongStreamDecoder : RlpDecoder<ulong>
     protected override ulong DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         decoderContext.DecodeULong();
 
-    public override void Encode(ref ValueRlpWriter writer, ulong item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ulong item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         writer.Encode(item);
 }

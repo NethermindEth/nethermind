@@ -658,7 +658,7 @@ public class BlockAccessListDecoderTests
             + Rlp.OfEmptyList.Length;
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         writer.StartSequence(contentLength);
         writer.Encode(address);
         writer.StartSequence(Rlp.OfEmptyList.Length);
@@ -682,7 +682,7 @@ public class BlockAccessListDecoderTests
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         writer.StartSequence(contentLength);
         writer.Encode(address);
         for (int i = 0; i < fieldCount; i++)
@@ -706,7 +706,7 @@ public class BlockAccessListDecoderTests
         int changesContentLength = count * Rlp.OfEmptyList.Length;
         int contentLength = Rlp.LengthOf(UInt256.Zero) + Rlp.LengthOfSequence(changesContentLength);
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         writer.StartSequence(contentLength);
         writer.Encode(UInt256.Zero);
         writer.StartSequence(changesContentLength);
@@ -737,7 +737,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode(ref ValueRlpWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -767,7 +767,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode(ref ValueRlpWriter writer, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -790,7 +790,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode(ref ValueRlpWriter writer, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -804,7 +804,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode(ref ValueRlpWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

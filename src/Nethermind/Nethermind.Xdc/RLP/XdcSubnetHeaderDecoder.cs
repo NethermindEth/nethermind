@@ -38,7 +38,7 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
         header.Penalties = decoderContext.DecodeByteArray();
     }
 
-    protected override void EncodeHeaderSpecificFields(ref ValueRlpWriter writer, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
+    protected override void EncodeHeaderSpecificFields<TBackend>(ref ValueRlpWriter<TBackend> writer, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         if (!IsForSealing(rlpBehaviors))
         {

@@ -38,7 +38,7 @@ public partial class ShardBlobTxDecoderTests
     public void Roundtrip_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         _txDecoder.Encode(ref writer, testCase.Tx);
         ValueRlpReader ctx = new(bytes);
         Transaction? decoded = _txDecoder.Decode(ref ctx);
@@ -66,7 +66,7 @@ public partial class ShardBlobTxDecoderTests
     public void Roundtrip_ValueRlpReader_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         _txDecoder.Encode(ref writer, testCase.Tx);
 
         Span<byte> spanIncomingTxRlp = bytes.AsSpan();
@@ -97,7 +97,7 @@ public partial class ShardBlobTxDecoderTests
     public void Tampered_Roundtrip_ExecutionPayloadForm_for_shard_blobs(Transaction tx)
     {
         byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.None)];
-        ValueRlpWriter writer = new(bytes);
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
         _txDecoder.Encode(ref writer, tx);
         // Tamper with sequence length
         {

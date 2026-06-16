@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return result;
         }
 
-        public override void Encode(ref ValueRlpWriter writer, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

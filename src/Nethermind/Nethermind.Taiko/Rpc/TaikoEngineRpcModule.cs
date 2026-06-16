@@ -353,7 +353,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
             try
             {
-                ValueRlpWriter writer = data.AsRlpValueWriter();
+                ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = data.AsRlpValueWriter();
 
                 writer.StartSequence(contentLength);
                 foreach (Transaction tx in Transactions.AsSpan())
@@ -377,7 +377,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
             try
             {
-                ValueRlpWriter writer = data.AsRlpValueWriter();
+                ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = data.AsRlpValueWriter();
 
                 writer.StartSequence(contentLength);
                 txDecoder.Encode(ref writer, tx);

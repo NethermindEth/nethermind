@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
             writer.StartSequence(contentLength);
 
             writer.Encode(message.RequestId);

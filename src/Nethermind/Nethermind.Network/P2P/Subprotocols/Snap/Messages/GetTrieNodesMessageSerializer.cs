@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 + Rlp.LengthOf(message.Bytes);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
 
             writer.StartSequence(contentLength);
 
@@ -78,7 +78,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static void EncodePaths(ref ValueRlpWriter writer, IOwnedReadOnlyList<PathGroup> paths)
+        private static void EncodePaths<TBackend>(ref ValueRlpWriter<TBackend> writer, IOwnedReadOnlyList<PathGroup> paths)
+            where TBackend : IValueRlpWriteBackend, allows ref struct
         {
             int contentLength = 0;
             ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();

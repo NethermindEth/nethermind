@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            ValueRlpWriter writer = new(byteBuffer);
+            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.ProtocolVersion);
             writer.Encode(message.NetworkId);

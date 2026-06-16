@@ -24,13 +24,15 @@ namespace Nethermind.Network.Enr
         /// <summary>
         /// Encodes the entry into a value RLP writer.
         /// </summary>
-        public void Encode(ref ValueRlpWriter writer)
+        public void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer)
+            where TBackend : IValueRlpWriteBackend, allows ref struct
         {
             writer.Encode(Key);
             EncodeValue(ref writer);
         }
 
-        protected abstract void EncodeValue(ref ValueRlpWriter writer);
+        protected abstract void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer)
+            where TBackend : IValueRlpWriteBackend, allows ref struct;
 
         public override int GetHashCode() => Key.GetHashCode();
     }

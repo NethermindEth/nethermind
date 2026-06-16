@@ -36,7 +36,7 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         return withdrawal;
     }
 
-    public override void Encode(ref ValueRlpWriter writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -56,7 +56,7 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
     public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
         Encode(ref writer, item, rlpBehaviors);
         return new(bytes);
     }
