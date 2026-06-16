@@ -366,6 +366,7 @@ public class BlockchainBridgeTests
     }
 
     [TestCase(null, null)]
+    [TestCase(null, "revert")]
     [TestCase(null, "some plain error string")]
     public void CreateAccessList_reverting_tx_returns_execution_reverted_error(byte[]? returnValue, string? tracerError)
     {
