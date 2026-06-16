@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing;
@@ -38,7 +39,7 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
         return memory;
     }
 
-    private const int MemoryPadLimit = 1024 * 1024;
+    private const int MemoryPadLimit = MemorySizes.MiB;
     public ReadOnlySpan<byte> Slice(int start, int length, bool limit = true)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
