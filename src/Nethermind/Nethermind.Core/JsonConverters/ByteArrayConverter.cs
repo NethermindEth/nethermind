@@ -135,16 +135,18 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         return hex;
     }
 
-    [SkipLocalsInit]
+    private enum SequenceValueKind { Null, Empty, Bytes }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength = false)
+    private static SequenceValueKind PrepareValueSequence(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength, out SequenceReader<byte> sr, out int odd, out int outLen)
     {
         ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
         int length = checked((int)valueSequence.Length);
-        if (length == 0) return null;
+        sr = new SequenceReader<byte>(valueSequence);
+        odd = 0;
+        outLen = 0;
+        if (length == 0) return SequenceValueKind.Null;
 
-        // Detect and skip 0x prefix even if split across segments
-        SequenceReader<byte> sr = new(valueSequence);
         bool hadPrefix = false;
         if (sr.TryPeek(out byte b0))
         {
@@ -170,16 +172,21 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
 
         long totalHexChars = length - (hadPrefix ? 2 : 0);
-        if (totalHexChars <= 0) return [];
+        if (totalHexChars <= 0) return SequenceValueKind.Empty;
 
         if (requireEvenLength && (totalHexChars & 1) != 0)
             Bytes.ThrowFormatException(Bytes.ErrOddLength);
 
-        int odd = (int)(totalHexChars & 1);
-        int outLen = (int)(totalHexChars >> 1) + odd;
+        odd = (int)(totalHexChars & 1);
+        outLen = (int)(totalHexChars >> 1) + odd;
+        return SequenceValueKind.Bytes;
+    }
 
-        byte[] result = GC.AllocateUninitializedArray<byte>(outLen);
-        ref byte resultRef = ref MemoryMarshal.GetArrayDataReference(result);
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void DecodeValueSequence(ref SequenceReader<byte> sr, int odd, Span<byte> dest)
+    {
+        ref byte resultRef = ref MemoryMarshal.GetReference(dest);
         int outPos = 0;
 
         if (odd == 1)
@@ -228,10 +235,23 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             sr.Advance(2);
         }
 
-        if (outPos != outLen)
+        if (outPos != dest.Length)
             ThrowInvalidOperationException();
+    }
 
-        return result;
+    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength = false)
+    {
+        switch (PrepareValueSequence(ref reader, strictHexFormat, requireEvenLength, out SequenceReader<byte> sr, out int odd, out int outLen))
+        {
+            case SequenceValueKind.Null:
+                return null;
+            case SequenceValueKind.Empty:
+                return [];
+            default:
+                byte[] result = GC.AllocateUninitializedArray<byte>(outLen);
+                DecodeValueSequence(ref sr, odd, result);
+                return result;
+        }
     }
 
     /// <summary>
@@ -248,11 +268,20 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (tokenType != JsonTokenType.String && tokenType != JsonTokenType.PropertyName)
             ThrowInvalidOperationException();
 
-        // Value spanning multiple buffer segments: fall back to the byte[] path for correctness.
+        // Value spanning multiple buffer segments: decode straight into the pooled list.
         if (reader.HasValueSequence)
         {
-            byte[]? sequenceBytes = ConvertValueSequence(ref reader, strictHexFormat: false);
-            return sequenceBytes is null ? null : new ArrayPoolList<byte>(sequenceBytes);
+            switch (PrepareValueSequence(ref reader, strictHexFormat: false, requireEvenLength: false, out SequenceReader<byte> sr, out int odd, out int seqLen))
+            {
+                case SequenceValueKind.Null:
+                    return null;
+                case SequenceValueKind.Empty:
+                    return new ArrayPoolList<byte>(0, 0);
+                default:
+                    ArrayPoolList<byte> sequenceResult = new(seqLen, seqLen);
+                    DecodeValueSequence(ref sr, odd, sequenceResult.AsSpan());
+                    return sequenceResult;
+            }
         }
 
         ReadOnlySpan<byte> raw = reader.ValueSpan;
