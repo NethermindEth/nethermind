@@ -224,13 +224,12 @@ public class PersistenceManagerTests
         // Backstop: snapshotsDepth (95000) > MaxReorgDepth (90000), finalized not in range.
         // Phase 1 must seed from the in-memory tier's latest registered state.
         StateId latest = CreateStateId(95000);
-        StateId tierTip = CreateStateId(80000);
+        // tierTip spans at most CompactSize from Block0 so the base it anchors is a persist candidate.
+        StateId tierTip = CreateStateId(_config.CompactSize);
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
 
-        // Seed the in-memory base chain that the BFS will walk from tierTip back to Block0.
-        // CreateSnapshot registers the snapshot's To as the in-memory tier's LastRegisteredState,
-        // so the backstop seeds on tierTip; emulate a one-hop graph by registering a base at the
-        // tier-tip block with From = Block0.
+        // CreateSnapshot registers the snapshot's To as the in-memory tier's LastRegisteredState, so the
+        // backstop seeds on tierTip; emulate a one-hop graph by registering a base at tierTip with From = Block0.
         using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
