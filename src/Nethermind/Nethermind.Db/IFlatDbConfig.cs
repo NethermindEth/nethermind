@@ -67,9 +67,6 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Page-cache budget (bytes) for the persisted-snapshot arena. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker.", DefaultValue = "8589934592")]
     long PersistedSnapshotArenaPageCacheBytes { get; set; }
 
-    [ConfigItem(Description = "When the persisted-snapshot page tracker evicts a page, also call posix_fadvise(POSIX_FADV_DONTNEED) on the arena file descriptor in addition to the existing madvise. Only useful for benchmarking — keeps arena pages from polluting the OS file cache and competing with other applications.", DefaultValue = "false")]
-    bool PersistedSnapshotFadviseOnPageEviction { get; set; }
-
     [ConfigItem(Description = "When reclaiming dead persisted-snapshot arena ranges — metadata reservation cleanup and blob-file frontier reset — call fallocate(FALLOC_FL_PUNCH_HOLE) to free the underlying disk blocks. Linux-only; automatically and permanently disabled per arena pool if the filesystem reports the operation unsupported. Set false to skip hole-punching entirely (the page-cache posix_fadvise still runs).", DefaultValue = "true")]
     bool PersistedSnapshotPunchHoleOnReclaim { get; set; }
 

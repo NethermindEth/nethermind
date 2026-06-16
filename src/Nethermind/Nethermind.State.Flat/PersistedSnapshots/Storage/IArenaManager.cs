@@ -48,7 +48,7 @@ public unsafe interface IArenaManager : IDisposable
     /// <summary>
     /// Enqueue a page eviction for asynchronous dispatch. The implementation pushes
     /// <c>(arenaId, pageIdx)</c> onto a bounded MPSC ring drained by a background worker that
-    /// performs the <c>madvise(MADV_DONTNEED)</c> (and optional <c>posix_fadvise</c>) syscall
+    /// performs the <c>madvise(MADV_DONTNEED)</c> syscall
     /// off the producer thread. The drain re-checks <see cref="PageResidencyTracker.ContainsPage"/>
     /// and skips the syscall if the page returned to the working set in the meantime. On
     /// ring-full the producer falls back to inline dispatch so no eviction is lost.

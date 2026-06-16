@@ -138,8 +138,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// <remarks>
     /// Runs the shared <see cref="WalkAndAssemble{TPolicy}"/> backward walk with <see cref="FindPersistPolicy"/>
     /// (priority <see cref="PersistEdgePriority"/>): it navigates <c>From</c>-edges from <paramref name="seed"/>
-    /// down toward <paramref name="currentPersistedState"/> and wins at the first edge reaching it that passes
-    /// <see cref="IsPersistCandidate"/>. The <c>&gt;CompactSize</c> persisted-compacted tier and non-boundary
+    /// down toward <paramref name="currentPersistedState"/> and wins at the first edge reaching it that is a
+    /// valid persist candidate. The <c>&gt;CompactSize</c> persisted-compacted tier and non-boundary
     /// in-memory compacted entries are never returnable candidates but are still traversed as skip-pointers.
     /// The winning candidate is the assembled chain's terminus; this returns just that snapshot (re-leased)
     /// and drops the rest of the navigated chain.
@@ -170,13 +170,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
         return (null, null);
     }
-
-    private static bool IsPersistCandidate(SnapshotTier tier, in StateId to, in StateId from, int compactSize) => tier switch
-    {
-        SnapshotTier.PersistedCompacted => false,
-        SnapshotTier.InMemoryCompacted => to.BlockNumber - from.BlockNumber == compactSize,
-        _ => true,
-    };
 
     /// <summary>
     /// Best-effort backward BFS over the persisted tier from <paramref name="toStateId"/>, returning the
@@ -772,7 +765,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // FindSnapshotToPersist navigation: walk From-edges down toward currentPersistedState, winning at the
     // first edge that reaches it via a persist candidate. The >CompactSize persisted-compacted skip-pointer
     // and non-boundary in-memory compacted are followed for navigation while above the target, but are NOT
-    // followed onto the target itself (they are not candidates per IsPersistCandidate) — so, because the
+    // followed onto the target itself (they are not persist candidates) — so, because the
     // driver dedups only retained edges, they don't shadow the real candidate edge to the same target.
     private readonly struct FindPersistPolicy(StateId currentPersistedState, int compactSize) : IAssemblePolicy
     {
@@ -781,7 +774,15 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
             if (from == currentPersistedState)
-                return IsPersistCandidate(tier, to, from, compactSize) ? AssembleStep.WinAndStop : AssembleStep.Skip;
+            {
+                bool isCandidate = tier switch
+                {
+                    SnapshotTier.PersistedCompacted => false,
+                    SnapshotTier.InMemoryCompacted => to.BlockNumber - from.BlockNumber == compactSize,
+                    _ => true,
+                };
+                return isCandidate ? AssembleStep.WinAndStop : AssembleStep.Skip;
+            }
             return from.BlockNumber > currentPersistedState.BlockNumber ? AssembleStep.Traverse : AssembleStep.Skip;
         }
     }

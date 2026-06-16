@@ -23,7 +23,6 @@ public sealed class ArenaManager : IArenaManager
     private readonly string _basePath;
     private readonly long _maxArenaSize;
     private readonly long _dedicatedArenaThreshold;
-    private readonly bool _fadviseOnEviction;
     private readonly bool _punchHoleOnReclaim;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
@@ -52,7 +51,6 @@ public sealed class ArenaManager : IArenaManager
         _basePath = basePath;
         _maxArenaSize = config.ArenaFileSizeBytes;
         _dedicatedArenaThreshold = config.PersistedSnapshotDedicatedArenaThresholdBytes;
-        _fadviseOnEviction = config.PersistedSnapshotFadviseOnPageEviction;
         _punchHoleOnReclaim = config.PersistedSnapshotPunchHoleOnReclaim;
         _logger = logManager.GetClassLogger<ArenaManager>();
         Directory.CreateDirectory(basePath);
@@ -366,7 +364,7 @@ public sealed class ArenaManager : IArenaManager
     /// <summary>
     /// Advises the kernel about arena page residency. Producers call <see cref="Queue"/> to enqueue
     /// <c>(arenaId, pageIdx)</c> evictions onto a bounded MPSC ring; a background worker drains it and runs
-    /// the <c>madvise(MADV_DONTNEED)</c> (and optional <c>posix_fadvise</c>) syscalls off the producer
+    /// the <c>madvise(MADV_DONTNEED)</c> syscall off the producer
     /// thread, re-checking residency and warming siblings (<see cref="TouchWarmPages"/>) so the kernel LRU
     /// doesn't bleed into our working set. Also owns the 1s timer that publishes the resident-bytes gauge.
     /// </summary>
@@ -496,8 +494,6 @@ public sealed class ArenaManager : IArenaManager
             int pageSize = Environment.SystemPageSize;
             long offset = (long)pageIdx * pageSize;
             arena.AdviseDontNeed(offset, pageSize);
-            if (_manager._fadviseOnEviction)
-                arena.FadviseDontNeed(offset, pageSize);
 
             // 1:2 drop-to-warm ratio (one dropped page → two refreshed pages).
             TouchWarmPages(2);
