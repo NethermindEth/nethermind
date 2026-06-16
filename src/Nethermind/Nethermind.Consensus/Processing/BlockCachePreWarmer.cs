@@ -57,6 +57,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _leadCapEnabled = blocksConfig.PreWarmLeadCapPercent > 0;
         if (_leadCapEnabled) PrewarmThrottle.Configure(blocksConfig.PreWarmLeadCapPercent, blocksConfig.PreWarmLeadCapPercent * 2 / 5);
         PrewarmExtraGas.Enabled = blocksConfig.PreWarmExtraGas;
+        PrewarmReuse.Enabled = blocksConfig.PreWarmLogReuse;
     }
 
     internal BlockCachePreWarmer(
@@ -82,6 +83,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             CacheType result = _preBlockCaches.ClearCaches();
             PrewarmCoverage.ResetBlock();
+            PrewarmReuse.ResetBlock();
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
             if (result != default)
@@ -271,6 +273,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
                     kvp.Value.Dispose();
             }
+
+            if (PrewarmReuse.Enabled) LogReuseOpportunity(block);
         }
         catch (OperationCanceledException)
         {
@@ -280,6 +284,44 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error pre-warming transactions", ex);
         }
+    }
+
+    /// <summary>
+    /// DIAGNOSTIC: counts how many txs' speculative results are reusable — i.e. nothing the tx read
+    /// was written by an earlier tx in the block (storage-slot granularity, speculative read/write sets).
+    /// </summary>
+    private void LogReuseOpportunity(Block block)
+    {
+        if (!_logger.IsInfo) return;
+
+        int n = block.Transactions.Length;
+        HashSet<StorageCell> priorWrites = [];
+        int reusable = 0, conflicted = 0, missing = 0, readOnly = 0;
+        for (int i = 0; i < n; i++)
+        {
+            if (!PrewarmReuse.TxAccess.TryGetValue(i, out (HashSet<StorageCell> Reads, HashSet<StorageCell> Writes) acc))
+            {
+                missing++;
+                continue;
+            }
+
+            bool conflict = false;
+            foreach (StorageCell cell in acc.Reads)
+            {
+                if (priorWrites.Contains(cell)) { conflict = true; break; }
+            }
+
+            if (conflict) conflicted++;
+            else
+            {
+                reusable++;
+                if (acc.Writes.Count == 0) readOnly++;
+            }
+
+            foreach (StorageCell cell in acc.Writes) priorWrites.Add(cell);
+        }
+
+        _logger.Info($"Block {block.Number} reuse-opportunity: reusable_est={reusable}/{n} (of which read-only={readOnly}) conflicted={conflicted} no-warmup={missing} [storage-only, speculative]");
     }
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
@@ -323,7 +365,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList); // eip-2930
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            StorageAccessTxTracer? reuseTracer = PrewarmReuse.Enabled ? new StorageAccessTxTracer() : null;
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, (ITxTracer?)reuseTracer ?? NullTxTracer.Instance);
+            if (reuseTracer is not null) PrewarmReuse.Record(txIndex, reuseTracer.Reads, reuseTracer.Writes);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }

@@ -67,6 +67,8 @@ namespace Nethermind.Config
 
         public bool PreWarmExtraGas { get; set; } = false;
 
+        public bool PreWarmLogReuse { get; set; } = false;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 

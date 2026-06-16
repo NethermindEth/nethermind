@@ -108,6 +108,32 @@ public static class PrewarmExtraGas
     public static bool Enabled;
 }
 
+/// <summary>
+/// DIAGNOSTIC: measures the transaction-execution-reuse opportunity. The prewarmer already executes
+/// each tx speculatively on parent state; that result is reusable by the main thread iff nothing the
+/// tx read was written by an earlier tx in the block (readSet ∩ ⋃ prior writeSets = ∅). This records
+/// per-tx speculative storage read/write sets so the opportunity can be counted per block.
+/// </summary>
+/// <remarks>
+/// First-cut scope: storage slots only (ERC-20/AMM balances are storage, so most DeFi conflicts are
+/// captured; native-ETH balance conflicts are account-level and not yet covered). Sets are speculative
+/// (parent-state), so this is an opportunity ESTIMATE, not a sound reuse decision — actual reuse must
+/// re-validate the read-set against committed writes at execution time.
+/// </remarks>
+public static class PrewarmReuse
+{
+    public static bool Enabled;
+
+    public static readonly ConcurrentDictionary<int, (HashSet<StorageCell> Reads, HashSet<StorageCell> Writes)> TxAccess = new();
+
+    public static void Record(int txIndex, HashSet<StorageCell> reads, HashSet<StorageCell> writes) => TxAccess[txIndex] = (reads, writes);
+
+    public static void ResetBlock()
+    {
+        if (Enabled) TxAccess.Clear();
+    }
+}
+
 public static class PrewarmThrottle
 {
     public static bool Enabled;
