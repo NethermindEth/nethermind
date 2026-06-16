@@ -32,8 +32,8 @@ class Program
     [UnmanagedCallersOnly(EntryPoint = "ZkvmThrow")]
     static unsafe void HandleException(void* exception)
     {
-        if (!StatelessExecutor.Output.IsEmpty)
-            WriteOutput(StatelessExecutor.Output.Span);
+        if (!StatelessExecutor.FailureOutput.IsEmpty)
+            WriteOutput(StatelessExecutor.FailureOutput.Span);
 
         if (exception is null)
         {

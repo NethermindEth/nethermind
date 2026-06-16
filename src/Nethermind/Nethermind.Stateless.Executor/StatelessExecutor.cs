@@ -20,15 +20,16 @@ namespace Nethermind.Stateless.Execution;
 public static class StatelessExecutor
 {
     /// <summary>
-    /// Gets the output of the last execution. Intended for zkVM guests.
+    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
     /// </summary>
     /// <remarks>
-    /// As there's no exception unwinding in zkVM runtime, an exception thrown during execution
+    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
     /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
     /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
-    /// Therefore, the execution output is stored here for the exception handler to access.
+    /// The failure result is therefore encoded up front, before execution begins, so the
+    /// callback can access it.
     /// </remarks>
-    public static ReadOnlyMemory<byte> Output { get; private set; }
+    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
 
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
@@ -44,7 +45,7 @@ public static class StatelessExecutor
         byte[] output = StatelessValidationResult.Encode(result);
         bool success = false;
 
-        Output = output;
+        FailureOutput = output;
 
         if (transactions.Length == publicKeys.Length)
         {
@@ -73,7 +74,6 @@ public static class StatelessExecutor
         {
             result.IsSuccess = true;
             output = StatelessValidationResult.Encode(result);
-            Output = output;
         }
 
         return output;
