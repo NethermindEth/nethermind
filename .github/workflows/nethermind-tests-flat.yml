@@ -38,9 +38,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pyspec-build
-          path: |
-            src/Nethermind/artifacts/bin
-            src/Nethermind/artifacts/obj
+          path: src/Nethermind/artifacts
           retention-days: 1
           include-hidden-files: true
 
@@ -92,8 +90,10 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           TEST_USE_FLAT: ${{ matrix.variant.flat }}
         run: |
+          # --no-build (use the prebuilt output) but allow restore so dotnet test still
+          # recognizes the MTP test project across the artifact boundary.
           if [ -n "${{ matrix.variant.filter }}" ]; then
-            dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release --no-build --no-restore --filter "${{ matrix.variant.filter }}"
+            dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release --no-build --filter "${{ matrix.variant.filter }}"
           else
-            dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release --no-build --no-restore
+            dotnet test --project Ethereum.Blockchain.Pyspec.Test.csproj -c release --no-build
           fi
