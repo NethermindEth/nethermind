@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -47,6 +48,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private readonly Bound _metadataScope;
 
     private readonly ArenaReservation _reservation;
+    // Metric label (tier + compact size) for the per-(tier, size) ActivePersistedSnapshotCount gauge.
+    private readonly PersistedSnapshotLabel _label;
     // Manager that owns the per-id blob arena slots. The repository acquires one lease per
     // referenced id before this ctor runs and releases them in CleanUp / PersistOnShutdown.
     // Each id is resolved on demand via _blobManager.GetFile(id), a lock-free O(1) array read:
@@ -116,16 +119,19 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// leases back on construction failure. This ctor just bumps the metadata reservation
     /// lease and stashes the manager ref for later id → file resolution.
     /// </summary>
+    /// <param name="tier">The persisted tier this snapshot belongs to, for the per-(tier, size)
+    /// <see cref="Metrics.ActivePersistedSnapshotCount"/> gauge.</param>
     /// <param name="bloom">The unified bloom this snapshot takes ownership of, disposed with
     /// the snapshot. <c>null</c> installs the AlwaysTrue sentinel — correct (no false
     /// negatives) but unfiltered — for callers that populate the real bloom later via
     /// <see cref="SetBloom"/>.</param>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        BlobArenaManager blobManager, BloomFilter? bloom = null)
+        BlobArenaManager blobManager, SnapshotTier tier, BloomFilter? bloom = null)
     {
         From = from;
         To = to;
         _reservation = reservation;
+        _label = new PersistedSnapshotLabel(tier.MetricTierLabel(), to.BlockNumber - from.BlockNumber);
         _blobManager = blobManager;
         _bloom = bloom ?? BloomFilter.AlwaysTrue();
         Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, _bloom.DataBytes);
@@ -207,7 +213,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
         // Increment only after every throw path above has been cleared, so a
         // partial-construction failure does not leave the gauge off by one.
-        Interlocked.Increment(ref Metrics._activePersistedSnapshotCount);
+        Metrics.ActivePersistedSnapshotCount.AddBy(_label, 1);
     }
 
     /// <summary>
@@ -571,6 +577,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         Interlocked.Add(ref Metrics._persistedSnapshotBloomMemory, -_bloom.DataBytes);
         _bloom.Dispose();
 
-        Interlocked.Decrement(ref Metrics._activePersistedSnapshotCount);
+        Metrics.ActivePersistedSnapshotCount.AddBy(_label, -1);
     }
 }

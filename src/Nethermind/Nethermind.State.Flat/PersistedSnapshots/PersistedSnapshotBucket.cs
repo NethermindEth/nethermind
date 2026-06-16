@@ -27,6 +27,7 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
     private readonly Lock _lock = new();
     private long _memoryBytes;
     private long _count;
+    private readonly string _tierName = tier.MetricTierLabel();
 
     public long MemoryBytes => Interlocked.Read(ref _memoryBytes);
     public long Count => Interlocked.Read(ref _count);
@@ -37,11 +38,9 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
         get { lock (_lock) return _ordered.Count == 0 ? null : _ordered.Max; }
     }
 
-    // The process-wide memory gauge for this bucket's tier: base snapshots and the
-    // compacted/persistable tiers are tracked under separate aggregates.
-    private ref long GlobalMemory => ref (tier == SnapshotTier.PersistedBase
-        ? ref Metrics._persistedSnapshotMemory
-        : ref Metrics._compactedPersistedSnapshotMemory);
+    // The metric label for a snapshot: this bucket's tier plus the snapshot's block span (compact size).
+    private PersistedSnapshotLabel LabelFor(PersistedSnapshot snapshot) =>
+        new(_tierName, snapshot.To.BlockNumber - snapshot.From.BlockNumber);
 
     /// <summary>Live snapshots, for one-off lifecycle iteration (bloom rebuild) at construction.
     /// Enumerates the dictionary directly — does not allocate a Values snapshot.</summary>
@@ -72,8 +71,9 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
             _ordered.Add(to);
             Interlocked.Add(ref _memoryBytes, snapshot.Size);
             Interlocked.Increment(ref _count);
-            Interlocked.Add(ref GlobalMemory, snapshot.Size);
-            Interlocked.Increment(ref Metrics._persistedSnapshotCount);
+            PersistedSnapshotLabel label = LabelFor(snapshot);
+            Metrics.PersistedSnapshotMemory.AddBy(label, snapshot.Size);
+            Metrics.PersistedSnapshotCount.AddBy(label, 1);
         }
     }
 
@@ -142,11 +142,16 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
         lock (_lock)
         {
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
+            {
+                PersistedSnapshotLabel label = LabelFor(kv.Value);
+                Metrics.PersistedSnapshotMemory.AddBy(label, -kv.Value.Size);
+                Metrics.PersistedSnapshotCount.AddBy(label, -1);
                 kv.Value.Dispose();
+            }
             _byTo.Clear();
             _ordered.Clear();
-            Interlocked.Add(ref GlobalMemory, -Interlocked.Exchange(ref _memoryBytes, 0));
-            Interlocked.Add(ref Metrics._persistedSnapshotCount, -Interlocked.Exchange(ref _count, 0));
+            Interlocked.Exchange(ref _memoryBytes, 0);
+            Interlocked.Exchange(ref _count, 0);
         }
     }
 
@@ -165,8 +170,9 @@ internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotT
         long depth = to.BlockNumber - snapshot.From.BlockNumber;
         Interlocked.Add(ref _memoryBytes, -snapshot.Size);
         Interlocked.Decrement(ref _count);
-        Interlocked.Add(ref GlobalMemory, -snapshot.Size);
-        Interlocked.Decrement(ref Metrics._persistedSnapshotCount);
+        PersistedSnapshotLabel label = LabelFor(snapshot);
+        Metrics.PersistedSnapshotMemory.AddBy(label, -snapshot.Size);
+        Metrics.PersistedSnapshotCount.AddBy(label, -1);
         Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
         catalog.Remove(to, depth);
         snapshot.Dispose();

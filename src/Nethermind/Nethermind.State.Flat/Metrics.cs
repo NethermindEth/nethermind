@@ -34,11 +34,6 @@ public static class Metrics
     public static IMetricObserver FlatPersistenceSnapshotSize { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
-    [Description("Blob-arena trie-RLP bytes WILLNEED-prefetched per persisted-snapshot persistence")]
-    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
-    public static IMetricObserver FlatPersistenceBlobWarmedSize { get; set; } = new NoopMetricObserver();
-
-    [DetailedMetric]
     [CounterMetric]
     [Description("Importer entries count")]
     public static long ImporterEntriesCount { get; set; }
@@ -99,40 +94,19 @@ public static class Metrics
 
     // --- Persisted snapshot metrics ---
     //
-    // The four gauges/counters below are mutated delta-wise by each PersistedSnapshotRepository
-    // at every add/remove site (via Interlocked.Add(ref Metrics._xxx, ...)), so callers must not
-    // recompute or overwrite them — they stay correct only as long as every mutation goes through
-    // the repo. Backed by fields with Volatile.Read/Write accessors to match the bloom pattern.
-
-    internal static long _persistedSnapshotCount;
+    // The tier-labeled gauges below are mutated delta-wise by PersistedSnapshotBucket at every
+    // add/remove site (via .AddBy(tier, delta)), so callers must not recompute or overwrite them —
+    // they stay correct only as long as every mutation goes through the repo.
 
     [GaugeMetric]
-    [Description("Number of persisted snapshots on disk")]
-    public static long PersistedSnapshotCount
-    {
-        get => Volatile.Read(ref _persistedSnapshotCount);
-        set => Volatile.Write(ref _persistedSnapshotCount, value);
-    }
-
-    internal static long _persistedSnapshotMemory;
+    [Description("Number of persisted snapshots on disk, by tier")]
+    [KeyIsLabel("tier", "size")]
+    public static ConcurrentDictionary<PersistedSnapshotLabel, long> PersistedSnapshotCount { get; } = new();
 
     [GaugeMetric]
-    [Description("Estimated memory used by base persisted snapshots in bytes")]
-    public static long PersistedSnapshotMemory
-    {
-        get => Volatile.Read(ref _persistedSnapshotMemory);
-        set => Volatile.Write(ref _persistedSnapshotMemory, value);
-    }
-
-    internal static long _compactedPersistedSnapshotMemory;
-
-    [GaugeMetric]
-    [Description("Estimated memory used by compacted persisted snapshots in bytes")]
-    public static long CompactedPersistedSnapshotMemory
-    {
-        get => Volatile.Read(ref _compactedPersistedSnapshotMemory);
-        set => Volatile.Write(ref _compactedPersistedSnapshotMemory, value);
-    }
+    [Description("Estimated memory used by persisted snapshots in bytes, by tier")]
+    [KeyIsLabel("tier", "size")]
+    public static ConcurrentDictionary<PersistedSnapshotLabel, long> PersistedSnapshotMemory { get; } = new();
 
     // Backed by a field so callers can update via Interlocked.Add(ref ...).
     internal static long _persistedSnapshotBloomMemory;
@@ -209,23 +183,14 @@ public static class Metrics
         set => Volatile.Write(ref _blobAllocatedBytes, value);
     }
 
-    internal static long _activePersistedSnapshotCount;
-
     [GaugeMetric]
-    [Description("Number of live PersistedSnapshot instances (refcount > 0)")]
-    public static long ActivePersistedSnapshotCount
-    {
-        get => Volatile.Read(ref _activePersistedSnapshotCount);
-        set => Volatile.Write(ref _activePersistedSnapshotCount, value);
-    }
-
-    [GaugeMetric]
-    [Description("1 if fallocate(PUNCH_HOLE) disk reclamation is active, 0 if disabled (config off or filesystem unsupported)")]
-    public static long PersistedSnapshotPunchHoleEnabled { get; set; }
+    [Description("Number of live PersistedSnapshot instances (refcount > 0), by tier")]
+    [KeyIsLabel("tier", "size")]
+    public static ConcurrentDictionary<PersistedSnapshotLabel, long> ActivePersistedSnapshotCount { get; } = new();
 
     // PageResidencyTracker gauges. ResidentBytes is refreshed by ArenaManager on a
     // 1-second System.Threading.Timer so the tracker's hot path stays untouched; the gauge
-    // lags reality by at most ~1s. MetadataBytes and MaxBytes are fixed at tracker construction.
+    // lags reality by at most ~1s. MetadataBytes is fixed at tracker construction.
     [GaugeMetric]
     [Description("Currently-bounded resident bytes in the page-residency tracker")]
     public static long PageTrackerResidentBytes { get; set; }
@@ -233,10 +198,6 @@ public static class Metrics
     [GaugeMetric]
     [Description("Unmanaged metadata bytes used by the page-residency tracker (slot + meta arrays)")]
     public static long PageTrackerMetadataBytes { get; set; }
-
-    [GaugeMetric]
-    [Description("Maximum bytes the page-residency tracker can bound (configured page-cache budget)")]
-    public static long PageTrackerMaxBytes { get; set; }
 
     internal static long _pageTrackerEvictionsDispatched;
 

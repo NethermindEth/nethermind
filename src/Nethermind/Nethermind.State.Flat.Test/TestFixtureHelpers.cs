@@ -67,7 +67,7 @@ internal static class TestFixtureHelpers
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
         if (leaseBlobIds) LeaseBlobIdsFromHsst(reservation, blobs);
-        return new PersistedSnapshot(from, to, reservation, blobs);
+        return new PersistedSnapshot(from, to, reservation, blobs, SnapshotTier.PersistedBase);
     }
 
     /// <summary>

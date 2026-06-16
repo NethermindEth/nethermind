@@ -12,12 +12,18 @@ namespace Nethermind.State.Flat;
 
 public interface ISnapshotRepository
 {
+    /// <summary>Number of in-memory base snapshots currently held.</summary>
     int SnapshotCount { get; }
 
     /// <summary>Total persisted snapshots across the base/compacted/persistable buckets.</summary>
     int PersistedSnapshotCount { get; }
 
+    /// <summary>Register <paramref name="stateId"/> as a known in-memory tip: adds it to the block-ordered
+    /// set and records it as the last-registered tip.</summary>
     void AddStateId(in StateId stateId);
+
+    /// <summary>The most recently registered tip — by <see cref="AddStateId"/> call order, not block-number
+    /// max — used as the seed for backward graph walks. <c>null</c> when none is registered.</summary>
     StateId? LastRegisteredState { get; }
 
     /// <summary>Add an in-memory snapshot to the <paramref name="tier"/> store. <paramref name="tier"/>
@@ -32,6 +38,8 @@ public interface ISnapshotRepository
     /// <paramref name="tier"/> store. <paramref name="tier"/> must be an <c>InMemory*</c> value.</summary>
     bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier);
 
+    /// <summary>Whether a snapshot exists at <paramref name="stateId"/> in either the in-memory base store
+    /// or the persisted base bucket.</summary>
     bool HasState(in StateId stateId);
 
     /// <summary>Index a caller-built <paramref name="snapshot"/> into the bucket selected by
@@ -58,7 +66,14 @@ public interface ISnapshotRepository
 
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
     void RemovePersistedStatesUntil(long blockNumber);
+    /// <summary>Assemble the backward chain from <paramref name="stateId"/> down to
+    /// <paramref name="targetStateId"/> across both tiers, returning the in-memory and persisted snapshots
+    /// along the winning path (oldest-first). Empty when no path reaches the target; caller disposes the result.</summary>
     AssembledSnapshotResult AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
+
+    /// <summary>Assemble the backward chain of in-memory snapshots from <paramref name="toStateId"/> down to
+    /// <paramref name="minBlockNumber"/> for compaction (widest in-memory edge first). Oldest-first; empty when
+    /// the terminus is unreachable. Caller disposes the list.</summary>
     SnapshotPooledList AssembleInMemorySnapshotsForCompaction(in StateId toStateId, long minBlockNumber, int estimatedSize);
 
     /// <summary>
@@ -75,9 +90,20 @@ public interface ISnapshotRepository
     /// fewer than two are found. Caller disposes the returned list.
     /// </summary>
     PersistedSnapshotList AssemblePersistedSnapshotsForCompaction(in StateId toStateId, long minBlockNumber);
+    /// <summary>The greatest known <see cref="StateId"/> across the in-memory ordered set and the
+    /// persisted-tier maxima (the true cross-tier tip). <c>null</c> when empty.</summary>
     StateId? GetLastSnapshotId();
+
+    /// <summary>All registered in-memory state ids at <paramref name="blockNumber"/> (a fork can have
+    /// several). Caller disposes the list.</summary>
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);
+
+    /// <summary>All registered in-memory state ids with <c>BlockNumber</c> up to and including
+    /// <paramref name="blockNumber"/>. Caller disposes the list.</summary>
     ArrayPoolList<StateId> GetStatesUpToBlock(long blockNumber);
+
+    /// <summary>Remove and release all in-memory snapshots (both tiers) with <c>To.BlockNumber</c> up to and
+    /// including <paramref name="blockNumber"/>.</summary>
     void RemoveStatesUntil(long blockNumber);
 
     /// <summary>

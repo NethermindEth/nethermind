@@ -306,7 +306,7 @@ public class PersistedSnapshotCompactor(
 
             SnapshotTier tier = isPersistable ? SnapshotTier.PersistedPersistable : SnapshotTier.PersistedCompacted;
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
-            using (PersistedSnapshot compacted = new(from, to, reservation, blobs, mergedBloom))
+            using (PersistedSnapshot compacted = new(from, to, reservation, blobs, tier, mergedBloom))
             {
                 reservation.Dispose();
                 snapshotRepository.AddPersistedSnapshot(compacted, tier);

@@ -120,7 +120,7 @@ public sealed class PersistedSnapshotLoader(
         // The bloom is the AlwaysTrue placeholder — ReconstructBloom replaces it once every snapshot
         // is in place. No catalog write: the entry is already in the catalog. The `using` drops the
         // construction lease at the end; the bucket keeps its own.
-        using PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, blobs, BloomFilter.AlwaysTrue());
+        using PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, blobs, entry.Tier, BloomFilter.AlwaysTrue());
         reservation.Dispose();
         repository.AddPersistedSnapshot(snapshot, entry.Tier);
     }
@@ -223,7 +223,7 @@ public sealed class PersistedSnapshotLoader(
         // Build the persisted snapshot (its ctor takes its own reservation + blob leases, so we drop
         // ours), record the catalog entry, then index it. The returned snapshot carries the bucket's
         // lease plus this construction lease; the caller disposes the latter.
-        PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, blobs, bloom);
+        PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, blobs, SnapshotTier.PersistedBase, bloom);
         reservation.Dispose();
         _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
         repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);

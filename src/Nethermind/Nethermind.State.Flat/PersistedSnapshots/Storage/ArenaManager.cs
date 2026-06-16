@@ -64,9 +64,6 @@ public sealed class ArenaManager : IArenaManager
         // ResidentBytes is refreshed by _metricsTimer below; seed to 0 so the gauge appears immediately.
         Metrics.PageTrackerResidentBytes = 0L;
         Metrics.PageTrackerMetadataBytes = _pageTracker.MetadataBytes;
-        Metrics.PageTrackerMaxBytes =
-            (long)_pageTracker.MaxCapacity * Environment.SystemPageSize;
-        Metrics.PersistedSnapshotPunchHoleEnabled = _punchHoleOnReclaim ? 1L : 0L;
         // Poll _residentPages once a second rather than pushing on every Inserted — keeps the
         // hot path untouched; the gauge lags by at most ~1s. Skip when the tracker is disabled.
         if (_pageTracker.MaxCapacity > 0)
@@ -275,7 +272,6 @@ public sealed class ArenaManager : IArenaManager
         {
             // First permanent "unsupported" from the kernel — stop trying on every later cleanup.
             Volatile.Write(ref _punchHoleSupported, 0);
-            Metrics.PersistedSnapshotPunchHoleEnabled = 0L;
         }
         return outcome == PosixReclaim.PunchHoleOutcome.Done;
     }
@@ -435,7 +431,6 @@ public sealed class ArenaManager : IArenaManager
         // multiple managers).
         Metrics.PageTrackerResidentBytes = 0L;
         Metrics.PageTrackerMetadataBytes = 0L;
-        Metrics.PageTrackerMaxBytes = 0L;
     }
 
     /// <summary>

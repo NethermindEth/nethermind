@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Metric;
 
 namespace Nethermind.State.Flat;
 
@@ -40,10 +41,27 @@ public static class SnapshotTierExtensions
     /// <summary>Whether <paramref name="tier"/> is one of the persisted tiers (vs in-memory).</summary>
     public static bool IsPersisted(this SnapshotTier tier) => tier >= SnapshotTier.PersistedBase;
 
+    /// <summary>The metric "tier" label (<c>base</c>/<c>compacted</c>/<c>persistable</c>) for a persisted
+    /// <paramref name="tier"/>. Throws for in-memory tiers, which have no persisted-snapshot metrics.</summary>
+    public static string MetricTierLabel(this SnapshotTier tier) => tier switch
+    {
+        SnapshotTier.PersistedBase => "base",
+        SnapshotTier.PersistedCompacted => "compacted",
+        SnapshotTier.PersistedPersistable => "persistable",
+        _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Not a persisted tier."),
+    };
+
     /// <summary>Guards the in-memory-only operations: throws when <paramref name="tier"/> is persisted.</summary>
     public static void EnsureInMemory(this SnapshotTier tier)
     {
         if (tier.IsPersisted())
             throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only in-memory tiers are valid here.");
     }
+}
+
+/// <summary>Metric key for the per-(<c>tier</c>, <c>size</c>) persisted-snapshot gauges. <c>Size</c> is the
+/// snapshot's block span (<c>To - From</c>) — i.e. its compact size.</summary>
+public readonly record struct PersistedSnapshotLabel(string Tier, long Size) : IMetricLabels
+{
+    public string[] Labels => [Tier, Size.ToString()];
 }

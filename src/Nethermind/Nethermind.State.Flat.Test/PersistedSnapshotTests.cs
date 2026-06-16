@@ -263,7 +263,13 @@ public class PersistedSnapshotTests
         s2.Dispose();
         Assert.That(Active(), Is.EqualTo(baseline));
 
-        static long Active() => Metrics.ActivePersistedSnapshotCount;
+        static long Active()
+        {
+            long total = 0;
+            foreach (KeyValuePair<PersistedSnapshotLabel, long> kv in Metrics.ActivePersistedSnapshotCount)
+                total += kv.Value;
+            return total;
+        }
     }
 
     [Test]
