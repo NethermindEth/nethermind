@@ -115,9 +115,17 @@ internal sealed class FlatTestContainer : IDisposable
     public BlobArenaManager Blobs => Resolve<BlobArenaManager>();
     public PersistedSnapshotCompactor Compactor => Resolve<PersistedSnapshotCompactor>();
 
-    /// <summary>Persist an in-memory snapshot as a base entry through the production loader — the test
+    /// <summary>Persist an in-memory snapshot as a base entry through the production loader, then
+    /// re-lease it from the repository so callers get a disposable handle for assertions — the test
     /// stand-in for the repository's removed convert helper. The returned snapshot is pre-leased.</summary>
-    public PersistedSnapshot ConvertToPersistedBase(Snapshot snapshot) => Loader.Convert(snapshot);
+    public PersistedSnapshot ConvertToPersistedBase(Snapshot snapshot)
+    {
+        Loader.ConvertAndRegister(snapshot);
+        using PersistedSnapshotList bases = Repository.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To);
+        PersistedSnapshot persisted = bases[0];
+        _ = persisted.TryAcquire();
+        return persisted;
+    }
 
     public void Dispose()
     {

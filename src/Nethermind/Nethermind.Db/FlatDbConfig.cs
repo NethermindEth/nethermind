@@ -24,7 +24,7 @@ public class FlatDbConfig : IFlatDbConfig
     public long CompactionOffset { get; set; } = -1;
     public long TrieCacheMemoryBudget { get; set; } = 512.MiB;
     public bool EnableLongFinality { get; set; } = false;
-    public int LongFinalityReorgDepth { get; set; } = 90000;
+    public int MaxReorgDepth { get; set; } = 90000;
     public long ArenaFileSizeBytes { get; set; } = 1.GiB;
     public long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; } = 1.GiB;
     public long PersistedSnapshotArenaPageCacheBytes { get; set; } = 8.GiB;

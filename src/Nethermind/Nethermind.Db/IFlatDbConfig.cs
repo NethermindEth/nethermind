@@ -56,7 +56,7 @@ public interface IFlatDbConfig : IConfig
     bool EnableLongFinality { get; set; }
 
     [ConfigItem(Description = "Total max reorg depth in blocks (in-memory + persisted). When exceeded, force-persist oldest HSST snapshot to RocksDB.", DefaultValue = "90000")]
-    int LongFinalityReorgDepth { get; set; }
+    int MaxReorgDepth { get; set; }
 
     [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }

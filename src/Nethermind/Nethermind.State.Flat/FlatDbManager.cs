@@ -315,11 +315,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
-            // Each assembled snapshot carries its own unified bloom (set at convert / merge
-            // time, rebuilt on reload). The stack gates each snapshot's reads on that bloom —
-            // which covers exactly the snapshot's range — so no separate (From, To) join is
-            // needed, and a snapshot whose bloom is not yet populated carries the AlwaysTrue
-            // sentinel (no false negatives).
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
                 new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
 
@@ -448,8 +443,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState.BlockNumber < 0) return;
-
-        // The in-memory + persisted tiers are pruned inside FlushToPersistence above.
 
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();

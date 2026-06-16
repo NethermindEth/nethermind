@@ -19,8 +19,7 @@ public interface IPersistedSnapshotLoader : IDisposable
     /// <summary>
     /// Persist an in-memory <see cref="Snapshot"/> as a base entry in the persisted tier: build its
     /// HSST metadata + contiguous trie-RLP region into the shared arena/blob pools, fsync for
-    /// durability, then store it in the repository's base bucket. The returned snapshot is pre-leased —
-    /// the caller owns the lease and MUST dispose it.
+    /// durability, then register it in the repository's base bucket (which takes its own lease).
     /// </summary>
-    PersistedSnapshot Convert(Snapshot snapshot);
+    void ConvertAndRegister(Snapshot snapshot);
 }

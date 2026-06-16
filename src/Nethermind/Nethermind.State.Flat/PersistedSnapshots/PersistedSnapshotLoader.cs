@@ -178,7 +178,7 @@ public sealed class PersistedSnapshotLoader(
     }
 
     /// <inheritdoc/>
-    public PersistedSnapshot Convert(Snapshot snapshot)
+    public void ConvertAndRegister(Snapshot snapshot)
     {
         // One unified bloom covering account/slot/SD keys + state-trie + storage-trie paths.
         // Sized as the union of both expected key counts at the configured bits-per-key.
@@ -219,8 +219,8 @@ public sealed class PersistedSnapshotLoader(
         blobWriter.Fsync();
 
         // Build the persisted snapshot (its ctor takes its own reservation + blob leases, so we drop
-        // ours), record the catalog entry, then index it. The returned snapshot carries the bucket's
-        // lease plus this construction lease; the caller disposes the latter.
+        // ours), record the catalog entry, then index it. AddPersistedSnapshot takes the bucket's own
+        // lease, so we drop this construction lease once indexing (and optional validation) is done.
         PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, blobs, SnapshotTier.PersistedBase, bloom);
         reservation.Dispose();
         _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
@@ -229,7 +229,7 @@ public sealed class PersistedSnapshotLoader(
         if (_validatePersistedSnapshot)
             PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
 
-        return persisted;
+        persisted.Dispose();
     }
 
     /// <summary>

@@ -395,7 +395,7 @@ public class LongFinalityIntegrationTests
     {
         FlatDbConfig config = new();
         Assert.That(config.EnableLongFinality, Is.False);
-        Assert.That(config.LongFinalityReorgDepth, Is.EqualTo(90000));
+        Assert.That(config.MaxReorgDepth, Is.EqualTo(90000));
         Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
     }
 }

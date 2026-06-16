@@ -38,7 +38,7 @@ public class PersistenceManager(
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxInMemoryBaseSnapshotCount = configuration.MaxInMemoryBaseSnapshotCount;
-    private readonly int _longFinalityReorgDepth = configuration.LongFinalityReorgDepth;
+    private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
@@ -70,7 +70,7 @@ public class PersistenceManager(
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
     ///   <see cref="IFinalizedStateProvider"/> — the boundary is always locally synced even
     ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
-    ///   <item>Else if <c>snapshotsDepth &gt; LongFinalityReorgDepth</c> (backstop, finalization
+    ///   <item>Else if <c>snapshotsDepth &gt; MaxReorgDepth</c> (backstop, finalization
     ///   stalled) → seed = latest persisted-snapshot tier state.</item>
     ///   <item>Else → no seed; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
@@ -87,7 +87,7 @@ public class PersistenceManager(
         // boundary block (normal — anchors the canonical chain at a locally-synced block,
         // robust to catch-up sync where the CL-reported finalized tip is beyond chain head),
         // or the in-memory tier's latest registered state (backstop, only when in-memory has
-        // grown past LongFinalityReorgDepth).
+        // grown past MaxReorgDepth).
         StateId? seed = null;
         long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         long nextBoundary = schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
@@ -103,7 +103,7 @@ public class PersistenceManager(
             if (canonicalRoot is not null)
                 seed = new StateId(targetBlockNumber, canonicalRoot);
         }
-        else if (snapshotsDepth > _longFinalityReorgDepth)
+        else if (snapshotsDepth > _maxReorgDepth)
         {
             seed = snapshotRepository.LastRegisteredState;
         }
@@ -247,9 +247,7 @@ public class PersistenceManager(
                     if (snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
                     {
                         long sw = Stopwatch.GetTimestamp();
-                        // Pre-leased return — dispose the caller's lease immediately;
-                        // the repository's dict entry holds its own lease.
-                        loader.Convert(snap).Dispose();
+                        loader.ConvertAndRegister(snap);
                         Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
                         snap.Dispose();
                     }
@@ -283,9 +281,7 @@ public class PersistenceManager(
         try
         {
             long sw = Stopwatch.GetTimestamp();
-            // Pre-leased return — dispose the caller's lease immediately;
-            // the repository's dict entry holds its own lease.
-            loader.Convert(baseSnap).Dispose();
+            loader.ConvertAndRegister(baseSnap);
             Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
 
             ArrayPoolList<StateId> single = new(1) { baseSnap.To };

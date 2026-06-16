@@ -43,7 +43,7 @@ public class PersistenceManagerTests
             CompactSize = 16,
             MinReorgDepth = 64,
             MaxInMemoryBaseSnapshotCount = 128 + 32,
-            LongFinalityReorgDepth = 90000,
+            MaxReorgDepth = 90000,
             EnableLongFinality = true
         };
 
@@ -221,7 +221,7 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_BackstopExceeded_SeedsFromInMemoryTier()
     {
-        // Backstop: snapshotsDepth (95000) > LongFinalityReorgDepth (90000), finalized not in range.
+        // Backstop: snapshotsDepth (95000) > MaxReorgDepth (90000), finalized not in range.
         // Phase 1 must seed from the in-memory tier's latest registered state.
         StateId latest = CreateStateId(95000);
         StateId tierTip = CreateStateId(80000);
@@ -398,7 +398,7 @@ public class PersistenceManagerTests
     public void DetermineSnapshotAction_UnfinalizedBelowBackstop_ReturnsNull()
     {
         // Unfinalized (finalized at 10, persisted at 0 — not in range for the CompactSize=16
-        // gate) AND in-memory depth (300) below LongFinalityReorgDepth (90000): no force-persist,
+        // gate) AND in-memory depth (300) below MaxReorgDepth (90000): no force-persist,
         // no Phase 1 candidate. Phase 2 entry guard (SnapshotCount > 160) also not satisfied with
         // a single created snapshot. Action: do nothing.
         StateId persisted = Block0;
