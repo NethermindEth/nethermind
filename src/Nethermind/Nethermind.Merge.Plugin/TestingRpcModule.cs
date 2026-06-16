@@ -87,10 +87,8 @@ public class TestingRpcModule(
             if (blockTree.Head?.Header is not BlockHeader chainHead)
                 return ResultWrapper<Hash256>.Fail("chain head not found", ErrorCodes.InternalError);
 
-            // Mirrors BlockProducerBase.GetProcessingOptions for BuildBlocksOnMainState,
-            // plus ForceProcessing because the produced block is not yet better than the
-            // current head. Whether the produced state is written through is decided by
-            // the env's world state (main-state here), not by these options.
+            // ForceProcessing: the produced block is not yet better than the current head.
+            // Persistence is decided by the env's (main) world state, not by these options.
             const ProcessingOptions ProducerOptions =
                 ProcessingOptions.NoValidation
                 | ProcessingOptions.ForceProcessing
