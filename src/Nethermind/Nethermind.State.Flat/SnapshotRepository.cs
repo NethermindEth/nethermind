@@ -134,55 +134,38 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// persistence phases in <see cref="PersistenceManager"/>.
     /// </summary>
     /// <remarks>
-    /// A standalone single-result search, not the shared <see cref="WalkAndAssemble{TPolicy}"/> chain driver:
-    /// it returns one boundary snapshot rather than assembling a chain, and disposes every other leased
-    /// snapshot as it goes — the same single-result shape as <see cref="CanReachState"/>, which is likewise
-    /// inlined rather than routed through the chain-gathering driver. It walks <c>From</c>-edges backward from
-    /// <paramref name="seed"/>, trying each node's tiers in <see cref="PersistEdgePriority"/> order; the first
-    /// edge reaching <paramref name="currentPersistedState"/> that passes
-    /// <see cref="IsPersistCandidate"/> wins. The <c>&gt;CompactSize</c> persisted-compacted tier and
-    /// non-boundary in-memory compacted entries are never returnable candidates (see
-    /// <see cref="IsPersistCandidate"/>) but are still traversed as skip-pointers that shorten the path.
+    /// Runs the shared <see cref="WalkAndAssemble{TPolicy}"/> backward walk with <see cref="FindPersistPolicy"/>
+    /// (priority <see cref="PersistEdgePriority"/>): it navigates <c>From</c>-edges from <paramref name="seed"/>
+    /// down toward <paramref name="currentPersistedState"/> and wins at the first edge reaching it that passes
+    /// <see cref="IsPersistCandidate"/>. The <c>&gt;CompactSize</c> persisted-compacted tier and non-boundary
+    /// in-memory compacted entries are never returnable candidates but are still traversed as skip-pointers.
+    /// The winning candidate is the assembled chain's terminus; this returns just that snapshot (re-leased)
+    /// and drops the rest of the navigated chain.
     /// </remarks>
     public (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(
         in StateId seed, in StateId currentPersistedState, int compactSize)
     {
         if (seed.BlockNumber <= currentPersistedState.BlockNumber) return (null, null);
 
-        HashSet<StateId> visited = [seed];
-        Queue<StateId> queue = new();
-        queue.Enqueue(seed);
+        int estimatedSize = (int)Math.Clamp(seed.BlockNumber - currentPersistedState.BlockNumber, 4, 4096);
+        FindPersistPolicy policy = new(currentPersistedState, compactSize);
+        using AssembledSnapshotResult result = WalkAndAssemble(seed, estimatedSize, ref policy);
 
-        while (queue.TryDequeue(out StateId current))
+        // The candidate is the chain terminus (oldest); re-lease it for the caller and let the `using` drop
+        // the rest of the navigated chain. The in-mem-before-persisted invariant puts a persisted candidate
+        // at Persisted[0] and an in-memory one at InMemory[0].
+        if (result.Persisted.Count > 0)
         {
-            foreach (SnapshotTier tier in PersistEdgePriority)
-            {
-                IDisposable snapshot;
-                StateId from;
-                if (tier.IsPersisted())
-                {
-                    if (!TryLeasePersistedState(current, tier, out PersistedSnapshot? persisted)) continue;
-                    (snapshot, from) = (persisted, persisted.From);
-                }
-                else
-                {
-                    if (!TryLeaseInMemoryState(current, tier, out Snapshot? inMemory)) continue;
-                    (snapshot, from) = (inMemory, inMemory.From);
-                }
-
-                if (from == currentPersistedState && IsPersistCandidate(tier, current, from, compactSize))
-                {
-                    return snapshot is PersistedSnapshot persistedSnapshot
-                        ? (persistedSnapshot, null)
-                        : (null, (Snapshot)snapshot);
-                }
-
-                if (from.BlockNumber > currentPersistedState.BlockNumber && visited.Add(from))
-                    queue.Enqueue(from);
-                snapshot.Dispose();
-            }
+            PersistedSnapshot persisted = result.Persisted[0];
+            persisted.TryAcquire();
+            return (persisted, null);
         }
-
+        if (result.InMemory.Count > 0)
+        {
+            Snapshot inMemory = result.InMemory[0];
+            inMemory.TryAcquire();
+            return (null, inMemory);
+        }
         return (null, null);
     }
 
@@ -716,7 +699,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private interface IAssemblePolicy
     {
         SnapshotTier[] EdgePriority { get; }
-        AssembleStep Decide(in StateId from, SnapshotTier tier);
+        /// <summary>Verdict for one parent edge: <paramref name="to"/> is the node being expanded (the leased
+        /// snapshot's <c>To</c>), <paramref name="from"/> is the parent it reaches over <paramref name="tier"/>.</summary>
+        AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier);
     }
 
     // Full dual-tier walk for AssembleSnapshots. The driver hardcodes the in-mem-cannot-follow-persisted
@@ -727,7 +712,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     {
         public SnapshotTier[] EdgePriority => FullEdgePriority;
 
-        public AssembleStep Decide(in StateId from, SnapshotTier tier)
+        public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
             if (from.BlockNumber < target.BlockNumber)
                 return tier.IsPersisted() ? AssembleStep.WinAndStop : AssembleStep.Skip;
@@ -746,7 +731,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public SnapshotTier[] EdgePriority => InMemoryExpansion;
 
-        public AssembleStep Decide(in StateId from, SnapshotTier tier) =>
+        public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier) =>
             from.BlockNumber < minBlockNumber ? AssembleStep.Skip
             : from.BlockNumber == minBlockNumber ? AssembleStep.WinAndStop
             : AssembleStep.Traverse;
@@ -764,7 +749,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         public readonly SnapshotTier[] EdgePriority => CompactionEdges;
 
-        public AssembleStep Decide(in StateId from, SnapshotTier tier)
+        public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
             if (from.BlockNumber < minBlockNumber) return AssembleStep.Skip;
             if (from.BlockNumber == minBlockNumber) return AssembleStep.WinAndStop; // window start — deepest possible
@@ -774,6 +759,23 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 return AssembleStep.Win;
             }
             return AssembleStep.Traverse;
+        }
+    }
+
+    // FindSnapshotToPersist navigation: walk From-edges down toward currentPersistedState, winning at the
+    // first edge that reaches it via a persist candidate. The >CompactSize persisted-compacted skip-pointer
+    // and non-boundary in-memory compacted are followed for navigation while above the target, but are NOT
+    // followed onto the target itself (they are not candidates per IsPersistCandidate) — so, because the
+    // driver dedups only retained edges, they don't shadow the real candidate edge to the same target.
+    private readonly struct FindPersistPolicy(StateId currentPersistedState, int compactSize) : IAssemblePolicy
+    {
+        public SnapshotTier[] EdgePriority => PersistEdgePriority;
+
+        public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
+        {
+            if (from == currentPersistedState)
+                return IsPersistCandidate(tier, to, from, compactSize) ? AssembleStep.WinAndStop : AssembleStep.Skip;
+            return from.BlockNumber > currentPersistedState.BlockNumber ? AssembleStep.Traverse : AssembleStep.Skip;
         }
     }
 
@@ -823,10 +825,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                         (snapshot, from) = (inMemory, inMemory.From);
                     }
 
-                    if (!seen.Add(from)) { snapshot.Dispose(); continue; } // cycle detection
-
-                    AssembleStep step = policy.Decide(from, tier);
+                    AssembleStep step = policy.Decide(node.Current, from, tier);
                     if (step == AssembleStep.Skip) { snapshot.Dispose(); continue; }
+                    // Cycle detection — dedup AFTER Decide so a skipped edge doesn't claim its target. This
+                    // lets a non-candidate skip-pointer reach a node without shadowing a later candidate edge
+                    // to the same node (it is a no-op for policies whose verdict is constant per node).
+                    if (!seen.Add(from)) { snapshot.Dispose(); continue; }
 
                     int idx = visited.Count;
                     visited.Add((snapshot, node.ParentIndex));
