@@ -270,7 +270,7 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !executionReverted && (error != tryCallResult.GetErrorMessage(estimateGasTracer.Error)),
+                InputError = !executionReverted && error is not null && (error != tryCallResult.GetErrorMessage(estimateGasTracer.Error)),
                 ExecutionReverted = executionReverted
             };
         }
