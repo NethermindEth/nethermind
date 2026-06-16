@@ -80,6 +80,7 @@ public partial class BlockProcessor
             long dev = ev - _prevEvicted, dnw = nw - _prevNeverWarmed;
             _prevSlotHit = sh; _prevSlotMiss = sm; _prevAddrHit = ah; _prevAddrMiss = am; _prevEvicted = ev; _prevNeverWarmed = nw;
             _logger.Info($"Block {blockNumber} prewarm-coverage: slot_hit={dsh} slot_miss={dsm} slot_miss_evicted={dev} slot_miss_neverwarmed={dnw} addr_hit={dah} addr_miss={dam}");
+            if (blockNumber % 40 == 0) _logger.Info($"Top never-warmed addresses @block {blockNumber}: {PrewarmCoverage.TopNeverWarmed(25)}");
         }
 
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 
 namespace Nethermind.Core.Diagnostics;
@@ -36,6 +38,10 @@ public static class PrewarmCoverage
     // fixed-size SeqlockCache, so it records intent even when the cache has since evicted the entry.
     public static readonly ConcurrentDictionary<StorageCell, byte> WarmedSlots = new();
 
+    // Cumulative count of NEVER-WARMED slot misses by contract address, to identify the constant
+    // per-block set the prewarmer never touches.
+    public static readonly ConcurrentDictionary<Address, int> NeverWarmedByAddress = new();
+
     public static void RecordSlot(bool hit) => Interlocked.Increment(ref hit ? ref SlotHit : ref SlotMiss);
     public static void RecordAddr(bool hit) => Interlocked.Increment(ref hit ? ref AddrHit : ref AddrMiss);
 
@@ -46,7 +52,25 @@ public static class PrewarmCoverage
     public static void RecordSlotMiss(in StorageCell cell)
     {
         Interlocked.Increment(ref SlotMiss);
-        Interlocked.Increment(ref WarmedSlots.ContainsKey(cell) ? ref SlotMissEvicted : ref SlotMissNeverWarmed);
+        if (WarmedSlots.ContainsKey(cell))
+        {
+            Interlocked.Increment(ref SlotMissEvicted);
+        }
+        else
+        {
+            Interlocked.Increment(ref SlotMissNeverWarmed);
+            NeverWarmedByAddress.AddOrUpdate(cell.Address, 1, static (_, c) => c + 1);
+        }
+    }
+
+    /// <summary>Top-N most-frequently never-warmed contract addresses (for identifying the constant set).</summary>
+    public static string TopNeverWarmed(int n)
+    {
+        List<KeyValuePair<Address, int>> items = [.. NeverWarmedByAddress];
+        items.Sort(static (a, b) => b.Value.CompareTo(a.Value));
+        StringBuilder sb = new();
+        for (int i = 0; i < n && i < items.Count; i++) sb.Append(items[i].Key).Append('=').Append(items[i].Value).Append(' ');
+        return sb.ToString();
     }
 
     public static void ResetBlock()
