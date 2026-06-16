@@ -247,26 +247,18 @@ namespace Nethermind.Facade
             string? error = tryCallResult.GetErrorMessage(estimateGasTracer.Error);
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
-            bool isBinarySearchError;
-            (error, isBinarySearchError) = err switch
+            error = err switch
             {
                 // Probe failed only because gas hint was below standard intrinsic: if estimation succeeds, clear the probe error.
-                null when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
-                    => (null, false),
-                null
-                    => (error, false),
-                _ when error is null
-                    => (err, true),  // probe had no error; estimator found an execution failure
+                null when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => null,
+                null => error,
+                _ when error is null => err,
                 // Probe's low-gas failure is superseded by whatever the estimator found at full gas.
-                _ when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
-                    => (err, true),
-                _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal)
-                    => (err, false),  // fund/allowance constraint — surface raw
-                GasEstimator.InsufficientBalance
-                    => (err, false),
-                GasEstimator.InsufficientFundsForGas
-                    => (err, false),
-                _   => (error, false) // probe error wins (tx-validation failure), surface raw
+                _ when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => err,
+                _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
+                GasEstimator.InsufficientBalance => err,
+                GasEstimator.InsufficientFundsForGas => err,
+                _ => error
             };
 
             bool executionReverted = err is not null
@@ -278,7 +270,7 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = isBinarySearchError && !executionReverted,
+                InputError = !executionReverted && (error != tryCallResult.GetErrorMessage(estimateGasTracer.Error)),
                 ExecutionReverted = executionReverted
             };
         }
