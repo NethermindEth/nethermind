@@ -715,7 +715,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_to_unknown_block_fails()
+    public async Task forkChoiceUpdatedV1_to_unknown_block_is_syncing_and_records_forkchoice()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;

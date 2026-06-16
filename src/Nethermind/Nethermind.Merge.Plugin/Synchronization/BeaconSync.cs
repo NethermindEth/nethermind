@@ -113,7 +113,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// blocks cannot be reorged and pivot updates enforce monotonicity, so a stale persisted value can
         /// only produce an older-but-valid pivot.
         /// </remarks>
-        public Hash256? GetFinalizedHash() => _blockCacheService.FinalizedHash ?? _blockTree.FinalizedHash;
+        public Hash256? GetFinalizedHash()
+        {
+            // A cached Keccak.Zero (CL sent an FCU with no finalized yet) is non-null and would otherwise
+            // shadow a previously-persisted finalized hash, so treat it as "not set" and fall back.
+            Hash256? cached = _blockCacheService.FinalizedHash;
+            return cached is not null && cached != Keccak.Zero ? cached : _blockTree.FinalizedHash;
+        }
 
         /// <remarks>
         /// Unlike <see cref="GetFinalizedHash"/>, there is no block tree fallback: a head can be reorged away,
