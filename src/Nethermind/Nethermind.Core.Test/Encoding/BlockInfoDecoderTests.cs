@@ -89,17 +89,18 @@ public class BlockInfoDecoderTests
             contentLength += Rlp.LengthOf(item.IsFinalized);
         }
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
-        stream.Encode(item.BlockHash);
-        stream.Encode(item.WasProcessed);
-        stream.Encode(item.TotalDifficulty);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        writer.StartSequence(contentLength);
+        writer.Encode(item.BlockHash);
+        writer.Encode(item.WasProcessed);
+        writer.Encode(item.TotalDifficulty);
 
         if (chainWithFinalization)
         {
-            stream.Encode(item.IsFinalized);
+            writer.Encode(item.IsFinalized);
         }
 
-        return new Rlp(stream.Data.ToArray()!);
+        return new Rlp(bytes);
     }
 }

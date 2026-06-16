@@ -13,27 +13,6 @@ namespace Nethermind.Serialization.Rlp
     {
         public static BlockInfoDecoder Instance { get; } = new();
 
-        public override void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                stream.Encode(Rlp.OfEmptyList);
-                return;
-            }
-
-            int contentLength = GetContentLength(item, rlpBehaviors);
-
-            bool hasMetadata = item.Metadata != BlockMetadata.None;
-            stream.StartSequence(contentLength);
-            stream.Encode(item.BlockHash);
-            stream.Encode(item.WasProcessed);
-            stream.Encode(item.TotalDifficulty);
-            if (hasMetadata)
-            {
-                stream.Encode((int)item.Metadata);
-            }
-        }
-
         public override void Encode(ref ValueRlpWriter writer, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

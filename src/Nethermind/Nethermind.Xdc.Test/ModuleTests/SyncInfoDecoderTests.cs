@@ -85,11 +85,11 @@ public class SyncInfoDecoderTests
         );
 
         SyncInfoDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(syncInfo));
-        decoder.Encode(stream, syncInfo);
-        stream.Position = 0;
+        byte[] bytes = new byte[decoder.GetLength(syncInfo, RlpBehaviors.None)];
+        ValueRlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, syncInfo);
 
-        ValueRlpReader decoderContext = new(stream.Data.AsSpan());
+        ValueRlpReader decoderContext = new(bytes);
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());

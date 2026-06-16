@@ -46,12 +46,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
     private delegate TValue DecodeValueDelegate<TValue>(ref ValueRlpReader ctx);
     private delegate void EncodeValueDelegate<TValue>(ref ValueRlpWriter writer, TValue value);
 
-    public override void Encode(RlpStream stream, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     /// <summary>
     /// Encodes a snapshot into an RLP value writer.
     /// </summary>

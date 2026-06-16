@@ -38,12 +38,6 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
-    public override void Encode(RlpStream stream, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item);
@@ -54,12 +48,6 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.Encode(item.AuthoritySignature.V - Signature.VOffset);
         writer.Encode(new UInt256(item.AuthoritySignature.R.Span, true));
         writer.Encode(new UInt256(item.AuthoritySignature.S.Span, true));
-    }
-
-    public static void EncodeWithoutSignature(RlpStream stream, UInt256 chainId, Address codeAddress, ulong nonce)
-    {
-        ValueRlpWriter writer = new(stream);
-        EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
     }
 
     public static void EncodeWithoutSignature(ref ValueRlpWriter writer, UInt256 chainId, Address codeAddress, ulong nonce)

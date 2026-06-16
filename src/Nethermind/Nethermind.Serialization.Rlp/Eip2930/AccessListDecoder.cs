@@ -70,12 +70,6 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public override void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            ValueRlpWriter writer = new(stream);
-            Encode(ref writer, item, rlpBehaviors);
-        }
-
         public override void Encode(ref ValueRlpWriter writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

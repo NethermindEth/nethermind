@@ -657,16 +657,17 @@ public class BlockAccessListDecoderTests
             + Rlp.OfEmptyList.Length
             + Rlp.OfEmptyList.Length;
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
-        stream.Encode(address);
-        stream.StartSequence(Rlp.OfEmptyList.Length);
-        stream.Encode(Rlp.OfEmptyList);
-        stream.Encode(Rlp.OfEmptyList);
-        stream.Encode(Rlp.OfEmptyList);
-        stream.Encode(Rlp.OfEmptyList);
-        stream.Encode(Rlp.OfEmptyList);
-        return stream.Data.ToArray()!;
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        writer.StartSequence(contentLength);
+        writer.Encode(address);
+        writer.StartSequence(Rlp.OfEmptyList.Length);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(Rlp.OfEmptyList);
+        writer.Encode(Rlp.OfEmptyList);
+        return bytes;
     }
 
     private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
@@ -680,39 +681,41 @@ public class BlockAccessListDecoderTests
             contentLength += i == malformedFieldIndex ? malformedFieldLength : Rlp.OfEmptyList.Length;
         }
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
-        stream.Encode(address);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        writer.StartSequence(contentLength);
+        writer.Encode(address);
         for (int i = 0; i < fieldCount; i++)
         {
             if (i == malformedFieldIndex)
             {
-                stream.StartSequence(Rlp.OfEmptyList.Length);
-                stream.Encode(Rlp.OfEmptyList);
+                writer.StartSequence(Rlp.OfEmptyList.Length);
+                writer.Encode(Rlp.OfEmptyList);
             }
             else
             {
-                stream.Encode(Rlp.OfEmptyList);
+                writer.Encode(Rlp.OfEmptyList);
             }
         }
 
-        return stream.Data.ToArray()!;
+        return bytes;
     }
 
     private static byte[] EncodeSlotChangesWithEmptyStorageChangeEntries(int count)
     {
         int changesContentLength = count * Rlp.OfEmptyList.Length;
         int contentLength = Rlp.LengthOf(UInt256.Zero) + Rlp.LengthOfSequence(changesContentLength);
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
-        stream.Encode(UInt256.Zero);
-        stream.StartSequence(changesContentLength);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        ValueRlpWriter writer = bytes.AsRlpValueWriter();
+        writer.StartSequence(contentLength);
+        writer.Encode(UInt256.Zero);
+        writer.StartSequence(changesContentLength);
         for (int i = 0; i < count; i++)
         {
-            stream.Encode(Rlp.OfEmptyList);
+            writer.Encode(Rlp.OfEmptyList);
         }
 
-        return stream.Data.ToArray()!;
+        return bytes;
     }
 
     private sealed class ThrowingByteDecoder : RlpDecoder<byte>
@@ -732,9 +735,10 @@ public class BlockAccessListDecoderTests
             return value;
         }
 
-        public override void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
-
         public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+
+        public override void Encode(ref ValueRlpWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
     }
 
     private sealed class DisposableElement : IDisposable
@@ -761,9 +765,10 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public override void Encode(RlpStream stream, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
-
         public override int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+
+        public override void Encode(ref ValueRlpWriter writer, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
     }
 
     private sealed class ThrowingObjectDecoder : RlpDecoder<object>
@@ -783,9 +788,10 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public override void Encode(RlpStream stream, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(0);
-
         public override int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+
+        public override void Encode(ref ValueRlpWriter writer, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
     }
 
     private sealed class ThrowingArgumentDecoder : RlpDecoder<byte>
@@ -796,8 +802,9 @@ public class BlockAccessListDecoderTests
             throw new ArgumentException("semantic argument failure");
         }
 
-        public override void Encode(RlpStream stream, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
-
         public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+
+        public override void Encode(ref ValueRlpWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            throw new NotSupportedException();
     }
 }

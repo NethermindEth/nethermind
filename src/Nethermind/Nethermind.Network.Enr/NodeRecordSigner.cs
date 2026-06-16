@@ -24,19 +24,6 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
     public void Sign(NodeRecord nodeRecord) => nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
 
     /// <summary>
-    /// Deserializes a <see cref="NodeRecord"/> from an <see cref="RlpStream"/>.
-    /// </summary>
-    /// <param name="rlpStream">A stream to read the serialized data from.</param>
-    /// <returns>A deserialized <see cref="NodeRecord"/></returns>
-    public NodeRecord Deserialize(RlpStream rlpStream)
-    {
-        ValueRlpReader ctx = new(rlpStream.Data.AsSpan().Slice(rlpStream.Position));
-        NodeRecord result = Deserialize(ref ctx);
-        rlpStream.Position += ctx.Position;
-        return result;
-    }
-
-    /// <summary>
     /// Deserializes a <see cref="NodeRecord"/> from a <see cref="ValueRlpReader"/>.
     /// </summary>
     /// <param name="ctx">A value decoder context to read the serialized data from.</param>

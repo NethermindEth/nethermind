@@ -36,12 +36,6 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         return withdrawal;
     }
 
-    public override void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

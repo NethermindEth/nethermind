@@ -52,12 +52,6 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
         return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

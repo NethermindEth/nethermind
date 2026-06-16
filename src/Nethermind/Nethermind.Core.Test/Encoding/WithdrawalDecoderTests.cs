@@ -53,12 +53,13 @@ public class WithdrawalDecoderTests
             Address = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
             AmountInGwei = ulong.MaxValue
         };
-        RlpStream stream = new(1024);
         WithdrawalDecoder codec = new();
+        byte[] bytes = new byte[codec.GetLength(withdrawal, RlpBehaviors.None)];
+        ValueRlpWriter writer = new(bytes);
 
-        codec.Encode(stream, withdrawal);
+        codec.Encode(ref writer, withdrawal);
 
-        ValueRlpReader decoderContext = new(stream.Data.AsSpan());
+        ValueRlpReader decoderContext = new(bytes);
         Withdrawal? decoded = codec.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());

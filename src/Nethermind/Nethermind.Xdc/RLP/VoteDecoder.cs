@@ -38,12 +38,6 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
-    public override void Encode(RlpStream stream, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

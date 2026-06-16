@@ -72,10 +72,9 @@ public class SnapshotRoundTripTests
     private static StateCompositionSnapshot RoundTrip(StateCompositionSnapshot original)
     {
         StateCompositionSnapshotDecoder decoder = StateCompositionSnapshotDecoder.Instance;
-        int length = decoder.GetLength(original);
-        byte[] buffer = new byte[length];
-        RlpStream stream = new(buffer);
-        decoder.Encode(stream, original);
+        byte[] buffer = new byte[decoder.GetLength(original, RlpBehaviors.None)];
+        ValueRlpWriter writer = new(buffer);
+        decoder.Encode(ref writer, original);
 
         ValueRlpReader ctx = buffer.AsRlpValueContext();
         return decoder.Decode(ref ctx);

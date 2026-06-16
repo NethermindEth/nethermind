@@ -28,12 +28,6 @@ internal sealed class XdcBlockInfoDecoder : RlpDecoder<BlockRoundInfo>
         return new BlockRoundInfo(new Hash256(hashBytes), round, number);
     }
 
-    public override void Encode(RlpStream stream, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

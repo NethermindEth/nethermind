@@ -67,7 +67,8 @@ namespace Nethermind.Core.Test.Encoding
         private static ValueRlpReader Encode(AccountDecoder decoder, Account account)
         {
             byte[] bytes = new byte[decoder.GetLength(account)];
-            decoder.Encode(new RlpStream(bytes), account);
+            ValueRlpWriter writer = new(bytes);
+            decoder.Encode(ref writer, account);
             return new ValueRlpReader(bytes);
         }
     }

@@ -43,26 +43,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             return result;
         }
 
-        public override void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                rlpStream.EncodeNullObject();
-                return;
-            }
-
-            (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(item.BlockNumber);
-            rlpStream.Encode(item.BlockHash);
-            rlpStream.StartSequence(addressesLength);
-            for (int i = 0; i < item.Addresses.Length; i++)
-            {
-                rlpStream.Encode(item.Addresses[i]);
-            }
-            rlpStream.Encode(item.AreFinalized);
-        }
-
         public override void Encode(ref ValueRlpWriter writer, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

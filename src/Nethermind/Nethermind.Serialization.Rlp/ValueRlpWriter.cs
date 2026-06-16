@@ -26,13 +26,11 @@ public delegate void ValueRlpWriteByteSink(object sink, byte byteToWrite);
 /// </summary>
 /// <remarks>
 /// The writer does not allocate or grow its backing span. Use <see cref="WrittenSpan"/> for the encoded output; the
-/// full <see cref="Data"/> span may contain unwritten bytes. A stream-backed adapter is also available for bridging
-/// existing <see cref="RlpStream"/> encoder contracts.
+/// full <see cref="Data"/> span may contain unwritten bytes.
 /// </remarks>
 public ref struct ValueRlpWriter
 {
     private Span<byte> _data;
-    private RlpStream? _stream;
     private object? _sink;
     private ValueRlpWriteSink? _writeSink;
     private ValueRlpWriteByteSink? _writeByteSink;
@@ -44,7 +42,6 @@ public ref struct ValueRlpWriter
     public ValueRlpWriter(Span<byte> data)
     {
         _data = data;
-        _stream = null;
         _sink = null;
         _writeSink = null;
         _writeByteSink = null;
@@ -68,16 +65,11 @@ public ref struct ValueRlpWriter
     }
 
     /// <summary>
-    /// Initializes a writer adapter over an existing stream sink.
+    /// Initializes a writer over a caller-owned capped array.
     /// </summary>
-    public ValueRlpWriter(RlpStream stream)
+    public ValueRlpWriter(int length)
+        : this(new byte[length])
     {
-        _data = Span<byte>.Empty;
-        _stream = stream;
-        _sink = null;
-        _writeSink = null;
-        _writeByteSink = null;
-        _position = 0;
     }
 
     /// <summary>
@@ -90,7 +82,6 @@ public ref struct ValueRlpWriter
         ArgumentNullException.ThrowIfNull(writeByteSink);
 
         _data = Span<byte>.Empty;
-        _stream = null;
         _sink = sink;
         _writeSink = writeSink;
         _writeByteSink = writeByteSink;
@@ -101,27 +92,23 @@ public ref struct ValueRlpWriter
     /// Full caller-provided output span.
     /// </summary>
     public readonly Span<byte> Data =>
-        _stream is null && _sink is null ? _data : throw new InvalidOperationException("Data is available only for span-backed writers.");
+        _sink is null ? _data : throw new InvalidOperationException("Data is available only for span-backed writers.");
 
     /// <summary>
     /// Bytes written so far.
     /// </summary>
     public readonly ReadOnlySpan<byte> WrittenSpan =>
-        _stream is null && _sink is null ? _data[.._position] : throw new InvalidOperationException("WrittenSpan is available only for span-backed writers.");
+        _sink is null ? _data[.._position] : throw new InvalidOperationException("WrittenSpan is available only for span-backed writers.");
 
     /// <summary>
     /// Current write position in <see cref="Data"/>.
     /// </summary>
     public int Position
     {
-        readonly get => _stream is null ? _sink is null ? _position : ThrowSinkPositionNotSupported() : _stream.Position;
+        readonly get => _sink is null ? _position : ThrowSinkPositionNotSupported();
         set
         {
-            if (_stream is not null)
-            {
-                _stream.Position = value;
-            }
-            else if (_sink is null)
+            if (_sink is null)
             {
                 _position = value;
             }
@@ -132,7 +119,7 @@ public ref struct ValueRlpWriter
         }
     }
 
-    public readonly int Length => _stream is null ? _sink is null ? _data.Length : ThrowSinkPositionNotSupported() : _stream.Length;
+    public readonly int Length => _sink is null ? _data.Length : ThrowSinkPositionNotSupported();
 
     public void StartByteArray(int contentLength, bool firstByteLessThan128)
     {
@@ -200,12 +187,6 @@ public ref struct ValueRlpWriter
 
     public void WriteByte(byte byteToWrite)
     {
-        if (_stream is { } stream)
-        {
-            stream.WriteByte(byteToWrite);
-            return;
-        }
-
         if (_sink is { } sink)
         {
             _writeByteSink!(sink, byteToWrite);
@@ -220,12 +201,6 @@ public ref struct ValueRlpWriter
 
     public void Write(scoped ReadOnlySpan<byte> bytesToWrite)
     {
-        if (_stream is { } stream)
-        {
-            stream.Write(bytesToWrite);
-            return;
-        }
-
         if (_sink is { } sink)
         {
             _writeSink!(sink, bytesToWrite);
@@ -265,12 +240,6 @@ public ref struct ValueRlpWriter
 
     private void WriteZero(int length)
     {
-        if (_stream is { } stream)
-        {
-            WriteZero(stream, length);
-            return;
-        }
-
         if (_sink is { } sink)
         {
             WriteZero(sink, _writeSink!, length);
@@ -279,18 +248,6 @@ public ref struct ValueRlpWriter
 
         _data.Slice(_position, length).Clear();
         _position += length;
-    }
-
-    private static void WriteZero(RlpStream stream, int length)
-    {
-        Span<byte> zeros = stackalloc byte[Math.Min(length, 256)];
-        zeros.Clear();
-        while (length > 0)
-        {
-            int chunkLength = Math.Min(length, zeros.Length);
-            stream.Write(zeros[..chunkLength]);
-            length -= chunkLength;
-        }
     }
 
     private static void WriteZero(object sink, ValueRlpWriteSink writeSink, int length)
@@ -619,11 +576,9 @@ public ref struct ValueRlpWriter
     private const byte EmptyArrayByte = 128;
     private const byte EmptySequenceByte = 192;
 
-    public override readonly string ToString() => _stream is null
-        ? _sink is null
-            ? $"[{nameof(ValueRlpWriter)}|{_position}/{Length}]"
-            : $"[{nameof(ValueRlpWriter)}|{_sink.GetType().Name}]"
-        : $"[{nameof(ValueRlpWriter)}|{_stream.GetType().Name}]";
+    public override readonly string ToString() => _sink is null
+        ? $"[{nameof(ValueRlpWriter)}|{_position}/{Length}]"
+        : $"[{nameof(ValueRlpWriter)}|{_sink.GetType().Name}]";
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int ThrowSinkPositionNotSupported()

@@ -89,9 +89,10 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
-            RlpStream rlpStream = new(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
-            _txDecoder.Encode(rlpStream, testCase.Tx);
-            ValueRlpReader ctx = new(rlpStream.Data);
+            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
+            ValueRlpWriter writer = new(bytes);
+            _txDecoder.Encode(ref writer, testCase.Tx);
+            ValueRlpReader ctx = new(bytes);
             Transaction? decoded = _txDecoder.Decode(ref ctx);
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
@@ -102,12 +103,12 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_ValueRlpReader((Transaction Tx, string Description) testCase)
         {
-            RlpStream rlpStream = new(10000);
-            _txDecoder.Encode(rlpStream, testCase.Tx);
+            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
+            ValueRlpWriter writer = new(bytes);
+            _txDecoder.Encode(ref writer, testCase.Tx);
 
-            Span<byte> spanIncomingTxRlp = rlpStream.Data.AsSpan();
+            Span<byte> spanIncomingTxRlp = bytes.AsSpan();
             ValueRlpReader decoderContext = new(spanIncomingTxRlp);
-            rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
@@ -118,11 +119,11 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_ValueRlpReader_WithMemorySlice((Transaction Tx, string Description) testCase)
         {
-            RlpStream rlpStream = new(10000);
-            _txDecoder.Encode(rlpStream, testCase.Tx);
+            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
+            ValueRlpWriter writer = new(bytes);
+            _txDecoder.Encode(ref writer, testCase.Tx);
 
-            ValueRlpReader decoderContext = new(rlpStream.Data.ToArray(), true);
-            rlpStream.Position = 0;
+            ValueRlpReader decoderContext = new(bytes.ToArray(), true);
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
@@ -135,16 +136,16 @@ namespace Nethermind.Core.Test.Encoding
         {
             if (testCase.Tx.Data.Length == 0) return;
 
-            RlpStream rlpStream = new(10000);
-            _txDecoder.Encode(rlpStream, testCase.Tx);
+            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
+            ValueRlpWriter writer = new(bytes);
+            _txDecoder.Encode(ref writer, testCase.Tx);
 
-            ValueRlpReader decoderContext = new(rlpStream.Data.ToArray(), true);
-            rlpStream.Position = 0;
+            ValueRlpReader decoderContext = new(bytes.ToArray(), true);
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
 
             byte[] data1 = decoded!.Data.ToArray();
             data1.AsSpan().Fill(1);
-            rlpStream.Data.AsSpan().Fill(1);
+            bytes.AsSpan().Fill(1);
 
             Assert.That(decoded.Data.ToArray(), Is.EqualTo(data1));
         }
@@ -159,10 +160,11 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Assert.That(decoded.CalculateHash(), Is.EqualTo(testCase.Hash));
 
-            RlpStream ourRlpOutput = new(incomingTxRlpBytes.Length * 2);
-            _txDecoder.Encode(ourRlpOutput, decoded);
+            byte[] ourRlpOutput = new byte[_txDecoder.GetLength(decoded, RlpBehaviors.None)];
+            ValueRlpWriter writer = new(ourRlpOutput);
+            _txDecoder.Encode(ref writer, decoded);
 
-            string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlpBytes.Length).ToHexString();
+            string ourRlpHex = ourRlpOutput.AsSpan(0, incomingTxRlpBytes.Length).ToHexString();
             Assert.That(ourRlpHex, Is.EqualTo(testCase.IncomingRlpHex));
         }
 

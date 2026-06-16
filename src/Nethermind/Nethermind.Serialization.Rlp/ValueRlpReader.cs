@@ -614,7 +614,7 @@ public ref struct ValueRlpReader
     {
         int position = Position;
         int prefix = ReadByte();
-        ReadOnlySpan<byte> span = RlpStream.SingleBytes;
+        ReadOnlySpan<byte> span = RlpHelpers.SingleBytes;
         if ((uint)prefix < (uint)span.Length)
         {
             GuardSize(actual: 1, expected: size);

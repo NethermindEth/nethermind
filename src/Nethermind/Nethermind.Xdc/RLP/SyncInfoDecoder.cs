@@ -45,12 +45,6 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

@@ -12,34 +12,6 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
     public sealed class ChainLevelDecoder() : RlpDecoder<ChainLevelInfo>
     {
-        public override void Encode(RlpStream stream, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                stream.Encode(Rlp.OfEmptyList);
-                return;
-            }
-
-            if (item.BlockInfos.AsSpan().Contains(null))
-            {
-                ThrowHasNull();
-            }
-
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            stream.Encode(item.HasBlockOnMainChain);
-            int infoLength = GetBlockInfoLength(item.BlockInfos);
-            stream.StartSequence(infoLength);
-            foreach (BlockInfo? blockInfo in item.BlockInfos)
-            {
-                stream.Encode(blockInfo);
-            }
-
-            [StackTraceHidden, DoesNotReturn]
-            static void ThrowHasNull()
-                => throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
-        }
-
         public override void Encode(ref ValueRlpWriter writer, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

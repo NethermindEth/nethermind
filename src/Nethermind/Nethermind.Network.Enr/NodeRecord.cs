@@ -200,16 +200,6 @@ public class NodeRecord
     /// <summary>
     /// Applies Rlp([signature, seq, k, v, ...]]).
     /// </summary>
-    /// <param name="rlpStream">An RLP stream to encode the content to.</param>
-    public void Encode(RlpStream rlpStream)
-    {
-        ValueRlpWriter writer = new(rlpStream);
-        Encode(ref writer);
-    }
-
-    /// <summary>
-    /// Applies Rlp([signature, seq, k, v, ...]]).
-    /// </summary>
     /// <param name="writer">An RLP writer to encode the content to.</param>
     public void Encode(ref ValueRlpWriter writer)
     {

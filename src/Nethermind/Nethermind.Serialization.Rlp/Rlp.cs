@@ -26,7 +26,7 @@ namespace Nethermind.Serialization.Rlp
     /// <summary>
     ///     https://github.com/ethereum/wiki/wiki/RLP
     ///
-    ///     Note: Prefer RlpStream to encode instead, which does not create a new byte array on each call.
+    ///     Note: Prefer ValueRlpWriter to encode into caller-owned buffers.
     /// </summary>
     public partial class Rlp
     {
@@ -115,7 +115,7 @@ namespace Nethermind.Serialization.Rlp
             if (span.Length == 1)
             {
                 int value = span[0];
-                byte[][] arrays = RlpStream.SingleByteArrays;
+                byte[][] arrays = RlpHelpers.SingleByteArrays;
                 if ((uint)value < (uint)arrays.Length)
                 {
                     return arrays[value];

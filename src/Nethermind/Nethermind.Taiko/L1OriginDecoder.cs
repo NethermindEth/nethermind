@@ -48,12 +48,6 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         return new(bytes);
     }
 
-    public override void Encode(RlpStream stream, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetContentLength(item, rlpBehaviors));

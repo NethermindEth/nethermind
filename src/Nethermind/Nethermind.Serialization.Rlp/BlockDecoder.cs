@@ -92,12 +92,6 @@ namespace Nethermind.Serialization.Rlp
             return new(bytes);
         }
 
-        public override void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            ValueRlpWriter writer = new(stream);
-            Encode(ref writer, item, rlpBehaviors);
-        }
-
         public override void Encode(ref ValueRlpWriter writer, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

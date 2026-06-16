@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -218,7 +220,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Netty_and_rlp_array_encoding_should_be_the_same()
+        public void Array_pool_span_and_rlp_array_encoding_should_be_the_same()
         {
             TxReceipt[] receipts = new[]
             {
@@ -228,10 +230,10 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(receipts);
-            using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
+            using (ArrayPoolSpan<byte> arrayPoolSpan = decoder.EncodeToArrayPoolSpan(receipts))
             {
-                byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
-                Assert.That(nettyBytes, Is.EqualTo(rlp.Bytes));
+                byte[] encodedBytes = ((ReadOnlySpan<byte>)arrayPoolSpan).ToArray();
+                Assert.That(encodedBytes, Is.EqualTo(rlp.Bytes));
             }
         }
 

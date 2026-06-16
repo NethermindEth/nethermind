@@ -37,25 +37,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
 
-        public override void Encode(RlpStream stream, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                stream.EncodeNullObject();
-                return;
-            }
-
-            (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            stream.Encode(item.FinalizingBlockNumber);
-            stream.Encode(item.PreviousFinalizingBlockNumber);
-            stream.StartSequence(validatorLength);
-            for (int i = 0; i < item.Validators.Length; i++)
-            {
-                stream.Encode(item.Validators[i]);
-            }
-        }
-
         public override void Encode(ref ValueRlpWriter writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

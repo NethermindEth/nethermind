@@ -70,12 +70,6 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
     }
 
-    public virtual void Encode(Transaction transaction, RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(transaction, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-    }
-
     public virtual void Encode(Transaction transaction, ref ValueRlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         int contentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);

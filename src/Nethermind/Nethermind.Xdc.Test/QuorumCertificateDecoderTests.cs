@@ -30,35 +30,26 @@ internal class QuorumCertificateDecoderTests
     public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCertificate quorumCert)
     {
         QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(quorumCert));
-        decoder.Encode(stream, quorumCert);
-        ValueRlpReader ctx = new(stream.Data.AsSpan());
+        byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
+        ValueRlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, quorumCert);
+        ValueRlpReader ctx = new(bytes);
         QuorumCertificate decoded = decoder.Decode(ref ctx);
 
         Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Encode_UseBothRlpStreamAndValueRlpReader_IsEquivalentAfterReencoding(bool useRlpStream)
+    [Test]
+    public void Encode_ValueRlpReader_IsEquivalentAfterReencoding()
     {
         QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(quorumCert));
-        decoder.Encode(stream, quorumCert);
-        QuorumCertificate decoded;
-        if (useRlpStream)
-        {
-            ValueRlpReader decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
-        else
-        {
-            ValueRlpReader decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
-        }
+        byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
+        ValueRlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, quorumCert);
+        ValueRlpReader decoderContext = bytes.AsRlpValueContext();
+        QuorumCertificate decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
     }
-
 }

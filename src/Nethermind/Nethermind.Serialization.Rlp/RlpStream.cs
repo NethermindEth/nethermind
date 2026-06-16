@@ -28,9 +28,8 @@ namespace Nethermind.Serialization.Rlp
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly BlockAccessListDecoder _blockAccessListDecoder = BlockAccessListDecoder.Instance;
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
-
-        internal static ReadOnlySpan<byte> SingleBytes => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127];
-        internal static readonly byte[][] SingleByteArrays = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15], [16], [17], [18], [19], [20], [21], [22], [23], [24], [25], [26], [27], [28], [29], [30], [31], [32], [33], [34], [35], [36], [37], [38], [39], [40], [41], [42], [43], [44], [45], [46], [47], [48], [49], [50], [51], [52], [53], [54], [55], [56], [57], [58], [59], [60], [61], [62], [63], [64], [65], [66], [67], [68], [69], [70], [71], [72], [73], [74], [75], [76], [77], [78], [79], [80], [81], [82], [83], [84], [85], [86], [87], [88], [89], [90], [91], [92], [93], [94], [95], [96], [97], [98], [99], [100], [101], [102], [103], [104], [105], [106], [107], [108], [109], [110], [111], [112], [113], [114], [115], [116], [117], [118], [119], [120], [121], [122], [123], [124], [125], [126], [127]];
+        private static readonly ValueRlpWriteSink _writeToRlpStream = WriteToRlpStream;
+        private static readonly ValueRlpWriteByteSink _writeByteToRlpStream = WriteByteToRlpStream;
 
         private readonly CappedArray<byte> _data;
         private int _position = 0;
@@ -69,57 +68,66 @@ namespace Nethermind.Serialization.Rlp
                 }
                 else
                 {
-                    ValueRlpWriter writer = new(this);
+                    ValueRlpWriter writer = CreateWriter(out bool advancePosition);
                     decoder.Encode(ref writer, item, rlpBehaviors);
+                    Advance(ref writer, advancePosition);
                 }
             }
         }
         public void Encode(Block value)
         {
-            ValueRlpWriter writer = new(this);
+            ValueRlpWriter writer = CreateWriter(out bool advancePosition);
             _blockDecoder.Encode(ref writer, value);
+            Advance(ref writer, advancePosition);
         }
 
         public void Encode(BlockHeader value)
         {
-            ValueRlpWriter writer = new(this);
+            ValueRlpWriter writer = CreateWriter(out bool advancePosition);
             _headerDecoder.Encode(ref writer, value);
+            Advance(ref writer, advancePosition);
         }
 
         public void Encode(Transaction value, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            ValueRlpWriter writer = new(this);
+            ValueRlpWriter writer = CreateWriter(out bool advancePosition);
             _txDecoder.Encode(ref writer, value, rlpBehaviors);
+            Advance(ref writer, advancePosition);
         }
 
         public void Encode(Withdrawal value)
         {
-            ValueRlpWriter writer = new(this);
+            ValueRlpWriter writer = CreateWriter(out bool advancePosition);
             _withdrawalDecoder.Encode(ref writer, value);
+            Advance(ref writer, advancePosition);
         }
 
         public void Encode(LogEntry value)
         {
-            ValueRlpWriter writer = new(this);
+            ValueRlpWriter writer = CreateWriter(out bool advancePosition);
             _logEntryDecoder.Encode(ref writer, value);
+            Advance(ref writer, advancePosition);
         }
 
         public void Encode(BlockInfo value)
         {
-            ValueRlpWriter writer = new(this);
+            ValueRlpWriter writer = CreateWriter(out bool advancePosition);
             _blockInfoDecoder.Encode(ref writer, value);
+            Advance(ref writer, advancePosition);
         }
 
         public void Encode(ReadOnlyBlockAccessList value)
         {
-            ValueRlpWriter writer = new(this);
+            ValueRlpWriter writer = CreateWriter(out bool advancePosition);
             _blockAccessListDecoder.Encode(ref writer, value);
+            Advance(ref writer, advancePosition);
         }
 
         public void Encode(GeneratedBlockAccessList value)
         {
-            ValueRlpWriter writer = new(this);
+            ValueRlpWriter writer = CreateWriter(out bool advancePosition);
             _blockAccessListDecoder.Encode(ref writer, value);
+            Advance(ref writer, advancePosition);
         }
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
@@ -238,9 +246,32 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            ValueRlpWriter streamWriter = new(this);
+            ValueRlpWriter streamWriter = CreateWriter(out bool advancePosition);
             rlpWrapper.Write(ref streamWriter);
+            Advance(ref streamWriter, advancePosition);
         }
+
+        private ValueRlpWriter CreateWriter(out bool advancePosition)
+        {
+            advancePosition = GetType() == typeof(RlpStream);
+            return advancePosition
+                ? new ValueRlpWriter(Data.AsSpan(Position, Length - Position))
+                : new ValueRlpWriter(this, _writeToRlpStream, _writeByteToRlpStream);
+        }
+
+        private void Advance(ref ValueRlpWriter writer, bool advancePosition)
+        {
+            if (advancePosition)
+            {
+                Position += writer.Position;
+            }
+        }
+
+        private static void WriteToRlpStream(object sink, ReadOnlySpan<byte> bytesToWrite) =>
+            ((RlpStream)sink).Write(bytesToWrite);
+
+        private static void WriteByteToRlpStream(object sink, byte byteToWrite) =>
+            ((RlpStream)sink).WriteByte(byteToWrite);
 
         protected virtual string Description =>
             Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";

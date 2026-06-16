@@ -285,7 +285,8 @@ internal class HeaderVerificationTests
     {
         VoteDecoder voteEncoder = new();
         KeccakRlpStream stream = new();
-        voteEncoder.Encode(stream, vote, RlpBehaviors.ForSealing);
+        ValueRlpWriter writer = stream.AsValueWriter();
+        voteEncoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
         ValueHash256 hash = stream.GetValueHash();
         signer.TrySign(in hash, out Signature signature);
         vote.Signature = signature;

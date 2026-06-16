@@ -55,12 +55,6 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
         return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

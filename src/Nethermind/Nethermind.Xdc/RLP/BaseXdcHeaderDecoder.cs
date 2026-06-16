@@ -81,12 +81,6 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         return header;
     }
 
-    public override void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(rlpStream);
-        Encode(ref writer, header, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)

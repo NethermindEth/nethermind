@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -116,8 +117,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             ? CreatePreimageAddressKey(address)
             : ValueKeccak.Compute(address.Bytes);
 
-        using NettyRlpStream stream = SlimAccountDecoder.EncodeToNewNettyStream(corruptedAccount);
-        accountDb.Set(addrKey.BytesAsSpan[..20], stream.AsSpan().ToArray());
+        using ArrayPoolSpan<byte> stream = SlimAccountDecoder.EncodeToArrayPoolSpan(corruptedAccount);
+        accountDb.Set(addrKey.BytesAsSpan[..20], ((ReadOnlySpan<byte>)stream).ToArray());
     }
 
     private static ValueHash256 CreatePreimageAddressKey(Address address)

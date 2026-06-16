@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -102,8 +103,8 @@ public class ReceiptsIteratorTests
 
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)
     {
-        using NettyRlpStream stream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
-        Span<byte> span = stream.AsSpan();
+        using ArrayPoolSpan<byte> stream = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
+        Span<byte> span = stream;
         TestMemDb blockDb = new();
         ReceiptsRecovery recovery = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),

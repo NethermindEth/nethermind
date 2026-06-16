@@ -30,12 +30,6 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
         return result;
     }
 
-    public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).

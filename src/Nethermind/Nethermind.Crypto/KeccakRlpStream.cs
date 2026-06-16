@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -18,10 +17,6 @@ namespace Nethermind.Crypto
     /// <summary>
     /// RLP write sink that feeds encoded bytes directly into a Keccak hash accumulator.
     /// </summary>
-    /// <remarks>
-    /// Some existing RLP encoder contracts still require <see cref="RlpStream"/>. The implicit conversion creates a
-    /// short-lived adapter over the same accumulator for those contracts while keeping this sink value-typed.
-    /// </remarks>
     public readonly struct KeccakRlpStream
     {
         private static readonly HeaderDecoder _headerDecoder = new();
@@ -288,57 +283,12 @@ namespace Nethermind.Crypto
             }
         }
 
-        public int Position
-        {
-            get => throw new NotSupportedException("Cannot read from Keccak");
-            set => throw new NotSupportedException("Cannot read from Keccak");
-        }
-
-        public int Length => throw new NotSupportedException("Cannot read from Keccak");
-
-        public ref readonly CappedArray<byte> Data => throw new NotSupportedException("Cannot read from Keccak");
-
-        public void Reset() => throw new NotSupportedException("Cannot read from Keccak");
-
         public ValueRlpWriter AsValueWriter() => new(Hash, _writeToKeccak, _writeByteToKeccak);
-
-        public RlpStream AsRlpStream() => new RlpSink(Hash);
-
-        public static implicit operator RlpStream(KeccakRlpStream stream) => stream.AsRlpStream();
 
         private static void WriteToKeccak(object sink, ReadOnlySpan<byte> bytesToWrite) =>
             ((KeccakHash)sink).Update(bytesToWrite);
 
         private static void WriteByteToKeccak(object sink, byte byteToWrite) =>
             ((KeccakHash)sink).Update(MemoryMarshal.CreateReadOnlySpan(ref byteToWrite, 1));
-
-        private sealed class RlpSink(KeccakHash keccakHash) : RlpStream
-        {
-            public override void Write(ReadOnlySpan<byte> bytesToWrite) => keccakHash.Update(bytesToWrite);
-
-            public override void WriteByte(byte byteToWrite) => keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1));
-
-            protected override void WriteZero(int length)
-            {
-                Span<byte> zeros = stackalloc byte[Math.Min(length, 256)];
-                zeros.Clear();
-                while (length > 0)
-                {
-                    int chunkLength = Math.Min(length, zeros.Length);
-                    Write(zeros[..chunkLength]);
-                    length -= chunkLength;
-                }
-            }
-
-            public override int Position
-            {
-                get => throw new NotSupportedException("Cannot read from Keccak");
-                set => throw new NotSupportedException("Cannot read from Keccak");
-            }
-
-            public override int Length => throw new NotSupportedException("Cannot read from Keccak");
-
-            protected override string Description => "|KeccakRlpStream|description missing|";
-        }
     }
 }

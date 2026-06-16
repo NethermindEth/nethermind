@@ -30,12 +30,6 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public override void Encode(RlpStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            ValueRlpWriter writer = new(stream);
-            Encode(ref writer, item, rlpBehaviors);
-        }
-
         public override void Encode(ref ValueRlpWriter writer, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int signersLength, int votesLength, int tallyLength) =

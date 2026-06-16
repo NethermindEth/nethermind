@@ -17,8 +17,6 @@ public interface IRlpDecoder<T> : IRlpDecoder
     int GetContentLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
 
 
-    void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-
     void Encode(ref ValueRlpWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
@@ -26,8 +24,6 @@ public interface IRlpDecoder<T> : IRlpDecoder
     Rlp Encode(T[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null);
-
-    void Encode(RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
 
     void Encode(ref ValueRlpWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
 

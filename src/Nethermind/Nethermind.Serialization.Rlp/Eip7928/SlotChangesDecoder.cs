@@ -58,23 +58,11 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
     public int GetLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public override void Encode(RlpStream stream, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetContentLength(item, rlpBehaviors));
         writer.Encode(item.Key);
         EncodeStorageChanges(ref writer, item.Changes, rlpBehaviors);
-    }
-
-    public void Encode(RlpStream stream, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
     }
 
     public void Encode(ref ValueRlpWriter writer, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

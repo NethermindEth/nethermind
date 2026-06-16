@@ -82,12 +82,6 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
-    public override void Encode(RlpStream stream, TxReceipt[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, items, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, TxReceipt[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (items is null || items.Length == 0)

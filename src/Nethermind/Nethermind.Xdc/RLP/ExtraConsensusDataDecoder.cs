@@ -39,12 +39,6 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
         return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, item, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)

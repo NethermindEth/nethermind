@@ -42,17 +42,6 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        public override void Encode(RlpStream stream, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                stream.EncodeNullObject();
-                return;
-            }
-
-            Encode(item, stream);
-        }
-
         public override void Encode(ref ValueRlpWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -62,33 +51,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Encode(item, ref writer);
-        }
-
-        public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)
-        {
-            contentLength ??= GetContentLength(account);
-
-            rlpStream.StartSequence(contentLength.Value);
-            rlpStream.Encode(account.Nonce);
-            rlpStream.Encode(account.Balance);
-
-            if (_slimFormat && !account.HasStorage)
-            {
-                rlpStream.EncodeEmptyByteArray();
-            }
-            else
-            {
-                rlpStream.Encode(account.StorageRoot);
-            }
-
-            if (_slimFormat && !account.HasCode)
-            {
-                rlpStream.EncodeEmptyByteArray();
-            }
-            else
-            {
-                rlpStream.Encode(account.CodeHash);
-            }
         }
 
         public void Encode(Account account, ref ValueRlpWriter writer, int? contentLength = null)

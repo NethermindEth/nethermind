@@ -34,10 +34,11 @@ internal class ExtraConsensusDataDecoderTests
     {
         ExtraFieldsV2 extraFields = new(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(extraFields));
-        decoder.Encode(stream, extraFields);
+        byte[] bytes = new byte[decoder.GetLength(extraFields, RlpBehaviors.None)];
+        ValueRlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, extraFields);
 
-        ValueRlpReader context = new(stream.Data);
+        ValueRlpReader context = new(bytes);
         ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
 
         Assert.That(decodedExtraData, Is.EqualTo(extraFields).UsingXdcComparer());

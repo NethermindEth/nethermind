@@ -96,15 +96,6 @@ internal static partial class XdcExtensions
         return signature;
     }
 
-    public static Signature DecodeSignature(this RlpStream stream)
-    {
-        ValueRlpReader ctx = new(stream.Data.AsSpan());
-        ctx.Position = stream.Position;
-        Signature signature = DecodeSignature(ref ctx);
-        stream.Position = ctx.Position;
-        return signature;
-    }
-
     public static bool IsGapPlusOne(this XdcSubnetBlockHeader header, IXdcReleaseSpec spec)
     {
         if (header.Number == 1)

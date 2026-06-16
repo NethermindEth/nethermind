@@ -106,7 +106,7 @@ public class RlpByteArrayListTests
         byte[] expected = EncodeItems(items);
 
         using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
-        RlpStream stream = new NettyRlpStream(byteBuffer);
+        using NettyRlpStream stream = new(byteBuffer);
         stream.WriteByteArrayList(list);
 
         Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
@@ -174,13 +174,14 @@ public class RlpByteArrayListTests
     {
         int contentLength = count * Rlp.LengthOf(new byte[] { 0x42 });
         int totalLength = Rlp.LengthOfSequence(contentLength);
-        RlpStream stream = new(totalLength);
-        stream.StartSequence(contentLength);
+        byte[] encoded = new byte[totalLength];
+        ValueRlpWriter writer = encoded.AsRlpValueWriter();
+        writer.StartSequence(contentLength);
         for (int i = 0; i < count; i++)
         {
-            stream.Encode(new byte[] { 0x42 });
+            writer.Encode(new byte[] { 0x42 });
         }
-        return stream.Data.ToArray()!;
+        return encoded;
     }
 
     private static RlpByteArrayList CreateList(byte[][] items)
@@ -199,15 +200,16 @@ public class RlpByteArrayListTests
         }
 
         int totalLength = Rlp.LengthOfSequence(contentLength);
-        RlpStream rlpStream = new(totalLength);
+        byte[] encoded = new byte[totalLength];
+        ValueRlpWriter writer = encoded.AsRlpValueWriter();
 
-        rlpStream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
         {
-            rlpStream.Encode(items[i]);
+            writer.Encode(items[i]);
         }
 
-        return rlpStream.Data.ToArray()!;
+        return encoded;
     }
 
     private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>

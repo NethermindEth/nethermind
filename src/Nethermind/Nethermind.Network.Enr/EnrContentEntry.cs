@@ -22,15 +22,6 @@ namespace Nethermind.Network.Enr
         protected abstract int GetRlpLengthOfValue();
 
         /// <summary>
-        /// Encodes the entry into an RLP stream. 
-        /// </summary>
-        public void Encode(RlpStream rlpStream)
-        {
-            ValueRlpWriter writer = new(rlpStream);
-            Encode(ref writer);
-        }
-
-        /// <summary>
         /// Encodes the entry into a value RLP writer.
         /// </summary>
         public void Encode(ref ValueRlpWriter writer)

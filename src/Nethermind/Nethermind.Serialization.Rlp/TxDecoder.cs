@@ -37,16 +37,6 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     /// Writes a pre-encoded CL-format transaction in block format.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteWrappedFormat(RlpStream stream, TxType type, byte[] clEncoded)
-    {
-        ValueRlpWriter writer = new(stream);
-        WriteWrappedFormat(ref writer, type, clEncoded);
-    }
-
-    /// <summary>
-    /// Writes a pre-encoded CL-format transaction in block format.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteWrappedFormat(ref ValueRlpWriter writer, TxType type, byte[] clEncoded)
     {
         if (type != TxType.Legacy)
@@ -134,12 +124,6 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
-    public override void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        EncodeTx(ref writer, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => EncodeTx(ref writer, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
@@ -163,12 +147,6 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
     public override int GetLength(T tx, RlpBehaviors rlpBehaviors) => GetLength(tx, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
-
-    public void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
-    {
-        ValueRlpWriter writer = new(stream);
-        EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-    }
 
     public void EncodeTx(ref ValueRlpWriter writer, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
     {

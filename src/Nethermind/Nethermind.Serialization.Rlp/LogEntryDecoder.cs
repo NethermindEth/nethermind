@@ -44,12 +44,6 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics);
         }
 
-        public override void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            ValueRlpWriter writer = new(rlpStream);
-            Encode(ref writer, item, rlpBehaviors);
-        }
-
         public override void Encode(ref ValueRlpWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

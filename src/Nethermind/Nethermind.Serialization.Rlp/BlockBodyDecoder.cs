@@ -109,12 +109,6 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ValueRlpWriter writer = new(stream);
-        Encode(ref writer, body, rlpBehaviors);
-    }
-
     public override void Encode(ref ValueRlpWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetBodyLength(body));

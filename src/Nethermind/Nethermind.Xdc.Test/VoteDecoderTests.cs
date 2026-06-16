@@ -57,11 +57,11 @@ public class VoteDecoderTests
         );
 
         VoteDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(vote));
-        decoder.Encode(stream, vote);
-        stream.Position = 0;
+        byte[] bytes = new byte[decoder.GetLength(vote, RlpBehaviors.None)];
+        ValueRlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, vote);
 
-        ValueRlpReader decoderContext = new(stream.Data.AsSpan());
+        ValueRlpReader decoderContext = new(bytes);
         Vote decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));

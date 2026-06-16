@@ -36,17 +36,6 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public override void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            stream.Encode(item.NodeId.Bytes);
-            stream.Encode(item.Host);
-            stream.Encode(item.Port);
-            stream.Encode(string.Empty);
-            stream.Encode(item.Reputation);
-        }
-
         public override void Encode(ref ValueRlpWriter writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);

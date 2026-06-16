@@ -8,10 +8,6 @@ namespace Nethermind.Serialization.Rlp
 {
     public static class ByteArrayExtensions
     {
-        public static RlpStream AsRlpStream(this byte[]? bytes) => new(bytes ?? []);
-
-        public static RlpStream AsRlpStream(in this CappedArray<byte> bytes) => new(in bytes.IsNotNull ? ref bytes : ref CappedArray<byte>.Empty);
-
         public static ValueRlpWriter AsRlpValueWriter(this byte[]? bytes) => new(bytes ?? []);
 
         public static ValueRlpWriter AsRlpValueWriter(in this CappedArray<byte> bytes) => new(in bytes.IsNotNull ? ref bytes : ref CappedArray<byte>.Empty);

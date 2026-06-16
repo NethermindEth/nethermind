@@ -209,13 +209,14 @@ namespace Nethermind.Core.Test
         [Test]
         public void KeccakRlpStream_EncodeEmptyBloom_HashesCanonicalZeroBytes()
         {
-            RlpStream expectedStream = new(Rlp.LengthOf(Bloom.Empty));
-            expectedStream.Encode(Bloom.Empty);
+            byte[] expected = new byte[Rlp.LengthOf(Bloom.Empty)];
+            ValueRlpWriter expectedWriter = expected.AsRlpValueWriter();
+            expectedWriter.Encode(Bloom.Empty);
 
             KeccakRlpStream stream = new();
             stream.Encode(Bloom.Empty);
 
-            Assert.That(stream.GetHash(), Is.EqualTo(Keccak.Compute(expectedStream.Data.AsSpan(0, expectedStream.Position))));
+            Assert.That(stream.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
         }
 
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]
@@ -1274,14 +1275,15 @@ namespace Nethermind.Core.Test
                 contentLength += Rlp.LengthOf(items[i]);
             }
 
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
+            byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
+            ValueRlpWriter writer = encoded.AsRlpValueWriter();
+            writer.StartSequence(contentLength);
             for (int i = 0; i < items.Length; i++)
             {
-                stream.Encode(items[i]);
+                writer.Encode(items[i]);
             }
 
-            return stream.Data.ToArray()!;
+            return encoded;
         }
 
         private static RlpByteArrayList CreateList(byte[] encoded)
