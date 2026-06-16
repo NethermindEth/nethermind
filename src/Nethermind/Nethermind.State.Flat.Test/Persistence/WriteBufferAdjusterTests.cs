@@ -15,10 +15,9 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class WriteBufferAdjusterTests
 {
-    private const long MB = 1024L * 1024L;
-    private const long MinWriteBufferSize = 16L * MB;
-    private const long AccountMaxWriteBufferSize = 32L * MB;
-    private const long StorageMaxWriteBufferSize = 64L * MB;
+    private const long MinWriteBufferSize = 16L * MemorySizes.MiB;
+    private const long AccountMaxWriteBufferSize = 32L * MemorySizes.MiB;
+    private const long StorageMaxWriteBufferSize = 64L * MemorySizes.MiB;
 
     private IColumnsDb<FlatDbColumns> _db = null!;
     private IDb _columnDb = null!;
@@ -67,8 +66,8 @@ public class WriteBufferAdjusterTests
     }
 
     [TestCase(20, 0, 1)]
-    [TestCase(200 * 1024 * 1024, 0, 1)]
-    [TestCase(20 * 1024 * 1024, 21 * 1024 * 1024, 1)]
+    [TestCase(200 * MemorySizes.MiB, 0, 1)]
+    [TestCase(20 * MemorySizes.MiB, 21 * MemorySizes.MiB, 1)]
     public void OnBatchDisposed_AdjustsWriteBuffer(long firstWriteBytes, long secondWriteBytes, int expectedSetWriteBufferCallCount)
     {
         WriteBufferAdjuster.CountingWriteBatch store = (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
@@ -90,7 +89,7 @@ public class WriteBufferAdjusterTests
     {
         WriteBufferAdjuster.CountingWriteBatch store =
             (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
-        store.Set(new byte[200 * MB], null);
+        store.Set(new byte[200 * MemorySizes.MiB], null);
         _sut.OnBatchDisposed();
 
         _columnDb.Received(1).SetWriteBuffer(AccountMaxWriteBufferSize);
@@ -113,7 +112,7 @@ public class WriteBufferAdjusterTests
     [Test]
     public void OnBatchDisposed_WithRaisedFloor_DoesNotShrinkBelowFloor()
     {
-        const long floor = 128L * MB;
+        const long floor = 128L * MemorySizes.MiB;
         WriteBufferAdjuster sut = new(_db, floor);
 
         // A tiny batch would normally be clamped down to the 16 MB default floor; the configured floor wins.
@@ -127,7 +126,7 @@ public class WriteBufferAdjusterTests
     [Test]
     public void OnBatchDisposed_WithFloorAboveCap_AllowsGrowthUpToFloor()
     {
-        const long floor = 512L * MB; // above every per-column cap
+        const long floor = 512L * MemorySizes.MiB; // above every per-column cap
         WriteBufferAdjuster sut = new(_db, floor);
 
         // With floor above the per-column cap, the effective range collapses to [floor, floor]; any write must not

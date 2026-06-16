@@ -9,6 +9,10 @@ namespace Nethermind.Core
 {
     public static class MemorySizes
     {
+        public const long KiB = 1024L;
+        public const long MiB = 1024L * 1024L;
+        public const long GiB = 1024L * 1024L * 1024L;
+
         private const int AlignmentMask = 7;
         public const int Alignment = 8;
 

@@ -10,17 +10,16 @@ namespace Nethermind.State.Flat.Persistence;
 internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db, long writeBufferFloor = WriteBufferAdjuster.DefaultWriteBufferFloor)
 {
     internal const int ColumnCount = 7;
-    private const long MB = 1024L * 1024L;
-    internal const long DefaultWriteBufferFloor = 16L * MB;  // 16 MB floor
+    internal const long DefaultWriteBufferFloor = 16L * MemorySizes.MiB;
 
     private static long MaxWriteBufferSize(FlatDbColumns column) => column switch
     {
-        FlatDbColumns.Account => 32L * MB,
-        FlatDbColumns.Storage => 64L * MB,
-        FlatDbColumns.StateNodes => 64L * MB,
-        FlatDbColumns.StateTopNodes => 64L * MB,
-        FlatDbColumns.StorageNodes => 64L * MB,
-        _ => 16L * MB,                            // Metadata, FallbackNodes
+        FlatDbColumns.Account => 32L * MemorySizes.MiB,
+        FlatDbColumns.Storage => 64L * MemorySizes.MiB,
+        FlatDbColumns.StateNodes => 64L * MemorySizes.MiB,
+        FlatDbColumns.StateTopNodes => 64L * MemorySizes.MiB,
+        FlatDbColumns.StorageNodes => 64L * MemorySizes.MiB,
+        _ => 16L * MemorySizes.MiB,                            // Metadata, FallbackNodes
     };
 
     // Lower bound applied per column. Frequent small persistence batches (small CompactSize) would otherwise
