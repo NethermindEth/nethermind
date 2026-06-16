@@ -238,6 +238,122 @@ public class PersistedSnapshotTests
         Assert.That(scanned[(TestItem.AddressB, (UInt256)4)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(full));
     }
 
+    // Drives the scanner across every entry kind in one pass: normal vs deleted account,
+    // self-destruct false (0x00) vs true (0x01), present vs deleted slot, and state/storage
+    // trie nodes spread across all three depth tiers (top/compact/fallback).
+    [Test]
+    public void FullScan_DecodesAccounts_SelfDestruct_Slots_StateAndStorageNodes()
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("fullscan"));
+
+        byte[] slotVal = new byte[32]; slotVal[31] = 0x11;
+
+        SnapshotContent content = new();
+        content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).WithNonce(3).TestObject;
+        content.Accounts[TestItem.AddressC] = null;                          // deleted marker
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal);
+        content.Storages[(TestItem.AddressA, (UInt256)2)] = null;            // deleted slot
+        content.SelfDestructedStorageAddresses[TestItem.AddressD] = false;   // 0x00 destructed
+        content.SelfDestructedStorageAddresses[TestItem.AddressE] = true;    // 0x01 new-account
+        // State nodes across the three depth tiers.
+        TreePath stTop = new(Keccak.Compute("st-top"), 3);
+        TreePath stMid = new(Keccak.Compute("st-mid"), 8);
+        TreePath stLong = new(Keccak.Compute("st-long"), 20);
+        content.StateNodes[stTop] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+        content.StateNodes[stMid] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
+        content.StateNodes[stLong] = new TrieNode(NodeType.Extension, [0xC2, 0x80, 0x81]);
+        // Storage nodes for one address across the three tiers.
+        Hash256 storageAddr = Keccak.Compute("storage-addr");
+        TreePath snTop = new(Keccak.Compute("sn-top"), 3);
+        TreePath snMid = new(Keccak.Compute("sn-mid"), 6);
+        TreePath snLong = new(Keccak.Compute("sn-long"), 18);
+        content.StorageNodes[(storageAddr, snTop)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
+        content.StorageNodes[(storageAddr, snMid)] = new TrieNode(NodeType.Branch, [0xC1, 0x82]);
+        content.StorageNodes[(storageAddr, snLong)] = new TrieNode(NodeType.Leaf, [0xC3, 0x80, 0x81, 0x82]);
+
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        Dictionary<Address, (bool HasAccount, UInt256? Balance, bool? Sd)> perAddr = [];
+        Dictionary<(Address, UInt256), SlotValue?> slots = [];
+        int stateNodes = 0, storageNodes = 0;
+
+        using (WholeReadSession session = persisted.BeginWholeReadSession())
+        {
+            WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
+            foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
+            {
+                perAddr[e.Address] = (e.HasAccount, e.Account?.Balance, e.SelfDestructFlag);
+                foreach (WholeReadScanner.SlotEntry s in e.Slots)
+                    slots[(e.Address, s.Slot)] = s.Value;
+            }
+            foreach (WholeReadScanner.StateNodeEntry n in scanner.StateNodes)
+            {
+                _ = n.Path;          // exercise the stage-specific path decode
+                Assert.That(n.Rlp.Length, Is.GreaterThan(0));
+                stateNodes++;
+            }
+            foreach (WholeReadScanner.StorageNodeEntry n in scanner.StorageNodes)
+            {
+                _ = n.Path;
+                _ = n.AddressHash;
+                Assert.That(n.Rlp.Length, Is.GreaterThan(0));
+                storageNodes++;
+            }
+        }
+
+        Assert.That(perAddr[TestItem.AddressA].HasAccount, Is.True);
+        Assert.That(perAddr[TestItem.AddressA].Balance, Is.EqualTo((UInt256)1000));
+        Assert.That(perAddr[TestItem.AddressA].Sd, Is.Null, "address with no self-destruct sub-tag → null flag");
+        Assert.That(perAddr[TestItem.AddressC].HasAccount, Is.True, "deleted account still has a (marker) sub-tag");
+        Assert.That(perAddr[TestItem.AddressC].Balance, Is.Null, "deleted account decodes to null");
+        Assert.That(perAddr[TestItem.AddressD].HasAccount, Is.False, "self-destruct-only address has no account sub-tag");
+        Assert.That(perAddr[TestItem.AddressD].Sd, Is.False, "0x00 marker → destructed");
+        Assert.That(perAddr[TestItem.AddressE].Sd, Is.True, "0x01 marker → new account");
+
+        Assert.That(slots[(TestItem.AddressA, (UInt256)1)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(slotVal));
+        Assert.That(slots[(TestItem.AddressA, (UInt256)2)], Is.Null, "deleted slot surfaces as null");
+
+        Assert.That(stateNodes, Is.EqualTo(3), "one state node per depth tier");
+        Assert.That(storageNodes, Is.EqualTo(3), "one storage node per depth tier");
+    }
+
+    // When a column / sub-tag tier is absent, the enumerators must seek past it gracefully:
+    // state nodes only in the top tier, storage nodes only in the fallback tier, and no
+    // per-address column at all.
+    [Test]
+    public void Scan_AbsentTiers_SkipMissingColumnsAndSubTags()
+    {
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, Keccak.Compute("absent"));
+
+        SnapshotContent content = new();
+        TreePath onlyTop = new(Keccak.Compute("only-top"), 3);
+        content.StateNodes[onlyTop] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+        Hash256 storageAddr = Keccak.Compute("absent-storage");
+        TreePath onlyFallback = new(Keccak.Compute("only-fallback"), 18);
+        content.StorageNodes[(storageAddr, onlyFallback)] = new TrieNode(NodeType.Leaf, [0xC3, 0x80, 0x81, 0x82]);
+
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
+
+        int perAddrCount = 0, stateNodes = 0, storageNodes = 0;
+        using (WholeReadSession session = persisted.BeginWholeReadSession())
+        {
+            WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
+            foreach (WholeReadScanner.PerAddressEntry _ in scanner.PerAddresses) perAddrCount++;
+            foreach (WholeReadScanner.StateNodeEntry n in scanner.StateNodes) { _ = n.Path; stateNodes++; }
+            foreach (WholeReadScanner.StorageNodeEntry n in scanner.StorageNodes) { _ = n.Path; storageNodes++; }
+        }
+
+        Assert.That(perAddrCount, Is.EqualTo(0), "no per-address column → empty enumeration");
+        Assert.That(stateNodes, Is.EqualTo(1), "only the top-tier state node, compact/fallback columns absent");
+        Assert.That(storageNodes, Is.EqualTo(1), "only the fallback-tier storage node, top/compact sub-tags absent");
+    }
+
     [Test]
     public void ActivePersistedSnapshotCount_TracksConstructionAndDisposal()
     {
