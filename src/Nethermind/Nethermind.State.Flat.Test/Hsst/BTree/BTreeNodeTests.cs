@@ -9,9 +9,6 @@ using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.BTree;
-// The layout planner now lives on the (generic) builder; alias a concrete instantiation so the
-// TWriter-independent static helpers (ComputeLayout / WidenedSlotWidth / MaxCommonKeyPrefixLen)
-// read cleanly in these unit tests.
 using Planner = Nethermind.State.Flat.Hsst.BTree.HsstBTreeBuilder<Nethermind.State.Flat.Hsst.PooledByteBufferWriter.Writer>;
 
 namespace Nethermind.State.Flat.Test.Hsst.BTree;

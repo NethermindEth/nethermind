@@ -388,6 +388,12 @@ public class PersistenceManager(
             PrunePersistedTierBefore(snapshotToPersist.To);
         }
 
+        // Prune the in-memory tier for everything the now-advanced persisted state supersedes — the
+        // post-flush step that previously lived in FlatDbManager.FlushCache. The persisted tier is
+        // pruned per-persist above via PrunePersistedTierBefore.
+        if (currentPersistedState != StateId.PreGenesis)
+            _snapshotRepository.RemoveStatesUntil(currentPersistedState.BlockNumber);
+
         return currentPersistedState;
     }
 

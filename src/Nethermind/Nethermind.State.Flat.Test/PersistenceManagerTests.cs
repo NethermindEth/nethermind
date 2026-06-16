@@ -638,8 +638,9 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(state16.StateRoot.Bytes));
         _finalizedStateProvider.SetFinalizedStateRootAt(32, new Hash256(state32.StateRoot.Bytes));
 
-        using Snapshot snapshot1 = CreateSnapshot(Block0, state16, compacted: true);
-        using Snapshot snapshot2 = CreateSnapshot(state16, state32, compacted: true);
+        // Repo-owned; FlushToPersistence prunes (disposes) them once persisted, so don't double-own.
+        CreateSnapshot(Block0, state16, compacted: true);
+        CreateSnapshot(state16, state32, compacted: true);
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
@@ -657,7 +658,8 @@ public class PersistenceManagerTests
         StateId state16 = CreateStateId(16);
         _finalizedStateProvider.SetFinalizedBlockNumber(0); // Nothing finalized
 
-        using Snapshot snapshot = CreateSnapshot(Block0, state16, compacted: true);
+        // Repo-owned; FlushToPersistence prunes (disposes) it once persisted, so don't double-own.
+        CreateSnapshot(Block0, state16, compacted: true);
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
@@ -679,8 +681,9 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(16);
         _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(finalizedState.StateRoot.Bytes));
 
-        using Snapshot finalizedSnapshot = CreateSnapshot(Block0, finalizedState, compacted: true);
-        using Snapshot unfinalizedSnapshot = CreateSnapshot(Block0, unfinalizedState, compacted: true);
+        // Repo-owned; FlushToPersistence prunes (disposes) them once persisted, so don't double-own.
+        CreateSnapshot(Block0, finalizedState, compacted: true);
+        CreateSnapshot(Block0, unfinalizedState, compacted: true);
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
@@ -701,9 +704,10 @@ public class PersistenceManagerTests
         // No finalization - will use first available
         _finalizedStateProvider.SetFinalizedBlockNumber(0);
 
-        using Snapshot snapshot1 = CreateSnapshot(Block0, state1, compacted: false);
-        using Snapshot snapshot2 = CreateSnapshot(state1, state2, compacted: false);
-        using Snapshot snapshot3 = CreateSnapshot(state2, state3, compacted: false);
+        // Repo-owned; FlushToPersistence prunes (disposes) them once persisted, so don't double-own.
+        CreateSnapshot(Block0, state1, compacted: false);
+        CreateSnapshot(state1, state2, compacted: false);
+        CreateSnapshot(state2, state3, compacted: false);
 
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);

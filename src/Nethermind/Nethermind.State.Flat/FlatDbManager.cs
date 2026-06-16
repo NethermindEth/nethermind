@@ -313,14 +313,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_logger.IsTrace) _logger.Trace($"Gathered {baseBlock}. Got {assembled.InMemory.Count} known states, {assembled.Persisted.Count} persisted, Reader state: {persistenceReader.CurrentState}. Persistence state: {_persistenceManager.GetCurrentPersistedStateId()}");
 
-            int inMemoryDepth = 0;
-            int persistedDepth = 0;
-
-            if (assembled.InMemory.Count > 0) inMemoryDepth = (int)(assembled.InMemory[^1].To.BlockNumber - assembled.InMemory[0].From.BlockNumber);
-            if (assembled.Persisted.Count > 0) persistedDepth = (int)(assembled.Persisted[^1].To.BlockNumber - assembled.Persisted[0].From.BlockNumber);
-
-            Metrics.SnapshotBundleBlockNumberDepth.Observe(inMemoryDepth, _depthInMemoryLabel);
-            Metrics.SnapshotBundleBlockNumberDepth.Observe(persistedDepth, _depthPersistedLabel);
+            ReportBundleMetrics(assembled);
 
             // Each assembled snapshot carries its own unified bloom (set at convert / merge
             // time, rebuilt on reload). The stack gates each snapshot's reads on that bloom —
@@ -336,15 +329,26 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 res.Dispose();
             }
 
-            Metrics.SnapshotBundleSize = assembled.InMemory.Count;
-            Metrics.SnapshotBundlePersistedSnapshotSize = assembled.Persisted.Count;
-
-            long persistedBytes = 0;
-            for (int i = 0; i < assembled.Persisted.Count; i++)
-                persistedBytes += assembled.Persisted[i].Size;
-            Metrics.SnapshotBundlePersistedSnapshotMemory = persistedBytes;
             return res;
         }
+    }
+
+    private static void ReportBundleMetrics(in AssembledSnapshotResult assembled)
+    {
+        int inMemoryDepth = assembled.InMemory.Count > 0
+            ? (int)(assembled.InMemory[^1].To.BlockNumber - assembled.InMemory[0].From.BlockNumber) : 0;
+        int persistedDepth = assembled.Persisted.Count > 0
+            ? (int)(assembled.Persisted[^1].To.BlockNumber - assembled.Persisted[0].From.BlockNumber) : 0;
+        Metrics.SnapshotBundleBlockNumberDepth.Observe(inMemoryDepth, _depthInMemoryLabel);
+        Metrics.SnapshotBundleBlockNumberDepth.Observe(persistedDepth, _depthPersistedLabel);
+
+        Metrics.SnapshotBundleSize = assembled.InMemory.Count;
+        Metrics.SnapshotBundlePersistedSnapshotSize = assembled.Persisted.Count;
+
+        long persistedBytes = 0;
+        for (int i = 0; i < assembled.Persisted.Count; i++)
+            persistedBytes += assembled.Persisted[i].Size;
+        Metrics.SnapshotBundlePersistedSnapshotMemory = persistedBytes;
     }
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
@@ -445,7 +449,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState.BlockNumber < 0) return;
 
-        _snapshotRepository.RemoveStatesUntil(persistedState.BlockNumber);
+        // The in-memory + persisted tiers are pruned inside FlushToPersistence above.
 
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();
