@@ -177,7 +177,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     }
 
     [TestCaseSource(nameof(ValidHexCases))]
-    public void ConvertToArrayPoolList_IsDropInParityWithByteArrayConvert_AndIsDisposable(string hex)
+    public void ConvertToArrayPoolList_ForHexInput_MatchesByteArrayConverter(string hex)
     {
         byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
 

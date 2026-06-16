@@ -136,7 +136,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Get_raw_header()
+    public async Task DebugGetRawHeader_WhenBlockExists_ReturnsHeaderRlp()
     {
         IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
@@ -150,13 +150,13 @@ public class DebugModuleTests
 
     private static IEnumerable<TestCaseData> RawBlockCases()
     {
-        yield return new TestCaseData("0x1", new BlockParameter(1L)) { TestName = "Get_raw_block_by_number" };
-        yield return new TestCaseData(Keccak.Zero, new BlockParameter(Keccak.Zero)) { TestName = "Get_raw_block_by_hash" };
-        yield return new TestCaseData("latest", BlockParameter.Latest) { TestName = "Get_raw_block_by_name" };
+        yield return new TestCaseData("0x1", new BlockParameter(1L)) { TestName = "ByNumber" };
+        yield return new TestCaseData(Keccak.Zero, new BlockParameter(Keccak.Zero)) { TestName = "ByHash" };
+        yield return new TestCaseData("latest", BlockParameter.Latest) { TestName = "ByName" };
     }
 
     [TestCaseSource(nameof(RawBlockCases))]
-    public async Task Get_raw_block(object requestParameter, BlockParameter blockParameter)
+    public async Task DebugGetRawBlock_WhenBlockExists_ReturnsBlockRlp(object requestParameter, BlockParameter blockParameter)
     {
         IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
         Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -170,12 +170,12 @@ public class DebugModuleTests
 
     private static IEnumerable<TestCaseData> RawBlockMissingCases()
     {
-        yield return new TestCaseData("0x1", new BlockParameter(1L)) { TestName = "Get_raw_block_by_number_when_missing" };
-        yield return new TestCaseData(Keccak.Zero, new BlockParameter(Keccak.Zero)) { TestName = "Get_raw_block_by_hash_when_missing" };
+        yield return new TestCaseData("0x1", new BlockParameter(1L)) { TestName = "ByNumber" };
+        yield return new TestCaseData(Keccak.Zero, new BlockParameter(Keccak.Zero)) { TestName = "ByHash" };
     }
 
     [TestCaseSource(nameof(RawBlockMissingCases))]
-    public async Task Get_raw_block_when_missing(object requestParameter, BlockParameter blockParameter)
+    public async Task DebugGetRawBlock_WhenBlockMissing_ReturnsResourceNotFound(object requestParameter, BlockParameter blockParameter)
     {
         IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
         debugBridge.GetBlock(blockParameter).ReturnsNull();
@@ -186,7 +186,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Get_raw_transaction()
+    public async Task DebugGetRawTransaction_WhenTransactionExists_ReturnsTransactionRlp()
     {
         IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
@@ -199,7 +199,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Get_raw_transaction_when_missing()
+    public async Task DebugGetRawTransaction_WhenTransactionMissing_ReturnsResourceNotFound()
     {
         IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
         debugBridge.GetTransactionFromHash(Keccak.Zero).ReturnsNull();
@@ -210,7 +210,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Get_raw_receipts()
+    public async Task DebugGetRawReceipts_WhenReceiptsExist_ReturnsHexArray()
     {
         IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
         TxReceipt[] receipts = [Build.A.Receipt.TestObject, Build.A.Receipt.TestObject];
@@ -224,7 +224,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Get_raw_receipts_when_empty()
+    public async Task DebugGetRawReceipts_WhenNoReceipts_ReturnsEmptyArray()
     {
         IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
         debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns([]);
