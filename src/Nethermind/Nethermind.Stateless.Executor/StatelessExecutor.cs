@@ -43,6 +43,7 @@ public static class StatelessExecutor
         };
         byte[] output = StatelessValidationResult.Encode(result);
         bool success = false;
+
         Output = output;
 
         if (transactions.Length == publicKeys.Length)
@@ -69,8 +70,11 @@ public static class StatelessExecutor
         }
 
         if (success)
-            // Flip the success flag in SSZ instead of re-encoding the entire output (not future-proof)
-            output[32] = 1;
+        {
+            result.IsSuccess = true;
+            output = StatelessValidationResult.Encode(result);
+            Output = output;
+        }
 
         return output;
     }
