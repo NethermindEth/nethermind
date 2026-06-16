@@ -574,6 +574,11 @@ namespace Nethermind.Consensus.Processing
                 long recoveryQueue = Metrics.RecoveryQueueSize;
                 long processingQueue = Metrics.ProcessingQueueSize;
 
+                // GC_DIAG (temporary variance instrumentation): cumulative GC collection
+                // counts + total allocations. The last line per run gives run totals, to
+                // correlate GC activity with run-to-run processing-time variance.
+                _logger.Info($" GC_DIAG gen0={System.GC.CollectionCount(0)} gen1={System.GC.CollectionCount(1)} gen2={System.GC.CollectionCount(2)} allocMB={System.GC.GetTotalAllocatedBytes(false) / 1_000_000}");
+
                 _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0} " : $"{(isMev ? " mb" : "   ")} {rewards.ToDecimal(null) / weiToEth,6:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,8:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs | calls {callsColor}{chunkCalls,10:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(chunkSelfDestructs > 0 ? $"{darkGreyText}({-chunkSelfDestructs,3:N0}){resetColor}" : "")}");
                 string blobsOrBlocksPerSec = _showBlobs switch
                 {
