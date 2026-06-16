@@ -125,7 +125,7 @@ public static class BasePersistence
         }
     }
 
-    private static byte? ReadSlotEncoding(IReadOnlyKeyValueStore kv)
+    internal static byte? ReadSlotEncoding(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(SlotEncodingKey);
         return bytes is null || bytes.Length == 0 ? null : bytes[0];
@@ -176,14 +176,39 @@ public static class BasePersistence
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
-        using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
-        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
+        // partially-synced DB on restart. #11442
+        const int batchSize = 10_000;
+
+        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
+        try
         {
-            IWriteBatch columnBatch = batch.GetColumnBatch(column);
-            foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+            int count = 0;
+            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
-                columnBatch.Remove(key);
+                if (column == FlatDbColumns.Metadata)
+                {
+                    // Preserve the format markers; wiping them makes a re-synced RLP DB read back as raw. #11996
+                    batch.GetColumnBatch(column).Remove(CurrentStateKey);
+                    continue;
+                }
+
+                foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+                {
+                    batch.GetColumnBatch(column).Remove(key);
+                    if (++count == batchSize)
+                    {
+                        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
+                        batch.Dispose(); // commit the chunk
+                        batch = next;
+                        count = 0;
+                    }
+                }
             }
+        }
+        finally
+        {
+            batch.Dispose();
         }
     }
 
