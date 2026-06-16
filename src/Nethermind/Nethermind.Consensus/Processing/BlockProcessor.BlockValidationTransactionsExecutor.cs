@@ -41,7 +41,7 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                if (_logger.IsInfo) _logger.Info($"Starting tx execution number {i} in block {block.Number}");
+                if (_logger.IsInfo) PrewarmDiag.Record(PrewarmDiag.KindExec, block.Number, i);
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
@@ -49,6 +49,9 @@ public partial class BlockProcessor
                     ThrowInvalidBlockForGasLimit(block);
                 }
             }
+
+            // DIAGNOSTIC: drain recorded prewarm/exec events off-thread so per-block timing is undisturbed.
+            if (_logger.IsInfo) ThreadPool.UnsafeQueueUserWorkItem(static (ILogger l) => PrewarmDiag.Flush(l), _logger, preferLocal: false);
 
             return [.. receiptsTracer.TxReceipts];
 

@@ -230,11 +230,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
                             scope.TransactionProcessor.SetBlockExecutionContext(context);
 
-                            // Sequential within the same sender-state changes propagate correctly
+                            // Sequential within the same sender-state changes propagate correctly.
+                            // DIAGNOSTIC: groupIndex identifies the sender-group; seq is the position within it,
+                            // which together explain the out-of-order interleaving of prewarm vs execution.
+                            bool logPrewarm = blockState.PreWarmer._logger.IsInfo;
+                            int seqInGroup = 0;
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
+                                if (logPrewarm) PrewarmDiag.Record(PrewarmDiag.KindPrewarm, blockState.Block.Number, txIndex, groupIndex, seqInGroup);
                                 WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                seqInGroup++;
                             }
                         }
                         finally
@@ -287,8 +293,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         int txIndex,
         BlockState blockState)
     {
-        // DIAGNOSTIC: verbose per-tx prewarm logging to correlate against main execution.
-        if (blockState.PreWarmer._logger.IsInfo) blockState.PreWarmer._logger.Info($"Starting prewarming tx number {txIndex} in block {blockState.Block.Number}");
         try
         {
             Address senderAddress = tx.SenderAddress!;
