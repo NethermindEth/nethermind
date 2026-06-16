@@ -343,7 +343,7 @@ public class PersistedSnapshotCompactorTests
             {
                 using WholeReadSession session = baseSnap!.BeginWholeReadSession();
                 WholeReadSessionReader reader = session.CreateReader();
-                ushort[]? ids = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+                ushort[]? ids = TestFixtureHelpers.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
                 Assert.That(ids, Is.Not.Null.And.Length.EqualTo(1),
                     $"Base snapshot {i} must carry exactly one blob-arena ref_id");
                 baseRefIds.Add(ids![0]);
@@ -357,7 +357,7 @@ public class PersistedSnapshotCompactorTests
         {
             using WholeReadSession session = compacted!.BeginWholeReadSession();
             WholeReadSessionReader reader = session.CreateReader();
-            ushort[]? mergedIds = PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+            ushort[]? mergedIds = TestFixtureHelpers.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
             Assert.That(mergedIds, Is.Not.Null);
             Assert.That(new HashSet<ushort>(mergedIds!), Is.EquivalentTo(baseRefIds),
                 "Compacted ref_ids must equal the union of source base blob-arena ids");
