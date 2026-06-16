@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// single <c>posix_fadvise(WILLNEED)</c> call.
 /// </summary>
 /// <remarks>
-/// Only base snapshots carry a non-empty range. Compacted / persistable snapshots reference
+/// Only base snapshots carry a non-empty range. Compacted / CompactSized snapshots reference
 /// scattered blob arenas via <c>ref_ids</c> and store <see cref="None"/>.
 /// </remarks>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]

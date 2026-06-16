@@ -15,7 +15,7 @@ public interface ISnapshotRepository
     /// <summary>Number of in-memory base snapshots currently held.</summary>
     int SnapshotCount { get; }
 
-    /// <summary>Total persisted snapshots across the base/compacted/persistable buckets.</summary>
+    /// <summary>Total persisted snapshots across the base/compacted/CompactSized buckets.</summary>
     int PersistedSnapshotCount { get; }
 
     /// <summary>Register <paramref name="stateId"/> as a known in-memory tip: adds it to the block-ordered

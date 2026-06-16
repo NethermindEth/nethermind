@@ -109,7 +109,7 @@ internal static class PersistedSnapshotTags
     internal const int MetadataKeyLength = 10;
     // Base snapshots only: the contiguous trie-RLP run in the single blob arena they
     // wrote into, serialized as a BlobRange. Sorts first ("blob_range" < "from_block");
-    // absent on compacted / persistable snapshots, which read back BlobRange.None.
+    // absent on compacted / CompactSized snapshots, which read back BlobRange.None.
     internal static readonly byte[] MetadataBlobRangeKey = "blob_range"u8.ToArray();
     internal static readonly byte[] MetadataFromBlockKey = "from_block"u8.ToArray();
     internal static readonly byte[] MetadataFromHashKey = "from_hash\0"u8.ToArray();

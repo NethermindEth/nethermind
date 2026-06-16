@@ -216,7 +216,7 @@ public class PersistenceManager(
 
     /// <summary>
     /// Branch A — boundary CompactSize compacted: convert every in-memory base in the range it
-    /// spans and queue them for batched compaction. The CompactSize persistable is produced by the
+    /// spans and queue them for batched compaction. The CompactSized snapshot is produced by the
     /// batched compactor (a linked merge of the bases), not here, so the compacted in-memory
     /// snapshot is used only to delimit the block range. Disposes <paramref name="compacted"/>.
     /// </summary>
@@ -471,10 +471,10 @@ public class PersistenceManager(
     {
         long sw = Stopwatch.GetTimestamp();
 
-        // A linked persistable's NodeRefs scatter across the base snapshots' blob arenas, so
+        // A linked CompactSized's NodeRefs scatter across the base snapshots' blob arenas, so
         // the HSST scan below reads blobs out of order. Prefetch every base's contiguous RLP
         // region up front so the kernel can stream them in as bulk read-ahead; once the
-        // persistable is written the same regions are dropped from the page cache (below) —
+        // CompactSized is written the same regions are dropped from the page cache (below) —
         // they won't be read again. The leases are held for the whole method.
         using PersistedSnapshotList bases = snapshotRepository.LeaseBaseSnapshotsInRange(snapshot.From, snapshot.To);
         foreach (PersistedSnapshot baseSnapshot in bases)
@@ -508,7 +508,7 @@ public class PersistenceManager(
                 batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
         }
 
-        // The persistable is now in RocksDB — drop the prefetched base blob ranges from the
+        // The CompactSized is now in RocksDB — drop the prefetched base blob ranges from the
         // page cache rather than leaving them hot until the base snapshots are pruned.
         foreach (PersistedSnapshot baseSnapshot in bases)
             baseSnapshot.AdviseDontNeedBlobRange();

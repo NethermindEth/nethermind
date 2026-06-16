@@ -23,7 +23,7 @@ public interface ICompactionSchedule
     /// <summary>
     /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
     /// (<see cref="GetPersistedSnapshotCompactSize"/>) is exactly <c>CompactSize</c> — a boundary
-    /// whose only window is the persistable one, with no wider (<c>&gt;CompactSize</c>) merge to
+    /// whose only window is the CompactSized one, with no wider (<c>&gt;CompactSize</c>) merge to
     /// perform. Mutually exclusive with <see cref="IsLargeCompactionBoundary"/>; together they
     /// cover every persistence boundary.
     /// </summary>
@@ -32,7 +32,7 @@ public interface ICompactionSchedule
     /// <summary>
     /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
     /// (<see cref="GetPersistedSnapshotCompactSize"/>) is strictly larger than <c>CompactSize</c> —
-    /// a boundary that carries a wider (<c>&gt;CompactSize</c>) merge on top of the persistable
+    /// a boundary that carries a wider (<c>&gt;CompactSize</c>) merge on top of the CompactSized
     /// window. Mutually exclusive with <see cref="IsCompactSizeBoundary"/>; together they cover
     /// every persistence boundary.
     /// </summary>

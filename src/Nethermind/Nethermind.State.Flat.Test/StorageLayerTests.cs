@@ -64,20 +64,20 @@ public class StorageLayerTests
     {
         MemDb catalogDb = new();
         // Same To across three entries with distinct depths (1 / 2 / 4) — mirrors the
-        // runtime case where a base + sub-CompactSize compacted + CompactSize persistable
+        // runtime case where a base + sub-CompactSize compacted + CompactSized snapshot
         // all end at the same block. Pre-v7 catalog would collapse these to one entry on
         // disk; v7 keys by (To, depth) and round-trips all three.
         StateId s_base_from = new(99, Keccak.Compute("block99"));     // depth=1 source
         StateId s_compacted_from = new(98, Keccak.Compute("block98")); // depth=2 source
-        StateId s_persistable_from = new(96, Keccak.Compute("block96")); // depth=4 source
+        StateId s_compactSized_from = new(96, Keccak.Compute("block96")); // depth=4 source
         StateId sharedTo = new(100, Keccak.Compute("block100"));
         StateId s2 = new(200, Keccak.Compute("block200"));
 
         SnapshotCatalog catalog = new(catalogDb);
         catalog.Add(new(s_base_from, sharedTo, new(0, 0, 1024), SnapshotTier.PersistedBase));
         catalog.Add(new(s_compacted_from, sharedTo, new(0, 1024, 2048), SnapshotTier.PersistedCompacted));
-        catalog.Add(new(s_persistable_from, sharedTo, new(0, 3072, 4096), SnapshotTier.PersistedPersistable));
-        catalog.Add(new(sharedTo, s2, new(0, 7168, 2048), SnapshotTier.PersistedPersistable));
+        catalog.Add(new(s_compactSized_from, sharedTo, new(0, 3072, 4096), SnapshotTier.PersistedCompactSized));
+        catalog.Add(new(sharedTo, s2, new(0, 7168, 2048), SnapshotTier.PersistedCompactSized));
 
         SnapshotCatalog loaded = new(catalogDb);
 
@@ -85,7 +85,7 @@ public class StorageLayerTests
 
         SnapshotCatalog.CatalogEntry? loadedBase = FindEntry(loaded, sharedTo, depth: 1);
         SnapshotCatalog.CatalogEntry? loadedCompacted = FindEntry(loaded, sharedTo, depth: 2);
-        SnapshotCatalog.CatalogEntry? loadedPersistable = FindEntry(loaded, sharedTo, depth: 4);
+        SnapshotCatalog.CatalogEntry? loadedCompactSized = FindEntry(loaded, sharedTo, depth: 4);
         Assert.That(loadedBase, Is.Not.Null);
         Assert.That(loadedBase!.From, Is.EqualTo(s_base_from));
         Assert.That(loadedBase.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
@@ -94,16 +94,16 @@ public class StorageLayerTests
         Assert.That(loadedCompacted!.From, Is.EqualTo(s_compacted_from));
         Assert.That(loadedCompacted.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
         Assert.That(loadedCompacted.Tier, Is.EqualTo(SnapshotTier.PersistedCompacted));
-        Assert.That(loadedPersistable, Is.Not.Null);
-        Assert.That(loadedPersistable!.From, Is.EqualTo(s_persistable_from));
-        Assert.That(loadedPersistable.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
-        Assert.That(loadedPersistable.Tier, Is.EqualTo(SnapshotTier.PersistedPersistable));
+        Assert.That(loadedCompactSized, Is.Not.Null);
+        Assert.That(loadedCompactSized!.From, Is.EqualTo(s_compactSized_from));
+        Assert.That(loadedCompactSized.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
+        Assert.That(loadedCompactSized.Tier, Is.EqualTo(SnapshotTier.PersistedCompactSized));
 
         SnapshotCatalog.CatalogEntry? loadedTail = FindEntry(loaded, s2, depth: 100);
         Assert.That(loadedTail, Is.Not.Null);
         Assert.That(loadedTail!.From, Is.EqualTo(sharedTo));
         Assert.That(loadedTail.Location, Is.EqualTo(new SnapshotLocation(0, 7168, 2048)));
-        Assert.That(loadedTail.Tier, Is.EqualTo(SnapshotTier.PersistedPersistable));
+        Assert.That(loadedTail.Tier, Is.EqualTo(SnapshotTier.PersistedCompactSized));
     }
 
     [Test]

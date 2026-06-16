@@ -82,10 +82,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <summary>
     /// The contiguous trie-RLP region this snapshot occupies in its blob arena, used to prefetch
     /// the whole region in one bulk read-ahead (<see cref="AdviseWillNeedBlobRange"/>) when a
-    /// persistable snapshot is persisted — its scattered <c>NodeRef</c> reads then stream from
+    /// CompactSized snapshot is persisted — its scattered <c>NodeRef</c> reads then stream from
     /// already-warm pages. Non-empty only for base snapshots (which write all their RLPs through
     /// one <see cref="BlobArenaWriter"/>); <see cref="BlobRange.None"/> for compacted /
-    /// persistable snapshots, whose <c>NodeRef</c>s scatter across many blob arenas.
+    /// CompactSized snapshots, whose <c>NodeRef</c>s scatter across many blob arenas.
     /// </summary>
     /// <remarks>
     /// Read once at construction from this snapshot's own metadata HSST (the <c>blob_range</c>
@@ -221,7 +221,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <summary>
     /// Read the <c>blob_range</c> metadata entry (column 0x00) — the contiguous trie-RLP run
     /// recorded by base snapshots. Returns <see cref="BlobRange.None"/> when the key is absent
-    /// (compacted / persistable snapshots) or malformed.
+    /// (compacted / CompactSized snapshots) or malformed.
     /// </summary>
     private BlobRange ReadBlobRange(scoped in ArenaByteReader reader)
     {
@@ -486,10 +486,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <summary>
     /// Issue <c>posix_fadvise(WILLNEED)</c> over this base snapshot's contiguous trie-RLP
     /// region so the kernel prefetches it ahead of a random-access read pass. No-op for
-    /// compacted / persistable snapshots (<see cref="BlobRange.None"/>) or empty regions.
+    /// compacted / CompactSized snapshots (<see cref="BlobRange.None"/>) or empty regions.
     /// </summary>
     /// <remarks>
-    /// Used by <see cref="PersistenceManager"/> before scanning a linked persistable: its
+    /// Used by <see cref="PersistenceManager"/> before scanning a linked CompactSized: its
     /// <c>NodeRef</c>s scatter across the base snapshots' blob arenas, so bulk-prefetching
     /// each base's region turns the otherwise-random blob reads into kernel read-ahead.
     /// </remarks>
@@ -501,11 +501,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     /// <summary>
     /// Issue <c>posix_fadvise(DONTNEED)</c> over this base snapshot's contiguous trie-RLP
-    /// region, dropping it from the OS page cache. No-op for compacted / persistable
+    /// region, dropping it from the OS page cache. No-op for compacted / CompactSized
     /// snapshots (<see cref="BlobRange.None"/>) or empty regions.
     /// </summary>
     /// <remarks>
-    /// The counterpart to <see cref="AdviseWillNeedBlobRange"/>: called once the persistable
+    /// The counterpart to <see cref="AdviseWillNeedBlobRange"/>: called once the CompactSized
     /// referencing this base has been written to RocksDB, so the prefetched pages are
     /// released rather than lingering until the base snapshot is pruned.
     /// </remarks>

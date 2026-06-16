@@ -1009,19 +1009,19 @@ public class PersistedSnapshotCompactorTests
     }
 
     [Test]
-    public void DoCompactPersistable_NoOp_WhenNotBoundaryOrTooFewSnapshots()
+    public void DoCompactCompactSized_NoOp_WhenNotBoundaryOrTooFewSnapshots()
     {
         using FlatTestContainer tier = NewTier(compactSize: 4);
         PersistedSnapshotCompactor compactor = tier.Compactor;
 
-        compactor.DoCompactPersistable(new StateId(3, Keccak.Compute("b3"))); // not a boundary
-        compactor.DoCompactPersistable(new StateId(4, Keccak.Compute("b4"))); // boundary, but empty repo
+        compactor.DoCompactCompactSized(new StateId(3, Keccak.Compute("b3"))); // not a boundary
+        compactor.DoCompactCompactSized(new StateId(4, Keccak.Compute("b4"))); // boundary, but empty repo
 
-        Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no persistable should have been produced");
+        Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no CompactSized snapshot should have been produced");
     }
 
     [Test]
-    public void DoCompactPersistable_AtBoundary_ProducesPersistableSnapshot()
+    public void DoCompactCompactSized_AtBoundary_ProducesCompactSizedSnapshot()
     {
         using FlatTestContainer tier = NewTier(compactSize: 4);
         SnapshotRepository repo = tier.Repository;
@@ -1038,17 +1038,17 @@ public class PersistedSnapshotCompactorTests
             prev = tip;
         }
 
-        compactor.DoCompactPersistable(tip);
+        compactor.DoCompactCompactSized(tip);
 
-        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedPersistable, out PersistedSnapshot? persistable), Is.True);
+        Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSized), Is.True);
         try
         {
-            Assert.That(persistable!.From.BlockNumber, Is.EqualTo(0));
-            Assert.That(persistable.To.BlockNumber, Is.EqualTo(4));
+            Assert.That(compactSized!.From.BlockNumber, Is.EqualTo(0));
+            Assert.That(compactSized.To.BlockNumber, Is.EqualTo(4));
             for (int i = 1; i <= 4; i++)
-                Assert.That(persistable.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True, $"account from block {i} missing");
+                Assert.That(compactSized.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True, $"account from block {i} missing");
         }
-        finally { persistable!.Dispose(); }
+        finally { compactSized!.Dispose(); }
     }
 
     [Test]

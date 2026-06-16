@@ -125,7 +125,7 @@ public sealed class PersistedSnapshotLoader(
     /// <summary>
     /// Build and attach the unified bloom for every loaded snapshot, replacing the AlwaysTrue
     /// placeholder each was constructed with. After this pass every snapshot that can be assembled
-    /// into a bundle — base, compacted, or persistable — carries the precise bloom built from its own
+    /// into a bundle — base, compacted, or CompactSized — carries the precise bloom built from its own
     /// on-disk image, so reads through it are filtered. Each bloom is sized exactly to its source's key count.
     /// </summary>
     /// <remarks>
@@ -139,7 +139,7 @@ public sealed class PersistedSnapshotLoader(
     {
         if (!BloomEnabled) return;
 
-        // The catalog is keyed by (To, depth), so a base, a compacted, and a persistable can
+        // The catalog is keyed by (To, depth), so a base, a compacted, and a CompactSized can
         // all coexist at the same To across the three buckets — each is an independently
         // assemblable snapshot and gets its own bloom.
         List<PersistedSnapshot> snapshots = [.. repository.PersistedSnapshots];

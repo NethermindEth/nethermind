@@ -144,7 +144,7 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// <summary>
     /// <c>posix_fadvise(POSIX_FADV_WILLNEED)</c> over <c>[offset, offset + size)</c>, asking
     /// the kernel to begin asynchronous read-ahead. Used to bulk-prefetch a base snapshot's
-    /// contiguous trie-RLP region before a linked persistable that references it is scanned.
+    /// contiguous trie-RLP region before a linked CompactSized that references it is scanned.
     /// </summary>
     internal void FadviseWillNeed(long offset, long size) =>
         PosixReclaim.FadviseWillNeed((int)Handle.DangerousGetHandle(), offset, size);

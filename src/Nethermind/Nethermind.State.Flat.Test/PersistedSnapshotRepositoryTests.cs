@@ -346,7 +346,7 @@ public class PersistedSnapshotRepositoryTests
     /// <summary>
     /// Regression for the ReconstructBloom pass inside LoadFromCatalog: after a restart,
     /// every loaded snapshot must carry its own real bloom (built from its on-disk image),
-    /// not the AlwaysTrue placeholder it was constructed with. The persistable covering
+    /// not the AlwaysTrue placeholder it was constructed with. The CompactSized covering
     /// (0, 4] holds every address written across the four bases; each base holds its own.
     /// </summary>
     [Test]
@@ -358,7 +358,7 @@ public class PersistedSnapshotRepositoryTests
 
         MemDb catalogDb = new();
 
-        // Session 1: 4 bases + a CompactSize=4 persistable covering all 4 of them.
+        // Session 1: 4 bases + a CompactSize=4 CompactSized covering all 4 of them.
         using (FlatTestContainer tier1 = new(
             arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb,
             configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 4 }, 0))))
@@ -368,7 +368,7 @@ public class PersistedSnapshotRepositoryTests
                 tier1.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
-            tier1.Compactor.DoCompactPersistable(ids[4]);  // persistable at To=4 covering (0, 4]
+            tier1.Compactor.DoCompactCompactSized(ids[4]);  // CompactSized at To=4 covering (0, 4]
         }
 
         // Session 2: reload. LoadFromCatalog now auto-calls ReconstructBloom.
@@ -376,22 +376,22 @@ public class PersistedSnapshotRepositoryTests
         SnapshotRepository repo2 = tier2.Repository;
 
         // With the v7 (To, depth)-keyed catalog the base at ids[4] survives alongside the
-        // persistable at the same To — both buckets must lease independently.
-        Assert.That(repo2.TryLeasePersistedState(ids[4], SnapshotTier.PersistedPersistable, out PersistedSnapshot? persistableAt4), Is.True);
-        using (persistableAt4)
+        // CompactSized at the same To — both buckets must lease independently.
+        Assert.That(repo2.TryLeasePersistedState(ids[4], SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSizedAt4), Is.True);
+        using (compactSizedAt4)
         {
-            // The persistable's bloom is built from its own merged HSST — it covers (0, 4]
+            // The CompactSized's bloom is built from its own merged HSST — it covers (0, 4]
             // and therefore holds every address written across the four bases.
-            BloomFilter persistableBloom = persistableAt4!.Bloom;
-            Assert.That(persistableBloom.Count, Is.GreaterThan(0),
-                "ReconstructBloom must have built a real bloom for the persistable");
-            Assert.That(persistableAt4.From.BlockNumber, Is.EqualTo(0));
-            Assert.That(persistableAt4.To.BlockNumber, Is.EqualTo(4));
+            BloomFilter compactSizedBloom = compactSizedAt4!.Bloom;
+            Assert.That(compactSizedBloom.Count, Is.GreaterThan(0),
+                "ReconstructBloom must have built a real bloom for the CompactSized");
+            Assert.That(compactSizedAt4.From.BlockNumber, Is.EqualTo(0));
+            Assert.That(compactSizedAt4.To.BlockNumber, Is.EqualTo(4));
             for (int i = 1; i <= 4; i++)
             {
                 ulong key = PersistedSnapshotBloomBuilder.AddressKey(TestItem.Addresses[i - 1]);
-                Assert.That(persistableBloom.MightContain(key), Is.True,
-                    $"AddressKey for base {i} must be in the persistable's merged bloom");
+                Assert.That(compactSizedBloom.MightContain(key), Is.True,
+                    $"AddressKey for base {i} must be in the CompactSized's merged bloom");
             }
         }
 
@@ -412,13 +412,13 @@ public class PersistedSnapshotRepositoryTests
     }
 
     /// <summary>
-    /// Regression for the v7 (To, depth)-keyed catalog: before v7, a persistable at the
+    /// Regression for the v7 (To, depth)-keyed catalog: before v7, a CompactSized at the
     /// same To as a base overwrote the base's catalog entry, so a restart would lose the
     /// base. With v7 both round-trip independently — SnapshotCount on reload equals the
     /// number of <c>Add</c> calls in the prior session.
     /// </summary>
     [Test]
-    public void LoadFromCatalog_RoundTripsBaseAndPersistableAtSameTo()
+    public void LoadFromCatalog_RoundTripsBaseAndCompactSizedAtSameTo()
     {
         StateId[] ids = new StateId[5];
         ids[0] = new(0, Keccak.EmptyTreeHash);
@@ -435,24 +435,24 @@ public class PersistedSnapshotRepositoryTests
                 tier1.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[i - 1])).Dispose();
 
-            tier1.Compactor.DoCompactPersistable(ids[4]);
+            tier1.Compactor.DoCompactCompactSized(ids[4]);
 
-            Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(5), "session 1 must hold 4 bases + 1 persistable");
+            Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(5), "session 1 must hold 4 bases + 1 CompactSized");
         }
 
         using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
         SnapshotRepository repo2 = tier2.Repository;
 
         Assert.That(repo2.PersistedSnapshotCount, Is.EqualTo(5),
-            "all five snapshots (4 bases + 1 persistable at the last base's To) must round-trip under v7");
+            "all five snapshots (4 bases + 1 CompactSized at the last base's To) must round-trip under v7");
         for (int i = 1; i <= 4; i++)
         {
             Assert.That(repo2.TryLeasePersistedState(ids[i], SnapshotTier.PersistedBase, out PersistedSnapshot? b), Is.True,
                 $"base at ids[{i}] must survive reload");
             b!.Dispose();
         }
-        Assert.That(repo2.TryLeasePersistedState(ids[4], SnapshotTier.PersistedPersistable, out PersistedSnapshot? persistable), Is.True);
-        persistable!.Dispose();
+        Assert.That(repo2.TryLeasePersistedState(ids[4], SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSized), Is.True);
+        compactSized!.Dispose();
     }
 
     /// <summary>
@@ -484,11 +484,11 @@ public class PersistedSnapshotRepositoryTests
                 tier1.ConvertToPersistedBase(
                     CreateTestSnapshot(ids[i - 1], ids[i], TestItem.Addresses[(i - 1) % TestItem.Addresses.Length])).Dispose();
 
-            // Throw in two persistables (CompactSize=8) at boundaries 8 and 16 so the
+            // Throw in two CompactSized snapshots (CompactSize=8) at boundaries 8 and 16 so the
             // catalog has multi-bucket entries that exercise the bucket-routing branch
             // in the parallel LoadSnapshot.
-            tier1.Compactor.DoCompactPersistable(ids[8]);
-            tier1.Compactor.DoCompactPersistable(ids[16]);
+            tier1.Compactor.DoCompactCompactSized(ids[8]);
+            tier1.Compactor.DoCompactCompactSized(ids[16]);
         }
 
         using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
@@ -500,9 +500,9 @@ public class PersistedSnapshotRepositoryTests
             Assert.That(repo2.TryLeasePersistedState(ids[i], SnapshotTier.PersistedBase, out PersistedSnapshot? b), Is.True, $"base ids[{i}] missing");
             b!.Dispose();
         }
-        Assert.That(repo2.TryLeasePersistedState(ids[8], SnapshotTier.PersistedPersistable, out PersistedSnapshot? p8), Is.True);
+        Assert.That(repo2.TryLeasePersistedState(ids[8], SnapshotTier.PersistedCompactSized, out PersistedSnapshot? p8), Is.True);
         p8!.Dispose();
-        Assert.That(repo2.TryLeasePersistedState(ids[16], SnapshotTier.PersistedPersistable, out PersistedSnapshot? p16), Is.True);
+        Assert.That(repo2.TryLeasePersistedState(ids[16], SnapshotTier.PersistedCompactSized, out PersistedSnapshot? p16), Is.True);
         p16!.Dispose();
 
         // Ordered-id invariant: the bases tile the whole (0, N] window via their From chain.
@@ -511,13 +511,13 @@ public class PersistedSnapshotRepositoryTests
             Assert.That(chain.Count, Is.EqualTo(N), "every base must be reachable via the From chain");
 
         // Bloom end-state: ReconstructBloom builds a real per-snapshot bloom for the base at
-        // ids[1] and for the persistable covering (0, 8].
+        // ids[1] and for the CompactSized covering (0, 8].
         Assert.That(repo2.TryLeasePersistedState(ids[1], SnapshotTier.PersistedBase, out PersistedSnapshot? baseAt1), Is.True);
         using (baseAt1)
             Assert.That(baseAt1!.Bloom.Count, Is.GreaterThan(0), "base ids[1] must have a real bloom");
-        Assert.That(repo2.TryLeasePersistedState(ids[8], SnapshotTier.PersistedPersistable, out PersistedSnapshot? persistableAt8), Is.True);
-        using (persistableAt8)
-            Assert.That(persistableAt8!.Bloom.Count, Is.GreaterThan(0), "persistable at ids[8] must have a real bloom");
+        Assert.That(repo2.TryLeasePersistedState(ids[8], SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSizedAt8), Is.True);
+        using (compactSizedAt8)
+            Assert.That(compactSizedAt8!.Bloom.Count, Is.GreaterThan(0), "CompactSized at ids[8] must have a real bloom");
     }
 
     // With bloom disabled (bits-per-key 0) the loader's Convert path uses the AlwaysTrue

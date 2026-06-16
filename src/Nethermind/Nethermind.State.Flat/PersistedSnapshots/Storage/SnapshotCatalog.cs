@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// — 8-byte big-endian block number, 32-byte state root, 8-byte big-endian depth
 /// (<c>To.BlockNumber - From.BlockNumber</c>). The depth disambiguates entries that
 /// share the same <c>To</c> across the three runtime buckets (base, compacted,
-/// persistable) so each survives independently across a restart. The reserved 4-byte
+/// CompactSized) so each survives independently across a restart. The reserved 4-byte
 /// key stores the catalog-version word; entry keys are 48 bytes, so the lengths
 /// cannot collide.
 /// </summary>

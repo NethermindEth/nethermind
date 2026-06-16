@@ -19,8 +19,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// <c>PersistedSnapshotMaxCompactSize</c> ceiling. A single instance is wired over the
 /// repository. <see cref="DoCompactSnapshot"/> compacts a block's natural power-of-2 window —
 /// the sub-<c>CompactSize</c> intermediates and the <c>&gt;CompactSize</c> merges;
-/// <see cref="DoCompactPersistable"/> produces the <c>CompactSize</c>-wide
-/// persistable snapshot. Each window merges every persisted snapshot assembled within it into
+/// <see cref="DoCompactCompactSized"/> produces the <c>CompactSize</c>-wide
+/// CompactSized snapshot. Each window merges every persisted snapshot assembled within it into
 /// one compacted snapshot when at least two are available — the window need not be fully
 /// populated.
 /// </summary>
@@ -120,13 +120,13 @@ public class PersistedSnapshotCompactor(
 
             if (_schedule.IsLargeCompactionBoundary(b))
             {
-                // Large boundary: needs the CompactSize-wide persistable AND the >CompactSize merge.
+                // Large boundary: needs the CompactSized snapshot AND the >CompactSize merge.
                 largeBoundaries.Add(s);
                 compactSizeBoundaries.Add(s);
             }
             else if (_schedule.IsCompactSizeBoundary(b))
             {
-                // Plain CompactSize boundary: only the persistable.
+                // Plain CompactSize boundary: only the CompactSized.
                 compactSizeBoundaries.Add(s);
             }
             else
@@ -145,10 +145,10 @@ public class PersistedSnapshotCompactor(
             Parallel.ForEach(kv.Value, state => DoCompactSnapshot(state));
 
         // Every boundary — CompactSize and large alike — lands on a CompactSize multiple, so each
-        // needs its CompactSize-wide persistable for RocksDB (persistence advances one CompactSize
+        // needs its CompactSized snapshot for RocksDB (persistence advances one CompactSize
         // per step); both kinds are collected in compactSizeBoundaries above.
         foreach (StateId boundary in compactSizeBoundaries)
-            DoCompactPersistable(boundary);
+            DoCompactCompactSized(boundary);
 
         // Large boundaries additionally carry a >CompactSize merge. These can be a few GB large, so
         // they are handed to the boundary compactor to run as a separate background task rather than
@@ -165,7 +165,7 @@ public class PersistedSnapshotCompactor(
             {
                 try
                 {
-                    // Only large boundaries reach this channel; their persistable was already
+                    // Only large boundaries reach this channel; their CompactSized was already
                     // produced in ProcessCompactBatch, so DoCompactSnapshot here does the
                     // >CompactSize merge.
                     DoCompactSnapshot(state);
@@ -196,12 +196,12 @@ public class PersistedSnapshotCompactor(
     /// Compact the persisted snapshots ending at <paramref name="snapshotTo"/> over the block's
     /// natural power-of-2 window. Produces sub-<c>CompactSize</c> intermediates and the
     /// <c>&gt;CompactSize</c> merges; the <c>CompactSize</c>-wide window is
-    /// reserved for <see cref="DoCompactPersistable"/>. Invoked by the background batch worker
+    /// reserved for <see cref="DoCompactCompactSized"/>. Invoked by the background batch worker
     /// (see <see cref="Enqueue"/>); not part of <see cref="IPersistedSnapshotCompactor"/>.
     /// </summary>
     /// <remarks>
     /// Does nothing when the block's window is a single snapshot (nothing to merge). The
-    /// <c>CompactSize</c>-wide persistable window is produced by <see cref="DoCompactPersistable"/>;
+    /// <c>CompactSize</c>-wide window is produced by <see cref="DoCompactCompactSized"/>;
     /// <see cref="ProcessCompactBatch"/> routes those boundaries away from here, so this method
     /// only ever sees sub-<c>CompactSize</c> intermediates and <c>&gt;CompactSize</c> merges.
     /// </remarks>
@@ -215,34 +215,34 @@ public class PersistedSnapshotCompactor(
 
         // Window left edge is the raw block number (blockNumber - size); the alignment lives in
         // offset-shifted space, so ((blockNumber-1)/size)*size would only be correct at offset 0.
-        CompactRange(snapshotTo, blockNumber - size, size, isPersistable: false);
+        CompactRange(snapshotTo, blockNumber - size, size, isCompactSized: false);
     }
 
     /// <summary>
-    /// Produce the <c>CompactSize</c>-wide persistable snapshot ending at the boundary
+    /// Produce the <c>CompactSize</c>-wide snapshot ending at the boundary
     /// block <paramref name="snapshotTo"/> — the snapshot <c>PersistenceManager</c> writes to
     /// RocksDB. Invoked by the background batch worker (see <see cref="Enqueue"/>); not part of
     /// <see cref="IPersistedSnapshotCompactor"/>.
     /// </summary>
-    public void DoCompactPersistable(StateId snapshotTo)
+    public void DoCompactCompactSized(StateId snapshotTo)
     {
         long blockNumber = snapshotTo.BlockNumber;
         if (!_schedule.IsCompactSizeBoundary(blockNumber) && !_schedule.IsLargeCompactionBoundary(blockNumber)) return;
 
         if (snapshotRepository.PersistedSnapshotCount < 2) return;
 
-        // The persistable is always CompactSize-wide; GetCompactSize returns exactly CompactSize at
+        // The CompactSized snapshot is always CompactSize-wide; GetCompactSize returns exactly CompactSize at
         // any boundary (it caps there), so the window is (blockNumber - CompactSize, blockNumber].
         int compactSize = _schedule.GetCompactSize(blockNumber);
-        CompactRange(snapshotTo, blockNumber - compactSize, compactSize, isPersistable: true);
+        CompactRange(snapshotTo, blockNumber - compactSize, compactSize, isCompactSized: true);
     }
 
-    private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
+    private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isCompactSized)
     {
         using PersistedSnapshotList snapshots = snapshotRepository.AssemblePersistedSnapshotsForCompaction(snapshotTo, startingBlockNumber);
         if (snapshots.Count < 2) return false;
 
-        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, persistable {isPersistable}");
+        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, CompactSized {isCompactSized}");
 
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
@@ -304,10 +304,10 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             reservation.Fsync();
 
-            // A non-persistable merge at a large-compaction boundary spans >CompactSize — its own tier
+            // A non-CompactSized merge at a large-compaction boundary spans >CompactSize — its own tier
             // so the assemble walk can prefer it as the widest skip-pointer.
-            SnapshotTier tier = isPersistable
-                ? SnapshotTier.PersistedPersistable
+            SnapshotTier tier = isCompactSized
+                ? SnapshotTier.PersistedCompactSized
                 : _schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber)
                     ? SnapshotTier.PersistedLargeCompacted
                     : SnapshotTier.PersistedCompacted;
