@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 

@@ -123,7 +123,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpWriter writer = new(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
 
-            RlpReader decoderContext = new(bytes.ToArray(), true);
+            RlpReader decoderContext = new(bytes, true);
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
             decoded!.SenderAddress =
                 new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
@@ -140,7 +140,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpWriter writer = new(bytes);
             _txDecoder.Encode(ref writer, testCase.Tx);
 
-            RlpReader decoderContext = new(bytes.ToArray(), true);
+            RlpReader decoderContext = new(bytes, true);
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
 
             byte[] data1 = decoded!.Data.ToArray();
