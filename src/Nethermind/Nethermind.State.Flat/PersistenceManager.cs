@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -33,16 +34,22 @@ public class PersistenceManager(
     ISnapshotRepository snapshotRepository,
     ILogManager logManager,
     IPersistedSnapshotCompactor compactor,
-    IPersistedSnapshotLoader loader) : IPersistenceManager
+    IPersistedSnapshotLoader loader,
+    IProcessExitSource processExitSource) : IPersistenceManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
+    // Linked to process exit so the conversion Parallel.ForEach below cancels at shutdown-start —
+    // before DI disposal order matters — letting the owning FlatDbManager.RunPersistence task drain.
+    private readonly CancellationTokenSource _cts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxInMemoryBaseSnapshotCount = configuration.MaxInMemoryBaseSnapshotCount;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
-    private readonly Lock _persistenceLock = new();
+    // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
+    // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
+    private readonly SemaphoreSlim _persistenceLock = new(1, 1);
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;
 
@@ -171,46 +178,53 @@ public class PersistenceManager(
 
     internal sealed record ConversionCandidate(Snapshot? Compacted, Snapshot? Base);
 
-    public void AddToPersistence(StateId latestSnapshot)
+    public async Task AddToPersistence(StateId latestSnapshot)
     {
-        using Lock.Scope scope = _persistenceLock.EnterScope();
-        // Bound the drain per invocation so a deep backlog (e.g. early catch-up sync) does
-        // not block the processing thread for an unbounded time. The caller re-enters on
-        // every block, so the remaining backlog is consumed across subsequent invocations.
-        const int MaxDrainIterations = 4;
-        for (int i = 0; i < MaxDrainIterations; i++)
+        await _persistenceLock.WaitAsync();
+        try
         {
-            (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, ConversionCandidate? toConvert) =
-                DetermineSnapshotAction(latestSnapshot);
+            // Bound the drain per invocation so a deep backlog (e.g. early catch-up sync) does
+            // not block the processing thread for an unbounded time. The caller re-enters on
+            // every block, so the remaining backlog is consumed across subsequent invocations.
+            const int MaxDrainIterations = 4;
+            for (int i = 0; i < MaxDrainIterations; i++)
+            {
+                (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, ConversionCandidate? toConvert) =
+                    DetermineSnapshotAction(latestSnapshot);
 
-            if (toPersist is not null)
-            {
-                using Snapshot _ = toPersist;
-                snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
-                PersistSnapshot(toPersist);
-                _currentPersistedStateId = toPersist.To;
-                snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
+                if (toPersist is not null)
+                {
+                    using Snapshot _ = toPersist;
+                    snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
+                    PersistSnapshot(toPersist);
+                    _currentPersistedStateId = toPersist.To;
+                    snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
+                }
+                else if (persistedToPersist is not null)
+                {
+                    using PersistedSnapshot _ = persistedToPersist;
+                    snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
+                    PersistPersistedSnapshot(persistedToPersist);
+                    _currentPersistedStateId = persistedToPersist.To;
+                    snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
+                }
+                else if (toConvert?.Compacted is not null)
+                {
+                    await ConvertCompactedRange(toConvert.Compacted);
+                }
+                else if (toConvert?.Base is not null)
+                {
+                    await ConvertSingleBase(toConvert.Base);
+                }
+                else
+                {
+                    break;
+                }
             }
-            else if (persistedToPersist is not null)
-            {
-                using PersistedSnapshot _ = persistedToPersist;
-                snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
-                PersistPersistedSnapshot(persistedToPersist);
-                _currentPersistedStateId = persistedToPersist.To;
-                snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
-            }
-            else if (toConvert?.Compacted is not null)
-            {
-                ConvertCompactedRange(toConvert.Compacted);
-            }
-            else if (toConvert?.Base is not null)
-            {
-                ConvertSingleBase(toConvert.Base);
-            }
-            else
-            {
-                break;
-            }
+        }
+        finally
+        {
+            _persistenceLock.Release();
         }
     }
 
@@ -220,7 +234,7 @@ public class PersistenceManager(
     /// batched compactor (a linked merge of the bases), not here, so the compacted in-memory
     /// snapshot is used only to delimit the block range. Disposes <paramref name="compacted"/>.
     /// </summary>
-    private void ConvertCompactedRange(Snapshot compacted)
+    private async Task ConvertCompactedRange(Snapshot compacted)
     {
         try
         {
@@ -237,6 +251,7 @@ public class PersistenceManager(
 
             Parallel.ForEach(
                 allStateIds,
+                new ParallelOptions { CancellationToken = _cts.Token },
                 state =>
                 {
                     if (snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snap))
@@ -259,7 +274,7 @@ public class PersistenceManager(
                 snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
             }
 
-            compactor.Enqueue(allStateIds);
+            await compactor.EnqueueAsync(allStateIds, _cts.Token);
         }
         finally
         {
@@ -271,7 +286,7 @@ public class PersistenceManager(
     /// Branch B — single base convert (fragmented case: no full-CompactSize compacted available
     /// for the candidate range yet). Disposes <paramref name="baseSnap"/>.
     /// </summary>
-    private void ConvertSingleBase(Snapshot baseSnap)
+    private async Task ConvertSingleBase(Snapshot baseSnap)
     {
         try
         {
@@ -280,7 +295,7 @@ public class PersistenceManager(
             Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
 
             ArrayPoolList<StateId> single = new(1) { baseSnap.To };
-            compactor.Enqueue(single);
+            await compactor.EnqueueAsync(single, _cts.Token);
 
             snapshotRepository.RemoveAndReleaseInMemoryKnownState(baseSnap.To, SnapshotTier.InMemoryBase);
         }
@@ -303,8 +318,19 @@ public class PersistenceManager(
     /// </remarks>
     public StateId FlushToPersistence()
     {
-        using Lock.Scope scope = _persistenceLock.EnterScope();
+        _persistenceLock.Wait();
+        try
+        {
+            return FlushToPersistenceLocked();
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
 
+    private StateId FlushToPersistenceLocked()
+    {
         StateId currentPersistedState = GetCurrentPersistedStateId();
         StateId? latestStateId = snapshotRepository.GetLastSnapshotId();
 
@@ -366,6 +392,12 @@ public class PersistenceManager(
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         _currentPersistedStateId = reader.CurrentState;
+    }
+
+    public void Dispose()
+    {
+        _cts.Dispose();
+        _persistenceLock.Dispose();
     }
 
     internal void PersistSnapshot(Snapshot snapshot)

@@ -18,7 +18,11 @@ public sealed class NullPersistedSnapshotCompactor : IPersistedSnapshotCompactor
     private NullPersistedSnapshotCompactor() { }
 
     // Dispose immediately — no compaction work, but ownership still transfers so callers don't leak.
-    public void Enqueue(ArrayPoolList<StateId> batch) => batch.Dispose();
+    public ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, CancellationToken cancellationToken)
+    {
+        batch.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     // Shared singleton: disposal must be a safe no-op so a container or forwarding caller
     // can dispose it without breaking the shared instance.

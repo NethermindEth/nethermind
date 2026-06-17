@@ -147,11 +147,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             await foreach (StateId stateId in _persistenceJobs.Reader.ReadAllAsync(cancellationToken))
             {
-                await NotifyWhenSlow($"Persisting {stateId}", () =>
-                {
-                    PersistIfNeeded(stateId);
-                    return Task.CompletedTask;
-                });
+                await NotifyWhenSlow($"Persisting {stateId}", () => PersistIfNeeded(stateId));
             }
         }
         catch (OperationCanceledException)
@@ -159,9 +155,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
-    private void PersistIfNeeded(in StateId latestSnapshot)
+    private async Task PersistIfNeeded(StateId latestSnapshot)
     {
-        _persistenceManager.AddToPersistence(latestSnapshot);
+        await _persistenceManager.AddToPersistence(latestSnapshot);
 
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;

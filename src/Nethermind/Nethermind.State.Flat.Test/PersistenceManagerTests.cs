@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -66,12 +67,14 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
-            _tier.Loader);
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
     }
 
     [TearDown]
     public async Task TearDown()
     {
+        _persistenceManager.Dispose();
         await _persistedSnapshotCompactor.DisposeAsync();
         _tier.Dispose();
     }
@@ -191,7 +194,8 @@ public class PersistenceManagerTests
             _snapshotRepository,
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
-            _tier.Loader);
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
 
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);
@@ -333,7 +337,7 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void AddToPersistence_InMemoryPersist_PrunesPersistedTier()
+    public async Task AddToPersistence_InMemoryPersist_PrunesPersistedTier()
     {
         // Persisting an in-memory snapshot must trigger RemoveStatesUntil on both tier repos so
         // superseded tier entries get cleared — the toPersist branch must prune, not only the
@@ -356,14 +360,14 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        _persistenceManager.AddToPersistence(latest);
+        await _persistenceManager.AddToPersistence(latest);
 
         // Persisting the in-memory snapshot at `to` must prune the persisted tier below `to`.
         Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
     }
 
     [Test]
-    public void AddToPersistence_TierSourcePersist_PrunesPersistedTier()
+    public async Task AddToPersistence_TierSourcePersist_PrunesPersistedTier()
     {
         // Sibling of AddToPersistence_InMemoryPersist_PrunesPersistedTier for the persistedToPersist
         // branch. Tier-source persists must also drive RemoveStatesUntil so superseded entries are cleared.
@@ -382,7 +386,7 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        _persistenceManager.AddToPersistence(latest);
+        await _persistenceManager.AddToPersistence(latest);
 
         Assert.That(_snapshotRepository.HasBaseSnapshot(stale), Is.False);
     }
@@ -602,7 +606,7 @@ public class PersistenceManagerTests
     #endregion
 
     [Test]
-    public void AddToPersistence_WithAvailableSnapshot_PersistsAndUpdatesState()
+    public async Task AddToPersistence_WithAvailableSnapshot_PersistsAndUpdatesState()
     {
         // Finalized at the candidate block so the single-seed BFS lands directly on it.
         StateId from = Block0;
@@ -618,7 +622,7 @@ public class PersistenceManagerTests
         IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
 
-        _persistenceManager.AddToPersistence(latest);
+        await _persistenceManager.AddToPersistence(latest);
 
         _persistence.Received().CreateWriteBatch(from, to);
         Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(to));

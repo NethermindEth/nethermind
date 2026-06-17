@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Threading.Channels;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
@@ -39,6 +40,7 @@ public class PersistedSnapshotCompactor(
     IFlatDbConfig config,
     ICompactionSchedule schedule,
     IPersistedSnapshotLoader loader,
+    IProcessExitSource processExitSource,
     ILogManager logManager) : IPersistedSnapshotCompactor
 {
     // Held only to anchor the disposal order documented above (loader disposed after this).
@@ -51,7 +53,9 @@ public class PersistedSnapshotCompactor(
 
     private readonly Channel<ArrayPoolList<StateId>> _compactPersistedJobs = Channel.CreateBounded<ArrayPoolList<StateId>>(16);
     private readonly Channel<StateId> _boundaryCompactJobs = Channel.CreateBounded<StateId>(16);
-    private readonly CancellationTokenSource _cancelTokenSource = new();
+    // Background workers and their in-flight compaction observe process-exit directly; graceful
+    // disposal instead completes the channels and drains the remaining work (see DisposeAsync).
+    private readonly CancellationToken _shutdownToken = processExitSource.Token;
     private Task? _compactPersistedTask;
     private Task[]? _boundaryCompactorTasks;
     private int _disposed;
@@ -59,20 +63,32 @@ public class PersistedSnapshotCompactor(
     private const int BoundaryCompactorWorkerCount = 4;
 
     /// <inheritdoc/>
-    public void Enqueue(ArrayPoolList<StateId> batch)
+    public async ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, CancellationToken cancellationToken)
     {
-        EnsureStarted();
-        _compactPersistedJobs.Writer.WriteAsync(batch).AsTask().Wait();
+        // Fire-and-forget: EnsureStarted returns the long-running compactor task, which must not be awaited.
+        _ = EnsureStarted();
+        try
+        {
+            // Awaits a free slot on the bounded queue, providing backpressure without blocking a thread;
+            // the caller's token releases the wait on shutdown.
+            await _compactPersistedJobs.Writer.WriteAsync(batch, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // The batch never entered the channel, so dispose the handoff we still own.
+            batch.Dispose();
+            throw;
+        }
     }
 
     private Task EnsureStarted()
     {
-        _compactPersistedTask ??= RunPersistedCompactor(_cancelTokenSource.Token);
+        _compactPersistedTask ??= RunPersistedCompactor(_shutdownToken);
         if (_boundaryCompactorTasks is null)
         {
             Task[] tasks = new Task[BoundaryCompactorWorkerCount];
             for (int i = 0; i < BoundaryCompactorWorkerCount; i++)
-                tasks[i] = RunBoundaryCompactor(_cancelTokenSource.Token);
+                tasks[i] = RunBoundaryCompactor(_shutdownToken);
             _boundaryCompactorTasks = tasks;
         }
         return _compactPersistedTask;
@@ -86,9 +102,9 @@ public class PersistedSnapshotCompactor(
             {
                 try
                 {
-                    await ProcessCompactBatch(batch);
+                    await ProcessCompactBatch(batch, cancellationToken);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.Error($"Error compacting persisted snapshot batch. {ex}");
                 }
@@ -105,7 +121,7 @@ public class PersistedSnapshotCompactor(
         }
     }
 
-    private async Task ProcessCompactBatch(ArrayPoolList<StateId> batch)
+    private async Task ProcessCompactBatch(ArrayPoolList<StateId> batch, CancellationToken cancellationToken)
     {
         if (batch.Count == 0) return;
 
@@ -142,7 +158,7 @@ public class PersistedSnapshotCompactor(
         // Ascending bucket order: each sub-CompactSize layer's inputs (the previous layer's
         // outputs) exist before it runs.
         foreach (KeyValuePair<int, List<StateId>> kv in buckets)
-            Parallel.ForEach(kv.Value, state => DoCompactSnapshot(state));
+            Parallel.ForEach(kv.Value, new ParallelOptions { CancellationToken = cancellationToken }, state => DoCompactSnapshot(state));
 
         // Every boundary — CompactSize and large alike — lands on a CompactSize multiple, so each
         // needs its CompactSized snapshot for RocksDB (persistence advances one CompactSize
@@ -154,7 +170,7 @@ public class PersistedSnapshotCompactor(
         // they are handed to the boundary compactor to run as a separate background task rather than
         // blocking this batch worker.
         foreach (StateId boundary in largeBoundaries)
-            await _boundaryCompactJobs.Writer.WriteAsync(boundary, _cancelTokenSource.Token);
+            await _boundaryCompactJobs.Writer.WriteAsync(boundary, cancellationToken);
     }
 
     private async Task RunBoundaryCompactor(CancellationToken cancellationToken)
@@ -182,14 +198,15 @@ public class PersistedSnapshotCompactor(
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _cancelTokenSource.Cancel();
+        // Complete and drain the persisted stage first so any boundary jobs it produces are written
+        // before the boundary channel is completed; on process exit the shared token has already
+        // cancelled both stages, so these awaits return promptly instead of draining.
         _compactPersistedJobs.Writer.Complete();
-        _boundaryCompactJobs.Writer.Complete();
         if (_compactPersistedTask is not null)
             await _compactPersistedTask;
+        _boundaryCompactJobs.Writer.Complete();
         if (_boundaryCompactorTasks is not null)
             await Task.WhenAll(_boundaryCompactorTasks);
-        _cancelTokenSource.Dispose();
     }
 
     /// <summary>

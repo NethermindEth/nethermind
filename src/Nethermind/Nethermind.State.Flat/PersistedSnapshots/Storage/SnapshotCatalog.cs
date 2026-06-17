@@ -132,6 +132,10 @@ public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
         long offset = BinaryPrimitives.ReadInt64LittleEndian(span[84..]);
         long size = BinaryPrimitives.ReadInt64LittleEndian(span[92..]);
         SnapshotTier tier = (SnapshotTier)span[100];
+        if (!tier.IsPersisted())
+            throw new InvalidOperationException(
+                $"Persisted snapshot catalog entry has non-persisted tier byte {span[100]} (only Persisted* tiers are ever stored). " +
+                "The persisted_snapshot/ directory has an incompatible or corrupted layout — wipe and resync.");
 
         return new CatalogEntry(from, to, new SnapshotLocation(arenaId, offset, size), tier);
     }
