@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat;
 

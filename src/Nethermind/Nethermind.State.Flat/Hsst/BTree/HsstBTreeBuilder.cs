@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Hsst.BTree;
 

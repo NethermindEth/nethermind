@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Text;
-using Nethermind.State.Flat;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 using Nethermind.State.Flat.Hsst.BTree;

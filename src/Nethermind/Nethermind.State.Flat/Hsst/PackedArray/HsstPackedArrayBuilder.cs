@@ -4,8 +4,6 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Utils;
-using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Hsst.PackedArray;
 

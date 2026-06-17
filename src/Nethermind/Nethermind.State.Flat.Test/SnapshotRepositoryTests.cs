@@ -1,18 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Logging;
-using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.PersistedSnapshots.Storage;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;

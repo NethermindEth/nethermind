@@ -6,9 +6,7 @@ using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
