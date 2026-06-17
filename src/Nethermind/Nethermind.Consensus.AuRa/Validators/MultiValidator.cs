@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return found;
         }
 
-        private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
+        private void OnBlocksFinalized(object sender, AuRaFinalizeEventArgs e)
         {
             for (int i = 0; i < e.FinalizedBlocks.Count; i++)
             {
