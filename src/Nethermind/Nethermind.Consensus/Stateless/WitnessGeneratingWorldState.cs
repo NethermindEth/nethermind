@@ -3,14 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Collections.Pooled;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -20,14 +18,13 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
-/// <param name="stateReader">Serves the post-execution proof-collection walks in <see cref="GetWitness"/>;
-/// must be a plain (non-capturing) reader — re-traversal is proof collection, not state access, so
-/// recording it into <paramref name="trieRecorder"/> would only duplicate the witness buffers.</param>
+/// <param name="stateReader">Plain (non-capturing) reader for pre-state accounts (their storage roots) at
+/// the parent block, used to drive the post-execution witness walk in <see cref="GetWitness"/>.</param>
+/// <param name="trieStore">Read-only trie store walked at the pre-state root to collect the witness nodes.</param>
 public class WitnessGeneratingWorldState(
     IWorldState state,
     IStateReader stateReader,
-    WitnessCapturingTrieStore trieStore,
-    WitnessTrieStoreRecorder trieRecorder,
+    IReadOnlyTrieStore trieStore,
     WitnessHeaderRecorder headerRecorder,
     IHeaderFinder headerFinder)
     : WorldStateDecorator(state)
@@ -45,35 +42,8 @@ public class WitnessGeneratingWorldState(
 
     public Witness GetWitness(BlockHeader parentHeader)
     {
-        // A reverted write leaves no trie traversal (the write was cached, then discarded), so its
-        // trie nodes were never captured. The walk below re-traverses the touched keys to capture
-        // them — only needed for cross-client (e.g. geth) stateless re-execution; our own execution
-        // wouldn't require it.
-        if (!trieRecorder.TouchedNodesRlp.Any())
-        {
-            // When there are no storage-slot or account reads, lazy TrieNode handling can leave the root node
-            // unrecorded, especially when recording is skipped for nodes with an unknown type.
-            // To ensure the witness still includes the root node in this case, we explicitly resolve it here
-            // through the capturing trie store so the read lands on the recorder.
-            // This usually works because trie nodes, and especially the root node, tend to be cached.
-            ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
-            TreePath path = TreePath.Empty;
-            TrieNode node = stateResolver.FindCachedOrUnknown(path, parentHeader.StateRoot!);
-            node.ResolveNode(stateResolver, path);
-        }
-
-        using PooledSet<byte[]> stateNodes = new(trieRecorder.TouchedNodesRlp, Bytes.EqualityComparer);
-        if (_storageSlots.Count > 0)
-        {
-            // A single walk captures both the state-trie path to every touched account and, via the
-            // storage descent at each account leaf, the storage-trie path to every touched slot.
-            MultiAccountProofCollector collector = new(_storageSlots);
-            stateReader.RunTreeVisitor(collector, parentHeader);
-            foreach (byte[] node in collector.Nodes)
-            {
-                stateNodes.Add(node);
-            }
-        }
+        CollectingSink sink = new();
+        CollectStateNodes(parentHeader, sink);
 
         // New pool-rented buffers added here must also be disposed in the catch below.
         ArrayPoolList<byte[]>? codes = null;
@@ -85,8 +55,8 @@ public class WitnessGeneratingWorldState(
             foreach (byte[] code in _bytecodes.Values)
                 codes.Add(code);
 
-            state = new ArrayPoolList<byte[]>(stateNodes.Count);
-            foreach (byte[] node in stateNodes)
+            state = new ArrayPoolList<byte[]>(sink.Nodes.Count);
+            foreach (byte[] node in sink.Nodes.Values)
                 state.Add(node);
 
             int totalKeysCount = _storageSlots.Count;
@@ -122,6 +92,67 @@ public class WitnessGeneratingWorldState(
             keys?.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Walks the pre-state trie(s) with <see cref="PatriciaTrieWitnessGenerator"/> to collect every node a
+    /// stateless verifier needs: one pass over the state trie for the touched accounts, then one pass per
+    /// account over its pre-state storage trie for the touched slots. Read/Delete is read off the committed
+    /// post-state (an account that no longer exists, or a slot whose value is now zero, was removed).
+    /// </summary>
+    private void CollectStateNodes(BlockHeader parentHeader, CollectingSink sink)
+    {
+        Hash256 stateRoot = parentHeader.StateRoot!;
+        if (_storageSlots.Count > 0)
+        {
+            using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
+            foreach (AddressAsKey address in _storageSlots.Keys)
+            {
+                PatriciaTrieWitnessGenerator.AccessType access = base.AccountExists(address)
+                    ? PatriciaTrieWitnessGenerator.AccessType.Read
+                    : PatriciaTrieWitnessGenerator.AccessType.Delete;
+                accountEntries.Add(new(address.Value.ToAccountPath, access));
+            }
+            PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(null), stateRoot, accountEntries.AsSpan(), sink);
+
+            foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> kvp in _storageSlots)
+            {
+                if (kvp.Value.Count == 0) continue;
+                Address address = kvp.Key;
+                if (!stateReader.TryGetAccount(parentHeader, address, out AccountStruct account)) continue;
+                ValueHash256 storageRoot = account.StorageRoot;
+                if (storageRoot == Keccak.EmptyTreeHash.ValueHash256) continue;
+
+                using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> slotEntries = new(kvp.Value.Count);
+                foreach (UInt256 slot in kvp.Value)
+                {
+                    ValueHash256 slotKey = default;
+                    StorageTree.ComputeKeyWithLookup(slot, ref slotKey);
+                    bool deleted = base.Get(new StorageCell(address, slot)).IndexOfAnyExcept((byte)0) < 0;
+                    slotEntries.Add(new(slotKey, deleted ? PatriciaTrieWitnessGenerator.AccessType.Delete : PatriciaTrieWitnessGenerator.AccessType.Read));
+                }
+                PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(address), new Hash256(storageRoot), slotEntries.AsSpan(), sink);
+            }
+        }
+
+        // Nothing touched but a non-empty state root: anchor the witness with the root node, which lazy
+        // TrieNode handling can otherwise leave uncollected.
+        if (sink.Nodes.Count == 0 && stateRoot != Keccak.EmptyTreeHash)
+        {
+            IScopedTrieStore stateResolver = trieStore.GetTrieStore(null);
+            TreePath path = TreePath.Empty;
+            TrieNode root = stateResolver.FindCachedOrUnknown(path, stateRoot);
+            root.ResolveNode(stateResolver, path);
+            if (root.Keccak is not null) sink.Add(path, root);
+        }
+    }
+
+    // Not thread-safe (plain dictionary), so the generator is always invoked with parallelize off.
+    private sealed class CollectingSink : PatriciaTrieWitnessGenerator.ISink
+    {
+        public Dictionary<Hash256AsKey, byte[]> Nodes { get; } = [];
+
+        public void Add(in TreePath path, TrieNode node) => Nodes[node.Keccak!] = node.FullRlp.ToArray();
     }
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
