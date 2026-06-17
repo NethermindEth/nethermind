@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
+using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -22,8 +22,6 @@ public struct EvmPooledMemory
     private ulong _lastZeroedSize;
 
     private byte[]? _memory;
-    // Set once in RentSlow before _memory, then sticky: non-null whenever _memory is.
-    private ArrayPool<byte>? _pool;
     public ulong Size { get; private set; }
 
     public bool TrySaveWord(in UInt256 location, Span<byte> word)
@@ -377,7 +375,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            _pool!.Return(memory);
+            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
         }
     }
 
@@ -421,38 +419,60 @@ public struct EvmPooledMemory
         }
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void RentSlow()
+    private const int MinRentSize = 1_024;
+    private const int MaxCachedArrayLength = 1 << 16;
+    private const int CleanCacheSlots = 16;
+
+    [ThreadStatic] private static byte[]?[]? _cleanArrays;
+    [ThreadStatic] private static int _cleanArrayCount;
+
+    private static byte[] RentClean(int minLength)
     {
-        const int MinRentSize = 1_024;
-        ArrayPool<byte> pool = _pool ??= EvmMemoryPool.Pool;
-        if (_memory is null)
+        byte[]?[]? cache = _cleanArrays;
+        for (int i = _cleanArrayCount - 1; i >= 0; i--)
         {
-            _memory = pool.Rent((int)Math.Max((uint)Size, MinRentSize));
-            Array.Clear(_memory, 0, TruncateToInt32(Size));
-        }
-        else
-        {
-            int lastZeroedSize = (int)_lastZeroedSize;
-            if (Size > (ulong)_memory.LongLength)
+            byte[] candidate = cache![i]!;
+            if (candidate.Length >= minLength)
             {
-                byte[] beforeResize = _memory;
-                _memory = pool.Rent(TruncateToInt32(Size));
-                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-                pool.Return(beforeResize);
-            }
-            else if (Size > _lastZeroedSize)
-            {
-                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
-            }
-            else
-            {
-                return;
+                _cleanArrayCount--;
+                cache[i] = cache[_cleanArrayCount];
+                cache[_cleanArrayCount] = null;
+                return candidate;
             }
         }
 
-        _lastZeroedSize = Size;
+        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+    }
+
+    private static void ReturnClean(byte[] array, int dirtyLength)
+    {
+        if (array.Length > MaxCachedArrayLength)
+            return;
+
+        byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
+        if (_cleanArrayCount < CleanCacheSlots)
+        {
+            Array.Clear(array, 0, dirtyLength);
+            cache[_cleanArrayCount++] = array;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RentSlow()
+    {
+        if (_memory is null)
+        {
+            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
+        }
+        else if (Size > (ulong)_memory.LongLength)
+        {
+            byte[] beforeResize = _memory;
+            _memory = RentClean(TruncateToInt32(Size));
+            Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
+            ReturnClean(beforeResize, beforeResize.Length);
+        }
+
+        _lastZeroedSize = (ulong)_memory.Length;
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
@@ -471,36 +491,6 @@ public struct EvmPooledMemory
         Metrics.EvmExceptions++;
         throw new ArgumentOutOfRangeException("EvmWord size must be 32 bytes");
     }
-}
-
-/// <summary>
-/// Per-thread pool for <see cref="EvmPooledMemory"/> buffers, avoiding contention on the shared
-/// pool between the parallel pre-warmer and the main execution thread. Safe because a frame's memory
-/// is always rented and returned on the same thread.
-/// </summary>
-internal static class EvmMemoryPool
-{
-#if ZK_EVM
-    // Preserve zkEVM determinism: always use the zk-safe shared pool.
-    public static ArrayPool<byte> Pool
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        // Fully qualified so the using isn't stripped as unused in non-ZK builds.
-        get => Nethermind.Core.Collections.SafeArrayPool<byte>.Shared;
-    }
-#else
-    [ThreadStatic] private static ArrayPool<byte>? _threadLocal;
-
-    public static ArrayPool<byte> Pool
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _threadLocal ??= CreateThreadLocal();
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ArrayPool<byte> CreateThreadLocal()
-        => ArrayPool<byte>.Create(maxArrayLength: 2 * 1024 * 1024, maxArraysPerBucket: 8);
-#endif
 }
 
 public static class UInt256Extensions
