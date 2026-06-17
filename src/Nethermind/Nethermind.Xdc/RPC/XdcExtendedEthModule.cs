@@ -100,7 +100,7 @@ internal sealed class XdcExtendedEthModule(
 
         XdcTransactionAndReceiptProof proof = new()
         {
-            BlockHash = block.Hash!,
+            BlockHash = block.Hash ?? throw new InvalidOperationException($"Block returned by FindBlock has a null hash for block hash lookup {blockHash}"),
             TxRoot = TxTrie.CalculateRoot(transactions),
             ReceiptRoot = ReceiptTrie.CalculateRoot(spec, receipts, ReceiptEncoder),
             Key = Bytes.ToHexString(Rlp.Encode(index).Bytes),
