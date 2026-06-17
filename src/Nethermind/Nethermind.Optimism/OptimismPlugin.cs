@@ -77,8 +77,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.FinalizationManager = new ManualBlockFinalizationManager();
-
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
@@ -95,8 +93,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
-
-        ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
 
         IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
 
