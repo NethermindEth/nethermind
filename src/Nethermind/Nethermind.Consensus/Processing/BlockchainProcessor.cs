@@ -221,8 +221,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (_disposed) return;
         _disposed = true;
 
-        _pauseGate.Resume();
-
         bool isStarted = _processorTask is not null;
         if (isStarted)
         {
@@ -233,6 +231,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _recoveryComplete = true;
         if (processRemainingBlocks)
         {
+            _pauseGate.Resume();
             _recoveryQueue.Writer.TryComplete();
             await (_recoveryTask ?? Task.CompletedTask);
             _blockQueue.Writer.TryComplete();
