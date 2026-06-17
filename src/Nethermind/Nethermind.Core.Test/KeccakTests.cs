@@ -180,7 +180,7 @@ namespace Nethermind.Core.Test
             KeccakRlpWriter writer = new();
             for (int i = 0; i < bytes.Length; i++)
             {
-                writer.Write([bytes[i]]);
+                WriteByte(ref writer, bytes[i]);
             }
 
             Assert.That(writer.GetHash().Bytes.ToHexString(), Is.EqualTo(expected));
@@ -1290,6 +1290,10 @@ namespace Nethermind.Core.Test
             ExactMemoryOwner memoryOwner = new(encoded);
             return new RlpByteArrayList(memoryOwner, memoryOwner.Memory);
         }
+
+        private static void WriteByte<TWriter>(ref TWriter writer, byte value)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
+            => writer.WriteByte(value);
 
         private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>
         {

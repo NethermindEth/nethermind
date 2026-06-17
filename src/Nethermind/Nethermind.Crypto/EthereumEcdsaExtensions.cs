@@ -14,8 +14,7 @@ public static class EthereumEcdsaExtensions
     public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
         KeccakRlpWriter writer = new();
-        writer.WriteByte(Eip7702Constants.Magic);
-        AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
+        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, chainId, codeAddress, nonce);
         Signature sig = ecdsa.Sign(signer, writer.GetValueHash());
         return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
     }
@@ -108,8 +107,7 @@ public static class EthereumEcdsaExtensions
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
     {
         KeccakRlpWriter writer = new();
-        writer.WriteByte(Eip7702Constants.Magic);
-        AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
         return ecdsa.RecoverAddress(tuple.AuthoritySignature, writer.GetValueHash());
     }
 }

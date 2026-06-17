@@ -60,6 +60,13 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.Encode(nonce);
     }
 
+    public static void EncodeSignaturePayload<TWriter>(ref TWriter writer, UInt256 chainId, Address codeAddress, ulong nonce)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        writer.WriteByte(Eip7702Constants.Magic);
+        EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
+    }
+
     public void EncodeArray<TWriter>(ref TWriter writer, AuthorizationTuple[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {

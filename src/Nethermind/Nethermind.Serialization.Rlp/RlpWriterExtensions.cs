@@ -21,36 +21,9 @@ public static class RlpWriterExtensions
     private const byte EmptyArrayByte = 128;
     private const byte EmptySequenceByte = 192;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteByteCore<TWriter>(ref TWriter writer, byte byteToWrite)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct =>
-        writer.WriteByte(byteToWrite);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteCore<TWriter>(ref TWriter writer, scoped ReadOnlySpan<byte> bytesToWrite)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct =>
-        writer.Write(bytesToWrite);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteZeroCore<TWriter>(ref TWriter writer, int length)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct =>
-        writer.WriteZero(length);
-
     extension<TWriter>(ref TWriter writer)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void WriteByte(byte byteToWrite) => WriteByteCore(ref writer, byteToWrite);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Write(byte[] bytesToWrite) => WriteCore(ref writer, bytesToWrite.AsSpan());
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Write(scoped ReadOnlySpan<byte> bytesToWrite) => WriteCore(ref writer, bytesToWrite);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void WriteZero(int length) => WriteZeroCore(ref writer, length);
-
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
         {
             switch (contentLength)

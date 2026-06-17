@@ -93,8 +93,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
             byte[] originalContent = new byte[noSigSequenceLength];
             RlpWriter writer = new(originalContent);
-            writer.StartSequence(noSigContentLength);
-            writer.Write(ctx.Read(noSigContentLength));
+            WriteOriginalContent(ref writer, noSigContentLength, ctx.Read(noSigContentLength));
             ctx.Position = startPosition;
             nodeRecord.OriginalContentRlp = originalContent;
         }
@@ -103,6 +102,13 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
         nodeRecord.Signature = signature;
 
         return nodeRecord;
+    }
+
+    private static void WriteOriginalContent<TWriter>(ref TWriter writer, int contentLength, ReadOnlySpan<byte> content)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        writer.StartSequence(contentLength);
+        writer.Write(content);
     }
 
     /// <summary>

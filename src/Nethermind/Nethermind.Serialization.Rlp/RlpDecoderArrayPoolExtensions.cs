@@ -147,18 +147,9 @@ public static class RlpDecoderArrayPoolExtensions
 
     private static ArrayPoolSpan<byte> EmptyListSpan()
     {
-        PooledRlpWriter writer = new(Rlp.OfEmptyList.Length);
-        try
-        {
-            writer.WriteByte(Rlp.EmptyListByte);
-            EnsureFullyWritten(writer.Position, writer.Length);
-            return writer.DetachBuffer();
-        }
-        catch
-        {
-            writer.Dispose();
-            throw;
-        }
+        ArrayPoolSpan<byte> span = new(Rlp.OfEmptyList.Length);
+        span[0] = Rlp.EmptyListByte;
+        return span;
     }
 
     private static void EncodeNullable<TWriter, T>(IRlpDecoder<T> decoder, ref TWriter writer, T? item, RlpBehaviors behaviors)

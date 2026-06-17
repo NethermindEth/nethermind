@@ -25,15 +25,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         writer.StartSequence(GetBlockAccessListsContentLength(blockAccessLists));
         for (int i = 0; i < blockAccessLists.Count; i++)
         {
-            byte[]? blockAccessListRlp = blockAccessLists[i];
-            if (blockAccessListRlp is null)
-            {
-                writer.WriteByte(Rlp.EmptyByteArrayByte);
-            }
-            else
-            {
-                writer.Write(blockAccessListRlp);
-            }
+            WriteBlockAccessListEntry(ref writer, blockAccessLists[i]);
         }
     }
 
@@ -81,6 +73,19 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         }
 
         return contentLength;
+    }
+
+    private static void WriteBlockAccessListEntry<TWriter>(ref TWriter writer, byte[]? blockAccessListRlp)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        if (blockAccessListRlp is null)
+        {
+            writer.WriteByte(Rlp.EmptyByteArrayByte);
+        }
+        else
+        {
+            writer.Write(blockAccessListRlp.AsSpan());
+        }
     }
 
     private static ArrayPoolList<byte[]?> DecodeBlockAccessLists(ref RlpReader ctx)
