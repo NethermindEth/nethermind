@@ -218,6 +218,8 @@ public sealed class PersistedSnapshotLoader(
         reservation.Fsync();
         blobWriter.Fsync();
 
+        if (_logger.IsDebug) _logger.Debug($"Persisted snapshot {snapshot.From.BlockNumber}->{snapshot.To.BlockNumber} to disk (arena {location.ArenaId}, {location.Size} bytes)");
+
         // Build the persisted snapshot (its ctor takes its own reservation + blob leases, so we drop
         // ours), record the catalog entry, then index it. AddPersistedSnapshot takes the bucket's own
         // lease, so we drop this construction lease once indexing (and optional validation) is done.

@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -20,7 +21,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// point lookups lock-free. The lock only serialises ordered-set mutation, catalog writes, and
 /// the lease/dispose handoff so a racing prune cannot dispose an entry between insert and return.
 /// </remarks>
-internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, SnapshotTier tier)
+internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, SnapshotTier tier, ILogger logger)
 {
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _byTo = new();
     private readonly SortedSet<StateId> _ordered = [];
@@ -133,6 +134,7 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     public void DisposeAndClear()
     {
         using Lock.Scope scope = _lock.EnterScope();
+        if (logger.IsDebug && _byTo.Count > 0) logger.Debug($"Releasing {_byTo.Count} persisted snapshot(s) ({_tierName}) on teardown");
         foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
         {
             PersistedSnapshotLabel label = LabelFor(kv.Value);
@@ -166,6 +168,7 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
         Metrics.PersistedSnapshotCount.AddBy(label, -1);
         Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
         catalog.Remove(to, depth);
+        if (logger.IsDebug) logger.Debug($"Released persisted snapshot {_tierName} {snapshot.From.BlockNumber}->{to.BlockNumber}");
         snapshot.Dispose();
         return true;
     }

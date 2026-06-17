@@ -61,12 +61,12 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         ILogManager logManager)
     {
         _catalog = catalog;
-        _base = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedBase);
-        _smallCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedSmallCompacted);
-        _largeCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedLargeCompacted);
-        _compactSized = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedCompactSized);
-        _compactSize = config.CompactSize;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
+        _base = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedBase, _logger);
+        _smallCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedSmallCompacted, _logger);
+        _largeCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedLargeCompacted, _logger);
+        _compactSized = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedCompactSized, _logger);
+        _compactSize = config.CompactSize;
     }
 
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
@@ -504,8 +504,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// caller retains and disposes its construction lease, and owns the catalog entry — a freshly
     /// persisted/compacted snapshot writes one; a snapshot reloaded from the catalog does not.
     /// </summary>
-    public void AddPersistedSnapshot(PersistedSnapshot snapshot, SnapshotTier tier) =>
+    public void AddPersistedSnapshot(PersistedSnapshot snapshot, SnapshotTier tier)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Created persisted snapshot {tier} {snapshot.From.BlockNumber}->{snapshot.To.BlockNumber} ({snapshot.Size} bytes)");
         BucketFor(tier).Add(snapshot.To, snapshot);
+    }
 
     /// <summary>
     /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket for
