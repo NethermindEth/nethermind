@@ -195,29 +195,78 @@ public class ScopeProviderTests(bool useFlat)
         {
             scope.HintBal(bal, sink).Wait();
 
-            Assert.That(sink.Accounts.ContainsKey(TestItem.AddressA), Is.True);
-            Assert.That(sink.Accounts[TestItem.AddressA]!.Balance, Is.EqualTo((UInt256)100));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sink.Accounts.ContainsKey(TestItem.AddressA), Is.True);
+                Assert.That(sink.Accounts[TestItem.AddressA]!.Balance, Is.EqualTo((UInt256)100));
 
-            Assert.That(sink.Accounts.ContainsKey(TestItem.AddressB), Is.True);
-            Assert.That(sink.Accounts[TestItem.AddressB]!.Balance, Is.EqualTo((UInt256)200));
+                Assert.That(sink.Accounts.ContainsKey(TestItem.AddressB), Is.True);
+                Assert.That(sink.Accounts[TestItem.AddressB]!.Balance, Is.EqualTo((UInt256)200));
 
-            Assert.That(sink.NullAccounts.ContainsKey(TestItem.AddressC), Is.True);
+                Assert.That(sink.NullAccounts.ContainsKey(TestItem.AddressC), Is.True);
 
+                IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
+                IWorldStateScopeProvider.IStorageTree storageTreeB = scope.CreateStorageTree(TestItem.AddressB);
+
+                StorageCell cellA1 = new(TestItem.AddressA, 1);
+                StorageCell cellA2 = new(TestItem.AddressA, 2);
+                StorageCell cellB5 = new(TestItem.AddressB, 5);
+
+                Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
+                Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
+
+                Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
+                Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
+
+                Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
+                Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
+            }
+        }
+    }
+
+    [TestCase(10)]
+    [TestCase(1500)]
+    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slotCount);
+                for (int i = 1; i <= slotCount; i++)
+                {
+                    storageA.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        UInt256[] readKeys = new UInt256[slotCount];
+        for (int i = 1; i <= slotCount; i++) readKeys[i - 1] = (UInt256)i;
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(readKeys).TestObject)
+            .TestObject;
+
+        CollectingBalSink sink = new();
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            scope.HintBal(bal, sink).Wait();
+
+            Assert.That(sink.Storage, Has.Count.EqualTo(slotCount));
             IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
-            IWorldStateScopeProvider.IStorageTree storageTreeB = scope.CreateStorageTree(TestItem.AddressB);
-
-            StorageCell cellA1 = new(TestItem.AddressA, 1);
-            StorageCell cellA2 = new(TestItem.AddressA, 2);
-            StorageCell cellB5 = new(TestItem.AddressB, 5);
-
-            Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
-            Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
-
-            Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
-            Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
-
-            Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
-            Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
+            for (int i = 1; i <= slotCount; i++)
+            {
+                StorageCell cell = new(TestItem.AddressA, (UInt256)i);
+                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get((UInt256)i)), $"slot {i}");
+            }
         }
     }
 

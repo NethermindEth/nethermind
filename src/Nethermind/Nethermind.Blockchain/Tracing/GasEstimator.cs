@@ -31,7 +31,7 @@ public class GasEstimator(
     public const string InsufficientBalance = "insufficient sender balance for transfer";
 
     /// <summary>Message emitted when the sender cannot cover gas * price + value.</summary>
-    public const string InsufficientFundsForGas = "insufficient sender balance for gas * price + value";
+    public const string InsufficientFundsForGas = "insufficient funds for gas * price + value";
 
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;

@@ -27,16 +27,22 @@ public class RlpDecoderTests
         WithdrawalDecoder decoder = new();
         Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
-        Assert.That(decoder.GetContentLength((Withdrawal?[]?)null), Is.Zero);
-        Assert.That(decoder.GetLength((Withdrawal?[]?)null), Is.EqualTo(Rlp.OfEmptyList.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoder.GetContentLength((Withdrawal?[]?)null), Is.Zero);
+            Assert.That(decoder.GetLength((Withdrawal?[]?)null), Is.EqualTo(Rlp.OfEmptyList.Length));
+        }
 
         int contentLength = decoder.GetContentLength(withdrawals);
 
-        Assert.That(contentLength, Is.EqualTo(
-            decoder.GetLength(withdrawals[0]!, RlpBehaviors.None) +
-            Rlp.OfEmptyList.Length +
-            decoder.GetLength(withdrawals[2]!, RlpBehaviors.None)));
-        Assert.That(decoder.GetLength(withdrawals), Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contentLength, Is.EqualTo(
+                decoder.GetLength(withdrawals[0]!, RlpBehaviors.None) +
+                Rlp.OfEmptyList.Length +
+                decoder.GetLength(withdrawals[2]!, RlpBehaviors.None)));
+            Assert.That(decoder.GetLength(withdrawals), Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
+        }
 
         RlpStream stream = new(decoder.GetLength(withdrawals));
         decoder.Encode(stream, withdrawals);
@@ -54,8 +60,11 @@ public class RlpDecoderTests
     {
         RlpException? exception = Assert.Throws<RlpException>(DecodeEmptyInput);
 
-        Assert.That(exception!.Message, Does.Contain(nameof(Withdrawal)));
-        Assert.That(exception.Message, Does.Not.Contain(" T"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Message, Does.Contain(nameof(Withdrawal)));
+            Assert.That(exception.Message, Does.Not.Contain(" T"));
+        }
 
         static void DecodeEmptyInput()
         {

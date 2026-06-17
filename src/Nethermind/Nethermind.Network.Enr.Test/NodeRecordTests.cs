@@ -17,16 +17,22 @@ public class NodeRecordTests
         nodeRecord.SetEntry(new UdpEntry(12345));
         nodeRecord.SetEntry(new SecP256k1Entry(
             new CompressedPublicKey(new byte[33])));
-        Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(12345));
-        Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.EqualTo(new CompressedPublicKey(new byte[33])));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(12345));
+            Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.EqualTo(new CompressedPublicKey(new byte[33])));
+        }
     }
 
     [Test]
     public void Get_value_or_obj_can_handle_missing_values()
     {
         NodeRecord nodeRecord = new();
-        Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.Null);
-        Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.Null);
+            Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.Null);
+        }
     }
 
     [Test]

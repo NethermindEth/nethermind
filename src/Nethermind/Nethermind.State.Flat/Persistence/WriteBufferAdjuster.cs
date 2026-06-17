@@ -7,11 +7,15 @@ using Nethermind.Db;
 
 namespace Nethermind.State.Flat.Persistence;
 
-internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
+internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db, long writeBufferFloor = WriteBufferAdjuster.DefaultWriteBufferFloor)
 {
     internal const int ColumnCount = 7;
-    private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
-    private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
+    internal const long DefaultWriteBufferFloor = 16L * 1024 * 1024;  // 16 MB floor
+    private const long MaxWriteBufferSize = 256L * 1024 * 1024;       // 256 MB per-batch growth cap
+
+    // Lower bound applied per column. Frequent small persistence batches (small CompactSize) would otherwise
+    // shrink the memtable to the floor and churn L0; raising the floor lets them coalesce in the memtable instead.
+    private readonly long _writeBufferFloor = writeBufferFloor <= 0 ? DefaultWriteBufferFloor : writeBufferFloor;
 
     private bool _syncBufferSet;
 
@@ -84,7 +88,7 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
         if (_syncBufferSet) return;
         if (bytesWritten == 0) return;
         int idx = (int)column;
-        long target = Math.Clamp((long)(bytesWritten * 1.5), MinWriteBufferSize, MaxWriteBufferSize);
+        long target = Math.Clamp((long)(bytesWritten * 1.5), _writeBufferFloor, Math.Max(_writeBufferFloor, MaxWriteBufferSize));
         long lastSize = _lastWriteBufferSize[idx];
         if (lastSize != 0 && Math.Abs(target - lastSize) <= (long)(lastSize * 0.2))
             return;

@@ -23,7 +23,6 @@ public class PerTableDbConfigTests
             DbNames.Headers,
             DbNames.Receipts,
             DbNames.BlockInfos,
-            DbNames.Bloom,
             DbNames.Metadata
         ];
 

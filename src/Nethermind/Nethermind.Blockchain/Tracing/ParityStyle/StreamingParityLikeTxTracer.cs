@@ -10,6 +10,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -644,7 +645,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (_pipeWriter is null || _entriesSinceLastFlush < _flushIntervalEntries) return;
         _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).GetAwaiter().GetResult();
+        _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
         _entriesSinceLastFlush = 0;
     }
 
