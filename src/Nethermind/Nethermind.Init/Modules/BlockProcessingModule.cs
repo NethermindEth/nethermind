@@ -109,9 +109,11 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
 
+        builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
+
         if (blocksConfig.BuildBlocksOnMainState)
         {
-            builder.AddSingleton<IBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>()
+            builder.Bind<IBlockProducerEnvFactory, IMainStateBlockProducerEnvFactory>()
                 .AddScoped<IProducedBlockSuggester, NonProcessingProducedBlockSuggester>();
         }
         else
