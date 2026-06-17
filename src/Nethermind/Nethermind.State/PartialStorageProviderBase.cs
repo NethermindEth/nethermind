@@ -182,7 +182,10 @@ namespace Nethermind.State
         /// <returns>True if value has been set</returns>
         protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            // The intra-block cache only holds journaled WRITES; on read-mostly executions
+            // (eth_call) it is empty, and the count check skips hashing the 52-byte cell on
+            // every SLOAD.
+            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
                 {

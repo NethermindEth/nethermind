@@ -35,6 +35,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
     private StorageCell _lastReadStorageCell;
     private byte[]? _lastReadValue;
+    // Consecutive storage reads commonly hit the same contract; memoizing the last PerContractState avoids a dictionary lookup on that path.
+    private Address? _lastStorageAddress;
+    private PerContractState? _lastStorage;
 
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
@@ -53,6 +56,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
+            _lastStorageAddress = null;
+            _lastStorage = null;
             _toUpdateRoots.Clear();
         }
     }
@@ -283,12 +288,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         ClearCurrentValueCache();
         _storages.Clear();
+        _lastStorageAddress = null;
+        _lastStorage = null;
     }
 
     private PerContractState GetOrCreateStorage(Address address)
     {
+        if (_lastStorageAddress == address)
+        {
+            return _lastStorage!;
+        }
+
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
+        _lastStorageAddress = address;
+        _lastStorage = value;
         return value;
     }
 
