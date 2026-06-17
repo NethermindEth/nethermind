@@ -231,12 +231,17 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
 
             return ExecuteEvm(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas,
-                gasAvailable, opcodeGasPrice, premiumPerGas, senderReservedGasPayment, blobBaseFee,
-            return ExecuteEvm(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas,
                 gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee,
                 useSimpleTransferFastPath, preloadedCodeInfo, preloadedDelegationAddress);
         }
 
+        /// <remarks>
+        /// Overrides that skip or replace EVM execution are responsible for calling
+        /// <see cref="Refund"/>, <see cref="UpdateHeaderGasUsedAndPayFees"/>, and
+        /// <see cref="FinalizeTransaction"/> directly — the base class will not call them
+        /// when the override returns early. See <c>NoOpTransactionProcessor</c> in the
+        /// test suite for the canonical pattern.
+        /// </remarks>
         protected virtual TransactionResult ExecuteEvm(Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
