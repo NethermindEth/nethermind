@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
@@ -227,7 +228,20 @@ public sealed class PersistedSnapshotLoader(
         repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);
 
         if (_validatePersistedSnapshot)
-            PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+        {
+            try
+            {
+                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Validation runs on a background persistence thread; an unhandled throw here would either
+                // be swallowed (looking like a good run) or crash the process with a 128+ code that git
+                // bisect treats as "abort". Exit explicitly with a bisect-compatible "bad" code instead.
+                if (_logger.IsError) _logger.Error($"Persisted snapshot validation failed for range {snapshot.From.BlockNumber}..{snapshot.To.BlockNumber}. Exiting with code {ExitCodes.GeneralError} for git bisect compatibility.", ex);
+                Environment.Exit(ExitCodes.GeneralError);
+            }
+        }
 
         persisted.Dispose();
     }
