@@ -101,8 +101,8 @@ namespace Nethermind.Serialization.Rlp
 
         public static T Decode<T>(Span<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            RlpReader valueContext = new(bytes);
-            return Decode<T>(ref valueContext, rlpBehaviors);
+            RlpReader reader = new(bytes);
+            return Decode<T>(ref reader, rlpBehaviors);
         }
 
         internal static byte[] ByteSpanToArray(ReadOnlySpan<byte> span)

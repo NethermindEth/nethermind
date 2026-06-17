@@ -390,9 +390,9 @@ public partial class BlockTree
             return;
         }
 
-        RlpReader pivotStream = new(pivotFromDb!);
-        long updatedPivotBlockNumber = pivotStream.DecodeLong();
-        Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
+        RlpReader pivotReader = new(pivotFromDb!);
+        long updatedPivotBlockNumber = pivotReader.DecodeLong();
+        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak()!;
 
         if (updatedPivotBlockHash.IsZero)
         {

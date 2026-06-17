@@ -68,16 +68,16 @@ namespace Nethermind.Serialization.Rlp
             item = new LogEntryStructRef(address, data, topics);
         }
 
-        public static Hash256[] DecodeTopics(RlpReader valueDecoderContext)
+        public static Hash256[] DecodeTopics(RlpReader reader)
         {
-            int sequenceLength = valueDecoderContext.ReadSequenceLength();
-            int untilPosition = valueDecoderContext.Position + sequenceLength;
+            int sequenceLength = reader.ReadSequenceLength();
+            int untilPosition = reader.Position + sequenceLength;
             using ArrayPoolListRef<Hash256> topics = new(sequenceLength * 2 / Rlp.LengthOfKeccakRlp);
-            while (valueDecoderContext.Position < untilPosition)
+            while (reader.Position < untilPosition)
             {
-                topics.Add(valueDecoderContext.DecodeZeroPrefixKeccak());
+                topics.Add(reader.DecodeZeroPrefixKeccak());
             }
-            valueDecoderContext.Check(untilPosition);
+            reader.Check(untilPosition);
 
             return topics.ToArray();
         }

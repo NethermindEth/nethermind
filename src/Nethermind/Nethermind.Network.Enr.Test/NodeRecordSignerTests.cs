@@ -107,7 +107,7 @@ public class NodeRecordSignerTests
         RlpWriter writer = new(rlp);
         writer.StartSequence(500);
         writer.Encode(bytes[..500]);
-        byte[] encoded = writer.WrittenSpan.ToArray();
+        byte[] encoded = rlp.AsSpan(0, writer.Position).ToArray();
 
         Assert.That(
             () =>

@@ -49,8 +49,8 @@ public class LogEntryDecoderTests
     {
         LogEntry logEntry = CreateSampleLogEntry();
         Rlp rlp = Rlp.Encode(logEntry);
-        RlpReader valueDecoderContext = new(rlp.Bytes);
-        LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
+        RlpReader reader = new(rlp.Bytes);
+        LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
 
         using (Assert.EnterMultipleScope())
         {

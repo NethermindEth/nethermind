@@ -27,7 +27,7 @@ namespace Nethermind.Evm
                 writer.Encode(deployingAddress);
                 writer.Encode(nonce);
 
-                ValueHash256 contractAddressKeccak = ValueKeccak.Compute(writer.WrittenSpan);
+                ValueHash256 contractAddressKeccak = ValueKeccak.Compute(rented.AsSpan(0, writer.Position));
 
                 return new(in contractAddressKeccak);
             }

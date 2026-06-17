@@ -16,9 +16,9 @@ public interface INodeRecordSigner
     /// <summary>
     /// Deserializes a <see cref="NodeRecord"/> from a <see cref="RlpReader"/>.
     /// </summary>
-    /// <param name="ctx">A value decoder context to read the serialized data from.</param>
+    /// <param name="reader">The RLP reader to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
-    NodeRecord Deserialize(ref RlpReader ctx);
+    NodeRecord Deserialize(ref RlpReader reader);
 
     /// <summary>
     /// Verifies if the public key recovered from the <see cref="Signature"/> of this record matches

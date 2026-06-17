@@ -208,14 +208,14 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
-        public void RlpReader_return_the_same_transaction_as_rlp_stream_with_wrapping(
-            (string IncomingRlpHex, Hash256 Hash) testCase) => RlpReader_return_the_same_transaction_as_rlp_stream(testCase, false);
+        public void RlpReader_return_the_same_transaction_with_wrapping(
+            (string IncomingRlpHex, Hash256 Hash) testCase) => RlpReader_return_the_same_transaction(testCase, false);
 
         [TestCaseSource(nameof(SkipTypedWrappingTestCases))]
-        public void RlpReader_return_the_same_transaction_as_rlp_stream_without_additional_wrapping(
-            (string IncomingRlpHex, Hash256 Hash) testCase) => RlpReader_return_the_same_transaction_as_rlp_stream(testCase, true);
+        public void RlpReader_return_the_same_transaction_without_additional_wrapping(
+            (string IncomingRlpHex, Hash256 Hash) testCase) => RlpReader_return_the_same_transaction(testCase, true);
 
-        private void RlpReader_return_the_same_transaction_as_rlp_stream(
+        private void RlpReader_return_the_same_transaction(
             (string IncomingRlpHex, Hash256 Hash) testCase, bool wrapping)
         {
             TestContext.Out.WriteLine($"Testing {testCase.Hash}");
@@ -235,12 +235,12 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [TestCaseSource(nameof(TestCaseSource))]
-        public void Rlp_encode_should_return_the_same_as_rlp_stream_encoding(
+        public void Rlp_encode_should_return_the_same_as_canonical_rlp_encoding(
             (Transaction Tx, string Description) testCase)
         {
-            Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
+            Rlp encoded = _txDecoder.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
             Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
-            Assert.That(rlpStreamResult.Bytes, Is.EqualTo(rlpResult.Bytes));
+            Assert.That(encoded.Bytes, Is.EqualTo(rlpResult.Bytes));
         }
 
         [Test]

@@ -159,65 +159,65 @@ namespace Nethermind.Serialization.Rlp
             return new(nonce, balance, storageRoot, codeHash);
         }
 
-        private Hash256 DecodeStorageRoot(ref RlpReader rlpStream)
+        private Hash256 DecodeStorageRoot(ref RlpReader reader)
         {
             Hash256 storageRoot;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
+            if (_slimFormat && reader.IsNextItemEmptyByteArray())
             {
-                rlpStream.ReadByte();
+                reader.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash;
             }
             else
             {
-                storageRoot = rlpStream.DecodeKeccak();
+                storageRoot = reader.DecodeKeccak();
             }
 
             return storageRoot;
         }
 
-        private Hash256 DecodeCodeHash(ref RlpReader rlpStream)
+        private Hash256 DecodeCodeHash(ref RlpReader reader)
         {
             Hash256 codeHash;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
+            if (_slimFormat && reader.IsNextItemEmptyByteArray())
             {
-                rlpStream.ReadByte();
+                reader.ReadByte();
                 codeHash = Keccak.OfAnEmptyString;
             }
             else
             {
-                codeHash = rlpStream.DecodeKeccak();
+                codeHash = reader.DecodeKeccak();
             }
 
             return codeHash;
         }
 
-        private ValueHash256 DecodeStorageRootStruct(ref RlpReader rlpStream)
+        private ValueHash256 DecodeStorageRootStruct(ref RlpReader reader)
         {
             ValueHash256 storageRoot;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
+            if (_slimFormat && reader.IsNextItemEmptyByteArray())
             {
-                rlpStream.ReadByte();
+                reader.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash.ValueHash256;
             }
             else
             {
-                storageRoot = rlpStream.DecodeValueKeccak()!.Value;
+                storageRoot = reader.DecodeValueKeccak()!.Value;
             }
 
             return storageRoot;
         }
 
-        private ValueHash256 DecodeCodeHashStruct(ref RlpReader rlpStream)
+        private ValueHash256 DecodeCodeHashStruct(ref RlpReader reader)
         {
             ValueHash256 codeHash;
-            if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
+            if (_slimFormat && reader.IsNextItemEmptyByteArray())
             {
-                rlpStream.ReadByte();
+                reader.ReadByte();
                 codeHash = Keccak.OfAnEmptyString.ValueHash256;
             }
             else
             {
-                codeHash = rlpStream.DecodeValueKeccak()!.Value;
+                codeHash = reader.DecodeValueKeccak()!.Value;
             }
 
             return codeHash;

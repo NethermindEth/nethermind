@@ -1221,8 +1221,8 @@ namespace Nethermind.Trie
                 }
                 else if (Value.Length > 64) // if not a storage leaf
                 {
-                    RlpReader valueContext = new(Value.AsSpan());
-                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueContext);
+                    RlpReader valueReader = new(Value.AsSpan());
+                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueReader);
                     if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
                     {
                         Hash256 storagePath;

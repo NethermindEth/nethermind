@@ -108,9 +108,9 @@ public partial class ShardBlobTxDecoderTests
             }
 
             // Position where it starts encoding `BlobVersionedHashes`
-            writer.Position = 37;
+            RlpWriter tamperingWriter = new(bytes.AsSpan(37));
             // Accepts `itemsLength - 10` all the way to `itemsLength - 1`
-            writer.StartSequence(itemsLength - 1);
+            tamperingWriter.StartSequence(itemsLength - 1);
         }
 
         // Decoding should fail

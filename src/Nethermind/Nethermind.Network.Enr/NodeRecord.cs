@@ -193,7 +193,7 @@ public class NodeRecord
         byte[] bytes = new byte[totalLength];
         RlpWriter writer = new(bytes);
         Encode(ref writer);
-        return writer.WrittenSpan.ToHexString();
+        return bytes.AsSpan(0, writer.Position).ToHexString();
     }
 
     /// <summary>

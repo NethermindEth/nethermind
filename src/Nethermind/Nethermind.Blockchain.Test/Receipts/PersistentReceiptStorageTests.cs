@@ -156,8 +156,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
 
-        using ArrayPoolSpan<byte> rlpStream = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = ((ReadOnlySpan<byte>)rlpStream).ToArray();
+        using ArrayPoolSpan<byte> encodedReceipts = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = ((ReadOnlySpan<byte>)encodedReceipts).ToArray();
 
         CreateStorage();
         _storage.Get(block);
@@ -180,8 +180,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
         block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
 
-        using ArrayPoolSpan<byte> rlpStream = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = ((ReadOnlySpan<byte>)rlpStream).ToArray();
+        using ArrayPoolSpan<byte> encodedReceipts = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = ((ReadOnlySpan<byte>)encodedReceipts).ToArray();
 
         Assert.That(_storage.Get(block).Length, Is.EqualTo(receipts.Length));
     }

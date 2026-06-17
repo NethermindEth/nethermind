@@ -267,7 +267,7 @@ public class RlpItemListTests
         byte[] actual = new byte[view.RlpLength];
         RlpWriter writer = new(actual);
         view.Write(ref writer);
-        Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expected));
+        Assert.That(actual.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expected));
     }
 
     [Test]
@@ -330,7 +330,7 @@ public class RlpItemListTests
         byte[] actual = new byte[inner0.RlpLength];
         RlpWriter writer = new(actual);
         inner0.Write(ref writer);
-        Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expectedBytes));
+        Assert.That(actual.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expectedBytes));
     }
 
     private static RlpItemList CreateList(byte[][] items)

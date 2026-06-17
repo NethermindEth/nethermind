@@ -42,14 +42,14 @@ namespace Nethermind.Network.P2P.Messages
             }
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            RlpReader rlpStream = new(msg);
-            if (!rlpStream.IsSequenceNext())
+            RlpReader reader = new(msg);
+            if (!reader.IsSequenceNext())
             {
-                rlpStream = new RlpReader(rlpStream.DecodeByteArraySpan());
+                reader = new RlpReader(reader.DecodeByteArraySpan());
             }
 
-            rlpStream.ReadSequenceLength();
-            int reason = rlpStream.DecodeInt();
+            reader.ReadSequenceLength();
+            int reason = reader.DecodeInt();
             DisconnectMessage disconnectMessage = new(reason);
             return disconnectMessage;
         }

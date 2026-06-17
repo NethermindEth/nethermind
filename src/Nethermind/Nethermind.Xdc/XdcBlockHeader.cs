@@ -77,8 +77,8 @@ public class XdcBlockHeader(
             //Check V2 consensus version in ExtraData field.
             if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
                 return null;
-            RlpReader valueDecoderContext = new(ExtraData.AsSpan(1));
-            _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
+            RlpReader reader = new(ExtraData.AsSpan(1));
+            _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref reader);
             return _extraFieldsV2;
         }
         internal set

@@ -294,8 +294,8 @@ public class SnapServer : ISnapServer
         try
         {
             ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
-            RlpReader rlpContext = new(bytes);
-            return bytes.IsNullOrEmpty() ? null : _decoder.Decode(ref rlpContext);
+            RlpReader reader = new(bytes);
+            return bytes.IsNullOrEmpty() ? null : _decoder.Decode(ref reader);
         }
         catch (TrieNodeException)
         {

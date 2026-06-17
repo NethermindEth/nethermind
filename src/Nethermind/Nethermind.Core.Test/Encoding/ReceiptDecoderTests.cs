@@ -64,8 +64,8 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
 
             ReceiptStorageDecoder decoder = new();
-            RlpReader valueContext = new(rlp.Bytes);
-            TxReceipt deserialized = decoder.DecodeComplete(ref valueContext, RlpBehaviors.Storage);
+            RlpReader reader = new(rlp.Bytes);
+            TxReceipt deserialized = decoder.DecodeComplete(ref reader, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpected());
         }
@@ -133,7 +133,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Can_do_roundtrip_storage_rlp_stream()
+        public void Can_do_roundtrip_storage_rlp()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
@@ -150,15 +150,15 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptStorageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
-            RlpReader ctx = new(rlpStreamResult);
+            byte[] encoded = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
+            RlpReader ctx = new(encoded);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
             AssertStorageReceipt(txReceipt, deserialized);
         }
 
         [Test]
-        public void Can_do_roundtrip_none_rlp_stream()
+        public void Can_do_roundtrip_none_rlp()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.Bloom = new Bloom();
@@ -168,8 +168,8 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
-            TxReceipt deserialized = Rlp.Decode<TxReceipt>(rlpStreamResult, RlpBehaviors.None);
+            byte[] encoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
+            TxReceipt deserialized = Rlp.Decode<TxReceipt>(encoded, RlpBehaviors.None);
 
             AssertMessageReceipt(txReceipt, deserialized);
         }
@@ -186,8 +186,8 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
-            RlpReader ctx = new(rlpStreamResult);
+            byte[] encoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
+            RlpReader ctx = new(encoded);
             TxReceipt deserialized = decoder.Decode(ref ctx);
 
             AssertMessageReceipt(txReceipt, deserialized);
@@ -265,8 +265,8 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptMessageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.EncodeNew(txReceipt);
-            RlpReader ctx = new(rlpStreamResult);
+            byte[] encoded = decoder.EncodeNew(txReceipt);
+            RlpReader ctx = new(encoded);
             TxReceipt deserialized = decoder.Decode(ref ctx);
 
             AssertMessageReceipt(txReceipt, deserialized);

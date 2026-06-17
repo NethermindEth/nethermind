@@ -11,14 +11,14 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly LogEntry[]? _logs;
         private readonly int _length;
-        private RlpReader _decoderContext;
+        private RlpReader _reader;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
         public long Index { get; private set; }
 
         public LogEntriesIterator(ReadOnlySpan<byte> data, IReceiptRefDecoder receiptRefDecoder)
         {
-            _decoderContext = new RlpReader(data);
-            _length = _decoderContext.ReadSequenceLength();
+            _reader = new RlpReader(data);
+            _length = _reader.ReadSequenceLength();
             Index = -1;
             _logs = null;
             _receiptRefDecoder = receiptRefDecoder;
@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public LogEntriesIterator(LogEntry[] logs)
         {
-            _decoderContext = new RlpReader();
+            _reader = new RlpReader();
             _length = logs.Length;
             Index = -1;
             _logs = logs;
@@ -36,9 +36,9 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_logs is null)
             {
-                if (_decoderContext.Position < _length)
+                if (_reader.Position < _length)
                 {
-                    _receiptRefDecoder.DecodeLogEntryStructRef(ref _decoderContext, RlpBehaviors.None, out current);
+                    _receiptRefDecoder.DecodeLogEntryStructRef(ref _reader, RlpBehaviors.None, out current);
                     Index++;
                     return true;
                 }
@@ -62,8 +62,8 @@ namespace Nethermind.Blockchain.Receipts
 
             if (_logs is null)
             {
-                _decoderContext.Position = 0;
-                _decoderContext.ReadSequenceLength();
+                _reader.Position = 0;
+                _reader.ReadSequenceLength();
             }
         }
 
@@ -71,9 +71,9 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_logs is null)
             {
-                if (_decoderContext.Position < _length)
+                if (_reader.Position < _length)
                 {
-                    _decoderContext.SkipItem();
+                    _reader.SkipItem();
                     Index++;
                     return true;
                 }

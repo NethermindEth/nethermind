@@ -10,6 +10,6 @@ public interface IReceiptRefDecoder
 {
     void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item);
     void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current);
-    Hash256[] DecodeTopics(RlpReader valueDecoderContext);
+    Hash256[] DecodeTopics(RlpReader reader);
     bool CanDecodeBloom { get; }
 }

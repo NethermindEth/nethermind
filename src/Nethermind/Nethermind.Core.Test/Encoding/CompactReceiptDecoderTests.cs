@@ -79,8 +79,8 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
 
             CompactReceiptStorageDecoder decoder = new();
-            RlpReader valueContext = new(rlp.Bytes);
-            TxReceipt deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
+            RlpReader reader = new(rlp.Bytes);
+            TxReceipt deserialized = decoder.Decode(ref reader, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpected());
         }
@@ -126,8 +126,8 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
-            RlpReader ctx = new(rlpStreamResult);
+            byte[] encoded = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
+            RlpReader ctx = new(encoded);
             decoder.DecodeStructRef(ref ctx, RlpBehaviors.Storage, out TxReceiptStructRef deserialized);
 
             using (Assert.EnterMultipleScope())
@@ -147,7 +147,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Can_do_roundtrip_storage_rlp_stream()
+        public void Can_do_roundtrip_storage_rlp()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
@@ -163,8 +163,8 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
-            RlpReader ctx = new(rlpStreamResult);
+            byte[] encoded = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
+            RlpReader ctx = new(encoded);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
             AssertStorageReceipt(txReceipt, deserialized);

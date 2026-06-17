@@ -83,7 +83,7 @@ public class RlpByteArrayListTests
         writer.WriteByteArrayList(list);
 
         Assert.That(writer.Position, Is.EqualTo(expected.Length));
-        Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expected));
+        Assert.That(buffer.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expected));
     }
 
     [TestCaseSource(nameof(TestCases))]

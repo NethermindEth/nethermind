@@ -44,11 +44,10 @@ namespace Ethereum.Rlp.Test
             int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
             byte[] buffer = new byte[total + 8];
             Array.Fill(buffer, (byte)0xAB);
-            RlpWriter writer = new(buffer);
-            writer.Position = 5;
+            RlpWriter writer = new(buffer.AsSpan(5));
             writer.Encode(Bloom.Empty);
 
-            Assert.That(writer.Position, Is.EqualTo(5 + total));
+            Assert.That(writer.Position, Is.EqualTo(total));
             Assert.That(buffer[5], Is.EqualTo(185));
             Assert.That(buffer[6], Is.EqualTo(1));
             Assert.That(buffer[7], Is.EqualTo(0));

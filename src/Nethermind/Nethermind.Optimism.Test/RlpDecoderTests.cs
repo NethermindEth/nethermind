@@ -26,21 +26,14 @@ public class RlpDecoderTests
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
 
-        PooledRlpWriter rlpStream = new(_decoder.GetLength(tx, RlpBehaviors.None));
-        try
-        {
-            _decoder.Encode(ref rlpStream, tx);
-            rlpStream.Reset();
+        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(rlp);
+        _decoder.Encode(ref writer, tx);
 
-            RlpReader ctx = new(rlpStream.Data);
-            Transaction? decodedTx = _decoder.Decode(ref ctx);
+        RlpReader ctx = new(rlp);
+        Transaction? decodedTx = _decoder.Decode(ref ctx);
 
-            Assert.That(decodedTx, Is.Not.Null);
-        }
-        finally
-        {
-            rlpStream.Dispose();
-        }
+        Assert.That(decodedTx, Is.Not.Null);
     }
 
     [Test]
@@ -50,19 +43,13 @@ public class RlpDecoderTests
 
         Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
 
-        PooledRlpWriter rlpStream = new(_decoder.GetLength(tx, RlpBehaviors.None));
-        try
-        {
-            _decoder.Encode(ref rlpStream, tx);
+        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(rlp);
+        _decoder.Encode(ref writer, tx);
 
-            Transaction? decodedTx = Rlp.Decode<Transaction?>(rlpStream.Data);
+        Transaction? decodedTx = Rlp.Decode<Transaction?>(rlp);
 
-            Assert.That(decodedTx, Is.Not.Null);
-        }
-        finally
-        {
-            rlpStream.Dispose();
-        }
+        Assert.That(decodedTx, Is.Not.Null);
     }
 
     [Test]

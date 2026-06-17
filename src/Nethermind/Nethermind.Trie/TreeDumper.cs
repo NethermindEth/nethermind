@@ -55,7 +55,7 @@ namespace Nethermind.Trie
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
             _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
-            RlpReader valueDecoderContext = new(node.Value.AsSpan());
+            RlpReader valueReader = new(node.Value.AsSpan());
             if (!context.IsStorage)
             {
                 _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
@@ -64,7 +64,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, true)}");
+                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {valueReader.DecodeByteArray().ToHexString(true, true)}");
             }
         }
 

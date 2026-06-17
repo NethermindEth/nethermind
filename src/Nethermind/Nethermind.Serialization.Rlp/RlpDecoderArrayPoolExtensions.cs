@@ -22,16 +22,17 @@ public static class RlpDecoderArrayPoolExtensions
             return EmptyListSpan();
         }
 
-        PooledRlpWriter writer = new(decoder.GetLength(item, rlpBehaviors));
+        ArrayPoolSpan<byte> buffer = new(decoder.GetLength(item, rlpBehaviors));
         try
         {
+            RlpWriter writer = new(buffer);
             decoder.Encode(ref writer, item, rlpBehaviors);
-            EnsureFullyWritten(writer.Position, writer.Length);
-            return writer.DetachBuffer();
+            EnsureFullyWritten(writer.Position, buffer.Length);
+            return buffer;
         }
         catch
         {
-            writer.Dispose();
+            buffer.Dispose();
             throw;
         }
     }
@@ -54,9 +55,10 @@ public static class RlpDecoderArrayPoolExtensions
 
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
-        PooledRlpWriter writer = new(bufferLength);
+        ArrayPoolSpan<byte> buffer = new(bufferLength);
         try
         {
+            RlpWriter writer = new(buffer);
             writer.StartSequence(totalLength);
 
             for (int i = 0; i < items.Length; i++)
@@ -64,12 +66,12 @@ public static class RlpDecoderArrayPoolExtensions
                 EncodeNullable(decoder, ref writer, items[i], behaviors);
             }
 
-            EnsureFullyWritten(writer.Position, writer.Length);
-            return writer.DetachBuffer();
+            EnsureFullyWritten(writer.Position, buffer.Length);
+            return buffer;
         }
         catch
         {
-            writer.Dispose();
+            buffer.Dispose();
             throw;
         }
     }
@@ -92,9 +94,10 @@ public static class RlpDecoderArrayPoolExtensions
 
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
-        PooledRlpWriter writer = new(bufferLength);
+        ArrayPoolSpan<byte> buffer = new(bufferLength);
         try
         {
+            RlpWriter writer = new(buffer);
             writer.StartSequence(totalLength);
 
             for (int i = 0; i < items.Count; i++)
@@ -102,12 +105,12 @@ public static class RlpDecoderArrayPoolExtensions
                 EncodeNullable(decoder, ref writer, items[i], behaviors);
             }
 
-            EnsureFullyWritten(writer.Position, writer.Length);
-            return writer.DetachBuffer();
+            EnsureFullyWritten(writer.Position, buffer.Length);
+            return buffer;
         }
         catch
         {
-            writer.Dispose();
+            buffer.Dispose();
             throw;
         }
     }
@@ -125,9 +128,10 @@ public static class RlpDecoderArrayPoolExtensions
 
         int bufferLength = Rlp.LengthOfSequence(totalLength);
 
-        PooledRlpWriter writer = new(bufferLength);
+        ArrayPoolSpan<byte> buffer = new(bufferLength);
         try
         {
+            RlpWriter writer = new(buffer);
             writer.StartSequence(totalLength);
 
             for (int i = 0; i < items.Count; i++)
@@ -135,12 +139,12 @@ public static class RlpDecoderArrayPoolExtensions
                 EncodeNullable(decoder, ref writer, items[i], behaviors);
             }
 
-            EnsureFullyWritten(writer.Position, writer.Length);
-            return writer.DetachBuffer();
+            EnsureFullyWritten(writer.Position, buffer.Length);
+            return buffer;
         }
         catch
         {
-            writer.Dispose();
+            buffer.Dispose();
             throw;
         }
     }
@@ -180,7 +184,7 @@ public static class RlpDecoderArrayPoolExtensions
         {
             RlpWriter writer = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
             decoder.Encode(ref writer, item, rlpBehaviors);
-            EnsureFullyWritten(writer.Position, writer.Length);
+            EnsureFullyWritten(writer.Position, length);
             return buffer;
         }
         catch

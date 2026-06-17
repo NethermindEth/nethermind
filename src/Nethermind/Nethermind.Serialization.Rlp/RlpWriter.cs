@@ -5,7 +5,6 @@ using System;
 using System.Runtime.InteropServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp;
@@ -15,27 +14,15 @@ public ref struct RlpWriter(Span<byte> data) : IRlpWriteBackend
     private Span<byte> _data = data;
     private int _position;
 
-    public RlpWriter(byte[]? data)
-        : this((data ?? Array.Empty<byte>()).AsSpan())
+    public RlpWriter(byte[]? data) : this((data ?? []).AsSpan())
     {
     }
 
-    public RlpWriter(in CappedArray<byte> data)
-        : this((data.IsNotNull ? data : CappedArray<byte>.Empty).AsSpan())
+    public RlpWriter(in CappedArray<byte> data) : this((data.IsNotNull ? data : CappedArray<byte>.Empty).AsSpan())
     {
     }
 
-    public readonly Span<byte> Data => _data;
-
-    public readonly ReadOnlySpan<byte> WrittenSpan => _data[.._position];
-
-    public int Position
-    {
-        readonly get => _position;
-        set => _position = value;
-    }
-
-    public readonly int Length => _data.Length;
+    public readonly int Position => _position;
 
     void IRlpWriteBackend.WriteByte(byte byteToWrite) => _data[_position++] = byteToWrite;
 
@@ -51,105 +38,7 @@ public ref struct RlpWriter(Span<byte> data) : IRlpWriteBackend
         _position += length;
     }
 
-    public void Reset() => _position = 0;
-
-    public override readonly string ToString() => $"[{nameof(RlpWriter)}|{_position}/{Length}]";
-}
-
-public ref struct PooledRlpWriter(int length) : IRlpWriteBackend, IDisposable
-{
-    private ArrayPoolSpan<byte> _buffer = new(length);
-    private int _position;
-    private bool _ownsBuffer = true;
-
-    public Span<byte> Data
-    {
-        get
-        {
-            ThrowIfNotOwned();
-            return _buffer.Slice(0, _buffer.Length);
-        }
-    }
-
-    public ReadOnlySpan<byte> WrittenSpan
-    {
-        get
-        {
-            ThrowIfNotOwned();
-            return _buffer.Slice(0, _position);
-        }
-    }
-
-    public int Position
-    {
-        readonly get => _position;
-        set => _position = value;
-    }
-
-    public int Length
-    {
-        get
-        {
-            ThrowIfNotOwned();
-            return _buffer.Length;
-        }
-    }
-
-    void IRlpWriteBackend.WriteByte(byte byteToWrite)
-    {
-        ThrowIfNotOwned();
-        _buffer[_position++] = byteToWrite;
-    }
-
-    void IRlpWriteBackend.Write(scoped ReadOnlySpan<byte> bytesToWrite)
-    {
-        ThrowIfNotOwned();
-        bytesToWrite.CopyTo(_buffer.Slice(_position, bytesToWrite.Length));
-        _position += bytesToWrite.Length;
-    }
-
-    void IRlpWriteBackend.WriteZero(int lengthToWrite)
-    {
-        ThrowIfNotOwned();
-        _buffer.Slice(_position, lengthToWrite).Clear();
-        _position += lengthToWrite;
-    }
-
-    public void Reset()
-    {
-        ThrowIfNotOwned();
-        _position = 0;
-    }
-
-    public ArrayPoolSpan<byte> DetachBuffer()
-    {
-        ThrowIfNotOwned();
-        _ownsBuffer = false;
-        return _buffer;
-    }
-
-    public void Dispose()
-    {
-        if (_ownsBuffer)
-        {
-            _buffer.Dispose();
-            _ownsBuffer = false;
-            _position = 0;
-        }
-    }
-
-    private readonly void ThrowIfNotOwned()
-    {
-        if (!_ownsBuffer)
-        {
-            throw new ObjectDisposedException(nameof(PooledRlpWriter));
-        }
-    }
-
-    public override readonly string ToString()
-        => _ownsBuffer
-            ? $"[{nameof(PooledRlpWriter)}|{_position}/{_buffer.Length}]"
-            : $"[{nameof(PooledRlpWriter)}|detached]";
+    public override readonly string ToString() => $"[{nameof(RlpWriter)}|{_position}/{_data.Length}]";
 }
 
 public struct ByteBufferRlpWriter(IByteBuffer byteBuffer) : IRlpWriteBackend
@@ -157,11 +46,7 @@ public struct ByteBufferRlpWriter(IByteBuffer byteBuffer) : IRlpWriteBackend
     private readonly IByteBuffer _byteBuffer = byteBuffer ?? throw new ArgumentNullException(nameof(byteBuffer));
     private int _position;
 
-    public int Position
-    {
-        readonly get => _position;
-        set => throw new InvalidOperationException("ByteBuffer-backed writer position cannot be reassigned.");
-    }
+    public readonly int Position => _position;
 
     void IRlpWriteBackend.WriteByte(byte byteToWrite)
     {
@@ -214,11 +99,7 @@ public struct KeccakRlpWriter(KeccakHash keccakHash) : IRlpWriteBackend
 
     public readonly ValueHash256 GetValueHash() => _keccakHash.GenerateValueHash();
 
-    public int Position
-    {
-        readonly get => _position;
-        set => throw new InvalidOperationException("Keccak-backed writer position cannot be reassigned.");
-    }
+    public readonly int Position => _position;
 
     void IRlpWriteBackend.WriteByte(byte byteToWrite)
     {

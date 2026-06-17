@@ -251,8 +251,8 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static byte[][] GetTransactionsFromBlockRlp(byte[] blockRlp)
     {
-        RlpReader ctx = CreateTransactionContext(blockRlp, out int txsEnd);
-        return GetTransactionsFromBlockRlp(ref ctx, txsEnd);
+        RlpReader reader = CreateTransactionReader(blockRlp, out int txsEnd);
+        return GetTransactionsFromBlockRlp(ref reader, txsEnd);
     }
 
     private static byte[][] GetTransactionsFromBlockRlp(ref RlpReader ctx)
@@ -275,8 +275,8 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, byte[] blockRlp)
     {
-        RlpReader ctx = CreateTransactionContext(blockRlp, out int txsEnd);
-        WriteTransactionsFromBlockRlp(writer, ref ctx, txsEnd);
+        RlpReader reader = CreateTransactionReader(blockRlp, out int txsEnd);
+        WriteTransactionsFromBlockRlp(writer, ref reader, txsEnd);
     }
 
     private static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx)
@@ -299,13 +299,13 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("]"u8);
     }
 
-    private static RlpReader CreateTransactionContext(byte[] blockRlp, out int txsEnd)
+    private static RlpReader CreateTransactionReader(byte[] blockRlp, out int txsEnd)
     {
-        RlpReader ctx = new(blockRlp);
-        ctx.ReadSequenceLength();
-        ctx.SkipItem(); // header
-        txsEnd = ctx.ReadSequenceLength() + ctx.Position;
-        return ctx;
+        RlpReader reader = new(blockRlp);
+        reader.ReadSequenceLength();
+        reader.SkipItem(); // header
+        txsEnd = reader.ReadSequenceLength() + reader.Position;
+        return reader;
     }
 
     private static ReadOnlySpan<byte> ReadTransactionBytes(ref RlpReader ctx)
@@ -319,8 +319,8 @@ internal static class PayloadBodiesDirectResponseWriter
 
         // Typed transactions are stored as an RLP string containing type || payload;
         // Engine payload bodies expect the string content, not the RLP wrapper.
-        RlpReader transactionContext = new(transaction);
-        (_, int contentLength) = transactionContext.PeekPrefixAndContentLength();
+        RlpReader transactionReader = new(transaction);
+        (_, int contentLength) = transactionReader.PeekPrefixAndContentLength();
         return transaction.Slice(transaction.Length - contentLength, contentLength);
     }
 

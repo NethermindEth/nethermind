@@ -77,7 +77,7 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             writer.Encode((ReadOnlySpan<byte>)value);
 
-            AssertValueWriterMatchesExpected(writer, Rlp.Encode((ReadOnlySpan<byte>)value).Bytes);
+            AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode((ReadOnlySpan<byte>)value).Bytes);
         }
 
         [TestCase(0UL)]
@@ -97,7 +97,7 @@ namespace Nethermind.Core.Test
 
             Span<byte> expected = stackalloc byte[9];
             expected = Rlp.Encode(value, expected);
-            AssertValueWriterMatchesExpected(writer, expected);
+            AssertValueWriterMatchesExpected(writer, buffer, expected);
         }
 
         [TestCaseSource(nameof(ValueWriterUInt256Cases))]
@@ -109,7 +109,7 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             writer.Encode(in value);
 
-            AssertValueWriterMatchesExpected(writer, Rlp.Encode(in value).Bytes);
+            AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode(in value).Bytes);
         }
 
         [TestCaseSource(nameof(ValueWriterHashCases))]
@@ -121,7 +121,7 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             writer.Encode(value);
 
-            AssertValueWriterMatchesExpected(writer, Rlp.Encode(value).Bytes);
+            AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode(value).Bytes);
         }
 
         [TestCaseSource(nameof(ValueWriterValueHashCases))]
@@ -133,7 +133,7 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             writer.Encode(in value);
 
-            AssertValueWriterMatchesExpected(writer, ExpectedValueHash(value));
+            AssertValueWriterMatchesExpected(writer, buffer, ExpectedValueHash(value));
         }
 
         [TestCaseSource(nameof(ValueWriterAddressCases))]
@@ -145,7 +145,7 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             writer.Encode(value);
 
-            AssertValueWriterMatchesExpected(writer, ExpectedAddress(value));
+            AssertValueWriterMatchesExpected(writer, buffer, ExpectedAddress(value));
         }
 
         [TestCaseSource(nameof(ValueWriterBloomCases))]
@@ -157,7 +157,7 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             writer.Encode(value);
 
-            AssertValueWriterMatchesExpected(writer, ExpectedBloom(value));
+            AssertValueWriterMatchesExpected(writer, buffer, ExpectedBloom(value));
         }
 
         [TestCaseSource(nameof(ValueWriterByteArraySequenceCases))]
@@ -169,7 +169,7 @@ namespace Nethermind.Core.Test
             RlpWriter writer = new(buffer);
             writer.Encode(value);
 
-            AssertValueWriterMatchesExpected(writer, Rlp.Encode(value.Select(Rlp.Encode).ToArray()).Bytes);
+            AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode(value.Select(Rlp.Encode).ToArray()).Bytes);
         }
 
         [Test]
@@ -565,16 +565,12 @@ namespace Nethermind.Core.Test
         [Test]
         public void Encode_stream_with_null_items_produces_empty_list()
         {
-            PooledRlpWriter writer = new(Rlp.OfEmptyList.Length);
-            try
-            {
-                TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
-                Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
-            }
-            finally
-            {
-                writer.Dispose();
-            }
+            byte[] buffer = new byte[Rlp.OfEmptyList.Length];
+            RlpWriter writer = new(buffer);
+            TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
+
+            Assert.That(writer.Position, Is.EqualTo(Rlp.OfEmptyList.Length));
+            Assert.That(buffer, Is.EqualTo(Rlp.OfEmptyList.Bytes));
         }
 
         [Test]
@@ -880,10 +876,10 @@ namespace Nethermind.Core.Test
             return expected;
         }
 
-        private static void AssertValueWriterMatchesExpected(RlpWriter writer, ReadOnlySpan<byte> expected)
+        private static void AssertValueWriterMatchesExpected(RlpWriter writer, ReadOnlySpan<byte> buffer, ReadOnlySpan<byte> expected)
         {
             Assert.That(writer.Position, Is.EqualTo(expected.Length));
-            Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(expected.ToArray()));
+            Assert.That(buffer[..writer.Position].ToArray(), Is.EqualTo(expected.ToArray()));
         }
 
         private static IEnumerable<byte[]> ValueWriterByteArrayCases()

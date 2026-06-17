@@ -284,8 +284,8 @@ public class FlatSnapServer(
         try
         {
             ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
-            RlpReader rlpContext = new(bytes);
-            return bytes.IsNullOrEmpty() ? null : AccountDecoder.Instance.Decode(ref rlpContext);
+            RlpReader reader = new(bytes);
+            return bytes.IsNullOrEmpty() ? null : AccountDecoder.Instance.Decode(ref reader);
         }
         catch (TrieNodeException)
         {
