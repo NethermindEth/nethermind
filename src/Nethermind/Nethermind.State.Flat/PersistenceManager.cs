@@ -107,7 +107,11 @@ public class PersistenceManager(
         }
         else if (snapshotsDepth > _maxReorgDepth)
         {
-            seed = snapshotRepository.LastRegisteredState;
+            // Backstop (finalization stalled): seed from the committed head so the forced persist
+            // follows the canonical chain rather than an arbitrary/longest fork (which
+            // RemoveSiblingAndDescendents would then orphan). Falls back to the longest chain only
+            // when nothing was committed this session.
+            seed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.LastRegisteredState;
         }
 
         if (seed is not null)
@@ -332,7 +336,8 @@ public class PersistenceManager(
     private StateId FlushToPersistenceLocked()
     {
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        StateId? latestStateId = snapshotRepository.GetLastSnapshotId();
+        // Follow the committed head; fall back to the longest chain when nothing was committed this session.
+        StateId? latestStateId = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId();
 
         if (latestStateId is null)
         {
@@ -341,9 +346,9 @@ public class PersistenceManager(
 
         // Persist all snapshots from current persisted state to latest. Flush ignores the
         // finality gate but still prefers the finalized state as the BFS seed when one is
-        // available — that biases the walk onto the canonical chain. Falls back to the in-memory
-        // tip, then to the tier-aware latest tip, when no finalized state root is exposed —
-        // the latter covers a persisted-only backlog after the in-memory tier has been drained.
+        // available — that biases the walk onto the canonical chain. Falls back to the committed
+        // head (then the longest chain) when no finalized state root is exposed, which also covers
+        // a persisted-only backlog after the in-memory tier has been drained.
         while (currentPersistedState.BlockNumber < latestStateId.Value.BlockNumber)
         {
             StateId? seed = null;
@@ -354,9 +359,9 @@ public class PersistenceManager(
                 if (finalizedStateRoot is not null)
                     seed = new StateId(finalizedBlockNumber, finalizedStateRoot);
             }
-            seed ??= snapshotRepository.LastRegisteredState;
-            // Fall back to the (tier-aware) latest tip so a persisted-only backlog — where the
-            // in-memory tier is drained and LastRegisteredState is null — still seeds the walk.
+            // Fall back to the committed head (latestStateId folds in GetLastCommittedStateId, then the
+            // longest chain) so the forced walk follows the canonical chain rather than a longer
+            // non-canonical fork, and still covers a persisted-only backlog once the in-memory tier drains.
             seed ??= latestStateId;
             if (seed is null) break;
 

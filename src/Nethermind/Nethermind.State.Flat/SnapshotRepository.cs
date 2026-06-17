@@ -49,6 +49,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly Lock _lastRegisteredLock = new();
     private StateId? _lastRegisteredState;
 
+    // StateId is larger than a machine word, so its read/write across threads must be synchronized.
+    private readonly Lock _lastCommittedLock = new();
+    private StateId _lastCommittedStateId;
+    private bool _hasLastCommitted;
+
     public SnapshotRepository(
         IArenaManager arenaManager,
         BlobArenaManager blobArenaManager,
@@ -268,6 +273,19 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     private static StateId? MaxState(StateId? a, StateId? b) =>
         a is null ? b : b is null ? a : a.Value.CompareTo(b.Value) >= 0 ? a : b;
+
+    public void SetLastCommittedStateId(in StateId stateId)
+    {
+        using Lock.Scope _ = _lastCommittedLock.EnterScope();
+        _lastCommittedStateId = stateId;
+        _hasLastCommitted = true;
+    }
+
+    public StateId? GetLastCommittedStateId()
+    {
+        using Lock.Scope _ = _lastCommittedLock.EnterScope();
+        return _hasLastCommitted ? _lastCommittedStateId : null;
+    }
 
     public bool RemoveAndReleaseInMemoryKnownState(in StateId stateId, SnapshotTier tier)
     {

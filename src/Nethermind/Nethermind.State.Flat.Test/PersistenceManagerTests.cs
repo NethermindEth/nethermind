@@ -414,6 +414,66 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void DetermineSnapshotAction_UnfinalizedForkAtBoundary_PersistsHeadReachableFork()
+    {
+        // Two unfinalized forks at the boundary block 16, both starting from Block0. The committed head's
+        // chain runs through target2, not the arbitrary target1. The backstop force-persist must follow the
+        // committed head's chain (target2) — persisting target1 would orphan the head.
+        StateId persisted = Block0;
+        StateId target1 = CreateStateId(16, rootByte: 1); // off-chain fork
+        StateId target2 = CreateStateId(16, rootByte: 2); // on the committed head's chain
+        StateId head = CreateStateId(95000); // depth > MaxReorgDepth (90000) → backstop fires
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(10); // unfinalized at the boundary
+
+        using Snapshot fork1 = CreateSnapshot(persisted, target1, compacted: true);
+        using Snapshot fork2 = CreateSnapshot(persisted, target2, compacted: true);
+        using Snapshot toHead = CreateSnapshot(target2, head, compacted: true); // head reachable only via target2
+        _snapshotRepository.SetLastCommittedStateId(head);
+
+        (_, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(head);
+
+        Assert.That(toPersist, Is.Not.Null);
+        Assert.That(toPersist!.From, Is.EqualTo(persisted));
+        Assert.That(toPersist.To, Is.EqualTo(target2));
+
+        toPersist.Dispose();
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_LongerNonCanonicalFork_PersistsCommittedHeadChain()
+    {
+        // The longest in-memory chain runs through target1 (registered last, so it is LastRegisteredState),
+        // but the committed head is the shorter chain through target2. The backstop must follow the committed
+        // head (target2), not the longer fork (target1) that the bare last-registered fallback would pick.
+        StateId persisted = Block0;
+        StateId target1 = CreateStateId(16, rootByte: 1); // boundary state on the longer, non-canonical fork
+        StateId target2 = CreateStateId(16, rootByte: 2); // boundary state on the committed head's chain
+        StateId longHead = CreateStateId(95001, rootByte: 1); // longest chain, but not committed
+        StateId committedHead = CreateStateId(95000, rootByte: 2);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(0); // unfinalized at the boundary
+
+        // Register the committed-head chain first, then the longer fork last so LastRegisteredState is the
+        // longer fork — only honouring the committed head selects target2.
+        using Snapshot fork2 = CreateSnapshot(persisted, target2, compacted: true);
+        using Snapshot toCommittedHead = CreateSnapshot(target2, committedHead, compacted: true);
+        using Snapshot fork1 = CreateSnapshot(persisted, target1, compacted: true);
+        using Snapshot toLongHead = CreateSnapshot(target1, longHead, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(committedHead);
+
+        // latestSnapshot at the longest chain makes the in-memory depth exceed MaxReorgDepth, triggering the
+        // force-persist (backstop) branch.
+        (_, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(longHead);
+
+        Assert.That(toPersist, Is.Not.Null);
+        Assert.That(toPersist!.From, Is.EqualTo(persisted));
+        Assert.That(toPersist.To, Is.EqualTo(target2));
+
+        toPersist.Dispose();
+    }
+
+    [Test]
     public void DetermineSnapshotAction_NoSnapshotAvailable_ReturnsNull()
     {
         StateId persisted = Block0;
@@ -683,6 +743,63 @@ public class PersistenceManagerTests
 
         Assert.That(result, Is.EqualTo(state16));
         _persistence.Received().CreateWriteBatch(Block0, state16);
+    }
+
+    [Test]
+    public void FlushToPersistence_UnfinalizedForkAtBoundary_PersistsHeadReachableFork()
+    {
+        // Two unfinalized forks at the boundary block 16; the head's chain runs through target2. The flush
+        // must persist target2 (head-reachable), not the arbitrary first fork target1.
+        StateId target1 = CreateStateId(16, rootByte: 1); // arbitrary "first" (lowest root)
+        StateId target2 = CreateStateId(16, rootByte: 2); // on the head's chain
+        StateId head = CreateStateId(32);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(0); // nothing finalized
+
+        // Repo-owned; FlushToPersistence persists/prunes (disposes) them, so don't double-own.
+        CreateSnapshot(Block0, target1, compacted: true);
+        CreateSnapshot(Block0, target2, compacted: true);
+        CreateSnapshot(target2, head, compacted: true); // head reachable only via target2
+        _snapshotRepository.SetLastCommittedStateId(head);
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        Assert.That(result, Is.EqualTo(head));
+        _persistence.Received().CreateWriteBatch(Block0, target2);
+        _persistence.DidNotReceive().CreateWriteBatch(Block0, target1);
+    }
+
+    [Test]
+    public void FlushToPersistence_LongerNonCanonicalFork_PersistsCommittedHeadChain()
+    {
+        // The longest in-memory chain runs through target1 to block 300, but the committed head is the
+        // shorter chain through target2 (at block 32). The flush must follow the committed head (target2),
+        // stopping at its block, not chase the longer non-canonical fork through target1.
+        StateId target1 = CreateStateId(16, rootByte: 1); // boundary state on the longer, non-canonical fork
+        StateId target2 = CreateStateId(16, rootByte: 2); // boundary state on the committed head's chain
+        StateId longHead = CreateStateId(300); // longest chain (the max), but not committed
+        StateId committedHead = CreateStateId(32, rootByte: 2);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(0); // nothing finalized
+
+        // Repo-owned; FlushToPersistence persists/prunes (disposes) them, so don't double-own.
+        CreateSnapshot(Block0, target1, compacted: true);
+        CreateSnapshot(Block0, target2, compacted: true);
+        CreateSnapshot(target1, longHead, compacted: true);
+        CreateSnapshot(target2, committedHead, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(committedHead);
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        StateId result = _persistenceManager.FlushToPersistence();
+
+        Assert.That(result, Is.EqualTo(committedHead));
+        _persistence.Received().CreateWriteBatch(Block0, target2);
+        _persistence.DidNotReceive().CreateWriteBatch(Block0, target1);
     }
 
     [Test]

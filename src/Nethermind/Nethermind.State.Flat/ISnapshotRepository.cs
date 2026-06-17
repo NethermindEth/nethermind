@@ -91,6 +91,21 @@ public interface ISnapshotRepository
     /// persisted-tier maxima (the true cross-tier tip). <c>null</c> when empty.</summary>
     StateId? GetLastSnapshotId();
 
+    /// <summary>
+    /// Records <paramref name="stateId"/> as the most recently committed state (the block the main
+    /// processing scope just committed).
+    /// </summary>
+    /// <remarks>
+    /// Always overwrites the previous value with no monotonic guard: a reorg legitimately moves the head
+    /// to a same- or lower-numbered state with a different root. Unlike <see cref="GetLastSnapshotId"/>
+    /// (the longest in-memory chain) this follows the canonical head, so a forced persist does not start
+    /// its ancestor walk from a longer non-canonical fork.
+    /// </remarks>
+    void SetLastCommittedStateId(in StateId stateId);
+
+    /// <summary>Returns the most recently committed state, or <c>null</c> if nothing was committed this session.</summary>
+    StateId? GetLastCommittedStateId();
+
     /// <summary>All registered in-memory state ids at <paramref name="blockNumber"/> (a fork can have
     /// several). Caller disposes the list.</summary>
     ArrayPoolList<StateId> GetStatesAtBlockNumber(long blockNumber);

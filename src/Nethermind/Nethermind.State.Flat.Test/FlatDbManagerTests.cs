@@ -129,6 +129,7 @@ public class FlatDbManagerTests
         manager.AddSnapshot(snapshot, transientResource);
 
         _snapshotRepository.DidNotReceive().TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase);
+        _snapshotRepository.DidNotReceive().SetLastCommittedStateId(Arg.Any<StateId>());
     }
 
     [Test]
@@ -148,6 +149,7 @@ public class FlatDbManagerTests
         manager.AddSnapshot(snapshot, transientResource);
 
         _snapshotRepository.Received(1).TryAdd(snapshot, SnapshotTier.InMemoryBase);
+        _snapshotRepository.Received(1).SetLastCommittedStateId(snapshotTo);
     }
 
     [Test]
@@ -198,5 +200,6 @@ public class FlatDbManagerTests
         manager.AddSnapshot(snapshot, transientResource);
 
         _resourcePool.Received(1).ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+        _snapshotRepository.DidNotReceive().SetLastCommittedStateId(Arg.Any<StateId>());
     }
 }
