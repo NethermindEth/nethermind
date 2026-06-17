@@ -593,11 +593,21 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         /// <summary>
-        /// Determines whether the EVM execution should proceed for the given transaction and execution context.
-        /// This method can be overridden by derived classes to implement custom logic that may conditionally skip EVM execution.
-        /// If this method returns false, the transaction will finish with provided execution result.
-        /// Caller is responsible for any necessary state cleanup in that case (e.g. refunds, nonce increment, etc.) depending on expected result.
+        /// Determines whether the EVM (or simple-transfer fast-path) should be executed for this transaction.
         /// </summary>
+        /// <param name="transactionResult">
+        /// The result to return when <c>false</c> is returned. Set to <see cref="TransactionResult.Ok"/>
+        /// to indicate the no-op was intentional and the transaction should be treated as successful.
+        /// </param>
+        /// <returns>
+        /// <c>true</c> to proceed with normal EVM execution; <c>false</c> to skip it.
+        /// </returns>
+        /// <remarks>
+        /// When returning <c>false</c>, the caller does NOT invoke <see cref="FinalizeTransaction"/> or
+        /// <see cref="UpdateHeaderGasUsedAndPayFees"/>. Overrides that skip execution are responsible for
+        /// calling those methods themselves with an empty <see cref="TransactionSubstate"/> if correct gas
+        /// accounting and tracer notifications are required.
+        /// </remarks>
         protected virtual bool ShouldExecuteEvm(Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,

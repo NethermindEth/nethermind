@@ -1,28 +1,30 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.Evm.Tracing;
-using Nethermind.Blockchain.Tracing.ParityStyle;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
-using Nethermind.Specs.Forks;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
-using Nethermind.Config;
+using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Core.Test;
 
 namespace Nethermind.Evm.Test;
 
@@ -740,4 +742,65 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(balanceBefore), "Warmup must not deduct sender balance (should use SystemTransactionProcessor path)");
     }
 
+    [Test]
+    public void ShouldExecuteEvm_returning_false_skips_EVM()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address recipient = CreateContractRecipient(_stateProvider, spec, 1502);
+        _stateProvider.Commit(spec);
+        _stateProvider.CommitTree(0);
+
+        CountingVirtualMachine vm = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        NoOpTransactionProcessor processor = new(
+            BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, vm, codeInfoRepository, LimboLogs.Instance);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(recipient)
+            .WithGasPrice(1)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .TestObject;
+        Block block = BuildPragueBlock(tx);
+
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(vm.ExecuteTransactionCalls, Is.EqualTo(0));
+        Assert.That(tx.SpentGas, Is.EqualTo(tx.GasLimit)); //no refund - burns all gas
+        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(UInt256.One));
+    }
+
+    private sealed class NoOpTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider specProvider,
+        IWorldState worldState,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
+        ILogManager logManager)
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    {
+        protected override bool ShouldExecuteEvm(
+            Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ITxTracer tracer,
+            ExecutionOptions opts,
+            bool restore,
+            bool commit,
+            bool deleteCallerAccount,
+            in IntrinsicGas<EthereumGasPolicy> intrinsicGas,
+            EthereumGasPolicy gasAvailable,
+            in UInt256 opcodeGasPrice,
+            in UInt256 premiumPerGas,
+            in UInt256 senderReservedGasPayment,
+            in UInt256 blobBaseFee,
+            CodeInfo? preloadedCodeInfo,
+            Address? preloadedDelegationAddress,
+            out TransactionResult transactionResult)
+        {
+            transactionResult = TransactionResult.Ok;
+            return false;
+        }
+    }
 }
