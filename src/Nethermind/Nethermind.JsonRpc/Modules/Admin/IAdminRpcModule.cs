@@ -9,6 +9,26 @@ namespace Nethermind.JsonRpc.Modules.Admin;
 [RpcModule(ModuleType.Admin)]
 public interface IAdminRpcModule : IContextAwareRpcModule
 {
+    [JsonRpcMethod(Description = "Pauses local block processing. Blocks received from the network or consensus client are still queued but not processed; call `admin_resumeBlockProcessing` to process the accumulated backlog. Use `admin_isBlockProcessingPaused` to query the state. Intended for testing and diagnostics.",
+        EdgeCaseHint = "Idempotent: pausing an already-paused processor is a no-op. While paused the node is reported as healthy (a deliberate pause is not treated as a processing stall).",
+        ResponseDescription = "`true` if block processing is paused after the call (the request succeeded); `false` if it did not take effect.",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    ResultWrapper<bool> admin_pauseBlockProcessing();
+
+    [JsonRpcMethod(Description = "Resumes local block processing previously paused via `admin_pauseBlockProcessing`, processing any blocks accumulated in the queue. Intended for testing and diagnostics.",
+        EdgeCaseHint = "Idempotent: resuming a processor that is not paused is a no-op.",
+        ResponseDescription = "`true` when the resume request was accepted.",
+        ExampleResponse = "true",
+        IsImplemented = true)]
+    ResultWrapper<bool> admin_resumeBlockProcessing();
+
+    [JsonRpcMethod(Description = "Returns whether local block processing is currently paused.",
+        ResponseDescription = "`true` if block processing is paused, `false` if running.",
+        ExampleResponse = "false",
+        IsImplemented = true)]
+    ResultWrapper<bool> admin_isBlockProcessingPaused();
+
     [JsonRpcMethod(Description = "Adds the given node as a static peer. The connection is maintained for the lifetime of the process. Set `persistent` to also write the peer to static-nodes.json so it is restored on restart.",
         EdgeCaseHint = "Returns `true` even if the peer was already in the static set.",
         ResponseDescription = "`true` if the peer is in the static set after the call.",
