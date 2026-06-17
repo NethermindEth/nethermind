@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -172,6 +173,42 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
             byte[]? expected = ReferenceDecode(s);
 
             AssertSegmentationInvariant(json, expected, InvokeOnBareString);
+        }
+    }
+
+    [TestCaseSource(nameof(ValidHexCases))]
+    public void ConvertToArrayPoolList_ForHexInput_MatchesByteArrayConverter(string hex)
+    {
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+
+        Utf8JsonReader referenceReader = new(json);
+        referenceReader.Read();
+        byte[]? expected = null;
+        Exception? expectedError = null;
+        try { expected = ByteArrayConverter.Convert(ref referenceReader); }
+        catch (Exception ex) { expectedError = ex; }
+
+        Utf8JsonReader reader = new(json);
+        reader.Read();
+        ArrayPoolList<byte>? result = null;
+        Exception? error = null;
+        try { result = ByteArrayConverter.ConvertToArrayPoolList(ref reader); }
+        catch (Exception ex) { error = ex; }
+
+        using (result)
+        {
+            if (expectedError is not null)
+            {
+                Assert.That(error?.GetType(), Is.EqualTo(expectedError.GetType()), "must throw the same way as the byte[] converter");
+            }
+            else if (expected is null)
+            {
+                Assert.That(result, Is.Null, "must deserialize to null wherever the byte[] converter does");
+            }
+            else
+            {
+                Assert.That(result?.AsSpan().ToArray(), Is.EqualTo(expected), "pooled bytes must match the byte[] converter");
+            }
         }
     }
 
