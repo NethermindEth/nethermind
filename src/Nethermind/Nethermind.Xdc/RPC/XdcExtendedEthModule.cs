@@ -115,7 +115,7 @@ internal sealed class XdcExtendedEthModule(
 
     private static (string[] Keys, string[] Values) FromProofNodes(byte[][] proofNodes)
     {
-        string[] keys = new string[proofNodes.Length];
+        string[] nodeHashes = new string[proofNodes.Length];
         string[] values = new string[proofNodes.Length];
         for (int i = 0; i < proofNodes.Length; i++)
         {
