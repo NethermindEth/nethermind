@@ -232,6 +232,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return ExecuteEvm(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas,
                 gasAvailable, opcodeGasPrice, premiumPerGas, senderReservedGasPayment, blobBaseFee,
+            return ExecuteEvm(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas,
+                gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee,
                 useSimpleTransferFastPath, preloadedCodeInfo, preloadedDelegationAddress);
         }
 
