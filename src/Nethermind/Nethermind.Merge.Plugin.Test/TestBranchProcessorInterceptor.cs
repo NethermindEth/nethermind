@@ -39,6 +39,12 @@ public class TestBranchProcessorInterceptor(IBranchProcessor baseBlockProcessor,
         remove => baseBlockProcessor.BlocksProcessing -= value;
     }
 
+    public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessed
+    {
+        add => baseBlockProcessor.BlocksProcessed += value;
+        remove => baseBlockProcessor.BlocksProcessed -= value;
+    }
+
     public event EventHandler<BlockEventArgs>? BlockProcessing
     {
         add => baseBlockProcessor.BlockProcessing += value;
