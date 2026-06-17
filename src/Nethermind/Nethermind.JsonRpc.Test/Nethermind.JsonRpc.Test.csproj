@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="FluentAssertions.Json" />
+    <PackageReference Include="NJsonSchema" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
   <ItemGroup>

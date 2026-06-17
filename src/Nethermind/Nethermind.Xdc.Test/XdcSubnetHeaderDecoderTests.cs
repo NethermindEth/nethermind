@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Test
 {
@@ -29,14 +28,14 @@ namespace Nethermind.Xdc.Test
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // Decode
-            BlockHeader? decodedBase = codec.Decode((ReadOnlySpan<byte>)encodedBytes);
+            Rlp.ValueDecoderContext context = encodedBytes.AsRlpValueContext();
+            BlockHeader? decodedBase = codec.Decode(ref context);
             Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
             Assert.That(decodedBase, Is.InstanceOf<XdcSubnetBlockHeader>(), "The decoded header should be an instance of XdcSubnetBlockHeader.");
 
             XdcSubnetBlockHeader decoded = (XdcSubnetBlockHeader)decodedBase!;
 
-            // Hash is excluded since decoder sets it from RLP, but original is often not set
-            decoded.Should().BeEquivalentTo(original, options => options.Excluding(h => h.Hash));
+            Assert.That(decoded, Is.EqualTo(original).UsingXdcComparer(compareHash: false));
         }
 
         [Test]
@@ -69,7 +68,8 @@ namespace Nethermind.Xdc.Test
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(decoder, true);
 
             // ForSealing encoding
-            XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode((ReadOnlySpan<byte>)encodedBytes, RlpBehaviors.ForSealing)!;
+            Rlp.ValueDecoderContext context = encodedBytes.AsRlpValueContext();
+            XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode(ref context, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null, "ForSealing encoding should not contain Validator field.");
             Assert.That(unencoded.NextValidators, Is.Null, "ForSealing encoding should not contain NextValidators field.");

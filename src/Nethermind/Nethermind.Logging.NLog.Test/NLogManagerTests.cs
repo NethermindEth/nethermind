@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using NLog;
 using NLog.Config;
 using NUnit.Framework;
@@ -31,11 +30,11 @@ namespace Nethermind.Logging.NLog.Test
                     IEnumerable<LoggingRule> foundRules = LogManager.Configuration.LoggingRules.Where(r => r.LoggerNamePattern == rules[i]);
                     if (shouldExist)
                     {
-                        foundRules.Should().NotBeEmpty();
+                        Assert.That(foundRules, Is.Not.Empty);
                     }
                     else
                     {
-                        foundRules.Should().BeEmpty();
+                        Assert.That(foundRules, Is.Empty);
                     }
                 }
 
@@ -52,9 +51,19 @@ namespace Nethermind.Logging.NLog.Test
         public void Create_removes_overwritten_rules()
         {
             _ = new NLogManager("test", null, "*:Error");
-            LogManager.Configuration.LoggingRules.Should().BeEquivalentTo(
-                new LoggingRule[] { new("*", global::NLog.LogLevel.Error, null) },
-                static c => c.Excluding(static r => r.Targets));
+            Assert.That(LogManager.Configuration.LoggingRules, Has.Count.EqualTo(1));
+
+            LoggingRule rule = LogManager.Configuration.LoggingRules.Single();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rule.LoggerNamePattern, Is.EqualTo("*"));
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Trace), Is.False);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Debug), Is.False);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Info), Is.False);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Warn), Is.False);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Error), Is.True);
+                Assert.That(rule.IsLoggingEnabledForLevel(global::NLog.LogLevel.Fatal), Is.True);
+            }
         }
     }
 }

@@ -408,7 +408,7 @@ public class TrieDiffWalkerTests
     }
 
     private static Address AddressFromSeed(int seed) =>
-        new(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[..20].ToArray());
+        new(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[..20]);
 
     [Test]
     public void MultiBlock_ScanDiffScan_CumulativeMatchesFreshScan()

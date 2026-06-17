@@ -4,7 +4,7 @@
 using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
-using Nethermind.Core.Timers;
+using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Snapshot;
@@ -14,12 +14,12 @@ namespace Nethermind.Init.Snapshot;
 /// Manually follows HTTP redirects to preserve the Range header, which standard
 /// HttpClient strips on auto-redirect.
 /// </summary>
-internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory timerFactory) : IDisposable
+internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
 {
     private const int BufferSize = 65536;
     private const int MaxRedirects = 10;
     private const int ResumeWarningDelaySeconds = 5;
-    private const int ProgressIntervalSeconds = 5;
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(5);
 
     // A single HttpClient is shared for all retries to preserve the connection pool.
     private readonly HttpClient _httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
@@ -70,12 +70,14 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
         await using FileStream fileStream = new(destinationPath, fileMode, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
 
         long initialProgress = fileMode == FileMode.Append ? existingSize : 0;
-        using ProgressTracker progressTracker = new(logManager, timerFactory, TimeSpan.FromSeconds(ProgressIntervalSeconds), initialProgress, totalSize);
+        using ProgressReporter progress = new("Snapshot download", logManager, totalSize ?? 0, ProgressInterval);
+        progress.Logger.SetFormat(FormatBytes(totalSize));
+        progress.Update(initialProgress);
 
         if (bytesToSkip > 0)
             await SkipBytesAsync(contentStream, bytesToSkip, cancellationToken).ConfigureAwait(false);
 
-        await CopyWithProgressAsync(contentStream, fileStream, progressTracker, cancellationToken).ConfigureAwait(false);
+        await CopyWithProgressAsync(contentStream, fileStream, progress, cancellationToken).ConfigureAwait(false);
 
         if (_logger.IsInfo)
             _logger.Info($"Snapshot downloaded to {destinationPath}.");
@@ -157,16 +159,18 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
     }
 
     private static async Task CopyWithProgressAsync(
-        Stream source, FileStream destination, ProgressTracker tracker, CancellationToken cancellationToken)
+        Stream source, FileStream destination, ProgressReporter progress, CancellationToken cancellationToken)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
+            long downloaded = progress.Logger.CurrentValue;
             int bytesRead;
             while ((bytesRead = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
             {
                 await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
-                tracker.AddProgress(bytesRead);
+                downloaded += bytesRead;
+                progress.Update(downloaded);
             }
         }
         finally
@@ -174,4 +178,19 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
+
+    private static Func<ProgressLogger, string> FormatBytes(long? totalBytes) =>
+        totalBytes is null
+            ? static logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)}"
+            : logger => $"Snapshot download {HumanReadableSize(logger.CurrentValue)} out of {HumanReadableSize(totalBytes.Value)}";
+
+    private static string HumanReadableSize(long byteCount) =>
+        byteCount switch
+        {
+            < 0 => throw new ArgumentOutOfRangeException(nameof(byteCount), "Cannot be negative"),
+            < MemorySizes.KiB => $"{byteCount:0.##}B",
+            < MemorySizes.MiB => $"{(float)byteCount / MemorySizes.KiB:0.##}KB",
+            < MemorySizes.GiB => $"{(float)byteCount / MemorySizes.MiB:0.##}MB",
+            _ => $"{(float)byteCount / MemorySizes.GiB:0.##}GB",
+        };
 }

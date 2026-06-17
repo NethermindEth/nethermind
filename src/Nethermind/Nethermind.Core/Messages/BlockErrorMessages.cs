@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
@@ -165,15 +165,16 @@ public static class BlockErrorMessages
     public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
 
-    public static string BlockLevelAccessListExceededSizeLimit(int balItems, int maxBalItems) =>
-        $"BlockLevelAccessListExceededSizeLimit: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
+    public static string BlockAccessListGasLimitExceeded(long balItems, long maxBalItems) =>
+        $"BlockAccessListGasLimitExceeded: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
+
+    public static string BlockLevelAccessListIndexOutOfRange(uint index, uint maxAllowed) =>
+        $"InvalidBlockLevelAccessList: BlockAccessIndex {index} exceeds allowed range [0, {maxAllowed}] (txCount + 1).";
 
     public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 
     public const string MissingSlotNumber = "MissingSlotNumber: Must be present in block header.";
-    public const string InvalidSlotNumber =
-        "InvalidSlotNumber: Slot number in header must exceed parent.";
 
     public const string SlotNumberNotEnabled =
         "SlotNumberNotEnabled: Block header cannot have slot number.";

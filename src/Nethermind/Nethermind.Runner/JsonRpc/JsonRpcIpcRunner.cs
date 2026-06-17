@@ -56,6 +56,7 @@ namespace Nethermind.Runner.JsonRpc
 
                 _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
                 _server.Bind(new UnixDomainSocketEndPoint(path));
+                TryRestrictSocketPermissions(path);
                 _server.Listen(0);
             }
             catch (Exception ex)
@@ -77,7 +78,39 @@ namespace Nethermind.Runner.JsonRpc
             }
         }
 
-        private async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
+        private void TryRestrictSocketPermissions(string path)
+        {
+            if (!_jsonRpcConfig.RestrictIpcSocketPermissions)
+            {
+                if (_logger.IsWarn) _logger.Warn("IPC socket permission restriction is disabled by configuration. Any local user can connect to the IPC socket.");
+                return;
+            }
+
+            try
+            {
+                if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                {
+                    _fileSystem.File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); // 600 (rw-------)
+
+                    if (_logger.IsTrace) _logger.Trace($"Restricted IPC socket permissions to 600 at {path}.");
+                }
+                else if (OperatingSystem.IsWindows())
+                {
+                    if (_logger.IsTrace) _logger.Trace("IPC socket on Windows does not support Unix file permission bits; skipping permission restriction.");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace("Unknown OS; skipping IPC socket permission restriction.");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to set restrictive permissions on IPC socket at {path}: {ex}");
+            }
+        }
+
+
+        internal async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
         {
             using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
                 string.Empty,
@@ -102,6 +135,10 @@ namespace Nethermind.Runner.JsonRpc
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset || ex.ErrorCode == OperationCancelledError)
+            {
+                if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
+            }
+            catch (ObjectDisposedException ex) when (ex.ObjectName == typeof(IpcSocketMessageStream).FullName)
             {
                 if (_logger.IsDebug) _logger.Debug("IPC client disconnected.");
             }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -171,7 +170,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(4).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
             Block alternativeTerminalBlock = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(4).WithParent(blockTree.Head!).WithGasLimit(20000000).WithDifficulty(1000000L).TestObject;
             blockTree.SuggestBlock(block);
-            blockTree.UpdateMainChain(block);
+            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
             Assert.That(poSSwitcher.GetBlockConsensusInfo(alternativeTerminalBlock.Header), Is.EqualTo((true, false)));
         }
@@ -189,7 +188,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(false));
             Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(4).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
             blockTree.SuggestBlock(block);
-            blockTree.UpdateMainChain(block);
+            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
 
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
         }
@@ -208,7 +207,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(false));
             Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(terminalBlock).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
             blockTree.SuggestBlock(block);
-            blockTree.UpdateMainChain(block);
+            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlock + 1));
             Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
 
@@ -248,9 +247,9 @@ namespace Nethermind.Merge.Plugin.Test
                 syncConfig = new SyncConfig() { PivotTotalDifficulty = $"{(UInt256)pivotTotalDifficulty}" };
             PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree, specProvider, new ChainSpec() { Genesis = genesisBlock }, LimboLogs.Instance);
             if (expectedFinalTotalDifficulty is not null)
-                poSSwitcher.FinalTotalDifficulty.Should().Be((UInt256)expectedFinalTotalDifficulty);
+                Assert.That(poSSwitcher.FinalTotalDifficulty, Is.EqualTo((UInt256?)(UInt256)expectedFinalTotalDifficulty));
             else
-                poSSwitcher.FinalTotalDifficulty.Should().BeNull();
+                Assert.That(poSSwitcher.FinalTotalDifficulty, Is.Null);
         }
 
 

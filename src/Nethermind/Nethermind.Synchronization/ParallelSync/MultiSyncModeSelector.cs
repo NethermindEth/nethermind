@@ -321,7 +321,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInUpdatingPivot()
         {
-            bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot > 0;
+            if (_syncConfig.StaticSnapPivot) return false;
+
+            bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot is > 0 or ISyncConfig.InfiniteAttempts;
             bool isPostMerge = _beaconSyncStrategy.MergeTransitionFinished;
             bool stateSyncNotFinished = _syncProgressResolver.FindBestFullState() == 0;
 
@@ -360,7 +362,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             // Shared with fast sync
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
-            bool postPivotPeerAvailable = best.AnyPostPivotPeerKnown;
+            bool postPivotPeerAvailable = best.AnyPostPivotPeerKnown || (_syncConfig.StaticSnapPivot && best.Peer.Block >= best.PivotNumber);
 
             // We stop `FastSyncLag` block before the highest known block in case the highest known block is non-canon
             // and we need to sync away from it.
@@ -568,7 +570,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInUpdatingPivot = !best.IsInUpdatingPivot;
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
             bool hasFastSyncBeenActive = best.Header >= best.PivotNumber;
-            bool hasAnyPostPivotPeer = best.AnyPostPivotPeerKnown;
+            bool hasAnyPostPivotPeer = best.AnyPostPivotPeerKnown || (_syncConfig.StaticSnapPivot && best.Peer.Block >= best.PivotNumber);
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.TargetBlock - best.Header < (_syncConfig.StateMinDistanceFromHead + StickyStateNodesDelta);
@@ -698,8 +700,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
         {
-            List<string> matched = new();
-            List<string> failed = new();
+            List<string> matched = [];
+            List<string> failed = [];
 
             foreach ((string name, bool isSatisfied) in checks)
             {

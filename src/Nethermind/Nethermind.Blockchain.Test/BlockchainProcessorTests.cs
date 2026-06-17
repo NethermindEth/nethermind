@@ -9,10 +9,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using ConcurrentCollections;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -54,13 +54,13 @@ public class BlockchainProcessorTests
         {
             private readonly ILogger _logger;
 
-            private readonly ConcurrentHashSet<Hash256> _allowed = new();
+            private readonly ConcurrentHashSet<Hash256> _allowed = [];
 
-            internal readonly HashSet<Hash256> Processed = new();
+            internal readonly HashSet<Hash256> Processed = [];
 
-            private readonly ConcurrentHashSet<Hash256> _allowedToFail = new();
+            private readonly ConcurrentHashSet<Hash256> _allowedToFail = [];
 
-            private readonly HashSet<Hash256> _rootProcessed = new();
+            private readonly HashSet<Hash256> _rootProcessed = [];
 
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
@@ -398,7 +398,7 @@ public class BlockchainProcessorTests
                 Assert.Fail($"Block {block} was expected to be added");
             }
 
-            _blockTree.UpdateMainChain(new[] { block }, false);
+            _blockTree.TryUpdateMainChain(block.Header, false, preloadedBlocks: new[] { block });
             _branchProcessor.Allow(block.Hash!);
             _recoveryStep.Allow(block.Hash!);
 
@@ -534,7 +534,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext AssertProcessedBlocks(params IEnumerable<Block> blocks)
         {
-            _branchProcessor.Processed.Should().BeEquivalentTo(blocks.Select(b => b.Hash));
+            Assert.That(_branchProcessor.Processed, Is.EqualTo(blocks.Select(b => b.Hash)));
             return this;
         }
 
@@ -614,7 +614,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block0).BecomesGenesis();
 
         long metricsAfter = Metrics.LastBlockProcessingTimeInMs;
-        metricsAfter.Should().NotBe(metricsBefore);
+        Assert.That(metricsAfter, Is.Not.EqualTo(metricsBefore));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

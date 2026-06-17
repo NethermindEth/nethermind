@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,7 +59,7 @@ namespace Nethermind.Test.Runner
 
         public IEnumerable<EthereumTestResult> RunTests()
         {
-            List<EthereumTestResult> results = new();
+            List<EthereumTestResult> results = [];
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             foreach (GeneralStateTest test in tests)
             {
@@ -94,7 +95,15 @@ namespace Nethermind.Test.Runner
                     StateTestTxTrace txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
-                    txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
+
+                    try
+                    {
+                        txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
+                    }
+                    catch (InvalidDataException e)
+                    {
+                        _logger.Info($"Skipping intrinsic-gas trace adjustment for {test.Name}: {e.Message}");
+                    }
                     WriteErr(txTrace);
                 }
 

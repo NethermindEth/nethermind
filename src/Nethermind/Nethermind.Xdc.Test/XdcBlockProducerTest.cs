@@ -20,6 +20,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Xdc.Test.Helpers;
 
 namespace Nethermind.Xdc.Test;
 
@@ -43,7 +44,7 @@ internal class XdcBlockProducerTest
             .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>())
             .Returns(new Types.EpochSwitchInfo(masterNodes.Select(m => m.Address).ToArray(), [], [], new Types.BlockRoundInfo(Hash256.Zero, 0, 0)));
 
-        ISealer sealer = new XdcSealer(new Signer(0, new ProtectedPrivateKey(masterNodes[1], ""), NullLogManager.Instance));
+        ISealer sealer = new XdcSealer(new Signer(0, new ProtectedPrivateKey(masterNodes[1], ""), NullLogManager.Instance), NullLogManager.Instance);
 
         XdcBlockHeader parent = Build.A.XdcBlockHeader().TestObject;
 

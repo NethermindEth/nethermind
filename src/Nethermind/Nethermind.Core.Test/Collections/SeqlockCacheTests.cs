@@ -5,7 +5,6 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -53,8 +52,11 @@ public class SeqlockCacheTests
 
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        found.Should().BeFalse();
-        value.Should().BeNull();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(value, Is.Null);
+        }
     }
 
     [Test]
@@ -67,8 +69,11 @@ public class SeqlockCacheTests
         cache.Set(in key, expected);
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        found.Should().BeTrue();
-        value.Should().BeSameAs(expected);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.SameAs(expected));
+        }
     }
 
     [Test]
@@ -83,8 +88,11 @@ public class SeqlockCacheTests
         cache.Set(in key, second);
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        found.Should().BeTrue();
-        value.Should().BeSameAs(second);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.SameAs(second));
+        }
     }
 
     [Test]
@@ -98,8 +106,11 @@ public class SeqlockCacheTests
         cache.Set(in key, expected); // Same reference - should be fast-path no-op
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        found.Should().BeTrue();
-        value.Should().BeSameAs(expected);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.SameAs(expected));
+        }
     }
 
     [Test]
@@ -111,8 +122,11 @@ public class SeqlockCacheTests
         cache.Set(in key, null);
         bool found = cache.TryGetValue(in key, out byte[]? value);
 
-        found.Should().BeTrue();
-        value.Should().BeNull();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.Null);
+        }
     }
 
     [Test]
@@ -125,7 +139,7 @@ public class SeqlockCacheTests
         cache.Set(in key, expected);
         byte[]? result = cache.GetOrAdd(in key, static (in StorageCell _) => new byte[32]);
 
-        result.Should().BeSameAs(expected);
+        Assert.That(result, Is.SameAs(expected));
     }
 
     [Test]
@@ -137,12 +151,15 @@ public class SeqlockCacheTests
 
         byte[]? result = cache.GetOrAdd(in key, (in StorageCell _) => factoryResult);
 
-        result.Should().BeSameAs(factoryResult);
+        Assert.That(result, Is.SameAs(factoryResult));
 
         // Value should now be cached
         bool found = cache.TryGetValue(in key, out byte[]? cached);
-        found.Should().BeTrue();
-        cached.Should().BeSameAs(factoryResult);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(cached, Is.SameAs(factoryResult));
+        }
     }
 
     [Test]
@@ -155,7 +172,7 @@ public class SeqlockCacheTests
         cache.Set(in key, expected);
         byte[]? result = cache.GetOrAdd(in key, static (in _) => new byte[32]);
 
-        result.Should().BeSameAs(expected);
+        Assert.That(result, Is.SameAs(expected));
     }
 
     [Test]
@@ -167,7 +184,7 @@ public class SeqlockCacheTests
 
         byte[]? result = cache.GetOrAdd(in key, (in _) => factoryResult);
 
-        result.Should().BeSameAs(factoryResult);
+        Assert.That(result, Is.SameAs(factoryResult));
     }
 
     [Test]
@@ -180,7 +197,7 @@ public class SeqlockCacheTests
         cache.Set(in key, expected);
         byte[]? result = cache.GetOrAdd(in key, 42, static (in StorageCell _, int _) => new byte[32]);
 
-        result.Should().BeSameAs(expected);
+        Assert.That(result, Is.SameAs(expected));
     }
 
     [Test]
@@ -192,12 +209,15 @@ public class SeqlockCacheTests
 
         byte[]? result = cache.GetOrAdd(in key, factoryResult, static (in StorageCell _, byte[] state) => state);
 
-        result.Should().BeSameAs(factoryResult);
+        Assert.That(result, Is.SameAs(factoryResult));
 
         // Value should now be cached
         bool found = cache.TryGetValue(in key, out byte[]? cached);
-        found.Should().BeTrue();
-        cached.Should().BeSameAs(factoryResult);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(cached, Is.SameAs(factoryResult));
+        }
     }
 
     [Test]
@@ -212,8 +232,11 @@ public class SeqlockCacheTests
 
         cache.Clear();
 
-        cache.TryGetValue(in key1, out _).Should().BeFalse();
-        cache.TryGetValue(in key2, out _).Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGetValue(in key1, out _), Is.False);
+            Assert.That(cache.TryGetValue(in key2, out _), Is.False);
+        }
     }
 
     [Test]
@@ -229,8 +252,11 @@ public class SeqlockCacheTests
         cache.Set(in key, afterClear);
 
         bool found = cache.TryGetValue(in key, out byte[]? value);
-        found.Should().BeTrue();
-        value.Should().BeSameAs(afterClear);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.SameAs(afterClear));
+        }
     }
 
     [Test]
@@ -243,10 +269,13 @@ public class SeqlockCacheTests
         {
             byte[] value = CreateValue(i);
             cache.Set(in key, value);
-            cache.TryGetValue(in key, out byte[]? retrieved).Should().BeTrue();
-            retrieved.Should().BeSameAs(value);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.TryGetValue(in key, out byte[]? retrieved), Is.True);
+                Assert.That(retrieved, Is.SameAs(value));
+            }
             cache.Clear();
-            cache.TryGetValue(in key, out _).Should().BeFalse();
+            Assert.That(cache.TryGetValue(in key, out _), Is.False);
         }
     }
 
@@ -277,7 +306,7 @@ public class SeqlockCacheTests
             }
         }
 
-        hits.Should().BeGreaterThan(0, "at least some entries should survive");
+        Assert.That(hits, Is.GreaterThan(0), "at least some entries should survive");
     }
 
     [Test]
@@ -303,7 +332,7 @@ public class SeqlockCacheTests
             }
         });
 
-        successCount.Should().Be(threadCount * iterations);
+        Assert.That(successCount, Is.EqualTo(threadCount * iterations));
     }
 
     [Test]
@@ -342,7 +371,7 @@ public class SeqlockCacheTests
                     break;
                 }
             }
-            isValid.Should().BeTrue("cached value should be one of the written values");
+            Assert.That(isValid, Is.True, "cached value should be one of the written values");
         }
     }
 
@@ -392,7 +421,7 @@ public class SeqlockCacheTests
         stop = true;
 
         // All reads should have returned valid values (or miss due to concurrent write)
-        (validReads + misses).Should().Be(iterations);
+        Assert.That((validReads + misses), Is.EqualTo(iterations));
     }
 
     [Test]
@@ -406,8 +435,11 @@ public class SeqlockCacheTests
         cache.Set(in key, account);
         bool found = cache.TryGetValue(in key, out Account? result);
 
-        found.Should().BeTrue();
-        result.Should().BeSameAs(account);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result, Is.SameAs(account));
+        }
     }
 
     [Test]
@@ -421,8 +453,11 @@ public class SeqlockCacheTests
         cache.Set(in key, value);
         bool found = cache.TryGetValue(in key, out byte[]? result);
 
-        found.Should().BeTrue();
-        result.Should().BeSameAs(value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result, Is.SameAs(value));
+        }
     }
 
     [Test]
@@ -451,8 +486,11 @@ public class SeqlockCacheTests
 
         // Value should still be retrievable and correct
         bool found = cache.TryGetValue(in key, out byte[]? result);
-        found.Should().BeTrue();
-        result.Should().BeSameAs(value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result, Is.SameAs(value));
+        }
     }
 
     [Test]
@@ -521,7 +559,7 @@ public class SeqlockCacheTests
         Task.WaitAll(writers);
         Task.WaitAll(readers);
 
-        failure.Should().BeNull($"wrong key-value pairing detected {failureCount} time(s)");
+        Assert.That(failure, Is.Null, $"wrong key-value pairing detected {failureCount} time(s)");
     }
 
     [Test]
@@ -554,7 +592,75 @@ public class SeqlockCacheTests
         if (found)
         {
             bool isValid = Array.Exists(values, v => ReferenceEquals(v, result));
-            isValid.Should().BeTrue("cached value should be one of the written values");
+            Assert.That(isValid, Is.True, "cached value should be one of the written values");
         }
+    }
+
+    [TestCase(1)]
+    [TestCase(SeqlockCache<StorageCell, byte[]>.DefaultSetsBits)]
+    [TestCase(SeqlockCache<StorageCell, byte[]>.MaxSetsBits)]
+    public void Custom_size_set_then_get_returns_value(int setsBits)
+    {
+        SeqlockCache<StorageCell, byte[]> cache = new(setsBits);
+
+        for (int i = 0; i < 100; i++)
+        {
+            StorageCell key = CreateKey(i);
+            cache.Set(in key, CreateValue(i));
+        }
+
+        int hits = 0;
+        for (int i = 0; i < 100; i++)
+        {
+            StorageCell key = CreateKey(i);
+            if (cache.TryGetValue(in key, out byte[]? value))
+            {
+                hits++;
+                Assert.That(value, Is.EqualTo(CreateValue(i)));
+            }
+        }
+
+        // 2-way associativity allows conflict evictions at tiny sizes, but every surviving
+        // entry must round-trip; at realistic sizes all 100 keys must survive.
+        if (setsBits >= SeqlockCache<StorageCell, byte[]>.DefaultSetsBits)
+        {
+            Assert.That(hits, Is.EqualTo(100));
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(-1)]
+    [TestCase(SeqlockCache<StorageCell, byte[]>.MaxSetsBits + 1)]
+    public void Invalid_size_throws(int setsBits)
+        => Assert.Throws<ArgumentOutOfRangeException>(() => _ = new SeqlockCache<StorageCell, byte[]>(setsBits));
+
+    [Test]
+    public void Larger_cache_retains_working_set_that_overflows_default_capacity()
+    {
+        // ~1.5x the default 32K-entry capacity: the default cache must evict, the larger one retain.
+        const int workingSet = 48_000;
+
+        SeqlockCache<StorageCell, byte[]> defaultCache = new();
+        SeqlockCache<StorageCell, byte[]> largeCache = new(17);
+        byte[] value = CreateValue(0);
+
+        for (int i = 0; i < workingSet; i++)
+        {
+            StorageCell key = CreateKey(i);
+            defaultCache.Set(in key, value);
+            largeCache.Set(in key, value);
+        }
+
+        int defaultHits = 0;
+        int largeHits = 0;
+        for (int i = 0; i < workingSet; i++)
+        {
+            StorageCell key = CreateKey(i);
+            if (defaultCache.TryGetValue(in key, out _)) defaultHits++;
+            if (largeCache.TryGetValue(in key, out _)) largeHits++;
+        }
+
+        Assert.That(largeHits, Is.GreaterThan((int)(workingSet * 0.95)));
+        Assert.That(largeHits, Is.GreaterThan(defaultHits));
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -18,8 +17,8 @@ namespace Nethermind.Evm.Test
         {
             VmState<EthereumGasPolicy> vmState = CreateEvmState();
             StorageCell storageCell = new(TestItem.AddressA, 1);
-            vmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeTrue();
-            vmState.AccessTracker.IsCold(storageCell).Should().BeTrue();
+            Assert.That(vmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
+            Assert.That(vmState.AccessTracker.IsCold(storageCell), Is.True);
         }
 
         [Test]
@@ -29,7 +28,7 @@ namespace Nethermind.Evm.Test
             Address address = TestItem.AddressA;
             vmState.AccessTracker.WarmUp(address);
             vmState.AccessTracker.WarmUp(address);
-            vmState.AccessTracker.IsCold(address).Should().BeFalse();
+            Assert.That(vmState.AccessTracker.IsCold(address), Is.False);
         }
 
         [Test]
@@ -44,8 +43,8 @@ namespace Nethermind.Evm.Test
 
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                vmState.AccessTracker.IsCold(TestItem.Addresses[i]).Should().BeFalse();
-                vmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)).Should().BeFalse();
+                Assert.That(vmState.AccessTracker.IsCold(TestItem.Addresses[i]), Is.False);
+                Assert.That(vmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)), Is.False);
             }
         }
 
@@ -57,17 +56,15 @@ namespace Nethermind.Evm.Test
             StorageCell storageCell = new(address, 1);
             vmState.AccessTracker.WarmUp(storageCell);
             vmState.AccessTracker.WarmUp(storageCell);
-            vmState.AccessTracker.IsCold(storageCell).Should().BeFalse();
+            Assert.That(vmState.AccessTracker.IsCold(storageCell), Is.False);
         }
 
         [Test]
         public void Nothing_to_commit()
         {
             VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
-            {
-                vmState.CommitToParent(parentVmState);
-            }
+            using VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState);
+            vmState.CommitToParent(parentVmState);
         }
 
         [Test]
@@ -87,7 +84,7 @@ namespace Nethermind.Evm.Test
                 vmState.CommitToParent(parentVmState);
             }
 
-            parentVmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeFalse();
+            Assert.That(parentVmState.AccessTracker.IsCold(TestItem.AddressA), Is.False);
         }
 
         [Test]
@@ -99,7 +96,7 @@ namespace Nethermind.Evm.Test
                 vmState.AccessTracker.WarmUp(TestItem.AddressA);
             }
 
-            parentVmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeTrue();
+            Assert.That(parentVmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
         }
 
         [Test]
@@ -113,7 +110,7 @@ namespace Nethermind.Evm.Test
                 vmState.CommitToParent(parentVmState);
             }
 
-            parentVmState.AccessTracker.IsCold(storageCell).Should().BeFalse();
+            Assert.That(parentVmState.AccessTracker.IsCold(storageCell), Is.False);
         }
 
         [Test]
@@ -126,7 +123,7 @@ namespace Nethermind.Evm.Test
                 vmState.AccessTracker.WarmUp(storageCell);
             }
 
-            parentVmState.AccessTracker.IsCold(storageCell).Should().BeTrue();
+            Assert.That(parentVmState.AccessTracker.IsCold(storageCell), Is.True);
         }
 
         [Test]
@@ -140,7 +137,7 @@ namespace Nethermind.Evm.Test
                 vmState.CommitToParent(parentVmState);
             }
 
-            parentVmState.AccessTracker.Logs.Contains(logEntry).Should().BeTrue();
+            Assert.That(parentVmState.AccessTracker.Logs.Contains(logEntry), Is.True);
         }
 
         [Test]
@@ -153,7 +150,7 @@ namespace Nethermind.Evm.Test
                 vmState.AccessTracker.Logs.Add(logEntry);
             }
 
-            parentVmState.AccessTracker.Logs.Contains(logEntry).Should().BeFalse();
+            Assert.That(parentVmState.AccessTracker.Logs.Contains(logEntry), Is.False);
         }
 
         [Test]
@@ -166,7 +163,7 @@ namespace Nethermind.Evm.Test
                 vmState.CommitToParent(parentVmState);
             }
 
-            parentVmState.AccessTracker.DestroyList.Contains(Address.Zero).Should().BeTrue();
+            Assert.That(parentVmState.AccessTracker.DestroyList.Contains(Address.Zero), Is.True);
         }
 
         [Test]
@@ -178,7 +175,7 @@ namespace Nethermind.Evm.Test
                 vmState.AccessTracker.ToBeDestroyed(Address.Zero);
             }
 
-            parentVmState.AccessTracker.DestroyList.Contains(Address.Zero).Should().BeFalse();
+            Assert.That(parentVmState.AccessTracker.DestroyList.Contains(Address.Zero), Is.False);
         }
 
         [Test]
@@ -191,7 +188,7 @@ namespace Nethermind.Evm.Test
                 vmState.CommitToParent(parentVmState);
             }
 
-            parentVmState.Refund.Should().Be(333);
+            Assert.That(parentVmState.Refund, Is.EqualTo(333));
         }
 
         [Test]
@@ -203,7 +200,7 @@ namespace Nethermind.Evm.Test
                 vmState.Refund = 333;
             }
 
-            parentVmState.Refund.Should().Be(0);
+            Assert.That(parentVmState.Refund, Is.EqualTo(0));
         }
 
         [Test]
@@ -239,6 +236,6 @@ namespace Nethermind.Evm.Test
                     Snapshot.Empty);
 
         private static ExecutionEnvironment RentExecutionEnvironment() =>
-            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default);
+            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default);
     }
 }

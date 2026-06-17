@@ -3,7 +3,6 @@
 
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
@@ -54,7 +53,7 @@ public class BeaconHeadersSyncTests
                     Block genesis = Build.A.Block.Genesis.TestObject;
                     _blockTree = BlockTreeBuilder.TestObject;
                     _blockTree.SuggestBlock(genesis);
-                    _blockTree.UpdateMainChain(new[] { genesis }, true); // MSMS do validity check on this
+                    _blockTree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis }); // MSMS do validity check on this
                 }
 
                 return _blockTree;
@@ -171,7 +170,7 @@ public class BeaconHeadersSyncTests
         }
 
         using HeadersSyncBatch? result = await feed.PrepareRequest();
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -207,9 +206,12 @@ public class BeaconHeadersSyncTests
         }
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1001).TestObject);
         using HeadersSyncBatch? result = await feed.PrepareRequest();
-        result.Should().BeNull();
-        feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        progressLogger.CurrentValue.Should().Be(999);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+            Assert.That(progressLogger.CurrentValue, Is.EqualTo(999));
+        }
     }
 
     [Test]
@@ -268,14 +270,14 @@ public class BeaconHeadersSyncTests
             parent = block;
         }
 
-        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
-        blockTree.BestKnownNumber.Should().Be(6);
+        Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
+        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(6));
         BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
         using HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
-        result.Should().BeNull();
-        blockTree.BestKnownNumber.Should().Be(6);
-        ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+        Assert.That(result, Is.Null);
+        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(6));
+        Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+        Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
     }
 
     [Test]
@@ -298,8 +300,8 @@ public class BeaconHeadersSyncTests
         Hash256 headerToInvalidate = syncedBlockTree.FindHeader(batch.StartNumber + 10, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
         Hash256 lastValidHeader = syncedBlockTree.FindHeader(batch.StartNumber + 9, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
         invalidChainTracker.OnInvalidBlock(headerToInvalidate, lastValidHeader);
-        invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Hash256? storedLastValidHash).Should().BeTrue();
-        storedLastValidHash.Should().Be(lastValidHeader);
+        Assert.That(invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Hash256? storedLastValidHash), Is.True);
+        Assert.That(storedLastValidHash, Is.EqualTo(lastValidHeader));
     }
 
     [Test]
@@ -333,14 +335,14 @@ public class BeaconHeadersSyncTests
         feed.InitializeFeed();
 
         using HeadersSyncBatch? first = await feed.PrepareRequest();
-        first.Should().NotBeNull();
-        first!.RequestSize.Should().BeGreaterThan(0);
+        Assert.That(first, Is.Not.Null);
+        Assert.That(first!.RequestSize, Is.GreaterThan(0));
 
         // Simulate Head advancing so that PivotDestinationNumber moves above _lowestRequestedHeaderNumber.
         beaconPivot.PivotDestinationNumber.Returns(first.StartNumber + 10);
 
         using HeadersSyncBatch? second = await feed.PrepareRequest();
-        second.Should().BeNull();
+        Assert.That(second, Is.Null);
     }
 
     [Test]
@@ -369,7 +371,7 @@ public class BeaconHeadersSyncTests
 
         // First batch, should be enough to merge chain
         HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
-        request!.Should().NotBeNull();
+        Assert.That(request!, Is.Not.Null);
         request!.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
             .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
             .ToPooledList(request.RequestSize);
@@ -378,12 +380,12 @@ public class BeaconHeadersSyncTests
 
         // Ensure pivot happens which reset lowest inserted beacon header further ahead.
         ctx.BeaconPivot.EnsurePivot(ctx.RemoteBlockTree.FindHeader(pivotNumber + 10));
-        ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
+        Assert.That(ctx.BeaconSync.IsBeaconSyncHeadersFinished(), Is.False);
         request.Dispose();
 
         // The sync feed must adapt to this
         request = await ctx.Feed.PrepareRequest();
-        request.Should().NotBeNull();
+        Assert.That(request, Is.Not.Null);
 
         // We respond it again
         request!.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
@@ -393,9 +395,9 @@ public class BeaconHeadersSyncTests
         request.Dispose();
 
         // It should complete successfully
-        ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
+        Assert.That(ctx.BeaconSync.IsBeaconSyncHeadersFinished(), Is.True);
         request = await ctx.Feed.PrepareRequest();
-        request.Should().BeNull();
+        Assert.That(request, Is.Null);
     }
 
     private async void BuildAndProcessHeaderSyncBatches(
@@ -406,23 +408,33 @@ public class BeaconHeadersSyncTests
         long bestPointer,
         long endLowestBeaconHeader)
     {
-        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
-        blockTree.BestKnownNumber.Should().Be(bestPointer);
         BlockHeader? startBestHeader = syncedBlockTree.FindHeader(bestPointer, BlockTreeLookupOptions.None);
-        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
-        blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None));
+        BlockHeader? pivotHeader = syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(bestPointer));
+            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(startBestHeader?.Hash));
+            Assert.That(blockTree.BestSuggestedHeader?.Number, Is.EqualTo(startBestHeader?.Number));
+            Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(pivotHeader?.Hash));
+            Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(pivotHeader?.Number));
+        }
 
         BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
 
         HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
-        result.Should().BeNull();
-        // check headers are inserted into block tree during sync
-        blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
-        blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash);
-        blockTree.BestKnownNumber.Should().Be(bestPointer);
-        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
-        ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            // check headers are inserted into block tree during sync
+            Assert.That(blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null);
+            Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash));
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(bestPointer));
+            Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(startBestHeader?.Hash));
+            Assert.That(blockTree.BestSuggestedHeader?.Number, Is.EqualTo(startBestHeader?.Number));
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+            Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        }
     }
 
     private async void BuildHeadersSyncBatches(
@@ -437,7 +449,7 @@ public class BeaconHeadersSyncTests
         while (lowestHeaderNumber > endLowestBeaconHeader)
         {
             using HeadersSyncBatch? batch = await ctx.Feed.PrepareRequest();
-            batch.Should().NotBeNull();
+            Assert.That(batch, Is.Not.Null);
             BuildHeadersSyncBatchResponse(batch, syncedBlockTree);
             ctx.Feed.HandleResponse(batch);
             lowestHeaderNumber = lowestHeaderNumber - batch!.RequestSize < endLowestBeaconHeader
@@ -445,8 +457,8 @@ public class BeaconHeadersSyncTests
                 : lowestHeaderNumber - batch.RequestSize;
 
             BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
-            blockTree.LowestInsertedBeaconHeader?.Number.Should().Be(lowestHeader?.Number);
-            blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(lowestHeader?.Hash);
+            Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(lowestHeader?.Number));
+            Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(lowestHeader?.Hash));
         }
     }
 

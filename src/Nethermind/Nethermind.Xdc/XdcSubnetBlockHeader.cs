@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using System.Collections.Immutable;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc;
 
@@ -42,5 +43,25 @@ public class XdcSubnetBlockHeader(
         KeccakRlpStream rlpStream = new();
         _headerDecoder.Encode(rlpStream, this);
         return rlpStream.GetHash();
+    }
+
+    /// <inheritdoc />
+    public override BlockHeader CreateSimulatedChild(ulong timestamp)
+    {
+        Hash256? requestsHash = RequestsHash;
+        return new XdcSubnetBlockHeader(
+            Hash!,
+            Keccak.OfAnEmptySequenceRlp,
+            Beneficiary!,
+            UInt256.Zero,
+            Number + 1,
+            GasLimit,
+            timestamp,
+            [],
+            IsSelfMined)
+        {
+            MixHash = Hash256.Zero,
+            RequestsHash = requestsHash,
+        };
     }
 }

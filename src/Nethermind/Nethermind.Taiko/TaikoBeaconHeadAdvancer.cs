@@ -28,7 +28,7 @@ namespace Nethermind.Taiko;
 /// own canonical head during sync. This class restores the same property in the Nethermind
 /// architecture without touching core: it watches for the cached <see cref="IBlockCacheService.HeadBlockHash"/>
 /// to become processed, then enqueues every missing ancestor for processing and drives the
-/// resulting <c>UpdateMainChain</c> sequence to advance <c>Head</c> all the way to that hash.
+/// resulting <c>TryUpdateMainChain</c> sequence to advance <c>Head</c> all the way to that hash.
 /// </remarks>
 public sealed class TaikoBeaconHeadAdvancer : IDisposable
 {

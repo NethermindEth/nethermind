@@ -220,6 +220,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
+                    NormalizeZeroBlooms(receipts);
                     // BlockInfo has no timestamp
                     IReceiptSpec releaseSpec = _specProvider.GetReceiptSpec(blockInfo.BlockNumber);
                     // TODO: Optimism use op root calculator
@@ -230,6 +231,23 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             return preparedReceipts is not null;
+        }
+
+        /// <summary>
+        /// Recomputes a receipt's bloom from its logs when a peer ships an all-zero bloom for a
+        /// receipt that has logs. A non-zero but wrong bloom is left alone and caught later by the
+        /// receipts-root comparison.
+        /// </summary>
+        internal static void NormalizeZeroBlooms(TxReceipt[] receipts)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                TxReceipt receipt = receipts[i];
+                if ((receipt.Logs?.Length ?? 0) > 0 && receipt.Bloom == Bloom.Empty)
+                {
+                    receipt.Bloom = receipt.CalculateBloom();
+                }
+            }
         }
 
         private int InsertReceipts(ReceiptsSyncBatch batch)

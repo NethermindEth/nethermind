@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -490,14 +491,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             int blockQueueCount = _blockQueue.Reader.Count;
             Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
             Metrics.ProcessingQueueSize = blockQueueCount;
-            _stats.UpdateStats(lastProcessed, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
+            _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
         if (updateHead)
         {
             if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-            _blockTree.UpdateMainChain(processingBranch.Blocks, true);
+            // Pass the just-processed blocks as a cache; TryUpdateMainChain walks the rest of the branch
+            // (any deeper blocks that already had state) on its own, loading them one at a time.
+            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks.AsSpan()) && _logger.IsWarn)
+                _logger.Warn($"Failed to update main chain to {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing.");
         }
 
         if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
@@ -729,19 +733,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
-            // then on restart we would find 14 as the branch head (since 14 is on the main chain)
-            // we need to dig deeper to go all the way to the false (reorg boundary) head
-            // otherwise some nodes would be missing
-            // we also need to go deeper if we already pruned state for that block
-            bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-            bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header!);
+            // We only walk back far enough to find a base block that still has state: those are the blocks
+            // that actually need (re)processing. Blocks deeper than that already have state and must not be
+            // reprocessed - moving them onto the main chain (down to the real reorg boundary) is handled by
+            // BlockTree.TryUpdateMainChain, which walks headers there cheaply. Hence MaxBranchSize now bounds
+            // only the blocks-without-state we collect here, not the whole reorg depth.
+            bool hasState = toBeProcessed.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
-            branchingCondition =
-                (notFoundTheBranchingPointYet || !hasState)
-                && notInForceProcessing;
+            branchingCondition = !hasState && notInForceProcessing;
 
-            if (isTrace) TraceBranchingConditions(branchingPoint, notFoundTheBranchingPointYet, hasState, notInForceProcessing);
+            // notFoundTheBranchingPointYet no longer gates the loop; compute the IsMainChain lookup only for the trace.
+            if (isTrace) TraceBranchingConditions(branchingPoint, !_blockTree.IsMainChain(branchingPoint.Hash!), hasState, notInForceProcessing);
 
         } while (branchingCondition);
 

@@ -194,6 +194,11 @@ internal static class RlpHelpers
             ThrowUnexpectedLength(contentLength);
         }
 
+        if (contentLength > data.Length - position - (1 + lengthOfLength))
+        {
+            ThrowRlpDataTruncated();
+        }
+
         return (1 + lengthOfLength, contentLength);
     }
 
@@ -293,4 +298,8 @@ internal static class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowNegativeInteger(int position, long value)
         => throw new RlpException($"Expected non-negative integer and was {value} at position {position}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowNullArrayElement(int index)
+        => throw new RlpException($"Unexpected null array element at index {index}");
 }

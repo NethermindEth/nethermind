@@ -5,11 +5,16 @@ using System.Buffers.Binary;
 using System.Globalization;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stateless.Execution;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Stateless.Execution.IO;
 using Spectre.Console;
 
 namespace Nethermind.StatelessInputGen;
@@ -31,7 +36,24 @@ internal static class InputGenerator
             if (block is null || witness is null || chainId is null)
                 return 1;
 
-            data = InputSerializer.Serialize(block, witness, chainId.Value);
+            StatelessInput<SszExecutionPayloadV3> input = new()
+            {
+                NewPayloadRequest = NewPayloadRequest<SszExecutionPayloadV3>.From(block),
+                Witness = ExecutionWitness.From(witness),
+                ChainConfig = new()
+                {
+                    ChainId = chainId.Value,
+                    ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId.Value))
+                },
+                PublicKeys = RecoverPublicKeys(block.Transactions, chainId.Value)
+            };
+
+            byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
+            data = new byte[encoded.Length + sizeof(ushort)];
+
+            BinaryPrimitives.WriteUInt16BigEndian(data, 0);
+
+            Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
         }
 
         if (forZisk)
@@ -48,7 +70,7 @@ internal static class InputGenerator
 
         Directory.CreateDirectory(output);
 
-        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.bin";
+        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.ssz";
         string path = Path.Join(output, fileName);
 
         File.WriteAllBytes(path, data);
@@ -82,7 +104,7 @@ internal static class InputGenerator
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
-                IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!;
+                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!;
                 Rlp.ValueDecoderContext blockContext = new(rlp);
                 block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);
@@ -104,7 +126,7 @@ internal static class InputGenerator
                 AnsiConsole.MarkupLine(
                     $"[green]✓[/] Fetched witness for block {blockNumber}: {GetWitnessSize(witness):N0} bytes");
 
-                ctx.Status = $"[orange1]Fetching chain id[/]";
+                ctx.Status = $"[orange1]Fetching chainId id[/]";
 
                 chainId = await client.Post<ulong?>("eth_chainId");
 
@@ -163,6 +185,31 @@ internal static class InputGenerator
         BlockchainIds.Hoodi => "Hoodi",
         BlockchainIds.Mainnet => "Mainnet",
         BlockchainIds.Sepolia => "Sepolia",
-        _ => $"Not supported ({chainId})"
+        _ => $"Unknown ({chainId})"
     };
+
+    internal static ISpecProvider GetSpecProvider(ulong chainId) =>
+        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? specProvider)
+            ? specProvider
+            : throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
+
+    private static SszPublicKeys[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
+    {
+        EthereumEcdsa ecdsa = new(chainId);
+        SszPublicKeys[] publicKeys = new SszPublicKeys[transactions.Length];
+
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Transaction tx = transactions[i];
+            PublicKey publicKey = ecdsa.RecoverPublicKey(tx)
+                ?? throw new InvalidOperationException($"Failed to recover public key for transaction {tx.Hash}");
+
+            publicKeys[i] = new()
+            {
+                Bytes = publicKey.PrefixedBytes
+            };
+        }
+
+        return publicKeys;
+    }
 }

@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -20,10 +21,12 @@ namespace Nethermind.State.Flat.Persistence;
 /// - Cannot snap sync.
 /// - Cannot import without a complete preimage db.
 /// </summary>
-public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersistence
+public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager) : IPersistence
 {
+    private static readonly AccountDecoder SlimAccountDecoder = AccountDecoder.Slim;
     private readonly WriteBufferAdjuster _adjuster = new(db);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.PreimageFlat);
+    private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<PreimageRocksdbPersistence>());
 
     public void Flush() => db.Flush();
 
@@ -48,7 +51,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             new BaseFlatPersistence.Reader(
                 state,
                 storage,
-                isPreimageMode: true
+                isPreimageMode: true,
+                rlpWrapSlots: _rlpWrapSlots
             )
         );
 
@@ -88,7 +92,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
                 accountBatch,
                 storageBatch,
-                flags
+                flags,
+                rlpWrapSlots: _rlpWrapSlots
             )
         );
 
@@ -112,7 +117,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             {
                 if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
                     BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
-                BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.PreimageFlat);
+                if (_rlpWrapSlots)
+                    BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.PreimageFlat);
                 batch.Dispose();
                 dbSnap.Dispose();
                 _adjuster.OnBatchDisposed();
@@ -149,7 +155,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
                 return;
             }
 
-            using NettyRlpStream stream = AccountDecoder.Slim.EncodeToNewNettyStream(account);
+            using NettyRlpStream stream = SlimAccountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(fakeAddrHash, stream.AsSpan());
         }
 
@@ -164,7 +170,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             _flatWriteBatch.SetStorage(fakeAddrHash, fakeSlotHash, value);
         }
 
-        public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>

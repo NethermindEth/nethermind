@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -111,7 +110,7 @@ namespace Nethermind.Synchronization.Test
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSizeMax * 2).TestObject;
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
-            _remoteBlockTree.Head?.Number.Should().NotBe(0);
+            Assert.That(_remoteBlockTree.Head?.Number, Is.Not.EqualTo(0));
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new(false);
@@ -189,7 +188,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool.AddPeer(miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After((int)_standardTimeoutUnit.TotalMilliseconds, 100));
-            miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, "client agrees with miner before split");
+            Assert.That(miner1Tree.BestSuggestedHeader, Is.EqualTo(_blockTree.BestSuggestedHeader).UsingBlockHeaderComparer());
 
             Block splitBlock = Build.A.Block
                 .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)
@@ -198,11 +197,11 @@ namespace Nethermind.Synchronization.Test
             Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
 
             miner1Tree.SuggestBlock(splitBlock);
-            miner1Tree.UpdateMainChain(splitBlock);
+            miner1Tree.TryUpdateMainChain(splitBlock.Header, true, preloadedBlocks: new[] { splitBlock });
             miner1Tree.SuggestBlock(splitBlockChild);
-            miner1Tree.UpdateMainChain(splitBlockChild);
+            miner1Tree.TryUpdateMainChain(splitBlockChild.Header, true, preloadedBlocks: new[] { splitBlockChild });
 
-            splitBlockChild.Header.Should().BeEquivalentTo(miner1Tree.BestSuggestedHeader, "split as expected");
+            Assert.That(splitBlockChild.Header, Is.EqualTo(miner1Tree.BestSuggestedHeader).UsingBlockHeaderComparer());
 
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 
@@ -253,7 +252,7 @@ namespace Nethermind.Synchronization.Test
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head!).TestObject;
             minerTree.SuggestBlock(newBlock);
-            minerTree.UpdateMainChain(newBlock);
+            minerTree.TryUpdateMainChain(newBlock.Header, true, preloadedBlocks: new[] { newBlock });
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
@@ -291,7 +290,7 @@ namespace Nethermind.Synchronization.Test
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head!).TestObject;
             minerTree.SuggestBlock(newBlock);
-            minerTree.UpdateMainChain(newBlock);
+            minerTree.TryUpdateMainChain(newBlock.Header, true, preloadedBlocks: new[] { newBlock });
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
             miner2.GetHeadBlockHeader(Arg.Any<Hash256>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
@@ -326,9 +325,9 @@ namespace Nethermind.Synchronization.Test
             Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            SyncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
-            SyncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
-            SyncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
+            Assert.That(SyncServer.GetReceipts(block0!.Hash!), Is.Empty);
+            Assert.That(SyncServer.GetReceipts(block1!.Hash!), Is.Null);
+            Assert.That(SyncServer.GetReceipts(TestItem.KeccakA), Is.Null);
         }
     }
 }

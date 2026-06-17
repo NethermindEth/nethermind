@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
@@ -16,7 +16,7 @@ public class LayoutMetadataTests
     public void ReadLayout_ReturnsNull_OnEmptyStore()
     {
         using MemColumnsDb<FlatDbColumns> db = new();
-        BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)).Should().BeNull();
+        Assert.That(BasePersistence.ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
     }
 
     [TestCase(FlatLayout.Flat)]
@@ -29,7 +29,19 @@ public class LayoutMetadataTests
 
         BasePersistence.SetLayout(metadata, layout);
 
-        BasePersistence.ReadLayout(metadata).Should().Be(layout);
+        Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(layout));
+    }
+
+    [Test]
+    public void SetLayout_AlsoRecords_RlpSlotEncoding()
+    {
+        using MemColumnsDb<FlatDbColumns> db = new();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+
+        BasePersistence.SetLayout(metadata, FlatLayout.Flat);
+
+        Assert.That(metadata.Get(Keccak.Compute("SlotEncoding").BytesToArray()),
+            Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
     }
 
     [TestCase(FlatLayout.Flat)]
@@ -57,7 +69,7 @@ public class LayoutMetadataTests
     public void ValidateLayoutReturnFlag_ReturnsZero(FlatLayout layout)
     {
         using MemColumnsDb<FlatDbColumns> db = new();
-        BasePersistence.ValidateLayoutReturnFlag(db, layout).Should().Be(0);
+        Assert.That(BasePersistence.ValidateLayoutReturnFlag(db, layout), Is.EqualTo(0));
     }
 
     [TestCase(FlatLayout.Flat, FlatLayout.FlatInTrie)]
@@ -74,8 +86,8 @@ public class LayoutMetadataTests
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(
             () => BasePersistence.ValidateLayout(db, configured))!;
 
-        ex.Message.Should().Contain(stored.ToString());
-        ex.Message.Should().Contain(configured.ToString());
+        Assert.That(ex.Message, Does.Contain(stored.ToString()));
+        Assert.That(ex.Message, Does.Contain(configured.ToString()));
     }
 
     [TestCase(FlatLayout.Flat)]
@@ -89,8 +101,8 @@ public class LayoutMetadataTests
 
         BasePersistence.RecordLayoutOnFirstBatch(metadata, ref flag, layout);
 
-        flag.Should().Be(1);
-        BasePersistence.ReadLayout(metadata).Should().Be(layout);
+        Assert.That(flag, Is.EqualTo(1));
+        Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(layout));
     }
 
     [Test]
@@ -102,7 +114,7 @@ public class LayoutMetadataTests
 
         BasePersistence.RecordLayoutOnFirstBatch(metadata, ref flag, FlatLayout.FlatInTrie);
 
-        flag.Should().Be(1);
-        BasePersistence.ReadLayout(metadata).Should().BeNull();
+        Assert.That(flag, Is.EqualTo(1));
+        Assert.That(BasePersistence.ReadLayout(metadata), Is.Null);
     }
 }

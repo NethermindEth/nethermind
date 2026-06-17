@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -27,30 +28,24 @@ namespace Nethermind.Core
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
-        public static Address Zero { get; } = new(default(AddressBytes));
+        public static Address Zero { get; } = new(default(ValueAddress));
         public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
 
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
         public static Address SystemUser { get; } = new(SystemUserHex);
 
-        private AddressBytes _bytes;
+        private readonly ValueAddress _bytes;
 
         public ReadOnlySpan<byte> Bytes
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in FirstByte), Size);
-        }
-
-        [InlineArray(Size)]
-        internal struct AddressBytes
-        {
-            private byte _element0;
+            get => _bytes.AsSpan;
         }
 
         private ref readonly byte FirstByte
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ref Unsafe.As<AddressBytes, byte>(ref Unsafe.AsRef(in _bytes));
+            get => ref MemoryMarshal.GetReference(_bytes.AsSpan);
         }
 
         public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size)) { }
@@ -142,7 +137,7 @@ namespace Nethermind.Core
             return false;
         }
 
-        public Address(ReadOnlySpan<byte> bytes)
+        public Address(scoped ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {
@@ -151,10 +146,10 @@ namespace Nethermind.Core
                     nameof(bytes));
             }
 
-            bytes.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.As<AddressBytes, byte>(ref _bytes), Size));
+            _bytes = new ValueAddress(bytes);
         }
 
-        internal Address(AddressBytes bytes) => _bytes = bytes;
+        internal Address(in ValueAddress bytes) => _bytes = bytes;
 
         public bool Equals(Address? other)
         {
@@ -281,6 +276,37 @@ namespace Nethermind.Core
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
     }
 
+    public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
+    {
+        [SkipLocalsInit]
+        public int Compare(Address? a, Address? b)
+        {
+            if (ReferenceEquals(a, b)) return 0;
+            if (a is null) return -1;
+            if (b is null) return 1;
+
+            Span<byte> aLowerHex = stackalloc byte[Address.Size * 2];
+            Span<byte> bLowerHex = stackalloc byte[Address.Size * 2];
+            a.Bytes.OutputBytesToByteHex(aLowerHex, extraNibble: false);
+            b.Bytes.OutputBytesToByteHex(bLowerHex, extraNibble: false);
+
+            ValueHash256 aChecksum = ValueKeccak.Compute(aLowerHex);
+            ValueHash256 bChecksum = ValueKeccak.Compute(bLowerHex);
+            for (int i = 0; i < aLowerHex.Length; i++)
+            {
+                char aChar = Bytes.ToChecksummedHexChar(aLowerHex[i], Bytes.GetChecksumNibble(in aChecksum, i));
+                char bChar = Bytes.ToChecksummedHexChar(bLowerHex[i], Bytes.GetChecksumNibble(in bChecksum, i));
+                if (aChar != bChar)
+                {
+                    return aChar - bChar;
+                }
+            }
+
+            return 0;
+        }
+    }
+
+    [JsonConverter(typeof(AddressAsKeyConverter))]
     public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64bit<AddressAsKey>
     {
         public static GenericEqualityComparer<AddressAsKey> EqualityComparer { get; } = new();
@@ -309,7 +335,7 @@ namespace Nethermind.Core
 
         public AddressStructRef(Hash256StructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
 
-        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength)) { }
 
         public readonly byte this[int index] => Bytes[index];
 
@@ -405,6 +431,6 @@ namespace Nethermind.Core
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
 
-        public readonly Address ToAddress() => new(Bytes.ToArray());
+        public readonly Address ToAddress() => new(Bytes);
     }
 }

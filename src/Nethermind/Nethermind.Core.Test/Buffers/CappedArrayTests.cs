@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Buffers;
 using NUnit.Framework;
 
@@ -14,16 +13,19 @@ public class CappedArrayTests
     public void WhenGivenNullArray_IsNull_ShouldReturnTrue()
     {
         CappedArray<byte> array = new(null);
-        array.IsNull.Should().BeTrue();
+        Assert.That(array.IsNull, Is.True);
     }
 
     [Test]
     public void WhenGivenNullArray_AsSpan_ShouldReturnEmpty()
     {
         CappedArray<byte> array = new(null);
-        array.AsSpan().IsEmpty.Should().BeTrue();
-        array.AsSpan().Length.Should().Be(0);
-        array.Length.Should().Be(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(array.AsSpan().IsEmpty, Is.True);
+            Assert.That(array.AsSpan().Length, Is.EqualTo(0));
+            Assert.That(array.Length, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -31,11 +33,14 @@ public class CappedArrayTests
     {
         int[] baseArray = Enumerable.Range(0, 10).ToArray();
         CappedArray<int> array = new(baseArray);
-        array.IsUncapped.Should().BeTrue();
-        array.IsNull.Should().BeFalse();
-        array.IsNotNull.Should().BeTrue();
-        array.Length.Should().Be(10);
-        array.ToArray().Should().BeSameAs(baseArray);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(array.IsUncapped, Is.True);
+            Assert.That(array.IsNull, Is.False);
+            Assert.That(array.IsNotNull, Is.True);
+            Assert.That(array.Length, Is.EqualTo(10));
+            Assert.That(array.ToArray(), Is.SameAs(baseArray));
+        }
     }
 
     [Test]
@@ -43,12 +48,15 @@ public class CappedArrayTests
     {
         int[] baseArray = Enumerable.Range(0, 10).ToArray();
         CappedArray<int> array = new(baseArray, 5);
-        array.IsUncapped.Should().BeFalse();
-        array.IsNull.Should().BeFalse();
-        array.IsNotNull.Should().BeTrue();
-        array.Length.Should().Be(5);
-        array.ToArray().Should().BeEquivalentTo(baseArray[..5]);
-        array.AsSpan().Length.Should().Be(5);
-        array.AsSpan().ToArray().Should().BeEquivalentTo(baseArray[..5]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(array.IsUncapped, Is.False);
+            Assert.That(array.IsNull, Is.False);
+            Assert.That(array.IsNotNull, Is.True);
+            Assert.That(array.Length, Is.EqualTo(5));
+            Assert.That(array.ToArray(), Is.EqualTo(baseArray[..5]));
+            Assert.That(array.AsSpan().Length, Is.EqualTo(5));
+            Assert.That(array.AsSpan().ToArray(), Is.EqualTo(baseArray[..5]));
+        }
     }
 }

@@ -6,7 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -29,7 +29,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     public void Test_roundtrip_large()
     {
         ByteArrayConverter converter = new();
-        for (int i = 0; i < 1024; i++)
+        for (int i = 0; i <= 4096; i++)
         {
             byte[] bytes = new byte[i];
             for (int j = 0; j < i; j++)
@@ -46,7 +46,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
         IJsonSerializer serializer = new EthereumJsonSerializer();
         string result = serializer.Serialize<byte[]?>(null);
-        result.Should().Be("null");
+        Assert.That(result, Is.EqualTo("null"));
     }
 
     [TestCaseSource(nameof(ValidHexCases))]
@@ -73,8 +73,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         foreach (ReadOnlySequence<byte> seq in Segmentations(json))
         {
             (_, Exception? err) = InvokeOnBareString(seq);
-            err.Should().NotBeNull();
-            err.Should().BeOfType<FormatException>();
+            Assert.That(err, Is.Not.Null);
+            Assert.That(err, Is.TypeOf<FormatException>());
         }
     }
 
@@ -87,10 +87,13 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ReadOnlySequence<byte> seq = MakeSequence(json.AsMemory(0, 2), json.AsMemory(2)); // split at index 2 between 'A'|'B'
 
         (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-        err.Should().BeNull();
-        res.Should().NotBeNull();
-        res!.Length.Should().Be(1);
-        res[0].Should().Be(0xAB);
+        Assert.That(err, Is.Null);
+        Assert.That(res, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res!.Length, Is.EqualTo(1));
+            Assert.That(res[0], Is.EqualTo(0xAB));
+        }
     }
 
     [Test]
@@ -98,8 +101,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
         ReadOnlySequence<byte> seq = JsonForLiteral("null");
         (byte[]? res, Exception? err) = InvokeRaw(seq);
-        err.Should().BeNull();
-        res.Should().BeNull();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(err, Is.Null);
+            Assert.That(res, Is.Null);
+        }
     }
 
     [TestCase("true")]
@@ -109,8 +115,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
         ReadOnlySequence<byte> seq = JsonForLiteral(literal);
         (_, Exception? err) = InvokeRaw(seq);
-        err.Should().NotBeNull();
-        err.Should().BeOfType<InvalidOperationException>();
+        Assert.That(err, Is.Not.Null);
+        Assert.That(err, Is.TypeOf<InvalidOperationException>());
     }
 
     [TestCase("0x")]
@@ -134,8 +140,12 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         foreach (ReadOnlySequence<byte> seq in Segmentations(json))
         {
             (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-            err.Should().BeNull();
-            res.Should().NotBeNull().And.Equal(expected);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(res, Is.Not.Null);
+                Assert.That(res, Is.EqualTo(expected));
+            }
         }
     }
 
@@ -166,6 +176,42 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
     }
 
+    [TestCaseSource(nameof(ValidHexCases))]
+    public void ConvertToArrayPoolList_ForHexInput_MatchesByteArrayConverter(string hex)
+    {
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+
+        Utf8JsonReader referenceReader = new(json);
+        referenceReader.Read();
+        byte[]? expected = null;
+        Exception? expectedError = null;
+        try { expected = ByteArrayConverter.Convert(ref referenceReader); }
+        catch (Exception ex) { expectedError = ex; }
+
+        Utf8JsonReader reader = new(json);
+        reader.Read();
+        ArrayPoolList<byte>? result = null;
+        Exception? error = null;
+        try { result = ByteArrayConverter.ConvertToArrayPoolList(ref reader); }
+        catch (Exception ex) { error = ex; }
+
+        using (result)
+        {
+            if (expectedError is not null)
+            {
+                Assert.That(error?.GetType(), Is.EqualTo(expectedError.GetType()), "must throw the same way as the byte[] converter");
+            }
+            else if (expected is null)
+            {
+                Assert.That(result, Is.Null, "must deserialize to null wherever the byte[] converter does");
+            }
+            else
+            {
+                Assert.That(result?.AsSpan().ToArray(), Is.EqualTo(expected), "pooled bytes must match the byte[] converter");
+            }
+        }
+    }
+
     [TestCase(new byte[] { 0xab, 0xcd }, true, true, "\"0xabcd\"")]
     [TestCase(new byte[] { 0xab, 0xcd }, false, true, "\"0xabcd\"")]
     [TestCase(new byte[] { 0x00, 0xab }, true, true, "\"0xab\"")]
@@ -182,24 +228,25 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         using Utf8JsonWriter writer = new(ms);
         ByteArrayConverter.Convert(writer, input, skipLeadingZeros, addHexPrefix);
         writer.Flush();
-        Encoding.UTF8.GetString(ms.ToArray()).Should().Be(expected);
+        Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
     }
 
-    [Test]
-    public void Write_LargeOutput_UsesArrayPool()
+    [TestCase(126)]
+    [TestCase(127)]
+    [TestCase(1022)]
+    [TestCase(1023)]
+    public void Write_OutputAroundInlineThresholds_IsByteIdentical(int length)
     {
-        // 200 bytes = 400 hex chars + "0x" prefix + quotes > 256 byte InlineArray threshold
-        byte[] input = new byte[200];
+        byte[] input = new byte[length];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
 
         using System.IO.MemoryStream ms = new();
         using Utf8JsonWriter writer = new(ms);
         ByteArrayConverter.Convert(writer, input, skipLeadingZeros: false);
         writer.Flush();
+
         string output = Encoding.UTF8.GetString(ms.ToArray());
-        output.Should().StartWith("\"0x");
-        output.Should().EndWith("\"");
-        output.Length.Should().Be(404); // 400 hex + 2 prefix + 2 quotes
+        Assert.That(output, Is.EqualTo($"\"0x{System.Convert.ToHexString(input).ToLowerInvariant()}\""));
     }
 
     [TestCase(new byte[] { 0xab, 0xcd }, "{\"0xabcd\":1}")]
@@ -214,7 +261,27 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         writer.WriteNumberValue(1);
         writer.WriteEndObject();
         writer.Flush();
-        Encoding.UTF8.GetString(ms.ToArray()).Should().Be(expected);
+        Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
+    }
+
+    [TestCase(127)]
+    [TestCase(1022)]
+    public void WriteAsPropertyName_MediumOutput_IsByteIdentical(int length)
+    {
+        byte[] input = new byte[length];
+        for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
+
+        ByteArrayConverter converter = new();
+        using System.IO.MemoryStream ms = new();
+        using Utf8JsonWriter writer = new(ms);
+        writer.WriteStartObject();
+        converter.WriteAsPropertyName(writer, input, JsonSerializerOptions.Default);
+        writer.WriteNumberValue(1);
+        writer.WriteEndObject();
+        writer.Flush();
+
+        string expected = $"{{\"0x{System.Convert.ToHexString(input).ToLowerInvariant()}\":1}}";
+        Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
     }
 
     [Test]
@@ -264,8 +331,15 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
 
         if (firstErr is null)
         {
-            if (expected is null) firstVal.Should().BeNull();
-            else firstVal.Should().NotBeNull().And.Equal(expected);
+            if (expected is null)
+            {
+                Assert.That(firstVal, Is.Null);
+            }
+            else
+            {
+                Assert.That(firstVal, Is.Not.Null);
+                Assert.That(firstVal, Is.EqualTo(expected));
+            }
         }
     }
 
@@ -300,14 +374,21 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
         if (firstErr is null && err is null)
         {
-            if (firstVal is null) res.Should().BeNull();
-            else res.Should().NotBeNull().And.Equal(firstVal);
+            if (firstVal is null)
+            {
+                Assert.That(res, Is.Null);
+            }
+            else
+            {
+                Assert.That(res, Is.Not.Null);
+                Assert.That(res, Is.EqualTo(firstVal));
+            }
         }
         else
         {
-            firstErr.Should().NotBeNull();
-            err.Should().NotBeNull();
-            err!.GetType().Should().Be(firstErr!.GetType());
+            Assert.That(firstErr, Is.Not.Null);
+            Assert.That(err, Is.Not.Null);
+            Assert.That(err!.GetType(), Is.EqualTo(firstErr!.GetType()));
         }
     }
 
@@ -317,8 +398,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnBareString(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
-        reader.Read().Should().BeTrue();
-        reader.TokenType.Should().Be(JsonTokenType.String);
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.String));
 
         try { return (ByteArrayConverter.Convert(ref reader), null); }
         catch (Exception ex) { return (null, ex); }
@@ -327,10 +408,10 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnPropertyName(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
-        reader.Read().Should().BeTrue();
-        reader.TokenType.Should().Be(JsonTokenType.StartObject);
-        reader.Read().Should().BeTrue();
-        reader.TokenType.Should().Be(JsonTokenType.PropertyName);
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.StartObject));
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.PropertyName));
 
         try { return (ByteArrayConverter.Convert(ref reader), null); }
         catch (Exception ex) { return (null, ex); }
@@ -339,7 +420,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeRaw(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
-        reader.Read().Should().BeTrue();
+        Assert.That(reader.Read(), Is.True);
         try { return (ByteArrayConverter.Convert(ref reader), null); }
         catch (Exception ex) { return (null, ex); }
     }

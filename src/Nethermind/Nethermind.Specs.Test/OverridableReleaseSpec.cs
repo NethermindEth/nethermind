@@ -20,6 +20,7 @@ namespace Nethermind.Specs.Test
         public long MaxCodeSize { get; set; } = spec.MaxCodeSize;
         public long MinGasLimit { get; set; } = spec.MinGasLimit;
         public long MinHistoryRetentionEpochs { get; set; } = spec.MinHistoryRetentionEpochs;
+        public long MinBalRetentionEpochs { get; set; } = spec.MinBalRetentionEpochs;
         public long GasLimitBoundDivisor { get; set; } = spec.GasLimitBoundDivisor;
         public UInt256 BlockReward { get; set; } = spec.BlockReward;
         public long DifficultyBombDelay { get; set; } = spec.DifficultyBombDelay;
@@ -65,10 +66,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip4844Enabled { get; set; } = spec.IsEip4844Enabled;
         public bool IsEip7951Enabled { get; set; } = spec.IsEip7951Enabled;
         public bool IsRip7212Enabled { get; set; } = spec.IsRip7212Enabled;
-        public bool IsOpGraniteEnabled { get; set; } = spec.IsOpGraniteEnabled;
-        public bool IsOpHoloceneEnabled { get; set; } = spec.IsOpHoloceneEnabled;
-        public bool IsOpIsthmusEnabled { get; set; } = spec.IsOpIsthmusEnabled;
-        public bool IsOpJovianEnabled { get; set; } = spec.IsOpJovianEnabled;
         public bool IsEip7623Enabled { get; set; } = spec.IsEip7623Enabled;
         public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;

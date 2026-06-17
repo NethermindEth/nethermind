@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -17,6 +16,8 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class RlpTests
     {
+        private static readonly TxDecoder TransactionDecoder = TxDecoder.Instance;
+
         public record DecoderCase(string Name, Func<Rlp.ValueDecoderContext, dynamic> Invoke, int? Size)
         {
             public override string ToString() => Name;
@@ -43,6 +44,26 @@ namespace Nethermind.Core.Test
         {
             Rlp output = Rlp.Encode(new[] { Rlp.Encode(1) });
             Assert.That(output.Bytes, Is.EqualTo(new byte[] { 193, 1 }));
+        }
+
+        [TestCase("")]
+        [TestCase("00")]
+        [TestCase("05")]
+        [TestCase("7f")]
+        [TestCase("80")]
+        [TestCase("ff")]
+        [TestCase("0102")]
+        [TestCase("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
+        public void Encode_byte_string_into_span_matches_allocating_overload(string hex)
+        {
+            byte[] input = Extensions.Bytes.FromHexString(hex);
+            byte[] expected = Rlp.Encode((ReadOnlySpan<byte>)input).Bytes;
+
+            Span<byte> output = stackalloc byte[Math.Max(1, expected.Length)];
+            int written = Rlp.Encode(input, output);
+
+            Assert.That(written, Is.EqualTo(expected.Length));
+            Assert.That(output[..written].ToArray(), Is.EqualTo(expected));
         }
 
         [Test]
@@ -110,9 +131,12 @@ namespace Nethermind.Core.Test
         [Test]
         public void Length_of_uint()
         {
-            Assert.That(Rlp.LengthOf(UInt256.Zero), Is.EqualTo(1));
-            Assert.That(Rlp.LengthOf((UInt256)127), Is.EqualTo(1));
-            Assert.That(Rlp.LengthOf((UInt256)128), Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Rlp.LengthOf(UInt256.Zero), Is.EqualTo(1));
+                Assert.That(Rlp.LengthOf((UInt256)127), Is.EqualTo(1));
+                Assert.That(Rlp.LengthOf((UInt256)128), Is.EqualTo(2));
+            }
 
             UInt256 item = 255;
             for (int i = 0; i < 32; i++)
@@ -154,7 +178,7 @@ namespace Nethermind.Core.Test
         public void Long_encode_decode([ValueSource(nameof(LongValues))] long value, [Values] bool useBuffer)
         {
             Rlp.ValueDecoderContext context = useBuffer
-                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
             long decoded = context.DecodeLong();
@@ -166,7 +190,7 @@ namespace Nethermind.Core.Test
         public void ULong_encode_decode([ValueSource(nameof(ULongValues))] ulong value, [Values] bool useBuffer)
         {
             Rlp.ValueDecoderContext context = useBuffer
-                ? new(Rlp.Encode(value, stackalloc byte[9]).ToArray())
+                ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
             ulong decoded = context.DecodeULong();
@@ -181,8 +205,11 @@ namespace Nethermind.Core.Test
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
             Rlp expectedResult = new(new byte[] { 128 });
-            Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
-            Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
+                Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+            }
         }
 
         [TestCase(0)]
@@ -194,8 +221,11 @@ namespace Nethermind.Core.Test
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
             Rlp expectedResult = new(new[] { value });
-            Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
-            Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
+                Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+            }
         }
 
         [TestCase(128)]
@@ -206,8 +236,11 @@ namespace Nethermind.Core.Test
             Rlp rlp = Rlp.Encode(bytes);
             Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
             Rlp expectedResult = new(new[] { (byte)129, value });
-            Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
-            Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rlp, Is.EqualTo(expectedResult), "byte array");
+                Assert.That(rlpSpan, Is.EqualTo(expectedResult), "span");
+            }
         }
 
         [Test]
@@ -226,8 +259,11 @@ namespace Nethermind.Core.Test
 
             Rlp expectedResult = new(expectedResultBytes);
 
-            Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
-            Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
+                Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            }
         }
 
         [Test]
@@ -247,8 +283,11 @@ namespace Nethermind.Core.Test
 
             Rlp expectedResult = new(expectedResultBytes);
 
-            Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
-            Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
+                Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            }
         }
 
         [Test]
@@ -269,14 +308,17 @@ namespace Nethermind.Core.Test
 
             Rlp expectedResult = new(expectedResultBytes);
 
-            Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
-            Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Rlp.Encode(input), Is.EqualTo(expectedResult), "byte array");
+                Assert.That(Rlp.Encode(input.AsSpan()), Is.EqualTo(expectedResult), "span");
+            }
         }
 
         [TestCase(new byte[] { 128 }, false)]
         [TestCase(new byte[] { 1 }, true)]
         public void Decode_bool(byte[] rlp, bool expectedBool) =>
-            rlp.AsRlpValueContext().DecodeBool().Should().Be(expectedBool);
+            Assert.That(rlp.AsRlpValueContext().DecodeBool(), Is.EqualTo(expectedBool));
 
         [TestCase(new byte[] { 0 })]
         [TestCase(new byte[] { 2 })]
@@ -347,8 +389,11 @@ namespace Nethermind.Core.Test
             Rlp original = Rlp.Encode(255L);
             Rlp reEncoded = Rlp.Encode<Rlp>(original);
 
-            Assert.That(reEncoded.Bytes, Is.EqualTo(original.Bytes));
-            Assert.That(reEncoded, Is.SameAs(original));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reEncoded.Bytes, Is.EqualTo(original.Bytes));
+                Assert.That(reEncoded, Is.SameAs(original));
+            }
         }
 
         [TestCase(true)]
@@ -370,11 +415,10 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < 3; i++)
             {
                 Memory<byte> slice = context.DecodeByteArrayMemory();
-                slice.Should().NotBeNull();
                 MemoryMarshal.TryGetArray(slice, out ArraySegment<byte> segment);
 
                 bool isACopy = (segment.Offset == 0 && segment.Count == slice.Length);
-                isACopy.Should().NotBe(sliceValue);
+                Assert.That(isACopy, Is.Not.EqualTo(sliceValue));
             }
         }
 
@@ -401,6 +445,21 @@ namespace Nethermind.Core.Test
             byte[] data = stream.Data.ToArray()!;
             data[1] = 101; // tamper with length, it is more than available bytes
             Assert.Throws<RlpLimitException>(() => { Rlp.ValueDecoderContext ctx = new(data); ctx.DecodeByteArray(); });
+        }
+
+        [Test]
+        public void Encode_stream_with_null_items_produces_empty_list()
+        {
+            RlpStream stream = new(Rlp.OfEmptyList.Length);
+            TransactionDecoder.Encode(stream, (Transaction[]?)null);
+            Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
+        }
+
+        [Test]
+        public void Encode_array_with_null_items_produces_empty_list()
+        {
+            Rlp result = Rlp.Encode<Account>((Account[]?)null!);
+            Assert.That(result, Is.EqualTo(Rlp.OfEmptyList));
         }
 
         private static HashSet<long> LongValues()
@@ -501,10 +560,10 @@ namespace Nethermind.Core.Test
                 data[0] = (byte)prefix;
 
                 Rlp.ValueDecoderContext ctx = new(data);
-                ctx.PeekNextRlpLength().Should().Be(expected, $"ValueDecoderContext prefix {prefix}");
+                Assert.That(ctx.PeekNextRlpLength(), Is.EqualTo(expected), $"ValueDecoderContext prefix {prefix}");
 
                 ValueRlpStream vrs = new(data);
-                vrs.PeekNextRlpLength().Should().Be(expected, $"ValueRlpStream prefix {prefix}");
+                Assert.That(vrs.PeekNextRlpLength(), Is.EqualTo(expected), $"ValueRlpStream prefix {prefix}");
             }
         }
 
@@ -517,10 +576,10 @@ namespace Nethermind.Core.Test
             byte[] data = BuildLongFormRlp(prefix, contentLength);
 
             Rlp.ValueDecoderContext ctx = new(data);
-            ctx.PeekNextRlpLength().Should().Be(data.Length, $"ValueDecoderContext prefix {prefix}");
+            Assert.That(ctx.PeekNextRlpLength(), Is.EqualTo(data.Length), $"ValueDecoderContext prefix {prefix}");
 
             ValueRlpStream vrs = new(data);
-            vrs.PeekNextRlpLength().Should().Be(data.Length, $"ValueRlpStream prefix {prefix}");
+            Assert.That(vrs.PeekNextRlpLength(), Is.EqualTo(data.Length), $"ValueRlpStream prefix {prefix}");
         }
 
         [TestCase(0, 0, 1)]       // single byte: prefix=0, content=1
@@ -538,13 +597,19 @@ namespace Nethermind.Core.Test
 
             Rlp.ValueDecoderContext ctx = new(data);
             (int pLen, int cLen) = ctx.PeekPrefixAndContentLength();
-            pLen.Should().Be(expectedPrefixLen, $"ValueDecoderContext prefix length for {prefix}");
-            cLen.Should().Be(expectedContentLen, $"ValueDecoderContext content length for {prefix}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pLen, Is.EqualTo(expectedPrefixLen), $"ValueDecoderContext prefix length for {prefix}");
+                Assert.That(cLen, Is.EqualTo(expectedContentLen), $"ValueDecoderContext content length for {prefix}");
+            }
 
             ValueRlpStream vrs = new(data);
             (int pLen2, int cLen2) = vrs.PeekPrefixAndContentLength();
-            pLen2.Should().Be(expectedPrefixLen, $"ValueRlpStream prefix length for {prefix}");
-            cLen2.Should().Be(expectedContentLen, $"ValueRlpStream content length for {prefix}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pLen2, Is.EqualTo(expectedPrefixLen), $"ValueRlpStream prefix length for {prefix}");
+                Assert.That(cLen2, Is.EqualTo(expectedContentLen), $"ValueRlpStream content length for {prefix}");
+            }
         }
 
         [TestCase(184, 56)]   // long string, lengthOfLength=1
@@ -556,14 +621,31 @@ namespace Nethermind.Core.Test
 
             Rlp.ValueDecoderContext ctx = new(data);
             (int pLen, int cLen) = ctx.PeekPrefixAndContentLength();
-            pLen.Should().Be(1 + lengthOfLength, $"ValueDecoderContext prefix length for {prefix}");
-            cLen.Should().Be(contentLength, $"ValueDecoderContext content length for {prefix}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pLen, Is.EqualTo(1 + lengthOfLength), $"ValueDecoderContext prefix length for {prefix}");
+                Assert.That(cLen, Is.EqualTo(contentLength), $"ValueDecoderContext content length for {prefix}");
+            }
 
             ValueRlpStream vrs = new(data);
             (int pLen2, int cLen2) = vrs.PeekPrefixAndContentLength();
-            pLen2.Should().Be(1 + lengthOfLength, $"ValueRlpStream prefix length for {prefix}");
-            cLen2.Should().Be(contentLength, $"ValueRlpStream content length for {prefix}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pLen2, Is.EqualTo(1 + lengthOfLength), $"ValueRlpStream prefix length for {prefix}");
+                Assert.That(cLen2, Is.EqualTo(contentLength), $"ValueRlpStream content length for {prefix}");
+            }
         }
+
+        [TestCase(new byte[] { 0xBB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongString_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xFB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongList_4ByteLength_Int32Max")]
+        [TestCase(new byte[] { 0xB8, 0x64, 0x01, 0x02 }, TestName = "LongString_1ByteLength_100")]
+        [TestCase(new byte[] { 0xF8, 0x64, 0x01, 0x02 }, TestName = "LongList_1ByteLength_100")]
+        public void PeekPrefixAndContentLength_invalid(byte[] data) =>
+            Assert.Throws<RlpException>(() =>
+            {
+                Rlp.ValueDecoderContext ctx = new(data);
+                ctx.PeekPrefixAndContentLength();
+            });
 
         [Test]
         public void PeekNumberOfItemsRemaining_mixed_items()
@@ -600,15 +682,42 @@ namespace Nethermind.Core.Test
             AssertItemCount(rlp, 3);
         }
 
+        [TestCase(2, 56)]
+        [TestCase(2, 198)]
+        [TestCase(3, 256)]
+        [TestCase(3, 65535)]
+        [TestCase(4, 65536)]
+        public void ReadPrefixAndContentLength_List(int prefixLength, int contentLength)
+        {
+            byte[] data = Rlp.Encode(Rlp.Encode(new byte[contentLength])).Bytes;
+
+            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+        }
+
+        [TestCase(2, 56)]
+        [TestCase(2, 255)]
+        [TestCase(3, 256)]
+        [TestCase(4, 65536)]
+        public void ReadPrefixAndContentLength_String(int prefixLength, int contentLength)
+        {
+            byte[] data = Rlp.Encode(new byte[contentLength]).Bytes;
+
+            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+        }
+
         private static void AssertItemCount(byte[] rlp, int expected)
         {
             Rlp.ValueDecoderContext ctx = new(rlp);
             ctx.ReadSequenceLength();
-            ctx.PeekNumberOfItemsRemaining().Should().Be(expected);
+            Assert.That(ctx.PeekNumberOfItemsRemaining(), Is.EqualTo(expected));
 
             ValueRlpStream vrs = new(rlp);
             vrs.ReadSequenceLength();
-            vrs.PeekNumberOfItemsRemaining().Should().Be(expected);
+            Assert.That(vrs.PeekNumberOfItemsRemaining(), Is.EqualTo(expected));
         }
 
         [TestCase(184, 10)]  // long string with content < 56
@@ -667,7 +776,7 @@ namespace Nethermind.Core.Test
             // These prefixes declare a multi-byte length field, but the data is truncated
             // before all length bytes are present. The bounds check should catch this.
             Action act = () => RlpHelpers.PeekNextRlpLength(truncatedData, 0);
-            act.Should().Throw<RlpException>();
+            Assert.That(act, Throws.TypeOf<RlpException>());
         }
     }
 }

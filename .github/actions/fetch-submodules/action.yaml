@@ -1,0 +1,27 @@
+name: Fetch submodules with retry
+description: Fetches submodules with retry + exponential backoff. Must run after actions/checkout.
+
+inputs:
+  submodules:
+    description: "'false' to skip submodules, 'recursive' for nested, anything else for top-level only."
+    default: recursive
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.submodules != 'false'
+      shell: bash
+      env:
+        RECURSIVE: ${{ inputs.submodules == 'recursive' && '--recursive' || '' }}
+      run: |
+        set -euo pipefail
+        delay=15
+        for i in 1 2 3; do
+          git submodule update --init --depth 1 $RECURSIVE --jobs 4 && exit 0
+          echo "::warning::Submodule fetch failed (attempt $i/3)"
+          git submodule deinit -f --all || true
+          sleep $delay
+          delay=$((delay * 2))
+        done
+        echo "::error::Submodule fetch failed after 3 attempts"
+        exit 1

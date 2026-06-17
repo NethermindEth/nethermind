@@ -25,6 +25,10 @@ public class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateK
         byteBuffer.ResetIndex();
 
         AddSignatureAndMdc(byteBuffer, length + 1);
+
+        byteBuffer.MarkReaderIndex();
+        msg.Hash = byteBuffer.Slice(0, 32).ReadAllBytesAsArray();
+        byteBuffer.ResetReaderIndex();
     }
 
     public EnrRequestMsg Deserialize(IByteBuffer msgBytes)

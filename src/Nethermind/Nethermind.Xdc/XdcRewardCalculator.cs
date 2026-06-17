@@ -30,7 +30,8 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     IMasternodeVotingContract masternodeVotingContract,
     IMintedRecordContract mintedRecordContract,
     ISigningTxCache signingTxCache,
-    ITransactionProcessor transactionProcessor) : IRewardCalculator
+    ITransactionProcessor transactionProcessor,
+    IRewardsStore rewardsStore) : IRewardCalculator
 {
     private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
@@ -40,6 +41,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     private readonly IMintedRecordContract _mintedRecordContract = mintedRecordContract;
     private readonly ISigningTxCache _signingTxCache = signingTxCache;
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
+    private readonly IRewardsStore _rewardsStore = rewardsStore;
 
     /// <summary>
     /// Calculates block rewards according to XDPoS consensus rules.
@@ -70,7 +72,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
         UInt256 totalFoundationWalletReward = UInt256.Zero;
         UInt256 totalMintedInEpoch = UInt256.Zero;
-        List<BlockReward> rewards = new();
+        List<BlockReward> rewards = [];
         (Dictionary<Address, long> masternodeSigners, Dictionary<Address, long> protectorSigners, Dictionary<Address, long> observerSigners, UInt256 burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
 
         if (!spec.IsTipUpgradeRewardEnabled)
@@ -104,7 +106,10 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         }
 
         if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
-        return rewards.ToArray();
+
+        BlockReward[] finalRewards = rewards.ToArray();
+        _rewardsStore.SaveEpochRewards((ulong)xdcHeader.Number, finalRewards);
+        return finalRewards;
     }
 
     private (
@@ -113,20 +118,20 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         Dictionary<Address, long> ObserverSigners,
         UInt256 BurnedInOneEpoch) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
     {
-        Dictionary<Address, long> masternodeSigners = new();
-        Dictionary<Address, long> protectorSigners = new();
-        Dictionary<Address, long> observerSigners = new();
+        Dictionary<Address, long> masternodeSigners = [];
+        Dictionary<Address, long> protectorSigners = [];
+        Dictionary<Address, long> observerSigners = [];
         UInt256 burnedInOneEpoch = UInt256.Zero;
         long number = epochHeader.Number;
         if (number == 0) return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
 
         long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0;
 
-        Dictionary<long, Hash256> blockNumberToHash = new();
-        Dictionary<Hash256, HashSet<Address>> hashToSigningAddress = new();
-        HashSet<Address> masternodes = new();
-        HashSet<Address> protectors = new();
-        HashSet<Address> observers = new();
+        Dictionary<long, Hash256> blockNumberToHash = [];
+        Dictionary<Hash256, HashSet<Address>> hashToSigningAddress = [];
+        HashSet<Address> masternodes = [];
+        HashSet<Address> protectors = [];
+        HashSet<Address> observers = [];
         long mergeSignRange = spec.MergeSignRange;
 
         XdcBlockHeader h = epochHeader;
@@ -148,9 +153,9 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                     startBlockNumber = i + 1;
                     // Get masternodes from epoch switch header
                     if (h.Number <= spec.SwitchBlock)
-                        masternodes = new HashSet<Address>(h.ExtraData.ParseV1Masternodes());
+                        masternodes = [.. h.ExtraData.ParseV1Masternodes()];
                     else
-                        masternodes = new HashSet<Address>(h.ValidatorsAddress!);
+                        masternodes = [.. h.ValidatorsAddress!];
 
                     if (spec.IsTipUpgradeRewardEnabled)
                     {
@@ -186,7 +191,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                 Hash256 blockHash = ExtractBlockHashFromSigningTxData(tx.Data);
                 tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
                 if (!hashToSigningAddress.ContainsKey(blockHash))
-                    hashToSigningAddress[blockHash] = new HashSet<Address>();
+                    hashToSigningAddress[blockHash] = [];
                 hashToSigningAddress[blockHash].Add(tx.SenderAddress);
             }
         }
@@ -258,7 +263,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
         Dictionary<Address, long> signers)
     {
-        Dictionary<Address, UInt256> rewardSigners = new();
+        Dictionary<Address, UInt256> rewardSigners = [];
         long totalSigningCount = 0;
         foreach (long signerCount in signers.Values)
             totalSigningCount += signerCount;
@@ -275,7 +280,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         UInt256 rewardPerSigner,
         Dictionary<Address, long> signers)
     {
-        Dictionary<Address, UInt256> rewardSigners = new();
+        Dictionary<Address, UInt256> rewardSigners = [];
         if (rewardPerSigner == UInt256.Zero)
             return rewardSigners;
 

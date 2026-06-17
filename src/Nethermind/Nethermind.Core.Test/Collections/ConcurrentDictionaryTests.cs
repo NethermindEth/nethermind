@@ -4,7 +4,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -21,12 +20,15 @@ public class ConcurrentDictionaryTests
         {
             updateTask = Task.Run(() => dictionary[3] = 3);
             Task.WaitAny(updateTask, Task.Delay(100));
-            updateTask.IsCompleted.Should().BeFalse();
-            dictionary.ContainsKey(3).Should().BeFalse();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(updateTask.IsCompleted, Is.False);
+                Assert.That(dictionary.ContainsKey(3), Is.False);
+            }
         }
 
         updateTask.Wait();
-        dictionary.ContainsKey(3).Should().BeTrue();
+        Assert.That(dictionary.ContainsKey(3), Is.True);
     }
 
     [Test]
@@ -36,6 +38,6 @@ public class ConcurrentDictionaryTests
         ConcurrentDictionary<int, int> dictionary = new(new Dictionary<int, int> { { 0, 0 }, { 1, 1 }, { 2, 2 } });
         dictionary.NoResizeClear();
 
-        dictionary.Count.Should().Be(0);
+        Assert.That(dictionary.Count, Is.EqualTo(0));
     }
 }

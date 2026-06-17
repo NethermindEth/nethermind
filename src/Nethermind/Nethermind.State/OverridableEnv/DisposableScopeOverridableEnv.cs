@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 
 namespace Nethermind.State.OverridableEnv;
@@ -20,9 +21,9 @@ public class DisposableScopeOverridableEnv<T>(
     T resolvedComponents
 ) : IOverridableEnv<T>
 {
-    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null)
+    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null)
     {
-        IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride);
+        IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
         return new Scope<T>(resolvedComponents, disposable);
     }
 }

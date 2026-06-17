@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Optimism.CL.Decoding;
 using NUnit.Framework;
@@ -27,11 +26,11 @@ public class FrameDecoderTests
         byte[] buffer = new byte[frame.Size];
 
         int written = frame.WriteTo(buffer);
-        written.Should().Be(frame.Size);
+        Assert.That(written, Is.EqualTo(frame.Size));
 
         int read = Frame.FromBytes(buffer, out Frame decoded);
-        read.Should().Be(written);
-        decoded.Should().Be(frame);
+        Assert.That(read, Is.EqualTo(written));
+        Assert.That(decoded, Is.EqualTo(frame));
     }
 
     [Test]
@@ -69,8 +68,8 @@ public class FrameDecoderTests
 
         List<Frame> decoded = FrameDecoder.DecodeFrames(buffer).ToList();
 
-        decoded.Count.Should().Be(2);
-        decoded[0].Should().Be(frame1);
-        decoded[1].Should().Be(frame2);
+        Assert.That(decoded.Count, Is.EqualTo(2));
+        Assert.That(decoded[0], Is.EqualTo(frame1));
+        Assert.That(decoded[1], Is.EqualTo(frame2));
     }
 }

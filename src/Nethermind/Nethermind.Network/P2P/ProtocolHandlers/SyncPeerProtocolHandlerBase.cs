@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -30,7 +29,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB;
+        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
+        internal static ulong HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -65,11 +65,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
-            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
-            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
+            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
         }
 
-        public override void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
+        public override void RegisterWith(ISession session, IProtocolRegistrar registrar)
+        {
+            SetProtocolRegistrar(registrar);
+            registrar.Register(session, this);
+        }
 
         public void Disconnect(DisconnectReason reason, string details)
         {
@@ -152,7 +156,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             msg.Skip = 0;
 
             using IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
-            return headers.Count > 0 ? headers[0] : null;
+            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+            return headersSpan.Length > 0 ? headersSpan[0] : null;
         }
 
         async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
@@ -365,23 +370,23 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
-            ArrayPoolList<TxReceipt[]> txReceipts = new(getReceiptsMessage.Hashes.Count);
+            ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
+            ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
 
             ulong sizeEstimate = 0;
-            for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)
+            for (int i = 0; i < hashes.Length; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
 
-                Hash256 blockHash = getReceiptsMessage.Hashes[i];
-                if (SyncServer.FindHeader(blockHash) is null)
+                Hash256 blockHash = hashes[i];
+                TxReceipt[]? blockTxReceipts = SyncServer.GetReceipts(blockHash);
+                if (blockTxReceipts is null)
                 {
                     break;
                 }
-
-                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(blockHash);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
@@ -398,9 +403,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private static IOwnedReadOnlyList<BlockHeader> FixHeadersForGeth(IOwnedReadOnlyList<BlockHeader> headers)
         {
             int emptyBlocksAtTheEnd = 0;
-            for (int i = 0; i < headers.Count; i++)
+            ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+            for (int i = 0; i < headersSpan.Length; i++)
             {
-                if (headers[headers.Count - 1 - i] is null)
+                if (headersSpan[headersSpan.Length - 1 - i] is null)
                 {
                     emptyBlocksAtTheEnd++;
                 }
@@ -412,14 +418,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             if (emptyBlocksAtTheEnd != 0)
             {
-                int toTake = headers.Count - emptyBlocksAtTheEnd;
+                int toTake = headersSpan.Length - emptyBlocksAtTheEnd;
                 if (headers is ArrayPoolList<BlockHeader> asArrayPoolList)
                 {
                     asArrayPoolList.Truncate(toTake);
                     return headers;
                 }
 
-                ArrayPoolList<BlockHeader> newList = new(toTake, headers.Take(toTake));
+                ArrayPoolList<BlockHeader> newList = new(toTake);
+                newList.AddRange(headersSpan[..toTake]);
                 headers.Dispose();
                 return newList;
             }
@@ -465,7 +472,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         #region IPeerWithSatelliteProtocol
 
         private Dictionary<string, object>? _protocolHandlers;
-        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
+        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= [];
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => ProtocolHandlers[protocol] = protocolHandler;
 

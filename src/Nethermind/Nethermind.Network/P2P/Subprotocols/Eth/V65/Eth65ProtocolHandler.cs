@@ -48,10 +48,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private const int MaxNumberOfTxsInOneMsg = 256;
 
-        protected override void HandleMessageCore(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
-            base.HandleMessageCore(message);
-
             int size = message.Content.ReadableBytes;
             switch (message.PacketType)
             {
@@ -68,10 +66,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         ReportIn(ignored, size);
                     }
 
-                    break;
+                    return true;
                 case Eth65MessageCode.GetPooledTransactions:
                     HandleInBackground<GetPooledTransactionsMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
@@ -85,16 +83,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         ReportIn(ignored, size);
                     }
 
-                    break;
+                    return true;
+                default:
+                    return base.HandleMessageCore(message);
             }
         }
 
         protected virtual void Handle(NewPooledTransactionHashesMessage msg) => RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
 
-        protected void AddNotifiedTransactions(IReadOnlyList<Hash256> hashes)
+        protected void AddNotifiedTransactions(ReadOnlySpan<Hash256> hashes)
         {
-            foreach (Hash256 hash in hashes)
+            for (int i = 0; i < hashes.Length; i++)
             {
+                Hash256 hash = hashes[i];
                 if (hash is not null)
                 {
                     NotifiedTransactions.Set(hash.ValueHash256);
@@ -179,7 +180,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
         {
-            AddNotifiedTransactions(hashes);
+            AddNotifiedTransactions(hashes.AsSpan());
 
             long startTime = Stopwatch.GetTimestamp();
             TxPool.Metrics.PendingTransactionsHashesReceived += hashes.Count;

@@ -5,6 +5,7 @@ using System.IO.Abstractions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Testably.Abstractions;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 

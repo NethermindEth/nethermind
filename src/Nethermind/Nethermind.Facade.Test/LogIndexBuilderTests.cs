@@ -28,6 +28,7 @@ public class LogIndexBuilderTests
 {
     private class TestLogIndexStorage : ILogIndexStorage
     {
+        private readonly Lock _gate = new();
         private int? _minBlockNumber;
         private int? _maxBlockNumber;
 
@@ -38,13 +39,13 @@ public class LogIndexBuilderTests
 
         public int? MinBlockNumber
         {
-            get => _minBlockNumber;
+            get { lock (_gate) return _minBlockNumber; }
             init => _minBlockNumber = value;
         }
 
         public int? MaxBlockNumber
         {
-            get => _maxBlockNumber;
+            get { lock (_gate) return _maxBlockNumber; }
             init => _maxBlockNumber = value;
         }
 
@@ -64,23 +65,34 @@ public class LogIndexBuilderTests
             int min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
             int max = Math.Max(aggregate.FirstBlockNum, aggregate.LastBlockNum);
 
-            if (_minBlockNumber is null || min < _minBlockNumber)
+            bool fireMin = false;
+            bool fireMax = false;
+            lock (_gate)
             {
-                if (_minBlockNumber is not null && max != _minBlockNumber - 1)
-                    throw new InvalidOperationException("Invalid receipts order.");
+                if (_minBlockNumber is null || min < _minBlockNumber)
+                {
+                    if (_minBlockNumber is not null && max != _minBlockNumber - 1)
+                        throw new InvalidOperationException("Invalid receipts order.");
 
-                _minBlockNumber = min;
-                NewMinBlockNumber?.Invoke(this, min);
+                    _minBlockNumber = min;
+                    fireMin = true;
+                }
+
+                if (_maxBlockNumber is null || max > _maxBlockNumber)
+                {
+                    if (_maxBlockNumber is not null && min != _maxBlockNumber + 1)
+                        throw new InvalidOperationException("Invalid receipts order.");
+
+                    _maxBlockNumber = max;
+                    fireMax = true;
+                }
             }
 
-            if (_maxBlockNumber is null || max > _maxBlockNumber)
-            {
-                if (_maxBlockNumber is not null && min != _maxBlockNumber + 1)
-                    throw new InvalidOperationException("Invalid receipts order.");
-
-                _maxBlockNumber = max;
-                NewMaxBlockNumber?.Invoke(this, max);
-            }
+            // Fire events outside the lock to avoid running subscriber code
+            // under the gate (subscribers in tests can re-enter via Wait
+            // helpers that subscribe/unsubscribe).
+            if (fireMin) NewMinBlockNumber?.Invoke(this, min);
+            if (fireMax) NewMaxBlockNumber?.Invoke(this, max);
 
             return Task.CompletedTask;
         }
@@ -144,8 +156,8 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage) => new LogIndexBuilder(
-            logIndexStorage, _config, _blockTree, _syncConfig, _receiptStorage, _logManager
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null) => new LogIndexBuilder(
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager
         ).AddTo(_testDisposables);
 
     [Test]
@@ -190,22 +202,29 @@ public class LogIndexBuilderTests
         }
     }
 
-    [Test]
-    public async Task Should_ForwardError(
-        [Values(0, 1, 4)] int failAfter
-    )
+    [TestCase(-1, TestName = "Should_ForwardError_FromQueueingLoop")]
+    [TestCase(0, TestName = "Should_ForwardError_FromStorage_Immediately")]
+    [TestCase(1, TestName = "Should_ForwardError_FromStorage_AfterOneBatch")]
+    [TestCase(4, TestName = "Should_ForwardError_FromStorage_AfterFourBatches")]
+    [CancelAfter(60_000)]
+    public async Task Should_ForwardErrorAndStopWithoutDeadlock(int failAfter)
     {
-        Exception exception = new(nameof(Should_ForwardError));
-        LogIndexBuilder builder = GetService(new FailingLogIndexStorage(failAfter, exception));
+        Exception exception = new(nameof(Should_ForwardErrorAndStopWithoutDeadlock));
+
+        LogIndexBuilder builder = failAfter < 0
+            ? GetService(new TestLogIndexStorage(), CreateFailingBlockTree(exception))
+            : GetService(new FailingLogIndexStorage(failAfter, exception));
 
         await builder.StartAsync();
 
         using (Assert.EnterMultipleScope())
         {
-            Exception thrown = Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(999)));
+            Exception thrown = Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10)));
             Assert.That(thrown, Is.EqualTo(exception));
             Assert.That(builder.LastError, Is.EqualTo(exception));
         }
+
+        await builder.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     [Test]
@@ -232,6 +251,25 @@ public class LogIndexBuilderTests
             Assert.That(builder.LastError, Is.Null);
             Assert.That(builder.LastUpdate, Is.Null);
         }
+    }
+
+    // FindBlock must succeed for the single pivot-setup lookup in StartAsync, then throw on
+    // the later lookups issued by DoQueueBlocks — that is the self-await deadlock path.
+    private IBlockTree CreateFailingBlockTree(Exception exception)
+    {
+        IBlockTree realTree = _blockTree;
+        int findCalls = 0;
+
+        IBlockTree throwingTree = Substitute.For<IBlockTree>();
+        throwingTree.SyncPivot.Returns(realTree.SyncPivot);
+        throwingTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        throwingTree
+            .FindBlock(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci => Interlocked.Increment(ref findCalls) == 1
+                ? realTree.FindBlock(ci.ArgAt<long>(0), ci.ArgAt<BlockTreeLookupOptions>(1))
+                : throw exception);
+
+        return throwingTree;
     }
 
     private static Task WaitMaxBlockAsync(TestLogIndexStorage storage, int blockNumber, CancellationToken cancellation)

@@ -8,9 +8,9 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 // Test data from https://github.com/matter-labs/eip1962/tree/master/src/test/test_vectors/eip2537
-public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecompile, Bls12381G1MsmPrecompileTests>
+public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecompile, Bls12381G1MsmPrecompileTests>, IPrecompileTests
 {
-    public static IEnumerable<string> TestFiles()
+    static IEnumerable<string> IPrecompileTests.TestFiles()
     {
         yield return "Bls/multiexp_G1_bls.json";
         yield return "Bls/fail-multiexp_G1_bls.json";
@@ -121,6 +121,28 @@ public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecomp
     // additional
     [TestCase("0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e10000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", true)]
     public void TestMultiScalar(string input, string output, bool status) => RunTest(input, output, status);
+
+    // Regression for the MSM scratch-buffer handling (uninitialized ArrayPoolSpan + the contiguous-by-dest
+    // packing): a multi-point MSM that interleaves a point at infinity (all-zero item -> dest == -1,
+    // a dead slot that is never written) with a valid point must yield exactly the valid point's
+    // result. Infinity is the additive identity, so MultiMult must read only the live npoints and
+    // never touch the uninitialized dead slot.
+    [Test]
+    public void Msm_with_interleaved_infinity_point_matches_single_point_result()
+    {
+        // 160-byte item = 128-byte G1 point + 32-byte scalar. Valid single-point vector below has a
+        // known output; the all-zero item is the point at infinity with a zero scalar.
+        const string validItem =
+            "0000000000000000000000000000000012196c5a43d69224d8713389285f26b98f86ee910ab3dd668e413738282003cc5b7357af9a7af54bb713d62255e80f560000000000000000000000000000000006ba8102bfbeea4416b710c73e8cce3032c31c6269c44906f8ac4f7874ce99fb17559992486528963884ce429a992feeb3c940fe79b6966489b527955de7599194a9ac69a6ff58b8d99e7b1084f0464e";
+        const string expectedOutput =
+            "000000000000000000000000000000000f1f230329be03ac700ba718bc43c8ee59a4b2d1e20c7de95b22df14e7867eae4658ed2f2dfed4f775d4dcedb4235cf00000000000000000000000000000000012924104fdb82fb074cfc868bdd22012694b5bae2c0141851a5d6a97d8bc6f22ecb2f6ddec18cba6483f2e73faa5b942";
+        string infinityItem = new('0', Bls12381G1MsmPrecompile.ItemSize * 2);
+
+        // infinity first, then valid, then infinity again -> dead slots on both sides of the live one
+        RunTest(infinityItem + validItem + infinityItem, expectedOutput, true);
+        // valid first, infinity trailing
+        RunTest(validItem + infinityItem, expectedOutput, true);
+    }
 
     [TestCase("0000000000000000000000000000000012196c5a43d69224d8713389285f26b98f86ee910ab3dd668e413738282003cc5b7357af9a7af54bb713d62255e80f560000000000000000000000000000000006ba8102bfbeea4416b710c73e8cce3032c31c6269c44906f8ac4f7874ce99fb17559992486528963884ce429a992feeb3c940fe79b6966489b527955de7599194a9ac69a6ff58b8d99e7b1084f0464e", "000000000000000000000000000000000f1f230329be03ac700ba718bc43c8ee59a4b2d1e20c7de95b22df14e7867eae4658ed2f2dfed4f775d4dcedb4235cf00000000000000000000000000000000012924104fdb82fb074cfc868bdd22012694b5bae2c0141851a5d6a97d8bc6f22ecb2f6ddec18cba6483f2e73faa5b942", true)]
     [TestCase("00000000000000000000000000000000117dbe419018f67844f6a5e1b78a1e597283ad7b8ee7ac5e58846f5a5fd68d0da99ce235a91db3ec1cf340fe6b7afcdb0000000000000000000000000000000013316f23de032d25e912ae8dc9b54c8dba1be7cecdbb9d2228d7e8f652011d46be79089dd0a6080a73c82256ce5e4ed24d0e25bf3f6fc9f4da25d21fdc71773f1947b7a8a775b8177f7eca990b05b71d", "00000000000000000000000000000000195592b927f3f1783a0c7b5117702cb09fa4f95bb2d35aa2a70fe89ba84aa4f385bdb2bfd4e1aaffbb0bfa002ac0e51b000000000000000000000000000000000607f070f4ae567633d019a63d0411a07d767bd7b6fe258c3ba1e720279e94c31f23166b806eabdb830bb632b003ca8b", true)]

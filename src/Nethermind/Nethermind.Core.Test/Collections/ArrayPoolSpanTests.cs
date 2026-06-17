@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -15,7 +14,7 @@ public class ArrayPoolSpanTests
     public void Indexer_out_of_bounds_should_throw(int length, int index)
     {
         using ArrayPoolSpan<int> span = new(length);
-        span.Invoking(s => { int _ = s[index]; }).Should().Throw<ArgumentOutOfRangeException>();
+        Assert.That(() => { int _ = span[index]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [TestCase(4, -1)]
@@ -23,7 +22,7 @@ public class ArrayPoolSpanTests
     public void Indexer_negative_should_throw(int length, int index)
     {
         using ArrayPoolSpan<int> span = new(length);
-        span.Invoking(s => { int _ = s[index]; }).Should().Throw<IndexOutOfRangeException>();
+        Assert.That(() => { int _ = span[index]; }, Throws.TypeOf<IndexOutOfRangeException>());
     }
 
     [Test]
@@ -32,8 +31,11 @@ public class ArrayPoolSpanTests
         using ArrayPoolSpan<int> span = new(4);
         span[0] = 10;
         span[3] = 40;
-        span[0].Should().Be(10);
-        span[3].Should().Be(40);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(span[0], Is.EqualTo(10));
+            Assert.That(span[3], Is.EqualTo(40));
+        }
     }
 
     [TestCase(0)]
@@ -43,7 +45,7 @@ public class ArrayPoolSpanTests
     public void Length_should_return_requested_size(int length)
     {
         using ArrayPoolSpan<int> span = new(length);
-        span.Length.Should().Be(length);
+        Assert.That(span.Length, Is.EqualTo(length));
     }
 
     [Test]
@@ -53,9 +55,12 @@ public class ArrayPoolSpanTests
         for (int i = 0; i < 4; i++) span[i] = i;
 
         Span<int> s = span;
-        s.Length.Should().Be(4);
-        s[0].Should().Be(0);
-        s[3].Should().Be(3);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(s.Length, Is.EqualTo(4));
+            Assert.That(s[0], Is.EqualTo(0));
+            Assert.That(s[3], Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -65,9 +70,12 @@ public class ArrayPoolSpanTests
         for (int i = 0; i < 4; i++) span[i] = i;
 
         ReadOnlySpan<int> s = span;
-        s.Length.Should().Be(4);
-        s[0].Should().Be(0);
-        s[3].Should().Be(3);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(s.Length, Is.EqualTo(4));
+            Assert.That(s[0], Is.EqualTo(0));
+            Assert.That(s[3], Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -79,10 +87,10 @@ public class ArrayPoolSpanTests
         int count = 0;
         foreach (int val in span)
         {
-            val.Should().Be(count * 10);
+            Assert.That(val, Is.EqualTo(count * 10));
             count++;
         }
-        count.Should().Be(5);
+        Assert.That(count, Is.EqualTo(5));
     }
 
     [Test]
@@ -92,9 +100,12 @@ public class ArrayPoolSpanTests
         for (int i = 0; i < 5; i++) span[i] = i;
 
         Span<int> slice = span.Slice(1, 3);
-        slice.Length.Should().Be(3);
-        slice[0].Should().Be(1);
-        slice[2].Should().Be(3);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slice.Length, Is.EqualTo(3));
+            Assert.That(slice[0], Is.EqualTo(1));
+            Assert.That(slice[2], Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -113,6 +124,6 @@ public class ArrayPoolSpanTests
 
         // Exactly at the boundary should work
         Span<int> slice = span.Slice(0, 5);
-        slice.Length.Should().Be(5);
+        Assert.That(slice.Length, Is.EqualTo(5));
     }
 }

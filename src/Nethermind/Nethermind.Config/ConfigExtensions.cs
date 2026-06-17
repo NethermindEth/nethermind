@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Core;
 
 namespace Nethermind.Config;
 
@@ -41,4 +44,73 @@ public static class ConfigExtensions
         string? defaultValue = attribute.DefaultValue;
         return (T)TypeDescriptor.GetConverter(typeof(T)).ConvertFrom(defaultValue!)!;
     }
+
+    /// <summary>
+    /// Enumerates configuration properties whose current value differs from the
+    /// implementation's default. Useful for surfacing on startup which knobs the
+    /// operator has actually changed, rather than dumping every value.
+    /// </summary>
+    /// <remarks>
+    /// Defaults come from a freshly constructed instance of the implementing
+    /// type, so initializers and constructors are honoured exactly as production
+    /// wiring would do (no parsing of the <see cref="ConfigItemAttribute.DefaultValue"/> string).
+    /// Properties flagged <see cref="ConfigItemAttribute.IsSensitive"/> are skipped.
+    /// </remarks>
+    /// <param name="configProvider">The provider to query.</param>
+    /// <param name="onConfigError">
+    /// Optional callback invoked when a single config interface cannot be enumerated
+    /// (provider lookup or fresh-default construction throws). Enumeration of the
+    /// remaining interfaces continues regardless. If <c>null</c>, failures are silent.
+    /// </param>
+    public static IEnumerable<NonDefaultConfigValue>
+        GetNonDefaultValues(this IConfigProvider configProvider, Action<Type, Exception>? onConfigError = null)
+    {
+        ArgumentNullException.ThrowIfNull(configProvider);
+
+        foreach (Type configInterface in TypeDiscovery.FindNethermindBasedTypes(typeof(IConfig)))
+        {
+            if (!configInterface.IsInterface) continue;
+
+            IConfig current;
+            IConfig fresh;
+            string? category;
+            try
+            {
+                current = configProvider.GetConfig(configInterface);
+                fresh = (IConfig)Activator.CreateInstance(current.GetType())!;
+                category = GetCategoryName(configInterface);
+            }
+            catch (Exception e)
+            {
+                onConfigError?.Invoke(configInterface, e);
+                continue;
+            }
+
+            foreach (PropertyInfo property in configInterface.GetProperties())
+            {
+                if (!property.CanRead) continue;
+                if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) continue;
+
+                object? actual;
+                object? defaultValue;
+                try
+                {
+                    actual = property.GetValue(current);
+                    defaultValue = property.GetValue(fresh);
+                }
+                catch (Exception e)
+                {
+                    onConfigError?.Invoke(configInterface, e);
+                    continue;
+                }
+
+                if (!StructuralComparisons.StructuralEqualityComparer.Equals(actual, defaultValue))
+                {
+                    yield return new NonDefaultConfigValue(category, property.Name, actual, defaultValue);
+                }
+            }
+        }
+    }
 }
+
+public readonly record struct NonDefaultConfigValue(string? Category, string Name, object? CurrentValue, object? DefaultValue);

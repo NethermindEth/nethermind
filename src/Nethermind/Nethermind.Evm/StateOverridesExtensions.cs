@@ -54,8 +54,10 @@ public static class StateOverridesExtensions
         IReleaseSpec spec,
         long blockNumber)
     {
+        // EIP-158 must not delete accounts whose code/nonce were zeroed
+        // while storage remains, or EIP-7610 CREATE collision checks will miss it.
+        spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
-
         state.Commit(spec, commitRoots: true);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
@@ -91,7 +93,7 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.MovePrecompileToAddress is not null)
         {
-            if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
+            if (!overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile)
             {
                 throw new ArgumentException($"Account {address} is not a precompile");
             }
@@ -156,3 +158,4 @@ public static class StateOverridesExtensions
         }
     }
 }
+

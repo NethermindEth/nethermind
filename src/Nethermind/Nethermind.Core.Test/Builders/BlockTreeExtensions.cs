@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -41,7 +42,7 @@ namespace Nethermind.Core.Test.Builders
         public static void AddBranch(this IBlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
             BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
-            List<Block> blocks = new();
+            List<Block> blocks = [];
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
                 Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)!;
@@ -49,13 +50,19 @@ namespace Nethermind.Core.Test.Builders
                 blocks.Add(block);
             }
 
-            if (branchLength > blockTree.Head!.Number)
+            if (branchLength > blockTree.Head!.Number && blocks.Count > 0)
             {
-                blockTree.UpdateMainChain(blocks, true);
+                blockTree.TryUpdateMainChain(blocks[^1].Header, true, preloadedBlocks: CollectionsMarshal.AsSpan(blocks));
             }
         }
 
-        public static void UpdateMainChain(this IBlockTree blockTree, Block block) => blockTree.UpdateMainChain(new[] { block }, true);
+        /// <summary>
+        /// Test-only: marks exactly the given blocks canonical without the connectivity walk that
+        /// <see cref="IBlockTree.TryUpdateMainChain"/> performs, so tests can stage disconnected fast-sync heads,
+        /// beacon blocks above a stale head, or inconsistent level markers.
+        /// </summary>
+        public static void ForceMainChainForTest(this IBlockTree blockTree, IReadOnlyList<Block> blocks, bool wereProcessed = true, bool forceUpdateHeadBlock = false) =>
+            ((BlockTree)blockTree).MarkBlocksCanonicalForTest(blocks, wereProcessed, forceUpdateHeadBlock);
 
         public static Task WaitForNewBlock(this IBlockTree blockTree, CancellationToken cancellation) => Wait.ForEventCondition<BlockReplacementEventArgs>(
                 cancellation,
