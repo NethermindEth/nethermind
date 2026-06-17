@@ -18,11 +18,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class AuRaNethermindApi(NethermindApi.Dependencies dependencies) : NethermindApi(dependencies)
     {
-        public new IAuRaBlockFinalizationManager? FinalizationManager
-        {
-            get => base.FinalizationManager as IAuRaBlockFinalizationManager;
-            set => base.FinalizationManager = value;
-        }
+        public IAuRaBlockFinalizationManager? AuRaFinalizationManager { get; set; }
 
         public TxAuRaFilterBuilders TxAuRaFilterBuilders => Context.Resolve<TxAuRaFilterBuilders>();
         public IValidatorStore ValidatorStore => Context.Resolve<IValidatorStore>();

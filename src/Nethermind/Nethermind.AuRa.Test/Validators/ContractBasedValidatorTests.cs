@@ -158,7 +158,7 @@ public class ContractBasedValidatorTests
         IAuRaValidator validator = new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
 
         _blockFinalizationManager.BlocksFinalized +=
-            Raise.EventWith(new FinalizeEventArgs(_block.Header,
+            Raise.EventWith(new AuRaFinalizeEventArgs(_block.Header,
                 Build.A.BlockHeader.WithNumber(blockNumber).WithHash(blockHash).TestObject));
 
         Assert.That(validator.Validators, Is.EqualTo(validators));
@@ -526,7 +526,7 @@ public class ContractBasedValidatorTests
             int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
             _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
-                new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
+                new AuRaFinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
                         .WithHash(Keccak.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));
 
             currentValidators = test.GetCurrentValidators(blockNumber);

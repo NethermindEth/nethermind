@@ -160,6 +160,10 @@ public partial class BlockTree
         Logger.Info("Loading fork choice info");
         FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpContext().DecodeKeccak();
         SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpContext().DecodeKeccak();
+        if (FinalizedHash is not null)
+        {
+            LastFinalizedBlockLevel = _headerStore.GetBlockNumber(FinalizedHash) ?? 0;
+        }
     }
 
     private void LoadLowestInsertedBeaconHeader()
