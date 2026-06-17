@@ -12,21 +12,21 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessingPauseGateTests
 {
-    [TestCase(false, true, true, true, TestName = "Pause from running transitions to paused")]
-    [TestCase(true, true, false, true, TestName = "Pause while already paused is a no-op")]
-    [TestCase(true, false, true, false, TestName = "Resume from paused transitions to running")]
-    [TestCase(false, false, false, false, TestName = "Resume while already running is a no-op")]
-    public void Transition_reportsWhetherStateChanged(bool startPaused, bool pause, bool expectedTransitioned, bool expectedPausedAfter)
+    [TestCase(Operation.Pause, false, true, TestName = "Pause from running transitions to paused")]
+    [TestCase(Operation.Pause, true, false, TestName = "Pause while already paused is a no-op")]
+    [TestCase(Operation.Resume, true, true, TestName = "Resume from paused transitions to running")]
+    [TestCase(Operation.Resume, false, false, TestName = "Resume while already running is a no-op")]
+    public void Transition_reportsWhetherStateChanged(Operation operation, bool startPaused, bool expectedTransitioned)
     {
         BlockProcessingPauseGate gate = new();
         if (startPaused) gate.Pause();
 
-        bool transitioned = pause ? gate.Pause() : gate.Resume();
+        bool transitioned = operation == Operation.Pause ? gate.Pause() : gate.Resume();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(transitioned, Is.EqualTo(expectedTransitioned), "the call reports whether it changed the state");
-            Assert.That(gate.IsPaused, Is.EqualTo(expectedPausedAfter), "the resulting paused state");
+            Assert.That(gate.IsPaused, Is.EqualTo(operation == Operation.Pause), "Pause ends paused; Resume ends running");
         }
     }
 
@@ -65,5 +65,11 @@ public class BlockProcessingPauseGateTests
         cts.Cancel();
 
         Assert.That(async () => await parked, Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    public enum Operation
+    {
+        Pause,
+        Resume
     }
 }

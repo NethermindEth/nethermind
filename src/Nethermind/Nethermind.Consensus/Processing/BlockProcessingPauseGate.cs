@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,7 +37,11 @@ internal sealed class BlockProcessingPauseGate
         return signal is not null;
     }
 
-    public async ValueTask WaitWhilePausedAsync(CancellationToken cancellationToken)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ValueTask WaitWhilePausedAsync(CancellationToken cancellationToken) =>
+        _resumeSignal is null ? ValueTask.CompletedTask : WaitWhilePausedSlowAsync(cancellationToken);
+
+    private async ValueTask WaitWhilePausedSlowAsync(CancellationToken cancellationToken)
     {
         while (_resumeSignal is { } resume)
         {
