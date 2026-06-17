@@ -9,6 +9,12 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
+/// <summary>
+/// <see cref="IPersistence"/> decorator that caches flat account/slot reads across heads, so a new head
+/// does not re-read the serving working set from the database on its first eth_calls. Wraps the reader
+/// (serve/fill) and the write batch (drops the committed write-set; clears on self-destruct or any
+/// raw/range write). Generation-gated: a reader behind the cache basis bypasses it rather than serving stale data.
+/// </summary>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
     private const int DefaultMaxEntriesPerKind = 131072;
@@ -96,14 +102,14 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
-    private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool selfDestructed)
+    private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
         using (_lock.EnterScope())
         {
             _generation++;
             _basis = to;
 
-            if (selfDestructed)
+            if (clearAll)
             {
                 ClearAllNoLock();
                 return;
@@ -185,11 +191,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         private HashSet<Address>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
-        private bool _selfDestructed;
+        private bool _clearAll;
 
         public void SelfDestruct(Address addr)
         {
-            _selfDestructed = true;
+            _clearAll = true;
             inner.SelfDestruct(addr);
         }
 
@@ -205,19 +211,39 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.SetStorage(addr, slot, value);
         }
 
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
+        {
+            _clearAll = true;
+            inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+        }
+
+        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
+        {
+            _clearAll = true;
+            inner.SetAccountRaw(addrHash, account);
+        }
+
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            _clearAll = true;
+            inner.DeleteAccountRange(fromPath, toPath);
+        }
+
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            _clearAll = true;
+            inner.DeleteStorageRange(addressHash, fromPath, toPath);
+        }
+
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
-        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account) => inner.SetAccountRaw(addrHash, account);
-        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
-        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteStorageRange(addressHash, fromPath, toPath);
         public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) => inner.DeleteStateTrieNodeRange(fromPath, toPath);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) => inner.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
 
         public void Dispose()
         {
             inner.Dispose();
-            parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _selfDestructed);
+            parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
         }
     }
 }

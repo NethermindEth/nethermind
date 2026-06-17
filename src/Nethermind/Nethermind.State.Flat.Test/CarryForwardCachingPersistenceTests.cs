@@ -45,6 +45,20 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(1));
     }
 
+    [Test]
+    public void GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+
+        ReadAccount(cache, TestItem.AddressA);
+        ReadAccount(cache, TestItem.AddressA);
+        ReadAccount(cache, TestItem.AddressB);
+        ReadAccount(cache, TestItem.AddressA);
+
+        Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)
@@ -87,6 +101,12 @@ public class CarryForwardCachingPersistenceTests
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         SlotValue value = default;
         reader.TryGetSlot(Address, slot, ref value);
+    }
+
+    private static void ReadAccount(IPersistence persistence, Address address)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        reader.GetAccount(address);
     }
 
     public sealed class FakePersistence : IPersistence
