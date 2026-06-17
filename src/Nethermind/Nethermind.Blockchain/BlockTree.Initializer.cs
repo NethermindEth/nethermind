@@ -47,6 +47,7 @@ public partial class BlockTree
                 }
                 else
                 {
+                    if (index == 0) break; // avoid ulong wrap
                     right = index - 1;
                 }
             }

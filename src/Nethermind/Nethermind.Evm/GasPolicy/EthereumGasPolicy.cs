@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -202,11 +203,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong SaturatingSub(ulong a, ulong b) => a > b ? a - b : 0UL;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong GetUnrefundedStateGasSpill(in EthereumGasPolicy childGas) =>
-        SaturatingSub(childGas.StateGasSpill, childGas.StateGasSpillRefunded);
+        childGas.StateGasSpill.SaturatingSub(childGas.StateGasSpillRefunded);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsOutOfGas(in EthereumGasPolicy gas) => gas.OutOfGas;
@@ -341,7 +339,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RefundStateGas(ref EthereumGasPolicy gas, ulong amount, ulong stateGasFloor, bool trackSpillRefund)
     {
-        ulong refundableStateGas = SaturatingSub(gas.StateGasUsed, stateGasFloor);
+        ulong refundableStateGas = gas.StateGasUsed.SaturatingSub(stateGasFloor);
         ulong appliedRefund = Math.Min(amount, refundableStateGas);
         if (trackSpillRefund)
         {
@@ -355,7 +353,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong DiscardStateGas(ref EthereumGasPolicy gas, ulong amount, ulong stateGasFloor, bool trackSpillRefund)
     {
-        ulong discardableStateGas = SaturatingSub(gas.StateGasUsed, stateGasFloor);
+        ulong discardableStateGas = gas.StateGasUsed.SaturatingSub(stateGasFloor);
         ulong appliedRefund = Math.Min(amount, discardableStateGas);
         if (trackSpillRefund)
         {
@@ -423,7 +421,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (codeInsertRefunds > 0UL && spec.IsEip8037Enabled)
         {
             ulong stateGasRefund = checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
-            ulong refundFloor = SaturatingSub(stateGasFloor, stateGasRefund);
+            ulong refundFloor = stateGasFloor.SaturatingSub(stateGasRefund);
             RefundStateGas(ref gas, stateGasRefund, refundFloor, trackSpillRefund: false);
         }
 
@@ -518,7 +516,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         {
             // EIP-8037: cap gas_left at TX_MAX_GAS_LIMIT - intrinsic_regular, overflow goes to reservoir
             ulong maxGasLeft = Eip7825Constants.DefaultTxGasLimitCap - intrinsicGas.Value;
-            reservoir = SaturatingSub(executionGas, maxGasLeft);
+            reservoir = executionGas.SaturatingSub(maxGasLeft);
             executionGas -= reservoir;
         }
 

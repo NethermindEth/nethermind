@@ -34,8 +34,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec)
     {
-        if (requiredBlockNumber < 0 ||
-            requiredBlockNumber >= currentHeader.Number ||
+        if (requiredBlockNumber >= currentHeader.Number ||
             requiredBlockNumber + spec.Eip2935RingBufferSize < currentHeader.Number)
         {
             return null;

@@ -217,18 +217,6 @@ public static class SszCodec
         return wire.BlockHashes ?? [];
     }
 
-    /// <summary>
-    /// Decodes an SSZ-encoded <c>GetPayloadBodiesByRange</c> request and returns the
-    /// <c>start</c> block number and <c>count</c> as <c>ulong</c> values.
-    /// </summary>
-    /// <remarks>
-    /// Previously returned <c>(long start, long count)</c> and went through
-    /// <c>SszNumericChecks.CheckedLong</c> to guard against overflow when narrowing
-    /// <c>uint64</c> wire values to <c>long</c>.  Now that <c>BlockHeader.Number</c>
-    /// (and the engine-API handler signatures) are <c>ulong</c>, no narrowing is
-    /// required: the wire values are used directly.  <c>SszNumericChecks.CheckedLong</c>
-    /// has no remaining callers and should be deleted.
-    /// </remarks>
     public static (ulong start, ulong count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySequence<byte> buf)
     {
         GetPayloadBodiesByRangeRequestWire.Decode(buf, out GetPayloadBodiesByRangeRequestWire wire);

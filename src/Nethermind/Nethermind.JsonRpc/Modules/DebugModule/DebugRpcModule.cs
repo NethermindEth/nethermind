@@ -466,7 +466,7 @@ public class DebugRpcModule(
     public ResultWrapper<GcStats> debug_gcStats() => throw new NotImplementedException();
 
     public ResultWrapper<byte[]> debug_getBlockRlp(ulong blockNumber) =>
-        GetBlockRlpOrFail(new BlockParameter(blockNumber >= 0 ? blockNumber : 0UL));
+        GetBlockRlpOrFail(new BlockParameter(blockNumber));
 
     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
         GetBlockRlpOrFail(new BlockParameter(hash));

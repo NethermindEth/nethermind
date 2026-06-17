@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.GasPolicy;
 
@@ -59,7 +60,9 @@ public static class Eip8037BlockGasInclusionCheck
         ulong stateGasSpillReclassified,
         ulong floorGas)
     {
-        ulong executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
+        // Saturating: a stale invariant would otherwise wrap and silently blow the block gas limit.
+        ulong consumedAfterRefund = initialRegularGas.SaturatingSub(remainingRegularGas);
+        ulong executionRegularGasUsed = consumedAfterRefund.SaturatingSub(stateGasSpill) + stateGasSpillReclassified;
         ulong blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
         return Math.Max(blockRegularGas, floorGas);
     }

@@ -434,7 +434,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
         ulong childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
-        ulong stateSpill = stateDepositCost > childStateReservoir ? stateDepositCost - childStateReservoir : 0UL;
+        ulong stateSpill = stateDepositCost.SaturatingSub(childStateReservoir);
         bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + stateSpill;
         bool chargedCodeDeposit = false;
 

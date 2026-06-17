@@ -181,9 +181,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 return ResultWrapper<MasternodesStatus>.Fail("No finalized block found from consensus");
             }
         }
-        else if (blockNumber.BlockNumber < 0)
+        else if (blockNumber.BlockNumber is null)
         {
-            return ResultWrapper<MasternodesStatus>.Fail($"Invalid block number {blockNumber.BlockNumber}");
+            return ResultWrapper<MasternodesStatus>.Fail("Block number is required.");
         }
         else
         {
@@ -244,9 +244,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.Head?.Header;
         }
-        else if (blockNumber.BlockNumber < 0)
+        else if (blockNumber.BlockNumber is null)
         {
-            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail($"Invalid block number {blockNumber.BlockNumber}");
+            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail("Block number is required.");
         }
         else
         {
@@ -370,9 +370,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.Head?.Header;
         }
-        else if (blockParam.BlockNumber < 0)
+        else if (blockParam.BlockNumber is null)
         {
-            return ResultWrapper<Address[]>.Fail($"Invalid block number {blockParam.BlockNumber}");
+            return ResultWrapper<Address[]>.Fail("Block number is required.");
         }
         else
         {
@@ -443,9 +443,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.Head?.Header;
         }
-        else if (blockParam.BlockNumber < 0)
+        else if (blockParam.BlockNumber is null)
         {
-            return ResultWrapper<PublicApiSnapshot>.Fail($"Invalid block number {blockParam.BlockNumber}");
+            return ResultWrapper<PublicApiSnapshot>.Fail("Block number is required.");
         }
         else
         {
@@ -611,9 +611,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.Head?.Header;
         }
-        else if (blockNumber.BlockNumber < 0)
+        else if (blockNumber.BlockNumber is null)
         {
-            return ResultWrapper<V2BlockInfo>.Fail($"Invalid block number {blockNumber.BlockNumber}");
+            return ResultWrapper<V2BlockInfo>.Fail("Block number is required.");
         }
         else
         {

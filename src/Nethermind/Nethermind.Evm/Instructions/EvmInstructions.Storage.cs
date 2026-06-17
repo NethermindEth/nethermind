@@ -550,9 +550,12 @@ public static partial class EvmInstructions
                     // Adjust refunds based on a change from or to a zero value.
                     if (currentIsZero)
                     {
-                        vmState.Refund -= sClearRefunds;
+                        // Saturating: invariant says Refund >= sClearRefunds here, but a wrap would
+                        // grant the maximum refund post-cap. Consensus-relevant.
+                        ulong refundBefore = vmState.Refund;
+                        vmState.Refund = refundBefore.SaturatingSub(sClearRefunds);
                         if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(-(long)sClearRefunds); ///?????
+                            vm.TxTracer.ReportRefund(-(long)(refundBefore - vmState.Refund));
                     }
 
                     if (newIsZero)

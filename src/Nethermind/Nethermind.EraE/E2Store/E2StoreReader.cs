@@ -179,8 +179,11 @@ public sealed class E2StoreReader : IDisposable
 
         _componentIndexTlvStart = indexEntryStart;
 
-        // Read starting block number (first field of index data)
-        _startBlock = (ulong)ReadInt64(indexEntryStart + EntryHeaderSize);
+        // ComponentIndex is int64 on disk; negative starting_number is an invalid archive.
+        long startingNumberRaw = ReadInt64(indexEntryStart + EntryHeaderSize);
+        if (startingNumberRaw < 0)
+            throw new EraFormatException($"Negative starting block number {startingNumberRaw} in EraE ComponentIndex.");
+        _startBlock = (ulong)startingNumberRaw;
 
         _indexLoaded = true;
     }

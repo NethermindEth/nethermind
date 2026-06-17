@@ -151,7 +151,10 @@ namespace Nethermind.JsonRpc.Data
                                             ReadStringFormatValueSequence(ref reader, options),
                 JsonTokenType.StartObject => ReadObjectFormat(ref reader, typeToConvert, options),
                 JsonTokenType.Null => BlockParameter.Latest,
-                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetUInt64()),
+                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat =>
+                    reader.TryGetUInt64(out ulong parsed)
+                        ? new BlockParameter(parsed)
+                        : throw new JsonException("block number must be a non-negative integer"),
                 _ => throw new FormatException("unknown block parameter type")
             };
 

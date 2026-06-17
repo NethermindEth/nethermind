@@ -131,9 +131,9 @@ public class TxPoolContentListsTests
         }
     }
 
-    [TestCase(10, 0)]
-    [TestCase(0, 1)]
-    public void MaxGasLimitRatio_FiltersHighGasLimitTransactions(int maxGasLimitRatio, int expectedTxCount)
+    [TestCase(10UL, 0)]
+    [TestCase(0UL, 1)]
+    public void MaxGasLimitRatio_FiltersHighGasLimitTransactions(ulong maxGasLimitRatio, int expectedTxCount)
     {
         Transaction tx = Build.A.Transaction
             .WithType(TxType.EIP1559)
@@ -178,11 +178,11 @@ public class TxPoolContentListsTests
         Assert.That(totalTxCount, Is.EqualTo(expectedTxCount));
     }
 
-    [TestCase(21_000UL, 120, 0, 2, TestName = "Batch is full by bytes")]
-    [TestCase(2_100_000UL, 100_000, 10, 1, TestName = "Surge filter rejects transaction")]
+    [TestCase(21_000UL, 120, 0UL, 2, TestName = "Batch is full by bytes")]
+    [TestCase(2_100_000UL, 100_000, 10UL, 1, TestName = "Surge filter rejects transaction")]
     public void GasUsed_IsNotInflated_WhenTxIsRejectedAfterExecution(
         ulong tx1GasLimit, int maxBytesPerTxList,
-        int surgeMaxGasLimitRatio, int expectedBatchCount)
+        ulong surgeMaxGasLimitRatio, int expectedBatchCount)
     {
         // tx1 is rejected after successful execution, tx2 is accepted
         Transaction tx1 = Build.A.Transaction

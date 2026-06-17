@@ -21,6 +21,9 @@ public sealed class AdminEraService(
 
     public ResultWrapper<string> ExportHistory(string destination, long from, long to)
     {
+        if (from < 0 || to < 0)
+            return ResultWrapper<string>.Fail("from and to must be non-negative.", ErrorCodes.InvalidParams);
+
         if (Interlocked.Exchange(ref _canEnterExport, 0) != 1)
             return ResultWrapper<string>.Fail("An export job is already running.");
 
@@ -37,6 +40,9 @@ public sealed class AdminEraService(
 
     public ResultWrapper<string> ImportHistory(string source, long from, long to, string? accumulatorFile)
     {
+        if (from < 0 || to < 0)
+            return ResultWrapper<string>.Fail("from and to must be non-negative.", ErrorCodes.InvalidParams);
+
         if (Interlocked.Exchange(ref _canEnterImport, 0) != 1)
             return ResultWrapper<string>.Fail("An import job is already running.");
 

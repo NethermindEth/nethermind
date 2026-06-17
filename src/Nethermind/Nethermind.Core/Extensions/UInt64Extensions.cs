@@ -4,12 +4,18 @@
 using System;
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Extensions;
 
 public static class UInt64Extensions
 {
+    /// <summary>Returns <c>max(0, a - b)</c> without wrapping around 2^64.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong SaturatingSub(this ulong a, ulong b) => a > b ? a - b : 0UL;
+
+
     public static ReadOnlySpan<byte> ToBigEndianSpanWithoutLeadingZeros(this ulong value, out ulong buffer)
     {
         // Min 7 bytes as we still want a byte if the value is 0.

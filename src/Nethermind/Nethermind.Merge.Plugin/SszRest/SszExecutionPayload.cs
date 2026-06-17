@@ -80,19 +80,19 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
     public ulong BlockNumber
     {
         get => Inner.BlockNumber;
-        set => Inner.BlockNumber = SszNumericChecks.CheckedLong(value);
+        set => Inner.BlockNumber = value;
     }
 
     public ulong GasLimit
     {
         get => Inner.GasLimit;
-        set => Inner.GasLimit = SszNumericChecks.CheckedLong(value);
+        set => Inner.GasLimit = value;
     }
 
     public ulong GasUsed
     {
         get => Inner.GasUsed;
-        set => Inner.GasUsed = SszNumericChecks.CheckedLong(value);
+        set => Inner.GasUsed = value;
     }
 
     public ulong Timestamp

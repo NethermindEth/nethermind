@@ -56,7 +56,10 @@ public class BlockTreeSuggestPacer : IDisposable
     public async Task WaitForQueue(ulong currentBlockNumber, CancellationToken token)
     {
         ulong currentHeadNumber = _blockTree.Head?.Number ?? 0;
-        if (currentBlockNumber - currentHeadNumber > _stopBatchSize && _dbBatchProcessed is null)
+        // Head can transiently overtake the suggestion (parallel-import advance, post-FCU); wrap would pause indefinitely.
+        if (currentBlockNumber > currentHeadNumber
+            && currentBlockNumber - currentHeadNumber > _stopBatchSize
+            && _dbBatchProcessed is null)
         {
             _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
             TaskCompletionSource completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);

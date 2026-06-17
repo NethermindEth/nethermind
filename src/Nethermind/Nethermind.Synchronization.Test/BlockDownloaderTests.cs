@@ -109,7 +109,7 @@ public partial class BlockDownloaderTests
         syncPeer.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max(0UL, peerInfo.HeadNumber)));
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
         // full sync does not set main chain, but triggers it processing which eventually set main chain
         Assert.That(ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader!.Hash!), Is.EqualTo(false));
 
@@ -358,8 +358,8 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        await ctx.FullDispatcherSync(Math.Max(0UL, peerInfo.HeadNumber));
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(Math.Max(0UL, peerInfo.HeadNumber)));
+        await ctx.FullDispatcherSync(peerInfo.HeadNumber);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
     }
 
     [TestCase(32UL, 32UL, 0, true)]

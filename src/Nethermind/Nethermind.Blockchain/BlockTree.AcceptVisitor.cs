@@ -20,6 +20,8 @@ namespace Nethermind.Blockchain
 
             try
             {
+                if (visitor.EndLevelExclusive <= visitor.StartLevelInclusive) return;
+
                 ulong levelNumber = visitor.StartLevelInclusive;
                 ulong blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
                 for (ulong i = 0; i < blocksToVisit; i++)

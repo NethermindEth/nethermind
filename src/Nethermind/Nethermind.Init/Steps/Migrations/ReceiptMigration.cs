@@ -296,8 +296,12 @@ namespace Nethermind.Init.Steps.Migrations
             // Receipts are now prefixed with block number.
             _receiptsBlockDb.Delete(block.Hash!);
 
-            // Remove old tx index
-            bool txIndexExpired = _receiptConfig.TxLookupLimit != 0 && (long?)(_blockTree.Head?.Number - block.Number) > _receiptConfig.TxLookupLimit;
+            // Guarded: block.Number can transiently exceed head during reorgs.
+            ulong? headNumber = _blockTree.Head?.Number;
+            bool txIndexExpired = _receiptConfig.TxLookupLimit > 0
+                                  && headNumber is ulong h
+                                  && h > block.Number
+                                  && h - block.Number > (ulong)_receiptConfig.TxLookupLimit.Value;
             bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
             if (neverIndexTx || txIndexExpired)
             {

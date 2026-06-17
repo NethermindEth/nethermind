@@ -55,12 +55,16 @@ public class WitnessGeneratingHeaderFinder(IHeaderFinder inner) : IHeaderFinder
 
             if (index >= 0)
             {
-                for (ulong i = parentHeader.Number - 1; i >= _lowestRequestedHeader; i--)
+                // Count-driven: ulong i-- wraps past 0 when _lowestRequestedHeader == 0.
+                ulong i = parentHeader.Number - 1;
+                while (index >= 0)
                 {
                     currentHash = parentHeader.ParentHash!;
                     parentHeader = inner.Get(currentHash, i)
                         ?? throw new ArgumentException($"Unable to get requested header at hash {currentHash} and number {i} during witness generation");
                     headers[index--] = _decoder.Encode(parentHeader).Bytes;
+                    if (index < 0 || i == 0) break;
+                    i--;
                 }
             }
 

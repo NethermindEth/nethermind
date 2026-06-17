@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.FastSync
@@ -16,8 +17,7 @@ namespace Nethermind.Synchronization.FastSync
         private BlockHeader? _bestHeader;
         private readonly ILogger _logger = logManager?.GetClassLogger<StateSyncPivot>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        // BestSuggestedHeader.Number and _bestHeader.Number are ulong. Diff is long (can be negative during reorgs).
-        public ulong Diff => blockTree.BestSuggestedHeader?.Number ?? 0UL - (_bestHeader?.Number ?? 0UL);
+        public ulong Diff => (blockTree.BestSuggestedHeader?.Number ?? 0UL).SaturatingSub(_bestHeader?.Number ?? 0UL);
 
         public BlockHeader? GetPivotHeader()
         {
@@ -42,9 +42,7 @@ namespace Nethermind.Synchronization.FastSync
         private void TrySetNewBestHeader(string msg)
         {
             BlockHeader bestSuggestedHeader = blockTree.BestSuggestedHeader; // Note: Best suggested header is always `syncConfig.StateMinDistanceFromHead`. behind from actual head.
-            // bestSuggestedHeader.Number is ulong; target is long for Math.Max and FindHeader.
             ulong targetBlockNumber = bestSuggestedHeader?.Number ?? 0UL;
-            targetBlockNumber = Math.Max(targetBlockNumber, 0);
             // The new pivot must be at least one block after the sync pivot as the forward downloader does not
             // download the block at the sync pivot which may cause state not found error if state was downloaded
             // at exactly sync pivot.

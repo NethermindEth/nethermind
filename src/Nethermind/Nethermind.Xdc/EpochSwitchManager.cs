@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -276,7 +277,9 @@ internal class EpochSwitchManager(
 
         ulong epoch = xdcSpec.EpochLength;
         ulong estBlockNumDiff = epoch * (epochNumber - targetEpoch);
-        ulong estBlockNum = Math.Max(xdcSpec.SwitchBlock, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber - estBlockNumDiff);
+        ulong estBlockNum = Math.Max(
+            xdcSpec.SwitchBlock,
+            epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber.SaturatingSub(estBlockNumDiff));
 
         ulong closeEpochNum = 2ul;
 

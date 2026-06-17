@@ -96,12 +96,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
-    private string GetGasChange(ulong blockGasLimit) => (blockGasLimit - _lastBlockGasLimit) switch
-    {
-        > 0 => "👆",
-        // < 0 => "👇",
-        _ => "  "
-    };
+    private string GetGasChange(ulong blockGasLimit) =>
+        blockGasLimit > _lastBlockGasLimit ? "👆"
+        : blockGasLimit < _lastBlockGasLimit ? "👇"
+        : "  ";
 
     /// <summary>
     /// Processes the execution payload and returns the <see cref="PayloadStatusV1"/>

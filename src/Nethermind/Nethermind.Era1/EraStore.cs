@@ -120,8 +120,8 @@ public class EraStore : IEraStore
 
     private long GetEpochNumber(ulong blockNumber)
     {
-        // This seems to be the geth way of encoding blocks.
-        // Cast to long is safe here: epoch numbers are small integers well within long range.
+        if (blockNumber < FirstBlock)
+            throw new EraException($"Block number {blockNumber} is below era store's first block {FirstBlock}.");
         long epochOffset = (long)((blockNumber - FirstBlock) / _maxEraFile);
         return FirstEpoch + epochOffset;
     }

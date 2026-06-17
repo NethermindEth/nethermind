@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 
@@ -30,7 +31,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
 
 
         ulong parentNumber = number - 1;
-        ulong minBlockNumber = Math.Max(1UL, number - currentSpec.EpochLength);
+        ulong minBlockNumber = Math.Max(1UL, number.SaturatingSub(currentSpec.EpochLength));
 
         while (true)
         {
@@ -73,7 +74,9 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
 
         HashSet<Hash256> blockHashes = [];
 
-        ulong startRange = Math.Max(number - currentSpec.RangeReturnSigner + 1, 0);
+        ulong startRange = number + 1 > currentSpec.RangeReturnSigner
+            ? number - currentSpec.RangeReturnSigner + 1
+            : 1UL;
         for (int i = listBlockNumber.Count - 1; i >= 0; i--)
         {
             ulong blockNumber = listBlockNumber[i];

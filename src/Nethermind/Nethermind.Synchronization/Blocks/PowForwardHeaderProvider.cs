@@ -133,7 +133,7 @@ public class PowForwardHeaderProvider(
         _ancestorLookupLevel = 0;
         ulong bestKnown = blockTree.BestKnownNumber;
         ulong headNum = newBestPeer.HeadNumber;
-        _currentNumber = Math.Max(0UL, Math.Min(bestKnown, headNum > 0 ? headNum - 1 : 0)); // Remember, _currentNumber is -1 than what we want.
+        _currentNumber = Math.Min(bestKnown, headNum > 0 ? headNum - 1 : 0);
         _currentBestPeer = newBestPeer;
     }
 
