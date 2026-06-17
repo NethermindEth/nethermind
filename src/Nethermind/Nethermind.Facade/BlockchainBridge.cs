@@ -245,6 +245,7 @@ namespace Nethermind.Facade
             GasEstimator gasEstimator = new(txProcessor, worldState, specProvider, blocksConfig);
 
             string? error = tryCallResult.GetErrorMessage(estimateGasTracer.Error);
+            string? probeError = error;
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             error = err switch
@@ -270,7 +271,7 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !executionReverted && error is not null && (!tryCallResult.TransactionExecuted || err is not null),
+                InputError = !executionReverted && error is not null && (error != probeError),
                 ExecutionReverted = executionReverted
             };
         }
