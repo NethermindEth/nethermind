@@ -426,7 +426,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch batch = new();
             ulong requestSizeU = (ulong)requestSize;
             batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber >= requestSizeU ? _lowestRequestedHeaderNumber - requestSizeU : 0UL);
-            batch.RequestSize = Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, requestSizeU);
+            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, requestSizeU);
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }
@@ -526,7 +526,7 @@ namespace Nethermind.Synchronization.FastBlocks
             rightFiller.StartNumber = batch.EndNumber >= (ulong)(rightFillerSize - 1)
                 ? batch.EndNumber - (ulong)(rightFillerSize - 1)
                 : 0UL;
-            rightFiller.RequestSize = (ulong)rightFillerSize;
+            rightFiller.RequestSize = rightFillerSize;
             return rightFiller;
         }
 
@@ -534,7 +534,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             HeadersSyncBatch leftFiller = new();
             leftFiller.StartNumber = batch.StartNumber;
-            leftFiller.RequestSize = (ulong)leftFillerSize;
+            leftFiller.RequestSize = leftFillerSize;
             return leftFiller;
         }
 
@@ -542,10 +542,10 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             HeadersSyncBatch dependentBatch = new();
             dependentBatch.StartNumber = addedEarliest;
-            ulong count = addedLast - addedEarliest + 1;
+            int count = (int)(addedLast - addedEarliest + 1);
             ReadOnlySpan<BlockHeader?> response = batch.Response!.AsSpan();
             dependentBatch.RequestSize = count;
-            dependentBatch.Response = response.Slice((int)(addedEarliest - batch.StartNumber), (int)count).ToPooledList();
+            dependentBatch.Response = response.Slice((int)(addedEarliest - batch.StartNumber), count).ToPooledList();
             dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
             return dependentBatch;
         }
@@ -574,22 +574,21 @@ namespace Nethermind.Synchronization.FastBlocks
             if (seedHash is null) return batch;
 
             using IOwnedReadOnlyList<BlockHeader> headers =
-                _headerStore.FindReversedHeaders(batch.EndNumber, seedHash, (int)batch.RequestSize);
+                _headerStore.FindReversedHeaders(batch.EndNumber, seedHash, batch.RequestSize);
 
             if (headers.Count == 0) return batch;
 
-            ulong newRequestSize = batch.RequestSize - (ulong)headers.Count;
+            int newRequestSize = batch.RequestSize - headers.Count;
             ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
             using HeadersSyncBatch newBatchToProcess = new();
-            // headersSpan[0].Number and StartNumber are both ulong — no cast needed.
             newBatchToProcess.StartNumber = headersSpan[0].Number;
-            newBatchToProcess.RequestSize = (ulong)headersSpan.Length;
+            newBatchToProcess.RequestSize = headersSpan.Length;
             newBatchToProcess.Response = headers;
             if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
             InsertHeaders(newBatchToProcess);
             MarkDirty();
             HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
-            HeadersSyncProgressLoggerReport.IncrementSkipped((int)newBatchToProcess.RequestSize);
+            HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);
 
             if (newRequestSize == 0) return null;
 
@@ -605,7 +604,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             ReadOnlySpan<BlockHeader?> response = batch.Response.AsSpan();
-            if ((ulong)response.Length > batch.RequestSize)
+            if (response.Length > batch.RequestSize)
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Peer sent too long response ({response.Length}) to {batch}");
@@ -707,15 +706,14 @@ namespace Nethermind.Synchronization.FastBlocks
             else
             {
                 added = 0;
-                leftFillerSize = (int)batch.RequestSize;
+                leftFillerSize = batch.RequestSize;
                 rightFillerSize = 0;
             }
-            if ((ulong)(added + leftFillerSize + rightFillerSize) != batch.RequestSize)
+            if (added + leftFillerSize + rightFillerSize != batch.RequestSize)
             {
                 throw new Exception($"Added {added} + left {leftFillerSize} + right {rightFillerSize} != request size {batch.RequestSize} in {batch}");
             }
 
-            // lowestInsertedHeader.Number and LowestInsertedBlockHeader.Number are ulong. Use ulong max sentinel.
             if (lowestInsertedHeader is not null && lowestInsertedHeader.Number < (LowestInsertedBlockHeader?.Number ?? ulong.MaxValue))
             {
                 LowestInsertedBlockHeader = lowestInsertedHeader;
@@ -724,7 +722,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             added = Math.Max(0, added);
 
-            if ((ulong)added < batch.RequestSize)
+            if (added < batch.RequestSize)
             {
                 if (added <= 0)
                 {

@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             try
             {
-                batch.Response = await peer.GetBlockHeaders(batch.StartNumber, (int)batch.RequestSize, 0, cancellationToken);
+                batch.Response = await peer.GetBlockHeaders(batch.StartNumber, batch.RequestSize, 0, cancellationToken);
             }
             catch (TimeoutException)
             {

@@ -122,7 +122,7 @@ public class BlockAccessListsSyncFeedTests
 
         _feed.InitializeFeed();
 
-        ulong barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+        ulong barrier = _metadataDb.Get(MetadataDbKeys.BlockAccessListsBarrierWhenStarted).ToULongFromBigEndianByteArrayWithoutLeadingZeros();
         Assert.That(barrier, Is.EqualTo(previousBarrier));
         _blockAccessListStore.DidNotReceive().Exists(Arg.Any<ulong>(), TestItem.KeccakB);
         Assert.That(_feed.IsFinished, Is.True);

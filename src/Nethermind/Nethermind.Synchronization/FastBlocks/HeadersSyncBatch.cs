@@ -9,8 +9,8 @@ namespace Nethermind.Synchronization.FastBlocks
     public class HeadersSyncBatch : FastBlocksBatch
     {
         public ulong StartNumber { get; set; }
-        public ulong EndNumber => StartNumber + RequestSize - 1;
-        public ulong RequestSize { get; set; }
+        public ulong EndNumber => StartNumber + (ulong)RequestSize - 1;
+        public int RequestSize { get; set; }
         public long ResponseSizeEstimate { get; private set; }
 
         private IOwnedReadOnlyList<BlockHeader?>? _response;

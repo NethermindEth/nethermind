@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.Processing
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
-        private long _chunkBlobs;
+        private ulong _chunkBlobs;
         private long _chunkBlocks;
         private ulong _chunkFirstBlockNumber = ulong.MaxValue;
         private long _opCodes;
@@ -216,7 +216,7 @@ namespace Nethermind.Consensus.Processing
             Block lastBlock = blocks[^1];
             ulong gasUsed = 0;
             long transactionCount = 0;
-            long blobCount = 0;
+            ulong blobCount = 0;
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
@@ -225,7 +225,7 @@ namespace Nethermind.Consensus.Processing
                 transactionCount += transactions.Length;
                 for (int j = 0; j < transactions.Length; j++)
                 {
-                    blobCount += (long)transactions[j].GetBlobCount();
+                    blobCount += transactions[j].GetBlobCount();
                 }
             }
 
@@ -402,7 +402,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             _chunkBlobs += data.BlobCount;
-            long blobs = _chunkBlobs;
+            ulong blobs = _chunkBlobs;
             if (blobs > 0)
             {
                 _showBlobs = true;
@@ -851,7 +851,7 @@ namespace Nethermind.Consensus.Processing
             public ulong FirstBlockNumber;
             public ulong GasUsed;
             public long TransactionCount;
-            public long BlobCount;
+            public ulong BlobCount;
             public long CurrentOpCodes;
             public long CurrentSLoadOps;
             public long CurrentSStoreOps;

@@ -294,7 +294,7 @@ public class BeaconHeadersSyncTests
             syncedBlockTree.FindHeader(99, BlockTreeLookupOptions.None));
         ctx.Feed.InitializeFeed();
         using HeadersSyncBatch batch = ctx.Feed.PrepareRequest().Result!;
-        batch.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, (int)batch.RequestSize, 0, false)!;
+        batch.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0, false)!;
         ctx.Feed.HandleResponse(batch);
 
         Hash256 lastHeader = syncedBlockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
@@ -373,9 +373,9 @@ public class BeaconHeadersSyncTests
         // First batch, should be enough to merge chain
         HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
         Assert.That(request!, Is.Not.Null);
-        request!.Response = ULongRange(request.StartNumber, (int)request.RequestSize)
+        request!.Response = ULongRange(request.StartNumber, request.RequestSize)
             .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
-            .ToPooledList((int)request.RequestSize);
+            .ToPooledList(request.RequestSize);
 
         ctx.Feed.HandleResponse(request);
 
@@ -389,9 +389,9 @@ public class BeaconHeadersSyncTests
         Assert.That(request, Is.Not.Null);
 
         // We respond it again
-        request!.Response = ULongRange(request.StartNumber, (int)request.RequestSize)
+        request!.Response = ULongRange(request.StartNumber, request.RequestSize)
             .Select(blockNumber => ctx.RemoteBlockTree.FindHeader(blockNumber))
-            .ToPooledList((int)request.RequestSize);
+            .ToPooledList(request.RequestSize);
         ctx.Feed.HandleResponse(request);
         request.Dispose();
 
@@ -476,7 +476,7 @@ public class BeaconHeadersSyncTests
             return;
         }
 
-        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(startHeader.Hash!, (int)batch.RequestSize, 0, false);
+        using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
         batch.Response = new ArrayPoolList<BlockHeader?>(headers.Count, headers);
     }
 

@@ -51,7 +51,7 @@ public class RocksDbConfigFactoryTests
         pruningConfig.DirtyCacheMb = 10000;
         RocksDbConfigFactory factory = new(dbConfig, pruningConfig, new TestHardwareInfo(0), LimboLogs.Instance);
         IRocksDbConfig config = factory.GetForDatabase("State0", null);
-        Assert.That(config.WriteBufferSize, Is.EqualTo((ulong)500.MB));
+        Assert.That(config.WriteBufferSize, Is.EqualTo(500UL.MB));
     }
 
     [TestCase(1024, ExpectedResult = 819, TestName = "Caps to 80% on low limit")]

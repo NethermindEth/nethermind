@@ -14,8 +14,8 @@ namespace Nethermind.Core.Test
         public void ToLongFromBytes()
         {
             byte[] bytes = Bytes.FromHexString("7fffffffffffffff");
-            ulong number = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            Assert.That(number, Is.EqualTo((ulong)long.MaxValue));
+            long number = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            Assert.That(number, Is.EqualTo(long.MaxValue));
         }
 
         [TestCase("0000", 0L)]
@@ -29,8 +29,8 @@ namespace Nethermind.Core.Test
         public void ToLongFromBytes_Vectors_match_for_array_and_span(string hexBytes, long expected)
         {
             byte[] bytes = Bytes.FromHexString(hexBytes);
-            long viaArray = (long)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-            long viaSpan = (long)bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            long viaArray = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            long viaSpan = bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(viaArray, Is.EqualTo(expected));
@@ -45,8 +45,8 @@ namespace Nethermind.Core.Test
             long expected = unchecked((long)0x0102030405060708UL);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((long)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
-                Assert.That((long)bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+                Assert.That(bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+                Assert.That(bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
             }
         }
 
@@ -57,8 +57,8 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexBytes);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((long)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
-                Assert.That((long)bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+                Assert.That(bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+                Assert.That(bytes.AsSpan().ToLongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
             }
         }
 
@@ -66,7 +66,7 @@ namespace Nethermind.Core.Test
         public void ToLongFromBytes_Empty_span_is_zero()
         {
             ReadOnlySpan<byte> span = ReadOnlySpan<byte>.Empty;
-            long number = (long)span.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            long number = span.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
             Assert.That(number, Is.EqualTo(0L));
         }
 
@@ -74,7 +74,7 @@ namespace Nethermind.Core.Test
         public void ToLongFromBytes_Null_array_is_zero()
         {
             byte[]? bytes = null;
-            long number = (long)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            long number = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
             Assert.That(number, Is.EqualTo(0L));
         }
     }

@@ -59,7 +59,7 @@ public sealed class OpcodeTraceRecorder(
         try
         {
             // Get current chain tip
-            long currentChainTip = (long)(api.BlockTree?.Head?.Number ?? 0UL);
+            ulong currentChainTip = api.BlockTree?.Head?.Number ?? 0UL;
 
             // Parse mode for validation
             TracingMode mode = TracingMode.RealTime;
@@ -172,21 +172,21 @@ public sealed class OpcodeTraceRecorder(
 
             // For RealTime mode with Blocks parameter, recalculate range based on current chain tip
             // This ensures we trace the NEXT N blocks from when the tracer attaches, not from init time
-            long effectiveStart = (long)_traceConfig.EffectiveStartBlock;
-            long effectiveEnd = (long)_traceConfig.EffectiveEndBlock;
+            ulong effectiveStart = _traceConfig.EffectiveStartBlock;
+            ulong effectiveEnd = _traceConfig.EffectiveEndBlock;
 
             if (_config.RecentBlocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
             {
-                long currentTip = (long)(api.BlockTree?.Head?.Number ?? 0UL);
+                ulong currentTip = api.BlockTree?.Head?.Number ?? 0UL;
                 effectiveStart = currentTip + 1;
                 effectiveEnd = currentTip + _config.RecentBlocks.Value;
 
                 // Update progress tracker and trace config with new range
-                _progress = new TracingProgress((ulong)effectiveStart, (ulong)effectiveEnd);
+                _progress = new TracingProgress(effectiveStart, effectiveEnd);
                 _traceConfig = _traceConfig with
                 {
-                    EffectiveStartBlock = (ulong)effectiveStart,
-                    EffectiveEndBlock = (ulong)effectiveEnd
+                    EffectiveStartBlock = effectiveStart,
+                    EffectiveEndBlock = effectiveEnd
                 };
 
                 if (_logger.IsInfo)
@@ -195,7 +195,7 @@ public sealed class OpcodeTraceRecorder(
                 }
             }
 
-            BlockRange range = new((ulong)effectiveStart, (ulong)effectiveEnd);
+            BlockRange range = new(effectiveStart, effectiveEnd);
             _realTimeTracer = new RealTimeTracer(
                 _counter,
                 range,

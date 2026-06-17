@@ -122,7 +122,7 @@ public sealed class EraExporter(
             if (TrySkipExistingEpoch(destinationPath, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
                 return;
 
-            string placeholderPath = Path.Combine(destinationPath, EraPathUtils.Filename(_networkName, (long)epoch, Keccak.Zero));
+            string placeholderPath = Path.Combine(destinationPath, EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
             ValueHash256 accumulator;
             ValueHash256 sha256;
@@ -168,7 +168,7 @@ public sealed class EraExporter(
             accumulators[idx] = accumulator;
             checksums[idx] = sha256;
             // Filename uses the last block hash as the epoch identifier — same convention as go-ethereum execdb.
-            string finalName = EraPathUtils.Filename(_networkName, (long)epoch, lastBlockHash);
+            string finalName = EraPathUtils.Filename(_networkName, epoch, lastBlockHash);
             fileNames[idx] = finalName;
 
             string finalPath = Path.Combine(destinationPath, finalName);

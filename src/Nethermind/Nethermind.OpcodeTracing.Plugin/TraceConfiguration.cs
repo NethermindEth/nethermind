@@ -21,9 +21,9 @@ public sealed record TraceConfiguration
     public TraceConfiguration(
         bool enabled,
         string outputDirectory,
-        long? startBlock,
-        long? endBlock,
-        long? recentBlocks,
+        ulong? startBlock,
+        ulong? endBlock,
+        ulong? recentBlocks,
         TracingMode mode,
         int maxDegreeOfParallelism)
     {
@@ -49,17 +49,17 @@ public sealed record TraceConfiguration
     /// <summary>
     /// Gets the start block number (nullable).
     /// </summary>
-    public long? StartBlock { get; }
+    public ulong? StartBlock { get; }
 
     /// <summary>
     /// Gets the end block number (nullable).
     /// </summary>
-    public long? EndBlock { get; }
+    public ulong? EndBlock { get; }
 
     /// <summary>
     /// Gets the number of recent blocks to trace (nullable).
     /// </summary>
-    public long? RecentBlocks { get; }
+    public ulong? RecentBlocks { get; }
 
     /// <summary>
     /// Gets the tracing mode.
@@ -93,7 +93,7 @@ public sealed record TraceConfiguration
     /// <param name="currentChainTip">The current chain tip block number.</param>
     /// <returns>A validated trace configuration.</returns>
     /// <exception cref="InvalidOperationException">Thrown when configuration is invalid.</exception>
-    public static TraceConfiguration FromConfig(IOpcodeTracingConfig config, long currentChainTip)
+    public static TraceConfiguration FromConfig(IOpcodeTracingConfig config, ulong currentChainTip)
     {
         ArgumentNullException.ThrowIfNull(config);
 
@@ -119,14 +119,14 @@ public sealed record TraceConfiguration
         if (config.StartBlock.HasValue && config.EndBlock.HasValue && config.RecentBlocks.HasValue)
         {
             warnings.Add("Both explicit range (StartBlock/EndBlock) and RecentBlocks specified. Using explicit range, ignoring RecentBlocks.");
-            effectiveStart = (ulong)config.StartBlock.Value;
-            effectiveEnd = (ulong)config.EndBlock.Value;
+            effectiveStart = config.StartBlock.Value;
+            effectiveEnd = config.EndBlock.Value;
         }
         else if (config.StartBlock.HasValue && config.EndBlock.HasValue)
         {
             // Explicit range
-            effectiveStart = (ulong)config.StartBlock.Value;
-            effectiveEnd = (ulong)config.EndBlock.Value;
+            effectiveStart = config.StartBlock.Value;
+            effectiveEnd = config.EndBlock.Value;
         }
         else if (config.RecentBlocks.HasValue)
         {
@@ -135,18 +135,18 @@ public sealed record TraceConfiguration
             if (mode == TracingMode.RealTime)
             {
                 // RealTime: next N blocks starting from current chain tip + 1
-                effectiveStart = (ulong)currentChainTip + 1;
-                effectiveEnd = (ulong)currentChainTip + (ulong)config.RecentBlocks.Value;
+                effectiveStart = currentChainTip + 1;
+                effectiveEnd = currentChainTip + config.RecentBlocks.Value;
             }
             else
             {
                 // Retrospective and RetrospectiveExecution: recent N blocks from chain tip
-                effectiveEnd = (ulong)currentChainTip;
+                effectiveEnd = currentChainTip;
                 effectiveStart = currentChainTip >= config.RecentBlocks.Value - 1
-                    ? (ulong)(currentChainTip - config.RecentBlocks.Value + 1)
+                    ? currentChainTip - config.RecentBlocks.Value + 1
                     : 0;
 
-                if (effectiveStart == 0 && config.RecentBlocks.Value > currentChainTip + 1L)
+                if (effectiveStart == 0 && config.RecentBlocks.Value > currentChainTip + 1)
                 {
                     warnings.Add($"Requested {config.RecentBlocks.Value} blocks but only {currentChainTip + 1} available. Tracing all available blocks.");
                 }
@@ -155,15 +155,15 @@ public sealed record TraceConfiguration
         else if (config.StartBlock.HasValue)
         {
             // Start block only, use current chain tip as end
-            effectiveStart = (ulong)config.StartBlock.Value;
-            effectiveEnd = (ulong)currentChainTip;
+            effectiveStart = config.StartBlock.Value;
+            effectiveEnd = currentChainTip;
             warnings.Add($"Only StartBlock specified, using current chain tip ({currentChainTip}) as EndBlock.");
         }
         else if (config.EndBlock.HasValue)
         {
             // End block only, use 0 as start
             effectiveStart = 0;
-            effectiveEnd = (ulong)config.EndBlock.Value;
+            effectiveEnd = config.EndBlock.Value;
             warnings.Add("Only EndBlock specified, using 0 as StartBlock.");
         }
         else

@@ -109,7 +109,7 @@ public class EraExporter(
             string filePath = Path.Combine(
                 destinationPath,
                 // Cast to long is safe: epoch ordinals are small and well within long range.
-                EraPathUtils.Filename(_networkName, (long)epoch, Keccak.Zero));
+                EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
             ValueHash256 accumulator;
             ValueHash256 sha256;
@@ -146,7 +146,7 @@ public class EraExporter(
             fileNames[(int)epochIdx] = Path.GetFileName(filePath);
             string rename = Path.Combine(
                 destinationPath,
-                EraPathUtils.Filename(_networkName, (long)epoch, new Hash256(accumulator)));
+                EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
             // Retry to handle transient file locks on Windows (e.g. antivirus scanning).
             for (int attempt = 0; ; attempt++)
             {

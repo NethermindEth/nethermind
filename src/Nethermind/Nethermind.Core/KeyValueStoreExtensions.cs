@@ -77,7 +77,7 @@ namespace Nethermind.Core
             public long GetLongFromBigEndianByteArrayWithoutLeadingZeros(Hash256 key, long defaultValue)
             {
                 Span<byte> bytes = db.GetSpan(key);
-                long value = bytes.IsNull() ? defaultValue : (long)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                long value = bytes.IsNull() ? defaultValue : bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
                 db.DangerousReleaseMemory(bytes);
                 return value;
             }
@@ -85,7 +85,7 @@ namespace Nethermind.Core
             public long GetLongFromBigEndianByteArrayWithoutLeadingZeros(long key)
             {
                 Span<byte> bytes = db.GetSpan(key);
-                long value = (long)bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                long value = bytes.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
                 db.DangerousReleaseMemory(bytes);
                 return value;
             }

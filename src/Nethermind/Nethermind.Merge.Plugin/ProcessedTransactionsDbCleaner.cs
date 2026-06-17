@@ -44,7 +44,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
             {
                 foreach (byte[] key in _processedTxsDb.GetAllKeys())
                 {
-                    ulong blockNumber = key.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                    ulong blockNumber = key.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
                     if (newlyFinalizedBlockNumber >= blockNumber)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Cleaning processed blob txs from block {blockNumber}");
