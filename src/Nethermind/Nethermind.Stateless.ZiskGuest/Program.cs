@@ -23,17 +23,21 @@ class Program
 
     static void WriteOutput(ReadOnlySpan<byte> output)
     {
-        IO.WriteOutput(output);
-
         // For debugging purposes
         IO.PrintLine(Convert.ToHexStringLower(output));
+
+        IO.WriteOutput(output);
     }
+
+    static bool _handlingException;
 
     [UnmanagedCallersOnly(EntryPoint = "ZkvmThrow")]
     static unsafe void HandleException(void* exception)
     {
-        if (!StatelessExecutor.FailureOutput.IsEmpty)
-            WriteOutput(StatelessExecutor.FailureOutput.Span);
+        if (_handlingException || StatelessExecutor.FailureOutput.IsEmpty)
+            Environment.Exit(1);
+
+        _handlingException = true;
 
         if (exception is null)
         {
@@ -49,6 +53,8 @@ class Program
             IO.PrintLine($"{ex.GetType().FullName}: {ex.Message}");
         }
 
-        Environment.Exit(1);
+        WriteOutput(StatelessExecutor.FailureOutput.Span);
+
+        Environment.Exit(0);
     }
 }
