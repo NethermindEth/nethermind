@@ -357,7 +357,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        if (header?.Number == 0)
+        if (header.Number == 0)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
@@ -404,7 +404,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        if (header?.Number == 0)
+        if (header.Number == 0)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
