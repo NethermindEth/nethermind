@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -17,16 +18,18 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IBeaconPivot beaconPivot,
         IBlockTree blockTree,
         ISyncConfig syncConfig,
-        IBlockCacheService blockCacheService,
+        Lazy<IBlockCacheService> blockCacheService,
         IPoSSwitcher poSSwitcher,
         ILogManager logManager) : IMergeSyncController, IBeaconSyncStrategy
     {
         private readonly IBeaconPivot _beaconPivot = beaconPivot;
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ISyncConfig _syncConfig = syncConfig;
-        private readonly IBlockCacheService _blockCacheService = blockCacheService;
+        private readonly Lazy<IBlockCacheService> _blockCacheService = blockCacheService;
         private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
         private bool _isInBeaconModeControl = false;
+        private Hash256? _finalizedHash;
+        private Hash256? _headBlockHash;
         private readonly ILogger _logger = logManager.GetClassLogger<BeaconSync>();
 
         public void StopSyncing()
@@ -34,7 +37,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (!_isInBeaconModeControl)
             {
                 _beaconPivot.RemoveBeaconPivot();
-                _blockCacheService.Clear();
+                _blockCacheService.Value.Clear();
             }
 
             _isInBeaconModeControl = true;
@@ -107,9 +110,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
-        public Hash256? GetFinalizedHash() => _blockCacheService.FinalizedHash;
+        public Hash256? GetFinalizedHash() => _finalizedHash;
 
-        public Hash256? GetHeadBlockHash() => _blockCacheService.HeadBlockHash;
+        public Hash256? GetHeadBlockHash() => _headBlockHash;
+
+        public void SetFinalizedHash(Hash256? finalizedHash) => _finalizedHash = finalizedHash;
+
+        public void SetHeadBlockHash(Hash256? headBlockHash) => _headBlockHash = headBlockHash;
     }
 
     public interface IMergeSyncController
@@ -119,5 +126,17 @@ namespace Nethermind.Merge.Plugin.Synchronization
         void InitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
+
+        /// <summary>
+        /// Records the finalized block hash declared by the consensus client. Protected from block cache pruning
+        /// and exposed for reads via <see cref="IBeaconSyncStrategy.GetFinalizedHash"/>.
+        /// </summary>
+        void SetFinalizedHash(Hash256? finalizedHash);
+
+        /// <summary>
+        /// Records the head block hash declared by the consensus client. Protected from block cache pruning
+        /// and exposed for reads via <see cref="IBeaconSyncStrategy.GetHeadBlockHash"/>.
+        /// </summary>
+        void SetHeadBlockHash(Hash256? headBlockHash);
     }
 }

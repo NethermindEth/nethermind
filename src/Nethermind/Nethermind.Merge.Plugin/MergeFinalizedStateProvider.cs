@@ -5,12 +5,12 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Synchronization;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider) : IFinalizedStateProvider
+public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBeaconSyncStrategy beaconSyncStrategy, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider) : IFinalizedStateProvider
 {
     public long FinalizedBlockNumber
     {
@@ -25,10 +25,10 @@ public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheSe
                 }
 
                 // Finalized hash from blocktree is not updated until it is processed, which is a problem for long
-                // catchup. So we use from blockCacheService as a backup.
-                if (blockCacheService.FinalizedHash is { } blockCacheFinalizedHash)
+                // catchup. So we use the beacon sync strategy's finalized hash as a backup.
+                if (beaconSyncStrategy.GetFinalizedHash() is { } beaconFinalizedHash)
                 {
-                    BlockHeader? fromBlockCache = blockTree.FindHeader(blockCacheFinalizedHash);
+                    BlockHeader? fromBlockCache = blockTree.FindHeader(beaconFinalizedHash);
                     if (fromBlockCache is not null)
                     {
                         if (currentFinalized is null || fromBlockCache.Number > currentFinalized.Number)

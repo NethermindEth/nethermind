@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -16,13 +17,15 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class BlockCacheService : IBlockCacheService
 {
     private readonly int _maxCachedBlocks;
+    private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly ConcurrentDictionary<Hash256AsKey, Block> _blockCache = new();
 
     /// <summary>
     /// Initializes a block cache with the default merge sync bound.
     /// </summary>
-    public BlockCacheService()
-        : this((int)(Reorganization.MaxDepth * 2 + 16))
+    /// <param name="beaconSyncStrategy">Source of the finalized/head hashes protected from pruning. Defaults to <see cref="No.BeaconSync"/>.</param>
+    public BlockCacheService(IBeaconSyncStrategy? beaconSyncStrategy = null)
+        : this((int)(Reorganization.MaxDepth * 2 + 16), beaconSyncStrategy)
     {
     }
 
@@ -30,20 +33,16 @@ public class BlockCacheService : IBlockCacheService
     /// Initializes a block cache with the provided maximum number of cached blocks.
     /// </summary>
     /// <param name="maxCachedBlocks">Maximum number of cached blocks before pruning unprotected entries.</param>
-    public BlockCacheService(int maxCachedBlocks)
+    /// <param name="beaconSyncStrategy">Source of the finalized/head hashes protected from pruning. Defaults to <see cref="No.BeaconSync"/>.</param>
+    public BlockCacheService(int maxCachedBlocks, IBeaconSyncStrategy? beaconSyncStrategy = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCachedBlocks);
         _maxCachedBlocks = maxCachedBlocks;
+        _beaconSyncStrategy = beaconSyncStrategy ?? No.BeaconSync;
     }
 
     /// <inheritdoc />
     public IReadOnlyDictionary<Hash256AsKey, Block> BlockCache => _blockCache;
-
-    /// <inheritdoc />
-    public Hash256? FinalizedHash { get; set; }
-
-    /// <inheritdoc />
-    public Hash256? HeadBlockHash { get; set; }
 
     /// <inheritdoc />
     public bool TryAddBlock(Block block)
@@ -101,5 +100,5 @@ public class BlockCacheService : IBlockCacheService
     }
 
     private bool IsProtected(Hash256AsKey blockHash) =>
-        Equals(blockHash.Value, FinalizedHash) || Equals(blockHash.Value, HeadBlockHash);
+        Equals(blockHash.Value, _beaconSyncStrategy.GetFinalizedHash()) || Equals(blockHash.Value, _beaconSyncStrategy.GetHeadBlockHash());
 }
