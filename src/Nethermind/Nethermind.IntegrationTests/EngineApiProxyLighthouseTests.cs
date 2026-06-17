@@ -9,7 +9,6 @@ using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.IntegrationTests;
