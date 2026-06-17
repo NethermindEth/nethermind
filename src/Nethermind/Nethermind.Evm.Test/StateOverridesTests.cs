@@ -72,4 +72,17 @@ public class StateOverridesTests
 
         Assert.That(act, Throws.Nothing);
     }
+    
+    [Test]
+    public void override_with_balance_creates_account_in_state()
+    {
+        Dictionary<Address, AccountOverride> overrides = new()
+        {
+            { TestItem.AddressA, new AccountOverride { Balance = 100 } },
+        };
+
+        _state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance);
+
+        Assert.That(_state.TryGetAccount(TestItem.AddressA, out _), Is.True);
+    }
 }

@@ -110,4 +110,49 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
         Address? mainChainRpcAddress = ECRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
         Assert.That(mainChainRpcAddress, Is.EqualTo(TestItem.AddressA));
     }
+
+    /// <summary>
+    /// Regression test for: moving two precompiles to the same target address must not inject
+    /// empty accounts for the source addresses into the trie, which would alter the stateRoot.
+    /// Covers the Hive test case "multicall-move-two-accounts-to-same-38023".
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulate_two_precompiles_moved_to_same_address_does_not_change_state_root()
+    {
+        TestRpcBlockchain chain = await CreateChain();
+
+        Hash256 parentStateRoot = chain.BlockFinder.Head!.StateRoot!;
+
+        SimulatePayload<TransactionWithSourceDetails> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new BlockStateCall<TransactionWithSourceDetails>
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { ECRecoverPrecompile.Address, new AccountOverride { MovePrecompileToAddress = new Address("0xc200000000000000000000000000000000000000") } },
+                        { Sha256Precompile.Address,    new AccountOverride { MovePrecompileToAddress = new Address("0xc200000000000000000000000000000000000000") } },
+                    }
+                }
+            ]
+        };
+
+        SimulateOutput<SimulateCallResult> result = chain.Bridge.Simulate(
+            chain.BlockFinder.Head!.Header!,
+            payload,
+            new SimulateBlockMutatorTracerFactory(),
+            10_000_000,
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Items, Has.Count.EqualTo(1));
+        }
+
+        // The only overrides are movePrecompileToAddress — no state fields — so the trie
+        // must be identical to the parent block's state root.
+        Assert.That(result.Items[0].StateRoot, Is.EqualTo(parentStateRoot));
+    }
 }

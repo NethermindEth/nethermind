@@ -24,4 +24,6 @@ public class AccountOverride
     ///     Storage difference for AccountOverrideStateDiff
     /// </summary>
     public Dictionary<UInt256, Hash256>? StateDiff { get; set; }
+
+    public bool HasStateChanges => Balance is not null || Nonce is not null || Code is not null || State is not null || StateDiff is not null;
 }
