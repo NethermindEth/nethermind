@@ -181,7 +181,7 @@ public class HealingTreeTests
             Block block = Build.A.Block.WithStateRoot(mainWorldState.StateRoot).WithParent(blockTree.Head!).TestObject;
 
             Assert.That(blockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
-            blockTree.UpdateMainChain([block], true);
+            blockTree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
 
             return block.Header;
         }

@@ -665,7 +665,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!shouldProcess)
             {
-                _blockTree.UpdateMainChain([currentBlock], false);
+                _blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]);
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);

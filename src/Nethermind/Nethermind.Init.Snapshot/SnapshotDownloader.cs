@@ -188,9 +188,9 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         byteCount switch
         {
             < 0 => throw new ArgumentOutOfRangeException(nameof(byteCount), "Cannot be negative"),
-            < 1024 => $"{byteCount:0.##}B",
-            < 1024 * 1024 => $"{(float)byteCount / 1024:0.##}KB",
-            < 1024 * 1024 * 1024 => $"{(float)byteCount / (1024 * 1024):0.##}MB",
-            _ => $"{(float)byteCount / (1024 * 1024 * 1024):0.##}GB",
+            < MemorySizes.KiB => $"{byteCount:0.##}B",
+            < MemorySizes.MiB => $"{(float)byteCount / MemorySizes.KiB:0.##}KB",
+            < MemorySizes.GiB => $"{(float)byteCount / MemorySizes.MiB:0.##}MB",
+            _ => $"{(float)byteCount / MemorySizes.GiB:0.##}GB",
         };
 }

@@ -335,7 +335,7 @@ public class QuorumCertificateManagerTest
 
         XdcBlockHeader genesisHeader = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
 
-        blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([new Block(genesisHeader)], true));
+        blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([genesisHeader], true));
 
         Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
         Assert.That(context.CurrentRound, Is.EqualTo(1UL));
@@ -364,7 +364,7 @@ public class QuorumCertificateManagerTest
         XdcBlockHeader blockHeader = Build.A.XdcBlockHeader().WithNumber(5).WithGeneratedExtraConsensusData().TestObject;
         QuorumCertificate qc = blockHeader.ExtraConsensusData!.QuorumCert!;
 
-        blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([new Block(blockHeader)], true));
+        blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([blockHeader], true));
 
         Assert.That(context.HighestQC, Is.SameAs(qc));
     }

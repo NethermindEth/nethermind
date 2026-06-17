@@ -12,6 +12,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Logging;
 
@@ -116,7 +117,7 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
     {
         if (pipeWriter is null) return;
         writer.Flush();
-        pipeWriter.FlushAsync(cancellationToken).GetAwaiter().GetResult();
+        pipeWriter.FlushAsync(cancellationToken).SafeWait();
     }
 }
 

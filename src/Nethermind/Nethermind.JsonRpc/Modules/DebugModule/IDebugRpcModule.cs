@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -90,19 +91,19 @@ public interface IDebugRpcModule : IRpcModule
     Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
 
     [JsonRpcMethod(Description = "Get Raw Block format.")]
-    ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter);
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawBlock(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get raw block access list format.")]
     ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Receipt format.")]
-    ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter);
+    ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Header format.")]
-    ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter);
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Transaction format.")]
-    ResultWrapper<string> debug_getRawTransaction(Hash256 transactionHash);
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash);
 
     [JsonRpcMethod(Description = "Retrieves Nethermind Sync Stage, With extra Metadata")]
     Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage();

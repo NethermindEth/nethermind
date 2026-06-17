@@ -179,7 +179,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = CreateSerializationPayload(chain);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
@@ -234,7 +234,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
@@ -275,7 +275,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
         //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not

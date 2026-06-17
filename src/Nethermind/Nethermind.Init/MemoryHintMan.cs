@@ -90,7 +90,7 @@ namespace Nethermind.Init
 
         private ulong _remainingMemory;
 
-        public ulong TotalMemory = 1024UL * 1024UL * 1024UL;
+        public ulong TotalMemory = 1UL.GiB;
         public ulong GeneralMemory { get; } = 32UL.MB;
         public ulong FastBlocksMemory { get; private set; }
         public ulong DbMemory { get; private set; }

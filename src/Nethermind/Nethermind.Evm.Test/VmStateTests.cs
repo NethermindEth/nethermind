@@ -93,10 +93,8 @@ namespace Nethermind.Evm.Test
             using VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
             try
             {
-                using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
-                {
-                    vmState.CommitToParent(parentVmState);
-                }
+                using VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState);
+                vmState.CommitToParent(parentVmState);
             }
             finally
             {

@@ -68,8 +68,12 @@ public class PosForwardHeaderProviderCacheTests
     private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(int skip = 0, int max = Requested) =>
         _provider.GetBlockHeaders(skip, max, CancellationToken.None);
 
-    private void RaiseMainChainUpdate(params Block[] blocks) =>
-        _blockTree.OnUpdateMainChain += Raise.EventWith(_blockTree, new OnUpdateMainChainArgs(new List<Block>(blocks), wereProcessed: true));
+    private void RaiseMainChainUpdate(params Block[] blocks)
+    {
+        List<BlockHeader> headers = new(blocks.Length);
+        foreach (Block block in blocks) headers.Add(block.Header);
+        _blockTree.OnUpdateMainChain += Raise.EventWith(_blockTree, new OnUpdateMainChainArgs(headers, wereProcessed: true));
+    }
 
     private void AssertChainLevelCalls(int expected) =>
         _chainLevelHelper.ReceivedWithAnyArgs(expected).GetNextHeaders(default, default, default);

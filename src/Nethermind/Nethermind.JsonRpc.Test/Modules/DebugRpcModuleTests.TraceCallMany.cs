@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -147,6 +150,26 @@ public partial class DebugRpcModuleTests
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle], options);
 
         Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([1]));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_to_async_stream()
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        // Multiple bundles so FlushBetweenBundles runs more than once.
+        TransactionBundle[] bundles = [CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))];
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany(bundles, BlockParameter.Latest);
+        Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
+        IStreamableResult streaming = (IStreamableResult)result.Data;
+
+        await using AsyncCompletingStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+
+        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+
+        await writer.CompleteAsync();
     }
 
     private static async Task<JArray> RunTraceCallManyAsJson(Context ctx, TransactionBundle[] bundles, GethTraceOptions? options = null)

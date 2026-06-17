@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -19,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Test.Modules.Eth;
@@ -1568,6 +1570,30 @@ public class TraceRpcModuleTests
 
         string output = parsed["result"]!["output"]!.Value<string>()!;
         Assert.That(output, Is.EqualTo("0x" + new string('0', 64)));
+    }
+
+    // regression test ensuring asynchronous streaming pipe doesn't crash tracing
+    // was caused by synchronously waiting non-completed IValueTaskSource-backed ValueTask
+    [Test]
+    public async Task trace_block_to_async_stream()
+    {
+        Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        Block block = context.Blockchain.BlockTree.Head!;
+        Assert.That(block.Transactions, Is.Not.Empty, "block must contain transactions so AddTrace is exercised");
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_block(new BlockParameter(block.Number));
+        Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
+        IStreamableResult streaming = (IStreamableResult)result.Data;
+
+        await using AsyncCompletingStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+
+        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+
+        await writer.CompleteAsync();
     }
 
     private static void AssertBalanceChange(ParityAccountStateChange? stateChanges, UInt256 before, UInt256 after)

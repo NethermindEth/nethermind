@@ -176,23 +176,39 @@ public static class BasePersistence
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
-        using IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
-        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
-        {
-            if (column == FlatDbColumns.Metadata)
-            {
-                // Reset only the state metadata. The on-disk format markers (layout, slot encoding)
-                // and any other metadata are preserved, otherwise a re-synced DB would be read back
-                // with the wrong slot encoding (e.g. RLP-wrapped slots misread as legacy raw).
-                batch.GetColumnBatch(column).Remove(CurrentStateKey);
-                continue;
-            }
+        // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
+        // partially-synced DB on restart. #11442
+        const int batchSize = 10_000;
 
-            IWriteBatch columnBatch = batch.GetColumnBatch(column);
-            foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
+        try
+        {
+            int count = 0;
+            foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
-                columnBatch.Remove(key);
+                if (column == FlatDbColumns.Metadata)
+                {
+                    // Preserve the format markers; wiping them makes a re-synced RLP DB read back as raw. #11996
+                    batch.GetColumnBatch(column).Remove(CurrentStateKey);
+                    continue;
+                }
+
+                foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+                {
+                    batch.GetColumnBatch(column).Remove(key);
+                    if (++count == batchSize)
+                    {
+                        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
+                        batch.Dispose(); // commit the chunk
+                        batch = next;
+                        count = 0;
+                    }
+                }
             }
+        }
+        finally
+        {
+            batch.Dispose();
         }
     }
 

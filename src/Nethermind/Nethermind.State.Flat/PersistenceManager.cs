@@ -80,33 +80,31 @@ public class PersistenceManager(
         return null;
     }
 
-    // Signature changed: long -> ulong. Block numbers are non-negative; callers previously
-    // passed ulong values via implicit narrowing which could silently truncate.
-    private Snapshot? GetFirstSnapshotAtBlockNumber(ulong blockNumber, StateId currentPersistedState, bool compactedSnapshot)
+    private Snapshot? GetHeadAncestorAtBlockNumber(ulong blockNumber, StateId currentPersistedState, in StateId head, bool compactedSnapshot)
     {
-        using ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(blockNumber);
-        foreach (StateId stateId in states)
+        // Pick the state at blockNumber that is the head's ancestor rather than an arbitrary fork, so the
+        // forced persist follows the chain leading to the head instead of orphaning it.
+        if (!snapshotRepository.TryFindAncestorStateAtBlock(head, blockNumber, out StateId stateId))
+            return null;
+
+        Snapshot? snapshot;
+        if (compactedSnapshot)
         {
-            Snapshot? snapshot;
-            if (compactedSnapshot)
-            {
-                if (!snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) continue;
-            }
-            else
-            {
-                if (!snapshotRepository.TryLeaseState(stateId, out snapshot)) continue;
-            }
-
-            if (snapshot.From == currentPersistedState)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Force persisting state {stateId}");
-
-                return snapshot;
-            }
-
-            snapshot.Dispose();
+            if (!snapshotRepository.TryLeaseCompactedState(stateId, out snapshot)) return null;
+        }
+        else
+        {
+            if (!snapshotRepository.TryLeaseState(stateId, out snapshot)) return null;
         }
 
+        if (snapshot.From == currentPersistedState)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Force persisting state {stateId}");
+
+            return snapshot;
+        }
+
+        snapshot.Dispose();
         return null;
     }
 
@@ -148,8 +146,10 @@ public class PersistenceManager(
             }
 
             if (_logger.IsWarn) _logger.Warn($"Very long unfinalized state. Force persisting to conserve memory. finalized block number is {finalizedBlockNumber}.");
-            snapshotToPersist = GetFirstSnapshotAtBlockNumber(nextCompactedBoundary, currentPersistedState, true) ??
-                                GetFirstSnapshotAtBlockNumber(currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1, currentPersistedState, false);
+            // Follow the committed head; fall back to the longest chain when nothing was committed this session.
+            StateId head = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
+            snapshotToPersist = GetHeadAncestorAtBlockNumber(nextCompactedBoundary, currentPersistedState, head, true) ??
+                                GetHeadAncestorAtBlockNumber(currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1, currentPersistedState, head, false);
         }
         else
         {
@@ -193,7 +193,8 @@ public class PersistenceManager(
         using Lock.Scope scope = _persistenceLock.EnterScope();
 
         StateId currentPersistedState = GetCurrentPersistedStateId();
-        StateId? latestStateId = snapshotRepository.GetLastSnapshotId();
+        // Follow the committed head; fall back to the longest chain when nothing was committed this session.
+        StateId? latestStateId = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId();
 
         if (latestStateId is null)
         {
@@ -216,15 +217,17 @@ public class PersistenceManager(
                 currentPersistedState,
                 compactedSnapshot: false);
 
-            // Fall back to the first available snapshot if finalized not available
-            snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
+            // Fall back to the head's chain if finalized not available
+            snapshotToPersist ??= GetHeadAncestorAtBlockNumber(
                 nextCompactedBoundary,
                 currentPersistedState,
+                latestStateId.Value,
                 compactedSnapshot: true);
 
-            snapshotToPersist ??= GetFirstSnapshotAtBlockNumber(
+            snapshotToPersist ??= GetHeadAncestorAtBlockNumber(
                 currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber + 1,
                 currentPersistedState,
+                latestStateId.Value,
                 compactedSnapshot: false);
 
             if (snapshotToPersist is null)

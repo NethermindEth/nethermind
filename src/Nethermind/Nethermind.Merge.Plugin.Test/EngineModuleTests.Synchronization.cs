@@ -886,7 +886,7 @@ public partial class EngineModuleTests
 
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ISyncConfig>(syncConfig));
         await chain.BlockTree.SuggestBlockAsync(blockNr1, BlockTreeSuggestOptions.None);
-        chain.BlockTree.UpdateMainChain(new List<Block>() { blockNr1 }, true, true);
+        chain.BlockTree.TryUpdateMainChain(blockNr1.Header, true, true, preloadedBlocks: [blockNr1]);
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
