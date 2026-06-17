@@ -76,7 +76,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "When reclaiming dead persisted-snapshot arena ranges — metadata reservation cleanup and blob-file frontier reset — call fallocate(FALLOC_FL_PUNCH_HOLE) to free the underlying disk blocks. Linux-only; automatically and permanently disabled per arena pool if the filesystem reports the operation unsupported. Set false to skip hole-punching entirely (the page-cache posix_fadvise still runs).", DefaultValue = "true")]
     bool PersistedSnapshotPunchHoleOnReclaim { get; set; }
 
-    [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer)", DefaultValue = "8192")]
+    [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer), in blocks", DefaultValue = "1048576")]
     int PersistedSnapshotMaxCompactSize { get; set; }
 
     [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]
