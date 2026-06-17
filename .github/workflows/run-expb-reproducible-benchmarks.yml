@@ -52,9 +52,12 @@ on:
         default: "67108864"
       expb_env:
         description: >-
-          Optional environment variables passed to the expb process (comma- or
-          newline-separated KEY=VALUE). Toggles steady-state controls on a
-          custom expb branch, e.g. EXPB_FREQ_CAP_KHZ=3000000, EXPB_QUIESCE=0.
+          Optional environment variables passed to the expb process (KEY=VALUE,
+          comma- or newline-separated). Applies to both single-image and
+          multi-image runs. Enables expb env-gated options, e.g.
+          EXPB_EVM_WARMUP=1 (per-block eth_simulateV1 warmup). Values that
+          themselves contain commas must use the newline-separated form, since
+          commas are treated as entry separators.
         required: false
         default: ""
       rebuild_docker:
@@ -684,13 +687,18 @@ jobs:
           expb_pid=""
           : > "${RAW_RUN_LOG}"
 
-          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE).
+          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
+          # values containing commas must use the newline-separated form).
           if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
             while IFS= read -r _kv; do
               _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
               [[ -z "${_kv}" ]] && continue
-              export "${_kv}"
-              echo "Exported expb env: ${_kv}"
+              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "${_kv}"
+                echo "Exported expb env: ${_kv%%=*}=<value>"
+              else
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+              fi
             done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
           fi
 
@@ -1752,10 +1760,26 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
           expb_pid=""
           : > "${RAW_RUN_LOG}"
+
+          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
+          # values containing commas must use the newline-separated form).
+          if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" ]] && continue
+              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "${_kv}"
+                echo "Exported expb env: ${_kv%%=*}=<value>"
+              else
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+              fi
+            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+          fi
 
           on_terminate() {
             echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
