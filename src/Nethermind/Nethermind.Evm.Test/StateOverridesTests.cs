@@ -72,7 +72,7 @@ public class StateOverridesTests
 
         Assert.That(act, Throws.Nothing);
     }
-    
+
     [Test]
     public void override_with_balance_creates_account_in_state()
     {
