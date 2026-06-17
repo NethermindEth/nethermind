@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -120,10 +121,10 @@ internal sealed class XdcExtendedEthModule(
         for (int i = 0; i < proofNodes.Length; i++)
         {
             byte[] rlp = proofNodes[i];
-            keys[i] = Keccak.Compute(rlp).ToString();
+            nodeHashes[i] = Keccak.Compute(rlp).ToString();
             values[i] = Bytes.ToHexString(rlp);
         }
 
-        return (keys, values);
+        return (nodeHashes, values);
     }
 }
