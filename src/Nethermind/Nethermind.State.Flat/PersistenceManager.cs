@@ -43,7 +43,11 @@ public class PersistenceManager(
     private readonly CancellationTokenSource _cts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxInMemoryBaseSnapshotCount = configuration.MaxInMemoryBaseSnapshotCount;
-    private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
+    // Force-persist backstop depth: the long-finality window when enabled (the persisted tier serves
+    // deep reorgs), otherwise the smaller non-long-finality MaxReorgDepth.
+    private readonly int _backstopReorgDepth = configuration.EnableLongFinality
+        ? configuration.LongFinalityMaxReorgDepth
+        : configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
@@ -77,8 +81,9 @@ public class PersistenceManager(
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
     ///   <see cref="IFinalizedStateProvider"/> — the boundary is always locally synced even
     ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
-    ///   <item>Else if <c>snapshotsDepth &gt; MaxReorgDepth</c> (backstop, finalization
-    ///   stalled) → seed = latest persisted-snapshot tier state.</item>
+    ///   <item>Else if <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c>
+    ///   when long finality is enabled, otherwise <c>MaxReorgDepth</c>; finalization stalled) → seed =
+    ///   the committed head.</item>
     ///   <item>Else → no seed; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -105,7 +110,7 @@ public class PersistenceManager(
             if (canonicalRoot is not null)
                 seed = new StateId(targetBlockNumber, canonicalRoot);
         }
-        else if (snapshotsDepth > _maxReorgDepth)
+        else if (snapshotsDepth > _backstopReorgDepth)
         {
             // Backstop (finalization stalled): seed from the committed head so the forced persist
             // follows the canonical chain rather than an arbitrary/longest fork (which

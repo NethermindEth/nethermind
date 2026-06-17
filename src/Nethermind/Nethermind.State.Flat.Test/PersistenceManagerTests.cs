@@ -41,6 +41,7 @@ public class PersistenceManagerTests
             MinReorgDepth = 64,
             MaxInMemoryBaseSnapshotCount = 128 + 32,
             MaxReorgDepth = 90000,
+            LongFinalityMaxReorgDepth = 90000,
             EnableLongFinality = true
         };
 
@@ -166,7 +167,7 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_UnfinalizedButBelowForceLimit_ReturnsNull()
     {
-        // Depth (150) is below MaxReorgDepth (90000), so the backstop doesn't fire.
+        // Depth (150) is below LongFinalityMaxReorgDepth (90000), so the backstop doesn't fire.
         // Finalized (10) < nextBoundary (16), so the normal-trigger gate also doesn't fire.
         // Neither Phase 1 path activates; Phase 2 is below the SnapshotCount threshold.
         StateId persisted = Block0;
@@ -221,7 +222,7 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_BackstopExceeded_SeedsFromInMemoryTier()
     {
-        // Backstop: snapshotsDepth (95000) > MaxReorgDepth (90000), finalized not in range.
+        // Backstop: snapshotsDepth (95000) > LongFinalityMaxReorgDepth (90000), finalized not in range.
         // Phase 1 must seed from the in-memory tier's latest registered state.
         StateId latest = CreateStateId(95000);
         // tierTip spans at most CompactSize from Block0 so the base it anchors is a persist candidate.
@@ -395,7 +396,7 @@ public class PersistenceManagerTests
     public void DetermineSnapshotAction_UnfinalizedBelowBackstop_ReturnsNull()
     {
         // Unfinalized (finalized at 10, persisted at 0 — not in range for the CompactSize=16
-        // gate) AND in-memory depth (300) below MaxReorgDepth (90000): no force-persist,
+        // gate) AND in-memory depth (300) below LongFinalityMaxReorgDepth (90000): no force-persist,
         // no Phase 1 candidate. Phase 2 entry guard (SnapshotCount > 160) also not satisfied with
         // a single created snapshot. Action: do nothing.
         StateId persisted = Block0;
@@ -422,7 +423,7 @@ public class PersistenceManagerTests
         StateId persisted = Block0;
         StateId target1 = CreateStateId(16, rootByte: 1); // off-chain fork
         StateId target2 = CreateStateId(16, rootByte: 2); // on the committed head's chain
-        StateId head = CreateStateId(95000); // depth > MaxReorgDepth (90000) → backstop fires
+        StateId head = CreateStateId(95000); // depth > LongFinalityMaxReorgDepth (90000) → backstop fires
 
         _finalizedStateProvider.SetFinalizedBlockNumber(10); // unfinalized at the boundary
 
@@ -462,7 +463,7 @@ public class PersistenceManagerTests
         using Snapshot toLongHead = CreateSnapshot(target1, longHead, compacted: true);
         _snapshotRepository.SetLastCommittedStateId(committedHead);
 
-        // latestSnapshot at the longest chain makes the in-memory depth exceed MaxReorgDepth, triggering the
+        // latestSnapshot at the longest chain makes the in-memory depth exceed LongFinalityMaxReorgDepth, triggering the
         // force-persist (backstop) branch.
         (_, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(longHead);
 
@@ -556,7 +557,7 @@ public class PersistenceManagerTests
     public void DetermineSnapshotAction_ExactlyAtMinimumBoundary_ReturnsNull()
     {
         // Gate passes (79+16=95 > 64), but GetFinalizedStateRootAt(16) is not configured →
-        // returns null → seed = null. No backstop (79 << MaxReorgDepth). Result: null.
+        // returns null → seed = null. No backstop (79 << LongFinalityMaxReorgDepth). Result: null.
         StateId persisted = Block0;
         StateId latest = CreateStateId(79);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);

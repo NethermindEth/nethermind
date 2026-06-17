@@ -34,7 +34,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
     int MaxInFlightCompactJob { get; set; }
 
-    [ConfigItem(Description = "Max reorg depth", DefaultValue = "90000")]
+    [ConfigItem(Description = "Max reorg depth — the force-persist backstop used when EnableLongFinality is off: once the in-memory depth exceeds it while finality is stalled, persistence is forced to bound memory.", DefaultValue = "256")]
     int MaxReorgDepth { get; set; }
 
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
@@ -57,6 +57,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "false")]
     bool EnableLongFinality { get; set; }
+
+    [ConfigItem(Description = "Force-persist backstop used when EnableLongFinality is on, in place of MaxReorgDepth. The persisted-snapshot tier serves deep reorgs, so this is much larger than the non-long-finality backstop.", DefaultValue = "90000")]
+    int LongFinalityMaxReorgDepth { get; set; }
 
     [ConfigItem(Description = "Maximum number of in-memory base snapshots before conversion to the persisted-snapshot tier kicks in. Counted as `SnapshotCount` of the in-memory repository, not a block-distance depth.", DefaultValue = "128")]
     int MaxInMemoryBaseSnapshotCount { get; set; }
