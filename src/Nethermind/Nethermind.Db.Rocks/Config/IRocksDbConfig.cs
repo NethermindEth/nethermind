@@ -21,5 +21,6 @@ public interface IRocksDbConfig
     bool EnableFileWarmer { get; }
     double CompressibilityHint { get; }
     bool FlushOnExit { get; }
+    bool FullFlushOnExit { get; }
     IntPtr? BlockCache { get; }
 }

@@ -34,6 +34,7 @@ public interface IDbConfig : IConfig
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
     bool FlushOnExit { get; set; }
+    bool FullFlushOnExit { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
