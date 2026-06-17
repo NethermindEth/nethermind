@@ -19,7 +19,7 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool is
     public override string ToString() => $"{Round}:{GapNumber}";
     public (ulong Round, Hash256 hash) PoolKey()
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
         return (Round, writer.GetHash());
     }

@@ -9,16 +9,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp;
 
-public ref struct RlpWriter : IRlpWriteBackend
+public ref struct RlpWriter(Span<byte> data) : IRlpWriteBackend
 {
-    private Span<byte> _data;
+    private Span<byte> _data = data;
     private int _position;
-
-    public RlpWriter(Span<byte> data)
-    {
-        _data = data;
-        _position = 0;
-    }
 
     public RlpWriter(byte[]? data)
         : this((data ?? Array.Empty<byte>()).AsSpan())
@@ -70,18 +64,10 @@ public ref struct RlpWriter : IRlpWriteBackend
     public override readonly string ToString() => $"[{nameof(RlpWriter)}|{_position}/{Length}]";
 }
 
-public struct ByteBufferRlpWriter : IRlpWriteBackend
+public struct ByteBufferRlpWriter(IByteBuffer byteBuffer) : IRlpWriteBackend
 {
-    private readonly IByteBuffer _byteBuffer;
+    private readonly IByteBuffer _byteBuffer = byteBuffer ?? throw new ArgumentNullException(nameof(byteBuffer));
     private int _position;
-
-    public ByteBufferRlpWriter(IByteBuffer byteBuffer)
-    {
-        ArgumentNullException.ThrowIfNull(byteBuffer);
-
-        _byteBuffer = byteBuffer;
-        _position = 0;
-    }
 
     public int Position
     {
@@ -130,20 +116,15 @@ public struct ByteBufferRlpWriter : IRlpWriteBackend
     public override readonly string ToString() => $"[{nameof(ByteBufferRlpWriter)}|{_byteBuffer.GetType().Name}|{_position}]";
 }
 
-public struct KeccakRlpWriter : IRlpWriteBackend
+public struct KeccakRlpWriter(KeccakHash keccakHash) : IRlpWriteBackend
 {
-    private readonly KeccakHash _keccakHash;
+    private readonly KeccakHash _keccakHash = keccakHash ?? throw new ArgumentNullException(nameof(keccakHash));
     private int _position;
 
-    public KeccakRlpWriter(KeccakHash keccakHash)
+    public KeccakRlpWriter()
+        : this(KeccakHash.Create())
     {
-        ArgumentNullException.ThrowIfNull(keccakHash);
-
-        _keccakHash = keccakHash;
-        _position = 0;
     }
-
-    public static KeccakRlpWriter Create() => new(KeccakHash.Create());
 
     public readonly Hash256 GetHash() => new(_keccakHash.GenerateValueHash());
 

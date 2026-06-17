@@ -13,7 +13,7 @@ public static class EthereumEcdsaExtensions
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
     public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         writer.WriteByte(Eip7702Constants.Magic);
         AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
         Signature sig = ecdsa.Sign(signer, writer.GetValueHash());
@@ -27,7 +27,7 @@ public static class EthereumEcdsaExtensions
             tx.ChainId = ecdsa.ChainId;
         }
 
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, ecdsa.ChainId);
         ValueHash256 hash = writer.GetValueHash();
         tx.Signature = ecdsa.Sign(privateKey, in hash);
@@ -97,7 +97,7 @@ public static class EthereumEcdsaExtensions
             _ => tx.ChainId!.Value,
         };
 
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
 
         return writer.GetValueHash();
@@ -107,7 +107,7 @@ public static class EthereumEcdsaExtensions
 
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         writer.WriteByte(Eip7702Constants.Magic);
         AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
         return ecdsa.RecoverAddress(tuple.AuthoritySignature, writer.GetValueHash());

@@ -13,7 +13,7 @@ namespace Nethermind.Crypto
 
         public static Hash256 CalculateHash(this Transaction transaction)
         {
-            KeccakRlpWriter writer = KeccakRlpWriter.Create();
+            KeccakRlpWriter writer = new();
             _txDecoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
             return writer.GetHash();
         }

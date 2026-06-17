@@ -423,7 +423,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
     private ValueHash256 VoteHash(Vote vote)
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
         return writer.GetValueHash();
     }

@@ -23,7 +23,7 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
 
     public (ulong Round, Hash256 hash) PoolKey()
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _decoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
         return (ProposedBlockInfo.Round, writer.GetHash());
     }

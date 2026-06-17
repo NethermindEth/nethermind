@@ -17,7 +17,7 @@ public class BlockRoundInfo(Hash256 hash256, ulong round, long number)
 
     public Hash256 SigHash()
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _decoder.Encode(ref writer, this);
         return writer.GetHash();
     }

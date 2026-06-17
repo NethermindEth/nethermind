@@ -20,7 +20,7 @@ namespace Nethermind.Crypto
             if (header is IHashResolver resolver)
                 return resolver.CalculateHash();
 
-            KeccakRlpWriter writer = KeccakRlpWriter.Create();
+            KeccakRlpWriter writer = new();
             _headerDecoder.Encode(ref writer, header, behaviors);
 
             return writer.GetValueHash();

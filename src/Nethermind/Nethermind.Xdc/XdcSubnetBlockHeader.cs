@@ -40,7 +40,7 @@ public class XdcSubnetBlockHeader(
 
     public override ValueHash256 CalculateHash()
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _headerDecoder.Encode(ref writer, this);
         return writer.GetHash();
     }

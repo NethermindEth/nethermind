@@ -14,7 +14,7 @@ public abstract class RlpHashEqualityBase
 
     private Hash256 CalculateHash()
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         Encode(ref writer);
         return writer.GetHash();
     }

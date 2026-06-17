@@ -125,7 +125,7 @@ namespace Nethermind.Benchmarks.Core
 
             static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
             {
-                KeccakRlpWriter writer = KeccakRlpWriter.Create();
+                KeccakRlpWriter writer = new();
                 writer.WriteByte(Eip7702Constants.Magic);
                 AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
                 Signature sig = _ethereumEcdsa.Sign(signer, writer.GetValueHash());

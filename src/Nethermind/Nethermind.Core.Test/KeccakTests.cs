@@ -177,7 +177,7 @@ namespace Nethermind.Core.Test
             ValueHash256 h = ValueKeccak.Compute(bytes);
             Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
 
-            KeccakRlpWriter writer = KeccakRlpWriter.Create();
+            KeccakRlpWriter writer = new();
             for (int i = 0; i < bytes.Length; i++)
             {
                 writer.Write([bytes[i]]);
@@ -199,7 +199,7 @@ namespace Nethermind.Core.Test
             byte[] expected = EncodeItems(items);
             using RlpByteArrayList list = CreateList(expected);
 
-            KeccakRlpWriter writer = KeccakRlpWriter.Create();
+            KeccakRlpWriter writer = new();
             writer.WriteByteArrayList(list);
 
             Assert.That(writer.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
@@ -212,7 +212,7 @@ namespace Nethermind.Core.Test
             RlpWriter expectedWriter = expected.AsRlpWriter();
             expectedWriter.Encode(Bloom.Empty);
 
-            KeccakRlpWriter writer = KeccakRlpWriter.Create();
+            KeccakRlpWriter writer = new();
             writer.Encode(Bloom.Empty);
 
             Assert.That(writer.GetHash(), Is.EqualTo(Keccak.Compute(expected)));

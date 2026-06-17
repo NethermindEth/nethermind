@@ -322,7 +322,7 @@ internal class VotesManager(
 
     private bool TrySign(Vote vote)
     {
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
         ValueHash256 hash = writer.GetValueHash();
         if (!_signer.TrySign(in hash, out Signature signature))

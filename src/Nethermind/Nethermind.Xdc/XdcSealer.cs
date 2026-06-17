@@ -29,7 +29,7 @@ internal class XdcSealer(ISigner signer, ILogManager logManager) : ISealer
             throw new ArgumentException("Only XDC headers are supported.");
         if (block.IsGenesis) throw new InvalidOperationException("Can't sign genesis block");
 
-        KeccakRlpWriter writer = KeccakRlpWriter.Create();
+        KeccakRlpWriter writer = new();
         _xdcHeaderDecoder.Encode(ref writer, xdcBlockHeader, RlpBehaviors.ForSealing);
         ValueHash256 hash = writer.GetValueHash();
         if (!signer.TrySign(in hash, out Signature signature))
