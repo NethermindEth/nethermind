@@ -26,7 +26,11 @@ public sealed class ReadOnlySnapshotBundle(
     PersistedSnapshotStack persistedSnapshots)
     : RefCountingDisposable
 {
-    public int SnapshotCount => persistedSnapshots.Count + snapshots.Count;
+    // Cached once — the persisted-snapshot stack is immutable for the bundle's lifetime. Every read
+    // gates its persisted-tier probe on this being > 0, so a node with no persisted snapshots (e.g.
+    // long finality disabled, or none persisted yet) skips the persisted lookups entirely.
+    private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
+    public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
     private bool _isDisposed;
 
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
@@ -56,7 +60,7 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        if (persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
             return persistedAccount;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -79,10 +83,10 @@ public sealed class ReadOnlySnapshotBundle(
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].HasSelfDestruct(key))
-                return persistedSnapshots.Count + i;
+                return _persistedSnapshotCount + i;
         }
 
-        return persistedSnapshots.TryGetSelfDestruct(address, out int snapshotIdx) ? snapshotIdx : -1;
+        return _persistedSnapshotCount > 0 && persistedSnapshots.TryGetSelfDestruct(address, out int snapshotIdx) ? snapshotIdx : -1;
     }
 
     public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
@@ -103,13 +107,13 @@ public sealed class ReadOnlySnapshotBundle(
                 return res;
             }
 
-            if (persistedSnapshots.Count + i <= selfDestructStateIdx)
+            if (_persistedSnapshotCount + i <= selfDestructStateIdx)
             {
                 return null;
             }
         }
 
-        if (persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out byte[]? persistedSlot))
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out byte[]? persistedSlot))
             return persistedSlot;
 
         SlotValue outSlotValue = new();
@@ -183,7 +187,7 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        if (persistedSnapshots.TryLoadStateRlp(in path, out byte[]? persistedRlp))
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in path, out byte[]? persistedRlp))
             return persistedRlp;
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
@@ -198,7 +202,7 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        if (persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp))
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp))
             return persistedRlp;
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
