@@ -790,7 +790,7 @@ public partial class EthRpcModuleTests
 
         Assert.That(
             JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
-            Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas));
+            Does.Contain("max fee per blob gas less than block blob gas fee"));
     }
 
     [TestCase(
