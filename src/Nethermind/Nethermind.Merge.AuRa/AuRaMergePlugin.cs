@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -60,10 +59,7 @@ namespace Nethermind.Merge.AuRa
 
         protected override void InitializeMergeFinalization()
         {
-            IAuRaBlockFinalizationManager auRa = _auraApi!.AuRaFinalizationManager
-                ?? throw new ArgumentNullException(nameof(_auraApi.AuRaFinalizationManager),
-                    "Cannot construct AuRaTerminalBlockDisposer when AuRaFinalizationManager is null!");
-            AuRaTerminalBlockDisposer disposer = new(auRa, _poSSwitcher, _api.BlockTree!);
+            AuRaTerminalBlockDisposer disposer = new(_auraApi!.AuRaFinalizationManager, _poSSwitcher, _api.BlockTree!);
             _api.DisposeStack.Push(disposer);
         }
 

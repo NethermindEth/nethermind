@@ -215,11 +215,6 @@ public class EthereumRunnerTests
         api.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
         api.NonceManager = Substitute.For<INonceManager>();
 
-        if (api is AuRaNethermindApi auRaNethermindApi)
-        {
-            auRaNethermindApi.AuRaFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
-        }
-
         try
         {
             IEthereumStepsLoader stepsLoader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
