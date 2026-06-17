@@ -27,7 +27,7 @@ public class ULongConverter : JsonConverter<ulong>
 
         if (s.StartsWith("0x0"))
         {
-            return ulong.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+            throw new JsonException("hex to ulong");
         }
 
         if (s.StartsWith("0x"))

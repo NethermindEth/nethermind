@@ -77,7 +77,6 @@ internal class VotesManager(
         else
         {
             ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
-            // Guard against underflow: if epochSwitchNumber is less than the offset, gap is 0.
             gapNumber = epochSwitchNumber > offset ? epochSwitchNumber - offset : 0UL;
         }
 
@@ -261,16 +260,12 @@ internal class VotesManager(
 
     private bool IsExtendingFromAncestor(Hash256 blockHash, ulong blockNumber, BlockRoundInfo ancestorBlockInfo)
     {
-        // blockNumber >= ancestorBlockInfo.BlockNumber is expected; if not, the block cannot
-        // extend the ancestor and we return false rather than underflowing.
         if (blockNumber < ancestorBlockInfo.BlockNumber)
             return false;
 
         ulong blockNumDiff = blockNumber - ancestorBlockInfo.BlockNumber;
         Hash256 nextBlockHash = blockHash;
 
-        // blockNumDiff is bounded by _maxBlockDistance in practice, so casting to int for
-        // the loop counter is safe (ulong diff that exceeds int.MaxValue would be a chain error).
         for (ulong i = 0; i < blockNumDiff; i++)
         {
             if (_blockTree.FindHeader(nextBlockHash) is not XdcBlockHeader parentHeader)

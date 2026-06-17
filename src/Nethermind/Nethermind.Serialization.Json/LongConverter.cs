@@ -29,7 +29,7 @@ public class LongConverter : JsonConverter<long>
 
         if (s.StartsWith("0x0"))
         {
-            return long.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
+            throw new JsonException("hex to long");
         }
 
         if (s.StartsWith("0x"))

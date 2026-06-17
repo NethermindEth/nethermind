@@ -275,7 +275,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         {
             ulong currentNumber = currentHeader.Number + 1;
             ulong offset = currentNumber % spec.EpochLength + spec.Gap;
-            // Guard against underflow: if currentNumber is less than the offset, gap is 0.
             gapNumber = currentNumber > offset ? currentNumber - offset : 0UL;
         }
         else
@@ -284,7 +283,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
                 ?? throw new DataExtractionException(nameof(EpochSwitchInfo));
             ulong currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             ulong offset = currentNumber % spec.EpochLength + spec.Gap;
-            // Guard against underflow: if currentNumber is less than the offset, gap is 0.
             gapNumber = currentNumber > offset ? currentNumber - offset : 0UL;
         }
 

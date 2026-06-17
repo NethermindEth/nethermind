@@ -33,6 +33,11 @@ public static class NumericConverterHelper
             return T.Zero;
         }
 
+        if (s.StartsWith("0x0"u8))
+        {
+            ThrowHexConversion(typeof(T).Name);
+        }
+
         if (s.StartsWith("0x"u8))
         {
             s = s[2..];
