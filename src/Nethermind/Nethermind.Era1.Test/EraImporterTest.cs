@@ -156,12 +156,12 @@ public class EraImporterTest
             })
             .Build();
 
-        bool shouldUpdateMainChain = false;
+        bool shouldAdvanceMainChain = false;
         long maxSuggestedBlocks = 0;
         long expectedStopBlock = 10;
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
-            if (shouldUpdateMainChain) inTree.UpdateMainChain([args.Block], true);
+            if (shouldAdvanceMainChain) inTree.TryUpdateMainChain(args.Block.Header, true, preloadedBlocks: new[] { args.Block });
             maxSuggestedBlocks = args.Block.Number;
         };
 
@@ -174,8 +174,8 @@ public class EraImporterTest
         await sut.CurrentPacer.WaitForPausedAsync(token);
 
         Assert.That(maxSuggestedBlocks, Is.EqualTo(expectedStopBlock));
-        shouldUpdateMainChain = true;
-        inTree.UpdateMainChain([inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!], true);
+        shouldAdvanceMainChain = true;
+        inTree.TryUpdateMainChain(inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!.Header, true, preloadedBlocks: new[] { inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)! });
 
         await importTask;
     }

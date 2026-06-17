@@ -6,6 +6,7 @@ using System.IO.Compression;
 using CommunityToolkit.HighPerformance;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
@@ -25,7 +26,7 @@ public sealed class E2StoreReader : IDisposable
     private const int MinComponentCount = 3; // post-merge: header, body, receipts
     private const int MaxComponentCount = 5; // future: transition with both TD and proof
     private const int ComponentsWithTotalDifficulty = 4; // pre-merge or transition epoch
-    private const int ValueSizeLimit = 1024 * 1024 * 50;
+    private const int ValueSizeLimit = 50 * MemorySizes.MiB;
 
     private readonly SafeFileHandle _file;
     private readonly long _fileLength;

@@ -217,7 +217,7 @@ public abstract class StateSyncFeedTestsBase(
                 .TestObject;
 
             Assert.That((await blockTree.SuggestBlockAsync(newBlock)), Is.EqualTo(AddBlockResult.Added));
-            blockTree.UpdateMainChain([newBlock], false, true);
+            blockTree.TryUpdateMainChain(newBlock.Header, false, true, preloadedBlocks: new[] { newBlock });
         }
 
         public void ResetFeed()

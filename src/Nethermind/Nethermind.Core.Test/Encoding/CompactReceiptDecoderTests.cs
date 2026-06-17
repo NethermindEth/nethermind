@@ -208,11 +208,9 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(receipts);
-            using (ArrayPoolSpan<byte> arrayPoolSpan = decoder.EncodeToArrayPoolSpan(receipts))
-            {
-                byte[] encodedBytes = ((ReadOnlySpan<byte>)arrayPoolSpan).ToArray();
-                Assert.That(encodedBytes, Is.EqualTo(rlp.Bytes));
-            }
+            using ArrayPoolSpan<byte> arrayPoolSpan = decoder.EncodeToArrayPoolSpan(receipts);
+            byte[] encodedBytes = ((ReadOnlySpan<byte>)arrayPoolSpan).ToArray();
+            Assert.That(encodedBytes, Is.EqualTo(rlp.Bytes));
         }
 
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()

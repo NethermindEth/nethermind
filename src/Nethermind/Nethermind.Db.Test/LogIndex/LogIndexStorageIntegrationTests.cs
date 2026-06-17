@@ -237,8 +237,8 @@ namespace Nethermind.Db.Test.LogIndex
             }
 
             // Create new storage to force-load everything from DB
-            await using (ILogIndexStorage testStorage = CreateLogIndexStorage(compactionDistance))
-                VerifyReceipts(testStorage, testData);
+            await using ILogIndexStorage testStorage = CreateLogIndexStorage(compactionDistance);
+            VerifyReceipts(testStorage, testData);
         }
 
         [Combinatorial]

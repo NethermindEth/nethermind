@@ -34,5 +34,8 @@
   },
   "Db": {
     "SkipCheckingSstFileSizesOnDbOpen": true
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

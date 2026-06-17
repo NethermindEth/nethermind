@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -35,7 +36,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     /// <summary>
     /// Recommended soft limit for BlockAccessLists responses (10 MiB per EIP-8159).
     /// </summary>
-    private const int BalResponseSoftLimit = 10 * 1024 * 1024;
+    private const int BalResponseSoftLimit = 10 * MemorySizes.MiB;
 
     public Eth71ProtocolHandler(
         ISession session,

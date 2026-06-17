@@ -3,12 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp;
 
 /// <summary>
-/// Provides array-pool-backed RLP encoding helpers for decoders.
+/// Provides pool-backed RLP encoding helpers for decoders.
 /// </summary>
 public static class RlpDecoderArrayPoolExtensions
 {
@@ -135,4 +136,26 @@ public static class RlpDecoderArrayPoolExtensions
 
     private static int GetNullableLength<T>(IRlpDecoder<T> decoder, T? item, RlpBehaviors behaviors)
         => item is null ? Rlp.OfEmptyList.Length : decoder.GetLength(item, behaviors);
+
+    /// <summary>
+    /// Encodes <paramref name="item"/> into a pool-rented <see cref="ArrayPoolList{T}"/> of bytes, producing
+    /// the same bytes as <see cref="Rlp.Encode{T}"/> without the intermediate allocation. Ownership transfers
+    /// to the caller, which MUST dispose the result.
+    /// </summary>
+    public static ArrayPoolList<byte> EncodeToArrayPoolList<T>(this IRlpDecoder<T> decoder, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        int length = decoder.GetLength(item, rlpBehaviors);
+        ArrayPoolList<byte> buffer = new(length, length);
+        try
+        {
+            RlpWriter writer = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
+            decoder.Encode(ref writer, item, rlpBehaviors);
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
+    }
 }
