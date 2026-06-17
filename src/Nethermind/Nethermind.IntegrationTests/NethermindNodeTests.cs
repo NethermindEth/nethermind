@@ -1,6 +1,5 @@
 using System;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
@@ -19,7 +18,7 @@ public class NethermindNodeTests
 {
     private IContainer _nethermindContainer;
 
-    private async Task StartContainerAsync(string[] commandOverride = null, bool waitForInit = true)
+    private async Task StartContainerAsync(string[] commandOverride = null, bool waitForInit = true, bool suppressStartFailures = false)
     {
         string[] defaultCommand = new[] { "--config", "sepolia", "--JsonRpc.Enabled", "true", "--JsonRpc.Host", "0.0.0.0", "--JsonRpc.Port", "8545", "--JsonRpc.EnginePort", "8551", "--JsonRpc.EngineHost", "0.0.0.0", "--JsonRpc.JwtSecretFile", "jwt.hex" };
         string[] command = commandOverride ?? defaultCommand;
@@ -32,9 +31,8 @@ public class NethermindNodeTests
         {
             await _nethermindContainer.StartAsync();
         }
-        catch
+        catch when (suppressStartFailures)
         {
-            // Ignore start failures in negative tests; assertions will be made on container state/logs
         }
     }
 
@@ -78,9 +76,13 @@ public class NethermindNodeTests
     {
         string[] commandWithoutConfig = new[] { "--config", "nonexistent.json" };
 
-        await StartContainerAsync(commandWithoutConfig, waitForInit: false);
+        await StartContainerAsync(commandWithoutConfig, waitForInit: false, suppressStartFailures: true);
 
-        await Task.Delay(2000);
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline && _nethermindContainer.State != TestcontainersStates.Exited)
+        {
+            await Task.Delay(200);
+        }
 
         string cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
         string cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
@@ -117,15 +119,10 @@ public class NethermindNodeTests
         string jwtSecretHex = execResult.Stdout.Trim();
         Assert.That(jwtSecretHex, Is.Not.Null.And.Not.Empty);
 
-        string jwtToken = Utils.CreateJwtToken(jwtSecretHex);
-
         Uri engineUrl = new($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8551)}");
+        using HttpClient httpClient = Utils.CreateEngineHttpClient(engineUrl, jwtSecretHex);
 
-        using HttpClient httpClient = new() { BaseAddress = engineUrl };
-        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
-        httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-        // Produce a single V1 block starting from Sepolia Genesis Timestamp
+        // Produce a single V1 block starting from Sepolia genesis timestamp.
         await Utils.CreateBlocksAsync(httpClient, 1, 1, 1633267481L);
 
         // Verify block is produced using standard RPC
@@ -161,12 +158,9 @@ public class NethermindNodeTests
 
         ExecResult execResult = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
         string jwtSecretHex = execResult.Stdout.Trim();
-        string jwtToken = Utils.CreateJwtToken(jwtSecretHex);
 
         Uri engineUrl = new($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8551)}");
-        using HttpClient httpClient = new() { BaseAddress = engineUrl };
-        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
-        httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        using HttpClient httpClient = Utils.CreateEngineHttpClient(engineUrl, jwtSecretHex);
 
         // V1 (Paris): starting from genesis timestamp 1633267481 (V1 range)
         await Utils.CreateBlocksAsync(httpClient, 100, 1, 1633267481L);

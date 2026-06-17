@@ -3,12 +3,7 @@ using NUnit.Framework;
 
 namespace Nethermind.IntegrationTests;
 
-// Without this, the first test to call BuildNethermindContainerAsync triggers the
-// Dockerfile build while every other parallel worker blocks on s_imageBuildLock.
-// That serializes test startup behind the build and makes higher worker counts
-// look like they aren't speeding anything up. The proxy image is built in parallel
-// for the same reason — EngineApiProxyTests would otherwise pay the build cost
-// serially after the Nethermind image finishes.
+// Pre-warm both Docker images so parallel workers don't serialize behind the first build.
 [SetUpFixture]
 public class GlobalSetup
 {

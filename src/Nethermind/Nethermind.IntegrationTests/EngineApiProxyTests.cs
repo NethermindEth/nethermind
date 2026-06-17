@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -268,13 +267,9 @@ public class EngineApiProxyTests
     {
         ExecResult jwtRead = await _nethermindContainer.ExecAsync(new[] { "cat", "jwt.hex" });
         Assert.That(jwtRead.ExitCode, Is.EqualTo(0), $"could not read jwt.hex from Nethermind container: {jwtRead.Stderr}");
-        string jwtToken = Utils.CreateJwtToken(jwtRead.Stdout.Trim());
 
         Uri proxyUrl = new($"http://{_proxyContainer.Hostname}:{_proxyContainer.GetMappedPublicPort(ProxyPort)}");
-        HttpClient client = new() { BaseAddress = proxyUrl };
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
-        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        return client;
+        return Utils.CreateEngineHttpClient(proxyUrl, jwtRead.Stdout.Trim());
     }
 
     private static async Task<JsonNode> SendRawJsonRpcAndReturnErrorAsync(HttpClient client, string method, params object[] parameters)

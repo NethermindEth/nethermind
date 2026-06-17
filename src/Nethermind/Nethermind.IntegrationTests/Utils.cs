@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -17,6 +19,7 @@ using DotNet.Testcontainers.Networks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -27,21 +30,14 @@ public static class Utils
     private const string DefaultLocalImageTag = "nethermind:integration-tests";
     private const string DefaultProxyImageTag = "engine-api-proxy:integration-tests";
 
-    // Public, pinned images used by the live-CL devnet tests. Unlike the Nethermind and proxy
-    // images (built from the repo's Dockerfiles), these are pulled from registries and can be
-    // overridden via the matching environment variable for air-gapped/mirror setups.
     private const string DefaultLighthouseImage = "sigp/lighthouse:v7.0.1";
     private const string DefaultGenesisGeneratorImage = "ethpandaops/ethereum-genesis-generator:4.0.0";
-    private const string DefaultValidatorKeysImage = "protolambda/eth2-val-tools:latest";
+    private const string DefaultValidatorKeysImage = "protolambda/eth2-val-tools:0.2.1";
 
-    /// <summary>
-    /// The 24-word mnemonic baked into the genesis generator's <c>defaults.env</c>. The same
-    /// mnemonic is reused to derive the Lighthouse validator keystores so the validator keys
-    /// match the validators embedded in <c>genesis.ssz</c>.
-    /// </summary>
+    /// <summary>Mnemonic shared by the genesis generator and the validator keystore generator.</summary>
     public const string DevnetMnemonic = "sleep moment list remain like wall lake industry canvas wonder ecology elite duck salad naive syrup frame brass utility club odor country obey pudding";
 
-    /// <summary>Chain ID for the generated single-node devnet (anything outside the known networks).</summary>
+    /// <summary>Chain ID for the generated single-node devnet.</summary>
     public const int DevnetChainId = 1337;
 
     private static readonly SemaphoreSlim s_imageBuildLock = new(1, 1);
@@ -228,6 +224,35 @@ public static class Utils
     }
 
     /// <summary>
+    /// <see cref="DelegatingHandler"/> that stamps a freshly minted JWT onto every outgoing Engine API
+    /// request. The Engine spec (§7.1) requires <c>iat</c> within 60 s of the server clock, so caching
+    /// the token on <c>HttpClient.DefaultRequestHeaders.Authorization</c> breaks any test that runs
+    /// longer than a minute.
+    /// </summary>
+    public sealed class JwtAuthHandler(string jwtSecretHex) : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CreateJwtToken(jwtSecretHex));
+            return base.SendAsync(request, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Builds an <see cref="HttpClient"/> targeting the Engine API at <paramref name="baseUrl"/> with a
+    /// <see cref="JwtAuthHandler"/> that re-signs the bearer token per request.
+    /// </summary>
+    public static HttpClient CreateEngineHttpClient(Uri baseUrl, string jwtSecretHex)
+    {
+        HttpClient client = new(new JwtAuthHandler(jwtSecretHex) { InnerHandler = new HttpClientHandler() })
+        {
+            BaseAddress = baseUrl,
+        };
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        return client;
+    }
+
+    /// <summary>
     /// Signs a legacy (Type 0) transaction with EIP-155 replay protection and submits it
     /// via <c>eth_sendRawTransaction</c>. Returns the resulting tx hash.
     /// </summary>
@@ -243,17 +268,18 @@ public static class Utils
         return result.GetValue<string>();
     }
 
-    /// <summary>
-    /// JSON-RPC POST against the public Eth endpoint (no JWT). Same shape as
-    /// <see cref="SendEngineRequestAsync"/> but exists as a separate method so callers
-    /// can hit a different port without auth.
-    /// </summary>
-    public static async Task<JsonNode> SendJsonRpcRequestAsync(HttpClient httpClient, string method, params object[] parameters)
+    public static Task<JsonNode> SendJsonRpcRequestAsync(HttpClient httpClient, string method, params object[] parameters)
+        => SendRawRequestAsync(httpClient, "JSON-RPC", method, parameters);
+
+    public static Task<JsonNode> SendEngineRequestAsync(HttpClient httpClient, string method, params object[] parameters)
+        => SendRawRequestAsync(httpClient, "Engine API", method, parameters);
+
+    private static async Task<JsonNode> SendRawRequestAsync(HttpClient httpClient, string errorContext, string method, object[] parameters)
     {
         var request = new
         {
             jsonrpc = "2.0",
-            method = method,
+            method,
             @params = parameters,
             id = 1
         };
@@ -267,32 +293,7 @@ public static class Utils
 
         if (json["error"] != null)
         {
-            throw new Exception($"JSON-RPC error on {method}: {json["error"]}\nRequest: {jsonString}");
-        }
-
-        return json["result"];
-    }
-
-    public static async Task<JsonNode> SendEngineRequestAsync(HttpClient httpClient, string method, params object[] parameters)
-    {
-        var request = new
-        {
-            jsonrpc = "2.0",
-            method = method,
-            @params = parameters,
-            id = 1
-        };
-
-        string jsonString = JsonSerializer.Serialize(request);
-        StringContent content = new(jsonString, Encoding.UTF8, "application/json");
-        HttpResponseMessage response = await httpClient.PostAsync("", content);
-        response.EnsureSuccessStatusCode();
-        string responseBody = await response.Content.ReadAsStringAsync();
-        JsonNode json = JsonNode.Parse(responseBody);
-
-        if (json["error"] != null)
-        {
-            throw new Exception($"Engine API error on {method}: {json["error"]}\nRequest: {jsonString}");
+            throw new Exception($"{errorContext} error on {method}: {json["error"]}\nRequest: {jsonString}");
         }
 
         return json["result"];
@@ -485,28 +486,16 @@ public static class Utils
         string ValidatorSecretsHostPath);
 
     /// <summary>
-    /// Bootstraps a single-node devnet whose EL and CL share a genesis, with genesis time anchored
-    /// to "now" so Lighthouse starts proposing almost immediately rather than replaying history.
+    /// Bootstraps a single-node devnet whose EL and CL share a genesis, anchored to "now" so the CL
+    /// proposes immediately. Runs the ethereum-genesis-generator and eth2-val-tools images against a
+    /// shared data dir to produce chainspec, genesis.ssz, JWT, and validator keystores, then patches
+    /// <c>params.blobSchedule</c> via <see cref="PatchChainspecBlobSchedule"/>.
     /// </summary>
-    /// <remarks>
-    /// Runs two short-lived containers against a shared bind-mounted data directory:
-    /// <list type="number">
-    /// <item><c>ethereum-genesis-generator</c> mints the EL <c>chainspec.json</c>, CL
-    /// <c>genesis.ssz</c>/<c>config.yaml</c>, and JWT from <see cref="DevnetMnemonic"/>. It is driven
-    /// entirely by environment variables (its <c>defaults.env</c> uses <c>${VAR:-default}</c>).
-    /// Capella+Deneb activate at genesis and Electra is disabled, yielding a Cancun-equivalent devnet
-    /// whose payloads are V3 — matching the proxy's configured getPayload/newPayload methods.</item>
-    /// <item><c>eth2-val-tools</c> derives Lighthouse-format <c>keys/</c>+<c>secrets/</c> keystores
-    /// from the same mnemonic so they match the validators embedded in <c>genesis.ssz</c>.</item>
-    /// </list>
-    /// The generated chainspec's <c>params.blobSchedule</c> is then converted from the generator's
-    /// fork-keyed object form to the array form Nethermind expects (see
-    /// <see cref="PatchChainspecBlobSchedule"/>).
-    /// </remarks>
     public static async Task<DevnetGenesis> GenerateDevnetGenesisAsync(
         int validatorCount = 4,
         int genesisDelaySeconds = 12,
-        int secondsPerSlot = 12)
+        int secondsPerSlot = 12,
+        IReadOnlyList<(string Address, string Balance)> premine = null)
     {
         string root = Path.Combine(Path.GetTempPath(), $"nethermind-lh-{Guid.NewGuid():N}");
         string dataDir = Path.Combine(root, "data");
@@ -515,7 +504,7 @@ public static class Utils
         long genesisTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         const string genesisDoneMarker = "NETHERMIND_GENESIS_DONE";
-        IContainer generator = new ContainerBuilder()
+        ContainerBuilder generatorBuilder = new ContainerBuilder()
             .WithImage(GetGenesisGeneratorImage())
             .WithEnvironment("PRESET_BASE", "mainnet")
             .WithEnvironment("CHAIN_ID", DevnetChainId.ToString())
@@ -527,7 +516,17 @@ public static class Utils
             .WithEnvironment("DENEB_FORK_EPOCH", "0")
             // Electra disabled -> single (cancun) blobSchedule entry, simplest V3 devnet.
             .WithEnvironment("ELECTRA_FORK_EPOCH", "18446744073709551615")
-            .WithEnvironment("EL_AND_CL_MNEMONIC", DevnetMnemonic)
+            .WithEnvironment("EL_AND_CL_MNEMONIC", DevnetMnemonic);
+
+        if (premine is { Count: > 0 })
+        {
+            // The generator substitutes ${EL_PREMINE_ADDRS} into the EL allocations, so funding a
+            // known EOA only needs a one-line JSON object: {"0xaddr":{"balance":"1000ETH"},...}.
+            string premineJson = "{" + string.Join(",", premine.Select(p => $"\"{p.Address}\":{{\"balance\":\"{p.Balance}\"}}")) + "}";
+            generatorBuilder = generatorBuilder.WithEnvironment("EL_PREMINE_ADDRS", premineJson);
+        }
+
+        IContainer generator = generatorBuilder
             .WithBindMount(dataDir, "/data", AccessMode.ReadWrite)
             // Wrap the image entrypoint so we can emit an unambiguous completion marker the wait
             // strategy can latch onto even though the container exits as soon as generation finishes.
@@ -609,6 +608,8 @@ public static class Utils
             .WithImage(GetLighthouseImage())
             .WithNetwork(network)
             .WithNetworkAliases(networkAlias)
+            // Expose the beacon HTTP API so tests can query the CL's canonical head from the host.
+            .WithPortBinding(5052, true)
             .WithBindMount(genesis.TestnetDirHostPath, "/testnet", AccessMode.ReadOnly)
             .WithBindMount(genesis.JwtHostPath, "/jwt.hex", AccessMode.ReadOnly)
             .WithCommand(
@@ -672,14 +673,100 @@ public static class Utils
                     return last;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // EL JSON-RPC may not be reachable yet during startup; keep polling until the deadline.
+                TestContext.Progress.WriteLine($"WaitForElBlockNumberAsync poll failed: {ex.Message}");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(2));
         }
 
         return last;
+    }
+
+    /// <summary>
+    /// Builds, signs, and submits an EIP-4844 (Type-3) blob transaction via
+    /// <c>eth_sendRawTransaction</c>, returning the transaction hash. Uses V0 (one proof per blob)
+    /// commitments/proofs — the Cancun/Deneb form the EL expects — computed from Nethermind's KZG
+    /// trusted setup. The nonce is read from the node so the helper is reusable.
+    /// </summary>
+    public static async Task<string> SendBlobTransactionAsync(HttpClient httpClient, PrivateKey signer, ulong chainId, Address to, int blobCount = 1)
+    {
+        if (!KzgPolynomialCommitments.IsInitialized)
+        {
+            await KzgPolynomialCommitments.InitializeAsync();
+        }
+
+        // A blob is a fixed 4096 field elements × 32 bytes. Leaving them zero except a small leading
+        // byte keeps each element below the BLS modulus, so the blob is a valid KZG input.
+        const int bytesPerBlob = 4096 * 32;
+        byte[][] blobs = Enumerable.Range(1, blobCount).Select(i =>
+        {
+            byte[] blob = new byte[bytesPerBlob];
+            blob[0] = (byte)i;
+            return blob;
+        }).ToArray();
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V0);
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blobs);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+        byte[][] blobVersionedHashes = proofsManager.ComputeHashes(wrapper);
+
+        JsonNode nonceResult = await SendJsonRpcRequestAsync(httpClient, "eth_getTransactionCount", signer.Address.ToString(), "pending");
+        ulong nonce = (ulong)Convert.ToInt64(nonceResult.GetValue<string>()[2..], 16);
+
+        Transaction tx = new()
+        {
+            Type = TxType.Blob,
+            ChainId = chainId,
+            Nonce = nonce,
+            To = to,
+            GasLimit = 21000,
+            Value = UInt256.Zero,
+            GasPrice = 1_000_000_000UL, // maxPriorityFeePerGas: 1 gwei
+            DecodedMaxFeePerGas = 100_000_000_000UL, // maxFeePerGas: 100 gwei, comfortably above base fee
+            MaxFeePerBlobGas = 1_000_000_000UL, // 1 gwei, above the devnet's minimum blob base fee
+            BlobVersionedHashes = blobVersionedHashes,
+            NetworkWrapper = wrapper,
+        };
+
+        new EthereumEcdsa(chainId).Sign(signer, tx, isEip155Enabled: true);
+
+        // eth_sendRawTransaction expects the EIP-4844 network ("mempool") form: the typed payload
+        // followed by the blobs/commitments/proofs wrapper, un-wrapped from a byte string.
+        Rlp rlp = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        string raw = "0x" + rlp.Bytes.ToHexString();
+
+        JsonNode result = await SendJsonRpcRequestAsync(httpClient, "eth_sendRawTransaction", raw);
+        return result.GetValue<string>();
+    }
+
+    /// <summary>
+    /// Polls <c>eth_getTransactionReceipt</c> until a receipt is available (the transaction was
+    /// mined into a block) or <paramref name="timeout"/> elapses. Returns the receipt node, or
+    /// <c>null</c> on timeout.
+    /// </summary>
+    public static async Task<JsonNode> WaitForReceiptAsync(HttpClient httpClient, string txHash, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                JsonNode receipt = await SendJsonRpcRequestAsync(httpClient, "eth_getTransactionReceipt", txHash);
+                if (receipt is not null)
+                {
+                    return receipt;
+                }
+            }
+            catch (Exception ex)
+            {
+                TestContext.Progress.WriteLine($"WaitForReceiptAsync poll failed: {ex.Message}");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+
+        return null;
     }
 }

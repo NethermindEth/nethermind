@@ -24,27 +24,18 @@ public class OpcodeTracingPluginTests
 {
     private const string OutputDir = "/tmp/opcode-traces";
 
-    // Sepolia genesis timestamp; covers all Engine API V1+ calls used in the suite.
     private const long SepoliaGenesisTimestamp = 1633267481L;
-
-    // Sepolia Cancun activation timestamp (eip4788TransitionTimestamp = 0x65b97d60).
     private const long SepoliaCancunTimestamp = 0x65b97d60L;
 
-    // Amsterdam activation timestamp used by the Amsterdam test chainspec
-    // (eip7928TransitionTimestamp = eip7843TransitionTimestamp = 0x68edfd60).
-    // Blocks at or after this stamp activate EIP-7928 (Block-level Access Lists).
+    // EIP-7928 / EIP-7843 activation in the Amsterdam test chainspec.
     private const long AmsterdamTimestamp = 0x68edfd60L;
 
     private const ulong SepoliaChainId = 11155111UL;
 
-    // Vitalik's well-known EIP-155 example key (no value on real Sepolia). Pre-allocated in
-    // the test chainspec at Resources/sepolia-with-test-account.json so we have a key with
-    // funds for signing real transactions inside the container. Address derived: 0x9d8A62...A4F.
+    // Pre-allocated in Resources/sepolia-with-test-account.json (Vitalik's EIP-155 example key).
     private const string TestAccountPrivateKeyHex = "4646464646464646464646464646464646464646464646464646464646464646";
 
-    // Tiny init code that PUSH1 0x42, PUSH1 0x00, MSTORE, PUSH1 0x20, PUSH1 0x00, RETURN —
-    // returns the byte 0x42 padded to 32 bytes. Guarantees PUSH1 + MSTORE + RETURN show up
-    // in the opcode tracer for any execution-based mode.
+    // PUSH1 0x42 / MSTORE / RETURN — guarantees PUSH1 + RETURN in the tracer.
     private static readonly byte[] s_testInitCode = Bytes.FromHexString("0x6042600052602060005260206000F3");
 
     private static readonly Regex s_opcodeKeyPattern = new("^([A-Z][A-Z0-9]*|0x[0-9a-fA-F]{2})$", RegexOptions.Compiled);
@@ -68,7 +59,8 @@ public class OpcodeTracingPluginTests
         {
             if (path is not null && System.IO.File.Exists(path))
             {
-                try { System.IO.File.Delete(path); } catch { /* best-effort */ }
+                try { System.IO.File.Delete(path); }
+                catch (Exception ex) { TestContext.Progress.WriteLine($"cleanup of {path} failed: {ex.Message}"); }
             }
         }
     }
@@ -196,13 +188,7 @@ public class OpcodeTracingPluginTests
     [Test]
     public async Task Retrospective_JsonSchema_IsWellFormed_ForCancunBlocks()
     {
-        // Note: Retrospective mode runs its analysis as a Task scheduled at plugin Init;
-        // it iterates the configured range exactly once and writes the output file once
-        // every block has been processed (or skipped). On a freshly-started container
-        // those blocks don't exist yet, so the analyzer logs warnings and produces empty
-        // opcodeCounts. Only schema validation is asserted here. To observe non-empty
-        // counts the plugin would need a "wait for chain to reach EndBlock" hook — out
-        // of scope for this test fixture.
+        // Retrospective replay finishes before our blocks exist, so opcodeCounts is empty — schema-only check.
         await StartNodeAsync(PrivateMergeCommand(
             "--OpcodeTracing.Enabled", "true",
             "--OpcodeTracing.Mode", "Retrospective",
@@ -227,12 +213,8 @@ public class OpcodeTracingPluginTests
     [TestCase(false, -1, TestName = "RealTime_CapturesOpcodes_WithParallelExecution_False_-1")]
     public async Task RealTime_CapturesOpcodes_FromSubmittedTransaction(bool parallelExecution, int maxDegreeOfParallelism)
     {
-        // Submits 3 contract-creation txs from a pre-funded test EOA and asserts the plugin's
-        // RealTime opcodeCounts include PUSH1 + RETURN from the init code. The --Blocks.ParallelExecution
-        // flag is exercised both ways: pre-EIP-7928 it's a no-op (sequential path always taken), so
-        // both cases should pass on master. When EIP-7928 activates and the parallel branch becomes
-        // live, the True case will fail unless ParallelBlockValidationTransactionsExecutor wires the
-        // outer tracer — that's the regression-detector intent.
+        // Asserts RealTime captures PUSH1/RETURN from contract-creation txs; exercises both
+        // --Blocks.ParallelExecution settings to guard the EIP-7928 parallel branch.
         const int targetBlocks = 8;
         await StartNodeAsync(PrivateMergeCommand(
             "--OpcodeTracing.Enabled", "true",
@@ -288,10 +270,7 @@ public class OpcodeTracingPluginTests
     [Test]
     public async Task RetrospectiveExecution_JsonSchema_IsWellFormed()
     {
-        // Same caveat as Retrospective: this mode kicks off its replay loop at plugin Init
-        // and finalizes the output before our tests have produced any blocks. On a fresh
-        // chain the configured range is unreachable, so opcodeCounts ends up empty and
-        // skippedBlocks gets populated. Schema-only validation here.
+        // Replay finishes before our blocks exist, so opcodeCounts is empty — schema-only check.
         await StartNodeAsync(PrivateMergeCommand(
             "--OpcodeTracing.Enabled", "true",
             "--OpcodeTracing.Mode", "RetrospectiveExecution",
@@ -317,16 +296,9 @@ public class OpcodeTracingPluginTests
     [TestCase(false, -1, TestName = "RetrospectiveExecution_CapturesOpcodes_WithParallelExecution_False_-1")]
     public async Task RetrospectiveExecution_CapturesOpcodes_FromSubmittedTransaction(bool parallelExecution, int maxDegreeOfParallelism)
     {
-        // Two-phase test:
-        //   Phase A: start a container with the plugin disabled, submit contract-creation txs and produce blocks,
-        //            persist db + keystore on the host so the chain survives container restart.
-        //   Phase B: restart against the same db + keystore with --OpcodeTracing.Mode RetrospectiveExecution and
-        //            wait for the single opcode-trace-{start}-{end}.json output. Assert real init-code opcodes
-        //            (PUSH1 / RETURN) are captured.
-        //
-        // Pruning.Mode None is required in BOTH phases — Phase A so state isn't pruned before B can read it,
-        // Phase B as a defensive default. The keystore mount carries jwt.hex from A → B so the JWT we generate
-        // in Phase B is accepted by the engine API (not actually used in B since we only poll for output files).
+        // Phase A produces blocks with the plugin disabled, persisting db+keystore on the host;
+        // Phase B replays with RetrospectiveExecution and asserts captured opcodes.
+        // Pruning.Mode None required so state survives the restart.
         const int targetBlocks = 8;
         string dataDir = Path.Combine(Path.GetTempPath(), $"nethermind-it-data-{Guid.NewGuid():N}");
         string keystoreDir = Path.Combine(Path.GetTempPath(), $"nethermind-it-keystore-{Guid.NewGuid():N}");
@@ -382,38 +354,23 @@ public class OpcodeTracingPluginTests
         }
         finally
         {
-            try { Directory.Delete(dataDir, recursive: true); } catch { /* best-effort */ }
-            try { Directory.Delete(keystoreDir, recursive: true); } catch { /* best-effort */ }
+            try { Directory.Delete(dataDir, recursive: true); }
+            catch (Exception ex) { TestContext.Progress.WriteLine($"cleanup of {dataDir} failed: {ex.Message}"); }
+            try { Directory.Delete(keystoreDir, recursive: true); }
+            catch (Exception ex) { TestContext.Progress.WriteLine($"cleanup of {keystoreDir} failed: {ex.Message}"); }
         }
     }
 
-    [TestCase(true, 2, TestName = "RetrospectiveExecution_Eip7928_Sequential_2")]
-    [TestCase(true, 0, TestName = "RetrospectiveExecution_Eip7928_Sequential_0")]
-    [TestCase(true, -1, TestName = "RetrospectiveExecution_Eip7928_Sequential_-1")]
+    [TestCase(true, 2, TestName = "RetrospectiveExecution_Eip7928_Parallel_2")]
+    [TestCase(true, 0, TestName = "RetrospectiveExecution_Eip7928_Parallel_0")]
+    [TestCase(true, -1, TestName = "RetrospectiveExecution_Eip7928_Parallel_-1")]
     [TestCase(false, 2, TestName = "RetrospectiveExecution_Eip7928_Sequential_2")]
-    [TestCase(false, 0, TestName = "RetrospectiveExecution_Eip7928_Parallel_0")]
-    [TestCase(false, -1, TestName = "RetrospectiveExecution_Eip7928_Parallel_-1")]
+    [TestCase(false, 0, TestName = "RetrospectiveExecution_Eip7928_Sequential_0")]
+    [TestCase(false, -1, TestName = "RetrospectiveExecution_Eip7928_Sequential_-1")]
     public async Task RetrospectiveExecution_CapturesOpcodes_OnEip7928Chain(bool blocksParallelExecution, int maxDegreeOfParallelism)
     {
-        // Two-phase test mirroring RetrospectiveExecution_CapturesOpcodes_FromSubmittedTransaction,
-        // but on a chainspec where Amsterdam (EIP-7928 + EIP-7843 + Pectra) activates at a known
-        // timestamp. Phase A produces real Amsterdam blocks via engine_newPayloadV5/getPayloadV6
-        // with a few contract-creation transactions on the test EOA. Phase B restarts the node
-        // with `--OpcodeTracing.Mode=RetrospectiveExecution` AND `--Blocks.ParallelExecution`
-        // flipped between false/true — the goal is to verify RetrospectiveExecution stays correct
-        // under both BAL execution modes. If the parallel BAL path (via BlockAccessListManager:
-        // `Enabled && blocksConfig.ParallelExecution && !_isBuilding && suggestedBlock.BlockAccessList is not null`)
-        // mishandles state during replay, the True case will fail with skipped blocks, missing
-        // PUSH1/RETURN opcodes, or an Unhandled/Fatal in stdout.
-        //
-        // The chainspec activates the four small Pectra/Cancun system contracts (EIP-4788 beacon
-        // root, EIP-2935 block-hash history, EIP-7002 withdrawal requests, EIP-7251 consolidation
-        // requests) by pre-deploying them in genesis with the canonical bytecode lifted from
-        // src/Nethermind/Nethermind.Specs.Test/Specs/hoodi_no_deposit_contract.json. Each block
-        // produced therefore has non-trivial BAL state writes (StoreBeaconRoot,
-        // ApplyBlockhashStateChanges, request reads), which is what the parallel BAL executor has
-        // to coordinate over. EIP-6110 (deposits) is intentionally left off so we don't have to
-        // ship the multi-kB deposit contract bytecode.
+        // Amsterdam-activated variant: replays under both Blocks.ParallelExecution modes to catch
+        // regressions in the parallel BAL execution path (BlockAccessListManager).
         const int targetBlocks = 16;
         string dataDir = Path.Combine(Path.GetTempPath(), $"nethermind-it-data-{Guid.NewGuid():N}");
         string keystoreDir = Path.Combine(Path.GetTempPath(), $"nethermind-it-keystore-{Guid.NewGuid():N}");
@@ -423,8 +380,7 @@ public class OpcodeTracingPluginTests
         int blocksProduced;
         try
         {
-            // Phase A — populate the chain with Amsterdam blocks. ParallelExecution stays at
-            // its default here; we only toggle it for the replay phase under test.
+            // Phase A — populate the chain with Amsterdam blocks.
             await StartNodeAsync(PrivateMergeCommand(
                 "--OpcodeTracing.Enabled", "false",
                 "--Blocks.ParallelExecution", blocksParallelExecution.ToString().ToLowerInvariant(),
@@ -439,10 +395,7 @@ public class OpcodeTracingPluginTests
             await _container.DisposeAsync();
             _container = null;
 
-            // Phase B — replay with RetrospectiveExecution and the requested ParallelExecution
-            // setting. This is the configuration under test: RetrospectiveExecution must produce
-            // the same opcode counts whether the node is configured with ParallelExecution=false
-            // or true.
+            // Phase B — replay with RetrospectiveExecution under the requested ParallelExecution.
             await StartNodeAsync(PrivateMergeCommand(
                 "--OpcodeTracing.Enabled", "true",
                 "--OpcodeTracing.Mode", "RetrospectiveExecution",
@@ -479,8 +432,10 @@ public class OpcodeTracingPluginTests
         }
         finally
         {
-            try { Directory.Delete(dataDir, recursive: true); } catch { /* best-effort */ }
-            try { Directory.Delete(keystoreDir, recursive: true); } catch { /* best-effort */ }
+            try { Directory.Delete(dataDir, recursive: true); }
+            catch (Exception ex) { TestContext.Progress.WriteLine($"cleanup of {dataDir} failed: {ex.Message}"); }
+            try { Directory.Delete(keystoreDir, recursive: true); }
+            catch (Exception ex) { TestContext.Progress.WriteLine($"cleanup of {keystoreDir} failed: {ex.Message}"); }
         }
     }
 
@@ -608,8 +563,6 @@ public class OpcodeTracingPluginTests
         Assert.That(opcodeCounts, Is.Not.Null, "opcodeCounts must be present");
         JsonObject counts = opcodeCounts.AsObject();
 
-        // Always echo what was actually emitted so a failed assertion (or a passing run)
-        // gives a clear picture of the captured opcodes.
         TestContext.Progress.WriteLine($"opcodeCounts ({counts.Count} entries): {opcodeCounts.ToJsonString()}");
 
         if (requireNonEmpty)
@@ -673,19 +626,19 @@ public class OpcodeTracingPluginTests
             "--Sync.FastSync", "false",
             "--Sync.SnapSync", "false",
         };
-        return baseArgs.Concat(extra).ToArray();
+        string[] result = new string[baseArgs.Length + extra.Length];
+        baseArgs.CopyTo(result, 0);
+        extra.CopyTo(result, baseArgs.Length);
+        return result;
     }
 
     private async Task<int> ProduceBlocksAsync(int version, int count, long? timestamp = null, int contractCreationsToSubmit = 0)
     {
         ExecResult jwt = await _container.ExecAsync(new[] { "cat", "jwt.hex" });
         Assert.That(jwt.ExitCode, Is.EqualTo(0));
-        string jwtToken = Utils.CreateJwtToken(jwt.Stdout.Trim());
 
         Uri engineUrl = new($"http://{_container.Hostname}:{_container.GetMappedPublicPort(8551)}");
-        using HttpClient engineHttp = new() { BaseAddress = engineUrl };
-        engineHttp.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
-        engineHttp.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        using HttpClient engineHttp = Utils.CreateEngineHttpClient(engineUrl, jwt.Stdout.Trim());
 
         if (contractCreationsToSubmit == 0)
         {
@@ -700,9 +653,7 @@ public class OpcodeTracingPluginTests
         PrivateKey signer = new(TestAccountPrivateKeyHex);
         ulong nonce = await GetNonceAsync(ethHttp, signer.Address);
 
-        // Submit all contract-creation txs upfront so they're in the txpool before any
-        // payload build kicks off. The builder pulls from the pool at FCU+payloadAttributes
-        // time, so this gives the best odds of getting txs into the next block.
+        // Submit txs upfront so they land in the next FCU's payload build.
         List<string> txHashes = new(contractCreationsToSubmit);
         for (int i = 0; i < contractCreationsToSubmit; i++)
         {
@@ -715,9 +666,7 @@ public class OpcodeTracingPluginTests
         // Give the txpool a moment to ingest before kicking off the first build.
         await Task.Delay(500);
 
-        // Produce up to count + 5 blocks until every submitted tx is mined. We allow a few
-        // extra blocks because the builder may not always pick up just-submitted txs in the
-        // very next FCU when the txpool ingest lags slightly.
+        // Produce up to count + 5 blocks until every submitted tx is mined.
         int blocksProduced = 0;
         int maxBlocks = count + 5;
         while (blocksProduced < maxBlocks)
@@ -748,12 +697,9 @@ public class OpcodeTracingPluginTests
     {
         Type = TxType.Legacy,
         Nonce = nonce,
-        // Must cover the Amsterdam intrinsic cost: under EIP-8037 a creation tx reserves
-        // "state gas" (createStateCost) on top of the regular intrinsic gas, so the pre-8037
-        // figure of 200_000 is rejected by the block producer ("intrinsic gas too low").
-        // 1_000_000 comfortably covers both the pre-Amsterdam and Amsterdam (EIP-8037) costs.
+        // EIP-8037 createStateCost rejects 200_000; 1_000_000 covers both pre- and post-Amsterdam.
         GasLimit = 1_000_000,
-        GasPrice = 20_000_000_000UL, // 20 gwei — well above any realistic base fee on a fresh chain
+        GasPrice = 20_000_000_000UL,
         To = null,
         Value = UInt256.Zero,
         Data = s_testInitCode
