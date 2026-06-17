@@ -769,6 +769,7 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(vm.ExecuteTransactionCalls, Is.EqualTo(0));
         // Only intrinsic gas consumed — unused gas was refunded via FinalizeTransaction
         Assert.That(tx.SpentGas, Is.EqualTo(GasCostOf.Transaction));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(GasCostOf.Transaction));
         Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(UInt256.One));
     }
 
