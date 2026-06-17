@@ -80,13 +80,11 @@ public class CarryForwardCachingPersistenceTests
         }), 2)
         { TestName = "written_slot_invalidated" };
 
-        yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((cache, inner) =>
-        {
-            using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
-                batch.SelfDestruct(Address);
-            inner.ReaderState = Basis1;
-        }), 2)
-        { TestName = "self_destruct_clears_cache" };
+        yield return ClearingScenario("self_destruct_clears_cache", batch => batch.SelfDestruct(Address));
+        yield return ClearingScenario("delete_account_range_clears_cache", batch => batch.DeleteAccountRange(default, default));
+        yield return ClearingScenario("delete_storage_range_clears_cache", batch => batch.DeleteStorageRange(default, default, default));
+        yield return ClearingScenario("set_account_raw_clears_cache", batch => batch.SetAccountRaw(default, new Account(1, 100)));
+        yield return ClearingScenario("set_storage_raw_encoded_clears_cache", batch => batch.SetStorageRawEncoded(default, default, default));
 
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((cache, _) =>
         {
@@ -95,6 +93,15 @@ public class CarryForwardCachingPersistenceTests
         }), 2)
         { TestName = "reader_behind_basis_bypasses" };
     }
+
+    private static TestCaseData ClearingScenario(string name, Action<IPersistence.IWriteBatch> write) =>
+        new((Action<CarryForwardCachingPersistence, FakePersistence>)((cache, inner) =>
+        {
+            using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+                write(batch);
+            inner.ReaderState = Basis1;
+        }), 2)
+        { TestName = name };
 
     private static void ReadSlot(IPersistence persistence, UInt256 slot)
     {
