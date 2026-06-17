@@ -12,7 +12,7 @@ public static class BlockErrorMessages
         $"ExceededUncleLimit: Cannot have more than {maxUncleCount}.";
 
     public static string InsufficientMaxFeePerBlobGas(Address? address, UInt256? blobGasFeeCap, UInt256 blobBaseFee) =>
-        $"max fee per blob gas less than block blob gas fee: address {address}, blobGasFeeCap: {blobGasFeeCap}, blobBaseFee: {blobBaseFee}";
+        $"max fee per blob gas less than block blob gas fee: address {address?.ToString(withEip55Checksum: true)}, blobGasFeeCap: {blobGasFeeCap}, blobBaseFee: {blobBaseFee}";
 
     public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";

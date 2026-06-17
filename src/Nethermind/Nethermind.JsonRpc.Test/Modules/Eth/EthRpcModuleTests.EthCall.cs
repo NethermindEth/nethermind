@@ -937,7 +937,7 @@ public partial class EthRpcModuleTests
         """{"blobBaseFee":"0xb","baseFeePerGas":"0x1"}""",
         null,
         "max fee per blob gas less than block blob gas fee",
-        TestName = "blob tx rejected when maxFeePerBlobGas below blobBaseFee override")]    
+        TestName = "blob tx rejected when maxFeePerBlobGas below blobBaseFee override")]
 
     public async Task Eth_call_blobBaseFeePerGas_override_test(
         string txJson, string stateOverrideJson, string blockOverrideJson,
