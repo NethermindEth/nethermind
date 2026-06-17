@@ -26,11 +26,6 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
         }
         catch (InvalidDataException)
         {
-            // eth_simulateV1 is best-effort: when an ancestor block hash cannot be
-            // resolved in the simulate context, return 0 (the EVM BLOCKHASH
-            // out-of-window result) instead of failing the whole request. The
-            // underlying provider throws here only on the simulate path; canonical
-            // block processing always has the hash available.
             return null;
         }
     }
