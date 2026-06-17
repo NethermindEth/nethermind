@@ -808,7 +808,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance for gas * price + value"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for gas * price + value"));
     }
 
     [Test]

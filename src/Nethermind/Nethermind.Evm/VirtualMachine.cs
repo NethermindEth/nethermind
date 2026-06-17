@@ -246,6 +246,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
 
                 // For nested call frames, merge the results and restore the previous execution state.
+#pragma warning disable IDE0063 // Cannot simplify: the `goto Failure` above jumps past this scope, which a `using` declaration would forbid (CS8648)
                 using (VmState<TGasPolicy> previousState = _currentState)
                 {
                     // Restore the previous state from the stack and mark it as a continuation.
@@ -305,6 +306,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         HandleRevert(previousState, callResult, ref previousCallOutput);
                     }
                 }
+#pragma warning restore IDE0063
             }
             // Handle specific EVM or overflow exceptions by routing to the failure handling block.
             catch (Exception ex) when (ex is EvmException or OverflowException)
