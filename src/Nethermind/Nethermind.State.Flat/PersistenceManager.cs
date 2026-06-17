@@ -96,6 +96,7 @@ public class PersistenceManager(
 
         // ---- Phase 1: persistence to RocksDB ----
         StateId? seed = null;
+        bool forcedByBackstop = false;
         long finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         long nextBoundary = schedule.NextFullCompactionAfter(currentPersistedState.BlockNumber);
         if (finalizedBlockNumber >= nextBoundary
@@ -117,6 +118,7 @@ public class PersistenceManager(
             // RemoveSiblingAndDescendents would then orphan). Falls back to the longest chain only
             // when nothing was committed this session.
             seed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.LastRegisteredState;
+            forcedByBackstop = true;
         }
 
         if (seed is not null)
@@ -124,7 +126,15 @@ public class PersistenceManager(
             (PersistedSnapshot? persisted, Snapshot? inMemory) =
                 snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null)
+            {
+                // Warn only when the backstop (not the normal finalized trigger) actually forces this
+                // persist — not when the backstop seed finds no candidate and we fall through to the
+                // Phase 2 persisted-snapshot conversion below.
+                if (forcedByBackstop && _logger.IsWarn) _logger.Warn(
+                    $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth} " +
+                    $"with finality stalled (finalized block {finalizedBlockNumber}). Forcing persistence to bound memory.");
                 return (persisted, inMemory, null);
+            }
         }
 
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
