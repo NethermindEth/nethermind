@@ -42,7 +42,7 @@ public class XdcExtendedEthModuleTests
                 [TestItem.AddressA.ToString()] = new() { [TestItem.AddressB.ToString()] = "1000" },
             },
         };
-        rewardsStore.TryGetEpochRewards(100UL, out Arg.Any<Dictionary<string, Dictionary<string, Dictionary<string, string>>>?>())
+        rewardsStore.TryGetEpochRewards(TestItem.KeccakA, out Arg.Any<Dictionary<string, Dictionary<string, Dictionary<string, string>>>?>())
             .Returns(x =>
             {
                 x[1] = payload;

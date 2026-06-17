@@ -3,15 +3,16 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Xdc;
 
 public interface IRewardsStore
 {
-    void SaveEpochRewards(ulong epochBlockNumber, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards);
-    bool HasEpochRewards(ulong epochBlockNumber);
-    bool TryGetAccountReward(Address account, ulong epochBlockNumber, out UInt256 reward);
-    bool TryGetEpochRewards(ulong epochBlockNumber, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards);
+    void SaveEpochRewards(Hash256 epochBlockHash, ulong epochBlockNumber, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards);
+    bool HasEpochRewards(Hash256 epochBlockHash);
+    bool TryGetAccountReward(Address account, Hash256 epochBlockHash, out UInt256 reward);
+    bool TryGetEpochRewards(Hash256 epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards);
     bool TryGetRetainedRange(out ulong oldestEpochBlockNumber, out ulong newestEpochBlockNumber);
 }

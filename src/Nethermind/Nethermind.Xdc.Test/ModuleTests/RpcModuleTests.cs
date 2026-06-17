@@ -838,15 +838,15 @@ public class RpcModuleTests
                 return true;
             });
 
-        _rewardsStore.HasEpochRewards(epoch1).Returns(true);
-        _rewardsStore.HasEpochRewards(epoch2).Returns(true);
-        _rewardsStore.TryGetAccountReward(account, epoch1, out Arg.Any<UInt256>())
+        _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(true);
+        _rewardsStore.HasEpochRewards(TestItem.KeccakB).Returns(true);
+        _rewardsStore.TryGetAccountReward(account, TestItem.KeccakA, out Arg.Any<UInt256>())
             .Returns(callInfo =>
             {
                 callInfo[2] = (UInt256)10;
                 return true;
             });
-        _rewardsStore.TryGetAccountReward(account, epoch2, out Arg.Any<UInt256>())
+        _rewardsStore.TryGetAccountReward(account, TestItem.KeccakB, out Arg.Any<UInt256>())
             .Returns(callInfo =>
             {
                 callInfo[2] = (UInt256)20;
@@ -927,7 +927,7 @@ public class RpcModuleTests
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
         _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>()).Returns(false);
-        _rewardsStore.HasEpochRewards(epoch).Returns(false);
+        _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(false);
 
         // Act
         ResultWrapper<AccountRewardResponse> result = _rpcModule.xdpos_getRewardByAccount(account, begin, end);

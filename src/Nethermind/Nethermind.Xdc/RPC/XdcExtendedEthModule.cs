@@ -47,7 +47,7 @@ internal sealed class XdcExtendedEthModule(
             return Task.FromResult(ResultWrapper<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>.Success([]));
         }
 
-        if (!rewardsStore.TryGetEpochRewards((ulong)header.Number, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards)
+        if (!rewardsStore.TryGetEpochRewards(header.Hash!, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards)
             || rewards is null)
         {
             rewards = [];

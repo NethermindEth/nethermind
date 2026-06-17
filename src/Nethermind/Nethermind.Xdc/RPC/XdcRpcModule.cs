@@ -327,12 +327,13 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
         {
             ulong epochBlockNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-            if (!rewardsStore.HasEpochRewards(epochBlockNumber))
+            Hash256 epochBlockHash = epochSwitchInfo.EpochSwitchBlockInfo.Hash;
+            if (!rewardsStore.HasEpochRewards(epochBlockHash))
             {
                 return ResultWrapper<AccountRewardResponse>.Fail($"Reward data not available for epoch block {epochBlockNumber}");
             }
 
-            if (!rewardsStore.TryGetAccountReward(account, epochBlockNumber, out UInt256 accountReward))
+            if (!rewardsStore.TryGetAccountReward(account, epochBlockHash, out UInt256 accountReward))
             {
                 continue;
             }
