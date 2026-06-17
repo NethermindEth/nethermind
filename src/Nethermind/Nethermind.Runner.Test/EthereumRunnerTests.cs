@@ -217,7 +217,7 @@ public class EthereumRunnerTests
 
         if (api is AuRaNethermindApi auRaNethermindApi)
         {
-            auRaNethermindApi.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
+            auRaNethermindApi.AuRaFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
         }
 
         try
