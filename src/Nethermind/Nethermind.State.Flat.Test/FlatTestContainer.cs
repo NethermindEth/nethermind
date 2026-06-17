@@ -88,7 +88,11 @@ internal sealed class FlatTestContainer : IDisposable
             // The module sizes the blob arena off ArenaFileSizeBytes (shared with the trie-RLP arena);
             // tests size the two independently, so override the blob arena's file size.
             .AddSingleton<BlobArenaManager, IInitConfig>(initConfig =>
-                new BlobArenaManager(Path.Combine(initConfig.BaseDbPath, "persisted_snapshot", "blob"), blobFileSizeBytes));
+                new BlobArenaManager(Path.Combine(initConfig.BaseDbPath, "persisted_snapshot", "blob"), blobFileSizeBytes))
+            // Config defaults to EnableLongFinality=false, which makes the module swap in the Null
+            // catalog/loader. These fixtures exercise the real persisted tier, so force the real catalog
+            // back (last-registration wins); the real loader is reached via concrete resolves below.
+            .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>());
 
         configure?.Invoke(_builder);
     }
@@ -98,14 +102,14 @@ internal sealed class FlatTestContainer : IDisposable
     private IContainer BuildAndLoad()
     {
         IContainer container = _builder.Build();
-        container.Resolve<IPersistedSnapshotLoader>().Load();
+        container.Resolve<PersistedSnapshotLoader>().Load();
         return container;
     }
 
     public T Resolve<T>() where T : notnull => Container.Resolve<T>();
 
     public SnapshotRepository Repository => Resolve<SnapshotRepository>();
-    public IPersistedSnapshotLoader Loader => Resolve<IPersistedSnapshotLoader>();
+    public IPersistedSnapshotLoader Loader => Resolve<PersistedSnapshotLoader>();
     public ResourcePool ResourcePool => Resolve<ResourcePool>();
     public ArenaManager Arena => Resolve<ArenaManager>();
     public BlobArenaManager Blobs => Resolve<BlobArenaManager>();

@@ -77,7 +77,7 @@ public sealed class ArenaManager : IArenaManager
     /// Initialize from existing arena files and catalog entries.
     /// Computes allocation frontiers and dead bytes per arena.
     /// </summary>
-    public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries)
+    public void Initialize(IReadOnlyList<CatalogEntry> entries)
     {
         using Lock.Scope scope = _lock.EnterScope();
         // Open existing arena files. Defer the per-file metric push until after frontier
@@ -113,7 +113,7 @@ public sealed class ArenaManager : IArenaManager
         // missing arena id (not per entry).
         Dictionary<int, long> liveSizes = [];
         HashSet<int> missingArenas = [];
-        foreach (SnapshotCatalog.CatalogEntry entry in entries)
+        foreach (CatalogEntry entry in entries)
         {
             int aid = entry.Location.ArenaId;
             if (!_arenas.TryGetValue(aid, out ArenaFile? arena))

@@ -32,7 +32,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // ---- Persisted tier: four buckets keyed by StateId.To. Each bucket is self-contained and
     // individually-locked. A `To` can live in more than one bucket (a base and a compacted snapshot
     // can share it).
-    private readonly SnapshotCatalog _catalog;
+    private readonly ISnapshotCatalog _catalog;
     private readonly int _compactSize;
     private readonly PersistedSnapshotBucket _base;
     private readonly PersistedSnapshotBucket _smallCompacted;
@@ -56,7 +56,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public SnapshotRepository(
         IArenaManager arenaManager,
         BlobArenaManager blobArenaManager,
-        SnapshotCatalog catalog,
+        ISnapshotCatalog catalog,
         IFlatDbConfig config,
         ILogManager logManager)
     {

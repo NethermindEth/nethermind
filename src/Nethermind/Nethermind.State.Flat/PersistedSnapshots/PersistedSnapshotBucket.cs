@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// point lookups lock-free. The lock only serialises ordered-set mutation, catalog writes, and
 /// the lease/dispose handoff so a racing prune cannot dispose an entry between insert and return.
 /// </remarks>
-internal sealed class PersistedSnapshotBucket(SnapshotCatalog catalog, SnapshotTier tier)
+internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, SnapshotTier tier)
 {
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _byTo = new();
     private readonly SortedSet<StateId> _ordered = [];

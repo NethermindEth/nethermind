@@ -36,7 +36,7 @@ public sealed class TempDirArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _inner.PageTracker;
 
-    public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => _inner.Initialize(entries);
+    public void Initialize(IReadOnlyList<CatalogEntry> entries) => _inner.Initialize(entries);
 
     public ArenaWriter CreateWriter(long estimatedSize, bool small = false) => _inner.CreateWriter(estimatedSize, small);
 
