@@ -622,6 +622,12 @@ jobs:
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
+          # Retrospective regression sweep: the base config force-injects
+          # --FlatDb.PersistenceWriteBufferFloor, which does not exist on older commit
+          # images and would crash them on startup. Strip it so the sweep is unaffected
+          # (compaction-during-sync is controlled via --FlatDb.CompactSize instead).
+          sed -i '/PersistenceWriteBufferFloor/d' "${RENDERED_CONFIG_FILE}"
+
           # Append extra flags using yq (proper YAML handling)
           scenario_key="${SCENARIO_NAME}"
           while IFS= read -r flag; do
@@ -1687,6 +1693,12 @@ jobs:
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
+
+          # Retrospective regression sweep: the base config force-injects
+          # --FlatDb.PersistenceWriteBufferFloor, which does not exist on older commit
+          # images and would crash them on startup. Strip it so the sweep is unaffected
+          # (compaction-during-sync is controlled via --FlatDb.CompactSize instead).
+          sed -i '/PersistenceWriteBufferFloor/d' "${RENDERED_CONFIG_FILE}"
 
           # Append extra flags using yq (proper YAML handling)
           scenario_key="${SCENARIO_NAME}"
