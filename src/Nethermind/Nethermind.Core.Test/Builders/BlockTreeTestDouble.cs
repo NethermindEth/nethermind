@@ -83,6 +83,11 @@ public class BlockTreeTestDouble : IBlockTree
         add { if (Inner is not null) Inner.OnForkChoiceUpdated += value; }
         remove { if (Inner is not null) Inner.OnForkChoiceUpdated -= value; }
     }
+    public event EventHandler<FinalizeEventArgs>? BlocksFinalized
+    {
+        add { if (Inner is not null) Inner.BlocksFinalized += value; }
+        remove { if (Inner is not null) Inner.BlocksFinalized -= value; }
+    }
 
     public void RaiseBlockAddedToMain(BlockReplacementEventArgs args) => _blockAddedToMain?.Invoke(this, args);
 
@@ -91,6 +96,7 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual Hash256? PendingHash => Inner?.PendingHash;
     public virtual Hash256? FinalizedHash => Inner?.FinalizedHash;
     public virtual Hash256? SafeHash => Inner?.SafeHash;
+    public virtual ulong LastFinalizedBlockLevel => Inner?.LastFinalizedBlockLevel ?? 0UL;
     public virtual ulong? BestPersistedState
     {
         get => Inner?.BestPersistedState ?? _bestPersistedState;

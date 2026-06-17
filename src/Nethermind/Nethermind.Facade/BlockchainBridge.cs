@@ -245,6 +245,7 @@ namespace Nethermind.Facade
             GasEstimator gasEstimator = new(txProcessor, worldState, specProvider, blocksConfig);
 
             string? error = tryCallResult.GetErrorMessage(estimateGasTracer.Error);
+            string? probeError = error;
 
             ulong estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, (ulong)errorMargin, cancellationToken);
             // Allowance errors take precedence over any earlier revert: the revert was an artifact
@@ -272,7 +273,7 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = estimate,
                 OutputData = estimateGasTracer.ReturnValue,
-                InputError = !executionReverted && error is not null && (!tryCallResult.TransactionExecuted || err is not null),
+                InputError = !executionReverted && error is not null && (error != probeError),
                 ExecutionReverted = executionReverted
             };
         }

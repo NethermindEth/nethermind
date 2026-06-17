@@ -184,6 +184,17 @@ namespace Nethermind.Blockchain
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
 
+        /// <summary>
+        /// Block number of the most recent finalized block; 0 if none.
+        /// </summary>
+        ulong LastFinalizedBlockLevel { get; }
+
+        /// <summary>
+        /// Fires when <see cref="ForkChoiceUpdated"/> advances <see cref="IBlockFinder.FinalizedHash"/>
+        /// to a new block (and the corresponding header is locally available).
+        /// </summary>
+        event EventHandler<FinalizeEventArgs> BlocksFinalized;
+
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
 

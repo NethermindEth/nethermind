@@ -19,12 +19,33 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
+    /// <summary>
+    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
+    /// </summary>
+    /// <remarks>
+    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
+    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
+    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
+    /// The failure result is therefore encoded up front, before execution begins, so the
+    /// callback can access it.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
+
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
         StatelessPayload payload = InputDecoder.Decode(data);
         ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
         Transaction[] transactions = payload.Block.Transactions;
+        StatelessValidationResult result = new()
+        {
+            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
+            IsSuccess = false,
+            ChainConfig = payload.ChainConfig
+        };
+        byte[] output = StatelessValidationResult.Encode(result);
         bool success = false;
+
+        FailureOutput = output;
 
         if (transactions.Length == publicKeys.Length)
         {
@@ -49,14 +70,13 @@ public static class StatelessExecutor
             }
         }
 
-        StatelessValidationResult result = new()
+        if (success)
         {
-            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
-            IsSuccess = success,
-            ChainConfig = payload.ChainConfig
-        };
+            result.IsSuccess = true;
+            output = StatelessValidationResult.Encode(result);
+        }
 
-        return StatelessValidationResult.Encode(result);
+        return output;
     }
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)

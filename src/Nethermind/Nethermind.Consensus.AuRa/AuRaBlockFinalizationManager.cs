@@ -130,7 +130,8 @@ namespace Nethermind.Consensus.AuRa
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[^1].Number} [{string.Join(",", finalizedBlocks.Select(static b => b.Hash))}].");
 
                 LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
-                BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
+                _blockTree.ForkChoiceUpdated(finalizedBlocks[^1].Hash, _blockTree.SafeHash);
+                BlocksFinalized?.Invoke(this, new AuRaFinalizeEventArgs(finalizingBlock, finalizedBlocks));
             }
         }
 
@@ -287,7 +288,7 @@ namespace Nethermind.Consensus.AuRa
         }
         */
 
-        public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
+        public event EventHandler<AuRaFinalizeEventArgs>? BlocksFinalized;
 
         public ulong GetLastLevelFinalizedBy(Hash256 blockHash)
         {

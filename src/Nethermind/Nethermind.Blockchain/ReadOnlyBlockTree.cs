@@ -84,6 +84,13 @@ namespace Nethermind.Blockchain
         public Hash256 PendingHash => _wrapped.PendingHash;
         public Hash256 FinalizedHash => _wrapped.FinalizedHash;
         public Hash256 SafeHash => _wrapped.SafeHash;
+        public ulong LastFinalizedBlockLevel => _wrapped.LastFinalizedBlockLevel;
+
+        public event EventHandler<FinalizeEventArgs> BlocksFinalized
+        {
+            add { }
+            remove { }
+        }
 
         public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
 

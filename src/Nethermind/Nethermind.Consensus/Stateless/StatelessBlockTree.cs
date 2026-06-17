@@ -61,6 +61,13 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public Hash256? PendingHash => throw new NotSupportedException();
     public Hash256? FinalizedHash => throw new NotSupportedException();
     public Hash256? SafeHash => throw new NotSupportedException();
+    public ulong LastFinalizedBlockLevel => throw new NotSupportedException();
+
+    public event EventHandler<FinalizeEventArgs>? BlocksFinalized
+    {
+        add => throw new NotSupportedException();
+        remove => throw new NotSupportedException();
+    }
     public Block? Head => throw new NotSupportedException();
 
     public ulong? BestPersistedState

@@ -46,6 +46,24 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public Hash256? PendingHash => _overlayTree.PendingHash ?? _baseTree.PendingHash;
     public Hash256? FinalizedHash => _overlayTree.FinalizedHash ?? _baseTree.FinalizedHash;
     public Hash256? SafeHash => _overlayTree.SafeHash ?? _baseTree.SafeHash;
+
+    public ulong LastFinalizedBlockLevel =>
+        _overlayTree.LastFinalizedBlockLevel != 0UL ? _overlayTree.LastFinalizedBlockLevel : _baseTree.LastFinalizedBlockLevel;
+
+    public event EventHandler<FinalizeEventArgs> BlocksFinalized
+    {
+        add
+        {
+            _baseTree.BlocksFinalized += value;
+            _overlayTree.BlocksFinalized += value;
+        }
+
+        remove
+        {
+            _baseTree.BlocksFinalized -= value;
+            _overlayTree.BlocksFinalized -= value;
+        }
+    }
     public Block? Head => _overlayTree.Head ?? _baseTree.Head;
     public ulong? BestPersistedState { get => _overlayTree.BestPersistedState; set => _overlayTree.BestPersistedState = value; }
 
