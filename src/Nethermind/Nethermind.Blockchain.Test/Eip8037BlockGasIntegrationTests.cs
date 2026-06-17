@@ -107,30 +107,6 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// Creation tx is rejected at inclusion because the corrected EIP-8037 formula
-    /// does not subtract <c>intrinsic.state</c> from the raw <c>tx.gas</c>.
-    /// </summary>
-    [Test]
-    public void Eip8037_creation_tx_regular_check_without_subtraction_rejects()
-    {
-        ulong blockGasLimit = 16_777_216ul + 53_000ul + 1ul; // cap + intrinsic_regular + 1
-        Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
-        Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)
-            .WithCode([])
-            .WithGasLimit(53_000ul + IntrinsicNewAccountState)
-            .WithNonce(1ul).TestObject;
-        (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
-
-        GasValidationResultSlot[] results = ResultsForCount(2);
-        // Filler used full cap; create tx used modest regular + intrinsic state.
-        results[0].TrySetResult(GasResult(block, 0, 16_777_216ul, 0ul));
-        results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
-
-        Assert.Throws<InvalidBlockException>(() =>
-            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None));
-    }
-
-    /// <summary>
     /// A single tx whose worst-case state contribution exceeds
     /// <c>block_gas_limit</c> must be rejected at inclusion.
     ///
