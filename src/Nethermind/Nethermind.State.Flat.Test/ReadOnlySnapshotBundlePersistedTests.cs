@@ -19,7 +19,8 @@ namespace Nethermind.State.Flat.Test;
 public class ReadOnlySnapshotBundlePersistedTests
 {
     private ResourcePool _pool = null!;
-    private TempDirArenaManager _memArena = null!;
+    private ArenaManager _memArena = null!;
+    private string _memArenaDir = null!;
     private BlobArenaManager _blobs = null!;
     private string _blobsDir = null!;
 
@@ -27,7 +28,8 @@ public class ReadOnlySnapshotBundlePersistedTests
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
-        _memArena = new TempDirArenaManager();
+        _memArenaDir = Path.Combine(Path.GetTempPath(), $"nm-robtest-arena-{Guid.NewGuid():N}");
+        _memArena = TestFixtureHelpers.CreateArenaManager(_memArenaDir);
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-robtest-blobs-{Guid.NewGuid():N}");
         _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);
     }
@@ -38,6 +40,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         _blobs.Dispose();
         _memArena.Dispose();
         try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
+        try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
     }
 
     [Test]

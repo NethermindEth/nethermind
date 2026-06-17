@@ -4,7 +4,9 @@
 using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -13,6 +15,19 @@ namespace Nethermind.State.Flat.Test;
 
 internal static class TestFixtureHelpers
 {
+    /// <summary>
+    /// Creates a real <see cref="ArenaManager"/> over <paramref name="dir"/> configured for tests: the
+    /// page-residency tracker is disabled (<c>PersistedSnapshotArenaPageCacheBytes = 0</c>) so no
+    /// madvise/eviction runs, and the arena file size is floored to one OS page so tiny test sizes
+    /// don't trip the mmap minimum.
+    /// </summary>
+    public static ArenaManager CreateArenaManager(string dir, int arenaSize = 64 * 1024) =>
+        new(dir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = Math.Max(arenaSize, Environment.SystemPageSize),
+        }, LimboLogs.Instance);
+
     /// <summary>
     /// Materialise an entire reservation's bytes through a fresh reader. Test convenience for
     /// asserting on small whole-reservation payloads (throws if the reservation exceeds int range).

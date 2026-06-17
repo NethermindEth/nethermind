@@ -32,7 +32,7 @@ public class LongFinalityIntegrationTests
     private IProcessExitSource _processExitSource = null!;
     private CancellationTokenSource _cts = null!;
     private IFlatDbConfig _config = null!;
-    private TempDirArenaManager _memArena = null!;
+    private ArenaManager _memArena = null!;
     private BlobArenaManager _helperBlobs = null!;
 
     [SetUp]
@@ -45,7 +45,7 @@ public class LongFinalityIntegrationTests
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
-        _memArena = new TempDirArenaManager();
+        _memArena = TestFixtureHelpers.CreateArenaManager(Path.Combine(_testDir, "mem-arena"));
         _helperBlobs = new BlobArenaManager(Path.Combine(_testDir, "helper-blobs"), 4L * 1024 * 1024);
     }
 

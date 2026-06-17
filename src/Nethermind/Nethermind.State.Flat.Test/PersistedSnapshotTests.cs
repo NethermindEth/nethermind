@@ -25,7 +25,8 @@ namespace Nethermind.State.Flat.Test;
 public class PersistedSnapshotTests
 {
     private ResourcePool _resourcePool = null!;
-    private TempDirArenaManager _memArena = null!;
+    private ArenaManager _memArena = null!;
+    private string _memArenaDir = null!;
     private BlobArenaManager _blobs = null!;
     private string _blobsDir = null!;
 
@@ -33,7 +34,8 @@ public class PersistedSnapshotTests
     public void SetUp()
     {
         _resourcePool = new ResourcePool(new FlatDbConfig());
-        _memArena = new TempDirArenaManager();
+        _memArenaDir = Path.Combine(Path.GetTempPath(), $"nm-pstest-arena-{Guid.NewGuid():N}");
+        _memArena = TestFixtureHelpers.CreateArenaManager(_memArenaDir);
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-pstest-blobs-{Guid.NewGuid():N}");
         _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024);
     }
@@ -44,6 +46,7 @@ public class PersistedSnapshotTests
         _blobs.Dispose();
         _memArena.Dispose();
         try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
+        try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
     }
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>
@@ -221,7 +224,8 @@ public class PersistedSnapshotTests
         }
 
         StateId from = new(0, Keccak.EmptyTreeHash), to = new(1, Keccak.Compute("to"));
-        using TempDirArenaManager arena = new(64 * 1024 * 1024);
+        string arenaDir = Path.Combine(Path.GetTempPath(), $"nm-regr-arena-{Guid.NewGuid():N}");
+        using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaDir, 64 * 1024 * 1024);
         string blobsDir = Path.Combine(Path.GetTempPath(), $"nm-regr-{Guid.NewGuid():N}");
         using BlobArenaManager blobs = new(blobsDir, 64L * 1024 * 1024);
         try
@@ -240,7 +244,11 @@ public class PersistedSnapshotTests
                 }
             });
         }
-        finally { try { Directory.Delete(blobsDir, recursive: true); } catch { /* best-effort */ } }
+        finally
+        {
+            try { Directory.Delete(blobsDir, recursive: true); } catch { /* best-effort */ }
+            try { Directory.Delete(arenaDir, recursive: true); } catch { /* best-effort */ }
+        }
     }
 
     // Covers the scanner slot-decode path (PersistedSnapshotScanner.SlotEntry.Value), which
@@ -842,8 +850,8 @@ public class PersistedSnapshotTests
         // cache. For a small bound this exercises the cache-hit-with-cold-pages branch:
         // TryGetAddressBound's hit path now also calls TouchRangePopulate on the whole bound
         // when bound.Length <= AddressBoundWarmupBytes, re-arming the tracker and (on a real
-        // mmap) re-faulting any cold page in one syscall. With TempDirArenaManager the kernel
-        // side is a no-op; the assertion below just proves the lookup path remains correct.
+        // mmap) re-faulting any cold page in one syscall. With the page tracker disabled in tests
+        // the kernel side is a no-op; the assertion below just proves the lookup path remains correct.
         persisted.AdviseDontNeed();
         Assert.That(persisted.TryGetAccount(addr, out Account? acc3), Is.True);
         Assert.That(acc3!.Nonce, Is.EqualTo(expectedAccount.Nonce));

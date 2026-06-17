@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -21,18 +22,23 @@ namespace Nethermind.State.Flat.Test;
 public class PersistedSnapshotCompactorTests
 {
     private ResourcePool _pool = null!;
-    private TempDirArenaManager _memArena = null!;
+    private ArenaManager _memArena = null!;
+    private string _memArenaDir = null!;
 
     [SetUp]
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
-        _memArena = new TempDirArenaManager();
+        _memArenaDir = Path.Combine(Path.GetTempPath(), $"nm-compactortest-arena-{Guid.NewGuid():N}");
+        _memArena = TestFixtureHelpers.CreateArenaManager(_memArenaDir);
     }
 
     [TearDown]
-    public void TearDown() =>
+    public void TearDown()
+    {
         _memArena.Dispose();
+        try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
+    }
 
     /// <summary>
     /// Regression for large-tier compactions where N approaches the typical
