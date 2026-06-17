@@ -231,10 +231,12 @@ jobs:
             dottrace="false"
           fi
 
-          # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
-          # extra-flags pipeline, so it actually reaches Nethermind (same path as additional_extra_flags).
-          # Skipped for non-flat layouts, when disabled (empty), or when the caller already set it.
-          if [[ "${state_layout}" == "flat" && -n "${flat_write_buffer_floor:-}" ]]; then
+          # SWEEP BRANCH: never inject --FlatDb.PersistenceWriteBufferFloor. It is a recent flag that
+          # does not exist on older commit images and crash-loops them ("Unrecognized command or
+          # argument"). The retrospective regression sweep must run identical, floor-free flags across
+          # all commits. (gh drops -f flat_write_buffer_floor="" to the input default, so the floor
+          # must be disabled here in resolve, not via dispatch input.)
+          if false && [[ "${state_layout}" == "flat" && -n "${flat_write_buffer_floor:-}" ]]; then
             if ! printf '%s' "${additional_extra_flags}" | grep -qi "PersistenceWriteBufferFloor"; then
               floor_flag="--FlatDb.PersistenceWriteBufferFloor=${flat_write_buffer_floor}"
               if [[ -n "${additional_extra_flags}" ]]; then
