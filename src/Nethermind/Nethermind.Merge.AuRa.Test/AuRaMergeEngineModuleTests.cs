@@ -198,7 +198,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                     // and some of these are not from DI. you know... chicken and egg, but don't forget about the rooster.
                     api.TxPool = TxPool;
                     api.TransactionComparerProvider = TransactionComparerProvider;
-                    api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
+                    api.AuRaFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
                     return api;
                 });
 
