@@ -16,10 +16,15 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
+    // Cumulative storage snapshot per contract, mirroring go-ethereum's struct logger: storage is captured
+    // only at SLOAD/SSTORE and accumulates per address for the whole transaction (execution-apis#762).
+    private readonly Dictionary<Address, Dictionary<string, string>> _storageByAddress = [];
+
     public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
     {
         _transaction = transaction;
         IsTracingMemory = IsTracingFullMemory;
+        IsTracingStorage = IsTracingOpLevelStorage;
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -38,45 +43,41 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         Trace.Gas = gasSpent.SpentGas;
     }
 
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        base.LoadOperationStorage(address, storageIndex, value);
+
+        RecordStorageSnapshot(address, storageIndex, value);
+    }
+
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
         base.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-        byte[] bigEndian = new byte[32];
-
-        storageIndex.ToBigEndian(bigEndian);
-
-        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
-            .ToArray()
-            .ToHexString(false);
+        RecordStorageSnapshot(address, storageIndex, newValue);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    /// <summary>
+    /// Records a cumulative storage snapshot on the current opcode entry, matching go-ethereum's struct logger:
+    /// emitted only at SLOAD/SSTORE, keyed and valued as 0x-prefixed 32-byte words, accumulating per address.
+    /// </summary>
+    private void RecordStorageSnapshot(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
-        int previousDepth = CurrentTraceEntry?.Depth ?? 0;
+        if (CurrentTraceEntry is null)
+            return;
 
-        base.StartOperation(pc, opcode, gas, env);
-
-        if (CurrentTraceEntry.Depth > previousDepth)
+        if (!_storageByAddress.TryGetValue(address, out Dictionary<string, string>? contractStorage))
         {
-            CurrentTraceEntry.Storage = [];
-
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? [] : previousTraceEntry.Storage);
+            _storageByAddress[address] = contractStorage = [];
         }
-        else if (CurrentTraceEntry.Depth < previousDepth)
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
 
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
-        }
-        else
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on continuation.");
+        byte[] bigEndian = new byte[32];
+        storageIndex.ToBigEndian(bigEndian);
 
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-        }
+        contractStorage[bigEndian.ToHexString(true)] = new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left)
+            .ToArray()
+            .ToHexString(true);
+
+        CurrentTraceEntry.Storage = new Dictionary<string, string>(contractStorage);
     }
 }

@@ -23,7 +23,7 @@ public class GethTxMemoryTraceEntry : GethTxTraceEntry
             Array.Resize(ref memory, memory.Length + missingChunks);
             for (int i = Memory.Length; i < memory.Length; i++)
             {
-                memory[i] = "0000000000000000000000000000000000000000000000000000000000000000";
+                memory[i] = "0x0000000000000000000000000000000000000000000000000000000000000000";
             }
 
             Memory = memory;

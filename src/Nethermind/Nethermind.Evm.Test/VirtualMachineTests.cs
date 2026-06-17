@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
@@ -132,7 +133,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
             Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
             Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-            Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
+            Assert.That(entry.Storage, Is.Null, nameof(entry.Storage));
+            // Storage is recorded only at the SSTORE entry (slot 0x0 set to 0x0), matching Geth's struct logger.
+            Assert.That(trace.Entries[4].Opcode, Is.EqualTo("SSTORE"), "SSTORE opcode");
+            Assert.That(trace.Entries[4].Storage, Is.EquivalentTo(new Dictionary<string, string>
+            {
+                ["0x" + new string('0', 64)] = "0x" + new string('0', 64),
+            }), nameof(trace.Entries));
             Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
             Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
         }
@@ -521,7 +528,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
-            Assert.That(result, Is.EqualTo("0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
+            Assert.That(result, Is.EqualTo("0x0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
         }
     }
 
@@ -581,7 +588,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
-            Assert.That(result, Is.EqualTo("0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
+            Assert.That(result, Is.EqualTo("0x0102030405060708080000000000000000000000000000000000000000000000"), "memory state");
         }
     }
 

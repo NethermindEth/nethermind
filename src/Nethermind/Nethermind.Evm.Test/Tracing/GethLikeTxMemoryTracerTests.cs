@@ -1,12 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -321,16 +329,44 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             1, // STOP [34]
         }; */
 
+        // Geth's struct logger (execution-apis#762) records storage only on SLOAD/SSTORE entries; every other
+        // entry omits the field (null). The snapshot is the cumulative set of slots touched by that frame's
+        // contract so far, and is NOT inherited across call levels.
+        static string Slot(string index) => "0x" + index.PadLeft(64, '0');
+        string ZeroWord = "0x" + HexZero.PadLeft(64, '0');
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trace.Entries[0].Storage.Count, Is.EqualTo(0), "BEGIN 1");
-            Assert.That(trace.Entries[13].Storage.Count, Is.EqualTo(0), "CALL FROM 1");
-            Assert.That(trace.Entries[14].Storage.Count, Is.EqualTo(0), "BEGIN 2");
-            Assert.That(trace.Entries[26].Storage.Count, Is.EqualTo(0), "CREATE FROM 2");
-            Assert.That(trace.Entries[27].Storage.Count, Is.EqualTo(0), "BEGIN 3");
-            Assert.That(trace.Entries[32].Storage.Count, Is.EqualTo(0), "END 3");
-            Assert.That(trace.Entries[33].Storage.Count, Is.EqualTo(0), "END 2");
-            Assert.That(trace.Entries[34].Storage.Count, Is.EqualTo(0), "END 1");
+            // Boundary and non-storage opcodes carry no storage.
+            Assert.That(trace.Entries[0].Storage, Is.Null, "BEGIN 1");
+            Assert.That(trace.Entries[13].Storage, Is.Null, "CALL FROM 1");
+            Assert.That(trace.Entries[14].Storage, Is.Null, "BEGIN 2");
+            Assert.That(trace.Entries[26].Storage, Is.Null, "CREATE FROM 2");
+            Assert.That(trace.Entries[27].Storage, Is.Null, "BEGIN 3");
+            Assert.That(trace.Entries[32].Storage, Is.Null, "END 3");
+            Assert.That(trace.Entries[33].Storage, Is.Null, "END 2");
+            Assert.That(trace.Entries[34].Storage, Is.Null, "END 1");
+
+            // Depth 1: first SSTORE shows only slot 0x2; second SSTORE shows the cumulative {0x2, 0x3}.
+            Assert.That(trace.Entries[2].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x2 opcode");
+            Assert.That(trace.Entries[2].Storage, Is.EquivalentTo(new Dictionary<string, string>
+            {
+                [Slot("2")] = ZeroWord,
+            }), "SSTORE 0x2 snapshot");
+
+            Assert.That(trace.Entries[5].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x3 opcode");
+            Assert.That(trace.Entries[5].Storage, Is.EquivalentTo(new Dictionary<string, string>
+            {
+                [Slot("2")] = ZeroWord,
+                [Slot("3")] = ZeroWord,
+            }), "SSTORE 0x3 cumulative snapshot");
+
+            // Depth 2 is a fresh frame: it shows only its own slot 0x1 and does not inherit the parent's 0x2/0x3.
+            Assert.That(trace.Entries[16].Opcode, Is.EqualTo("SSTORE"), "SSTORE 0x1 opcode");
+            Assert.That(trace.Entries[16].Storage, Is.EquivalentTo(new Dictionary<string, string>
+            {
+                [Slot("1")] = ZeroWord,
+            }), "SSTORE 0x1 snapshot (no parent slots inherited)");
         }
     }
 
@@ -409,13 +445,13 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         Assert.That(trace.Entries[2].Memory.Count, Is.EqualTo(0), "entry[2] length");
 
         Assert.That(trace.Entries[3].Memory.Count, Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[3][0]");
+        Assert.That(trace.Entries[3].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[3][0]");
 
         Assert.That(trace.Entries[4].Memory.Count, Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[4][0]");
+        Assert.That(trace.Entries[4].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[4][0]");
 
         Assert.That(trace.Entries[5].Memory.Count, Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].Memory[0], Is.EqualTo(SampleHexData1.PadLeft(64, '0')), "entry[5][0]");
+        Assert.That(trace.Entries[5].Memory[0], Is.EqualTo($"0x{SampleHexData1.PadLeft(64, '0')}"), "entry[5][0]");
     }
 
     [Test]
@@ -429,6 +465,102 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: "0x866833515b6d086c607f", expectedStackCount: 8);
         AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: "0x0", expectedStackCount: 8);
         AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: "0x1", expectedStackCount: 8);
+    }
+
+    [Test]
+    public void Storage_snapshot_accumulates_per_address_across_repeated_calls_to_same_contract()
+    {
+        // Contract at AddressC writes slot 0x1 then slot 0x2 on every invocation. The root contract calls it
+        // twice. Mirroring go-ethereum's struct logger (execution-apis#762), storage accumulates per contract
+        // address for the whole tx and is never cleared on call return, so on the SECOND invocation the very
+        // first SSTORE (slot 0x1) must already snapshot the cumulative {0x1, 0x2} from the first invocation.
+        const string val1 = "11";
+        const string val2 = "22";
+
+        byte[] calleeCode = Prepare.EvmCode
+            .PersistData("0x1", val1)
+            .PersistData("0x2", val2)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 70000)
+            .Call(TestItem.AddressC, 70000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        static string Word(string hex) => "0x" + hex.PadLeft(64, '0');
+        Dictionary<string, string> slot1Only = new() { [Word("1")] = Word(val1) };
+        Dictionary<string, string> cumulativeBoth = new() { [Word("1")] = Word(val1), [Word("2")] = Word(val2) };
+
+        // Across the two invocations the four SSTORE snapshots must be, in order:
+        //   inv1 SSTORE 0x1 -> {0x1}             (only the first slot written so far)
+        //   inv1 SSTORE 0x2 -> {0x1, 0x2}
+        //   inv2 SSTORE 0x1 -> {0x1, 0x2}        (cumulative; NOT cleared on the first call's return)
+        //   inv2 SSTORE 0x2 -> {0x1, 0x2}
+        Dictionary<string, string>[] expectedSstoreSnapshots = [slot1Only, cumulativeBoth, cumulativeBoth, cumulativeBoth];
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        List<Dictionary<string, string>> memorySnapshots = trace.Entries
+            .Where(e => e.Opcode == "SSTORE")
+            .Select(e => e.Storage)
+            .ToList();
+
+        Assert.That(memorySnapshots, Has.Count.EqualTo(expectedSstoreSnapshots.Length), "expected four SSTORE entries (two per invocation)");
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < expectedSstoreSnapshots.Length; i++)
+                Assert.That(memorySnapshots[i], Is.EquivalentTo(expectedSstoreSnapshots[i]), $"in-memory SSTORE snapshot[{i}]");
+        }
+
+        // The streaming tracer must produce identical storage snapshots for the same execution.
+        JsonElement[] streamedEntries = ExecuteStreamingTracerEntries(code);
+        List<Dictionary<string, string>> streamedSnapshots = streamedEntries
+            .Where(e => e.GetProperty("op").GetString() == "SSTORE")
+            .Select(ToStorageDictionary)
+            .ToList();
+
+        Assert.That(streamedSnapshots, Has.Count.EqualTo(expectedSstoreSnapshots.Length), "streaming: expected four SSTORE entries");
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < expectedSstoreSnapshots.Length; i++)
+                Assert.That(streamedSnapshots[i], Is.EquivalentTo(expectedSstoreSnapshots[i]), $"streaming SSTORE snapshot[{i}]");
+        }
+    }
+
+    private static Dictionary<string, string> ToStorageDictionary(JsonElement entry)
+    {
+        Dictionary<string, string> storage = [];
+        foreach (JsonProperty property in entry.GetProperty("storage").EnumerateObject())
+            storage[property.Name] = property.Value.GetString()!;
+        return storage;
+    }
+
+    /// <summary>
+    /// Drives <see cref="GethLikeTxDirectStreamingTracer"/> over the supplied code and returns the streamed
+    /// per-opcode JSON entries, so the streaming path can be pinned to the in-memory tracer's behaviour.
+    /// </summary>
+    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            GethLikeTxDirectStreamingTracer tracer = new(transaction, GethTraceOptions.Default, writer, pipeWriter: null, CancellationToken.None);
+            writer.WriteStartArray();
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+            tracer.BuildResult();
+            writer.WriteEndArray();
+            writer.Flush();
+        }
+
+        using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.EnumerateArray().Select(e => e.Clone()).ToArray();
     }
 
     private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, string expectedStackTop, int expectedStackCount)

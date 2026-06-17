@@ -18,18 +18,28 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
         string[] memory = new string[(int)Size / EvmPooledMemory.WordSize + (Size % EvmPooledMemory.WordSize == 0 ? 0 : 1)];
         int traceLocation = 0;
 
+        // Reused buffer for zero-padding a trailing partial word to a full 32-byte chunk.
+        Span<byte> paddedWord = stackalloc byte[EvmPooledMemory.WordSize];
+
         int i = 0;
         while ((ulong)traceLocation < Size)
         {
             int sizeAvailable = Math.Min(EvmPooledMemory.WordSize, _memory.Length - traceLocation);
-            if (sizeAvailable > 0)
+            if (sizeAvailable == EvmPooledMemory.WordSize)
             {
                 ReadOnlySpan<byte> bytes = _memory.Slice(traceLocation, sizeAvailable).Span;
-                memory[i] = bytes.ToHexString();
+                memory[i] = bytes.ToHexString(true);
+            }
+            else if (sizeAvailable > 0)
+            {
+                // Zero-pad a partial word to a full 32-byte chunk, matching go-ethereum's struct logger.
+                paddedWord.Clear();
+                _memory.Slice(traceLocation, sizeAvailable).Span.CopyTo(paddedWord);
+                memory[i] = paddedWord.ToHexString(true);
             }
             else // Memory might not be initialized
             {
-                memory[i] = Bytes.Zero32.ToHexString();
+                memory[i] = Bytes.Zero32.ToHexString(true);
             }
 
             traceLocation += EvmPooledMemory.WordSize;

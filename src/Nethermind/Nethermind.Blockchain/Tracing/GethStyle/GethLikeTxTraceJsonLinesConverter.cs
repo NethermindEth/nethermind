@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -55,10 +56,14 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
 
         if ((value.Memory?.Length ?? 0) != 0)
         {
-            string memory = string.Concat(value.Memory);
+            // Each word from TraceMemory.ToHexWordList() is individually 0x-prefixed; strip the per-word
+            // prefix and emit a single contiguous 0x-prefixed blob to preserve the file format's shape.
+            StringBuilder memory = new("0x");
+            foreach (string word in value.Memory!)
+                memory.Append(word.AsSpan(2));
 
             writer.WritePropertyName("memory");
-            writer.WriteStringValue($"0x{memory}");
+            writer.WriteStringValue(memory.ToString());
         }
 
         if (value.Stack is not null)

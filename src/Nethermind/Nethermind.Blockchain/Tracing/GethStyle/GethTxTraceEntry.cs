@@ -28,7 +28,6 @@ public class GethTxTraceEntry
 
     public int Depth { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? Error { get; set; }
 
     public string[]? Stack { get; set; }

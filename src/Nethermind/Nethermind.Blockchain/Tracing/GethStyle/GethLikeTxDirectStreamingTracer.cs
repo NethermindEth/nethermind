@@ -9,7 +9,6 @@ using System.Text.Json;
 using System.Threading;
 using Collections.Pooled;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -29,9 +28,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
     private const int DefaultFlushIntervalEntries = 8192;
     private const int EvmWordSize = 32;
-    private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode(new string('0', EvmWordSize * 2));
+    private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode("0x" + new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
-    private const int InitialDepthStackCapacity = 8;
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
@@ -47,6 +45,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private int _pendingDepth;
     private string? _pendingError;
     private bool _gasCostAlreadySet;
+    private bool _pendingStorageTouched;
 
     private byte[]? _stackBuffer;
     private int _stackByteCount;
@@ -54,8 +53,11 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
 
-    private ArrayPoolList<PooledDictionary<UInt256, UInt256>>? _storageByDepth;
-    private int _activeStorageDepth;
+    // Cumulative storage snapshot per contract, mirroring go-ethereum's struct logger: storage is captured
+    // only at SLOAD/SSTORE and accumulates per address for the whole transaction, never cleared on call
+    // return (execution-apis#762).
+    private readonly Dictionary<Address, PooledDictionary<UInt256, UInt256>> _storageByAddress = [];
+    private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
     private int _entriesSinceLastFlush;
     private bool _disposed;
@@ -78,6 +80,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _cancellationToken = cancellationToken;
         _flushIntervalEntries = flushIntervalEntries;
         IsTracingMemory = IsTracingFullMemory;
+        IsTracingStorage = IsTracingOpLevelStorage;
     }
 
     internal void ResetForNextTx(Transaction? transaction)
@@ -92,13 +95,13 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingDepth = 0;
         _pendingError = null;
         _gasCostAlreadySet = false;
+        _pendingStorageTouched = false;
         _stackByteCount = 0;
         _memoryByteCount = 0;
-        if (_storageByDepth is not null)
-        {
-            for (int i = 0; i < _activeStorageDepth; i++) _storageByDepth[i].Clear();
-        }
-        _activeStorageDepth = 0;
+        // Storage must not persist across txs — dispose each per-address map and clear.
+        foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values) map.Dispose();
+        _storageByAddress.Clear();
+        _pendingStorageMap = null;
         _entriesSinceLastFlush = 0;
         ResetTrace();
     }
@@ -113,17 +116,16 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     {
         FinalizePendingOpcode();
 
-        int newDepth = env.GetGethTraceDepth();
-        AdjustStorageStackForDepth(newDepth);
-
         _hasPendingOpcode = true;
         _pendingPc = pc;
         _pendingOpcode = opcode;
         _pendingGas = gas;
         _pendingGasCost = 0;
-        _pendingDepth = newDepth;
+        _pendingDepth = env.GetGethTraceDepth();
         _pendingError = null;
         _gasCostAlreadySet = false;
+        _pendingStorageTouched = false;
+        _pendingStorageMap = null;
         _stackByteCount = 0;
         _memoryByteCount = 0;
     }
@@ -178,11 +180,25 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _memoryByteCount = needed;
     }
 
-    public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) =>
+        RecordStorage(address, storageIndex, newValue);
+
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) =>
+        RecordStorage(address, storageIndex, value);
+
+    // Mirrors go-ethereum's struct logger: storage is captured at both SLOAD and SSTORE, accumulating per
+    // contract address for the whole tx, and the snapshot is emitted only on the opcode that touched it
+    // (execution-apis#762).
+    private void RecordStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        if (!IsTracingOpLevelStorage || _activeStorageDepth == 0) return;
-        PooledDictionary<UInt256, UInt256> top = _storageByDepth![_activeStorageDepth - 1];
-        top[storageIndex] = new UInt256(newValue, isBigEndian: true);
+        if (!IsTracingOpLevelStorage) return;
+        if (!_storageByAddress.TryGetValue(address, out PooledDictionary<UInt256, UInt256>? contractStorage))
+        {
+            _storageByAddress[address] = contractStorage = new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity);
+        }
+        contractStorage[storageIndex] = new UInt256(value, isBigEndian: true);
+        _pendingStorageMap = contractStorage;
+        _pendingStorageTouched = true;
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -204,26 +220,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _disposed = true;
     }
 
-    private void AdjustStorageStackForDepth(int newDepth)
-    {
-        if (!IsTracingOpLevelStorage) return;
-
-        if (newDepth < _activeStorageDepth)
-        {
-            for (int i = newDepth; i < _activeStorageDepth; i++) _storageByDepth![i].Clear();
-        }
-        else if (newDepth > _activeStorageDepth)
-        {
-            _storageByDepth ??= new ArrayPoolList<PooledDictionary<UInt256, UInt256>>(InitialDepthStackCapacity);
-            while (_storageByDepth.Count < newDepth)
-            {
-                _storageByDepth.Add(new PooledDictionary<UInt256, UInt256>(InitialStorageMapCapacity));
-            }
-        }
-
-        _activeStorageDepth = newDepth;
-    }
-
     private void EnsureBuffer(ref byte[]? buffer, int requiredLength)
     {
         if (buffer is not null && buffer.Length >= requiredLength) return;
@@ -235,12 +231,9 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     {
         if (_stackBuffer is not null) { ArrayPool<byte>.Shared.Return(_stackBuffer); _stackBuffer = null; }
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
-        if (_storageByDepth is not null)
-        {
-            for (int i = 0; i < _storageByDepth.Count; i++) _storageByDepth[i].Dispose();
-            _storageByDepth.Dispose();
-            _storageByDepth = null;
-        }
+        foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values) map.Dispose();
+        _storageByAddress.Clear();
+        _pendingStorageMap = null;
     }
 
     private void FinalizePendingOpcode()
@@ -260,12 +253,11 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _writer.WriteNumber("gasCost"u8, _pendingGasCost);
         _writer.WriteNumber("depth"u8, _pendingDepth);
 
-        if (_pendingError is null) _writer.WriteNull("error"u8);
-        else _writer.WriteString("error"u8, _pendingError);
+        if (_pendingError is not null) _writer.WriteString("error"u8, _pendingError);
 
         if (IsTracingStack) WriteStackArrayIfPresent();
         if (IsTracingFullMemory) WriteMemoryArrayIfPresent();
-        if (IsTracingOpLevelStorage) WriteStorageObjectIfPresent();
+        if (IsTracingOpLevelStorage && _pendingStorageTouched) WriteStorageObjectIfPresent();
 
         _writer.WriteEndObject();
     }
@@ -293,7 +285,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
             }
             else
             {
-                HexWriter.WriteFixed32HexRawValue(_writer, slot, addHexPrefix: false);
+                HexWriter.WriteFixed32HexRawValue(_writer, slot, addHexPrefix: true);
             }
         }
         _writer.WriteEndArray();
@@ -301,14 +293,15 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private void WriteStorageObjectIfPresent()
     {
-        if (_activeStorageDepth == 0) return;
-        PooledDictionary<UInt256, UInt256> top = _storageByDepth![_activeStorageDepth - 1];
-
+        // No snapshot clone is needed (unlike go-ethereum's maps.Clone): the streaming writer emits the
+        // pending opcode's JSON at FinalizePendingOpcode (which runs at the NEXT StartOperation, before that
+        // next opcode executes and before its RecordStorage), so _pendingStorageMap still reflects exactly
+        // the pending opcode's cumulative state at write time.
         _writer.WriteStartObject("storage"u8);
-        foreach (KeyValuePair<UInt256, UInt256> kv in top)
+        foreach (KeyValuePair<UInt256, UInt256> kv in _pendingStorageMap!)
         {
-            HexWriter.WriteUInt256HexPropertyName(_writer, kv.Key, zeroPadded: true, addHexPrefix: false);
-            HexWriter.WriteUInt256HexRawValue(_writer, kv.Value, zeroPadded: true, addHexPrefix: false);
+            HexWriter.WriteUInt256HexPropertyName(_writer, kv.Key, zeroPadded: true, addHexPrefix: true);
+            HexWriter.WriteUInt256HexRawValue(_writer, kv.Value, zeroPadded: true, addHexPrefix: true);
         }
         _writer.WriteEndObject();
     }
