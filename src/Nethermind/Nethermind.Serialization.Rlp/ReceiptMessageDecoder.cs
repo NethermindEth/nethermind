@@ -150,7 +150,7 @@ namespace Nethermind.Serialization.Rlp
 
             int length = GetLength(item, rlpBehaviors);
             byte[] bytes = new byte[length];
-            RlpWriter writer = bytes.AsRlpWriter();
+            RlpWriter writer = new(bytes);
             Encode(ref writer, item, rlpBehaviors);
             return bytes;
         }

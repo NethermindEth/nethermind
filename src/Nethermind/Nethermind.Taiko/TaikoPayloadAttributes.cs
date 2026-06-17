@@ -90,7 +90,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         writer.StartSequence(contentLength);
         foreach (Withdrawal withdrawal in withdrawals)
         {

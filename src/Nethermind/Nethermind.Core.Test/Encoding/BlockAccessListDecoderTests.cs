@@ -658,7 +658,7 @@ public class BlockAccessListDecoderTests
             + Rlp.OfEmptyList.Length;
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         writer.StartSequence(contentLength);
         writer.Encode(address);
         writer.StartSequence(Rlp.OfEmptyList.Length);
@@ -682,7 +682,7 @@ public class BlockAccessListDecoderTests
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         writer.StartSequence(contentLength);
         writer.Encode(address);
         for (int i = 0; i < fieldCount; i++)
@@ -706,7 +706,7 @@ public class BlockAccessListDecoderTests
         int changesContentLength = count * Rlp.OfEmptyList.Length;
         int contentLength = Rlp.LengthOf(UInt256.Zero) + Rlp.LengthOfSequence(changesContentLength);
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         writer.StartSequence(contentLength);
         writer.Encode(UInt256.Zero);
         writer.StartSequence(changesContentLength);

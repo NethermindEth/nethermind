@@ -80,7 +80,7 @@ public class LogEntryDecoderTests
     public void Interface_decoders_return_null_for_empty_log_entry(bool compact)
     {
         RlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
-        RlpReader ctx = Rlp.OfEmptyList.Bytes.AsRlpContext();
+        RlpReader ctx = new(Rlp.OfEmptyList.Bytes);
 
         Assert.That(decoder.Decode(ref ctx), Is.Null);
     }

@@ -30,7 +30,7 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
 
     public IEnumerable<Block> GetAll() => blockDb.GetAllValues(true).Select(bytes =>
     {
-        RlpReader ctx = ((byte[]?)bytes ?? []).AsRlpContext();
+        RlpReader ctx = new(((byte[]?)bytes ?? []));
         return _blockDecoder.Decode(ref ctx);
     });
 

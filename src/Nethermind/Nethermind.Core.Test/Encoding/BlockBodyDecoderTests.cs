@@ -71,7 +71,7 @@ public class BlockBodyDecoderTests
                         + (withdrawalCount.HasValue ? Rlp.LengthOfSequence(withdrawalCount.Value) : 0);
 
         byte[] bytes = new byte[totalLength];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         WriteEmptyItems(ref writer, txCount);
         WriteEmptyItems(ref writer, uncleCount);
         if (withdrawalCount.HasValue)

@@ -90,7 +90,7 @@ public class BlockInfoDecoderTests
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         writer.StartSequence(contentLength);
         writer.Encode(item.BlockHash);
         writer.Encode(item.WasProcessed);

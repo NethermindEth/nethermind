@@ -86,7 +86,7 @@ internal sealed class StateCompositionSnapshotStore(
         // to a fresh scan — callers don't need to distinguish "missing" from "corrupt".
         try
         {
-            RlpReader ctx = data.AsRlpContext();
+            RlpReader ctx = new(data);
             return Decoder.Decode(ref ctx);
         }
         catch (Exception ex) when (ex is RlpException or InvalidDataException or EndOfStreamException or IOException)

@@ -30,7 +30,7 @@ public class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey
     public FindNodeMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = Data.AsRlpContext();
+        RlpReader ctx = new(Data.AsSpan());
         ctx.ReadSequenceLength();
         byte[] searchedNodeId = ctx.DecodeByteArray(NodeIdRlpLimit);
         long expirationTime = ctx.DecodeLong();

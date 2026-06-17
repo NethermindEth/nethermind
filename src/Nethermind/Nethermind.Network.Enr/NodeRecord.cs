@@ -191,7 +191,7 @@ public class NodeRecord
         int contentLength = GetContentLengthWithSignature();
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] bytes = new byte[totalLength];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         Encode(ref writer);
         return bytes.AsSpan().ToHexString();
     }

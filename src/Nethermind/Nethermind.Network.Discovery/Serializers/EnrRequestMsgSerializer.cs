@@ -34,7 +34,7 @@ public class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateK
     public EnrRequestMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey farPublicKey, Memory<byte> mdc, IByteBuffer data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = data.AsRlpContext();
+        RlpReader ctx = new(data.AsSpan());
 
         ctx.ReadSequenceLength();
         long expirationTime = ctx.DecodeLong();

@@ -114,7 +114,7 @@ public class Importer(
                 ValueHash256 fullPath = path.Append(node.Key).Path;
                 if (address is null)
                 {
-                    RlpReader accountContext = node.Value.AsSpan().AsRlpContext();
+                    RlpReader accountContext = new(node.Value.AsSpan());
                     Account acc = _accountDecoder.Decode(ref accountContext)!;
                     writeBatch.SetAccountRaw(fullPath, acc);
                 }

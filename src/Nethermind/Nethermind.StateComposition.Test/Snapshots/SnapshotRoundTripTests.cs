@@ -76,7 +76,7 @@ public class SnapshotRoundTripTests
         RlpWriter writer = new(buffer);
         decoder.Encode(ref writer, original);
 
-        RlpReader ctx = buffer.AsRlpContext();
+        RlpReader ctx = new(buffer);
         return decoder.Decode(ref ctx);
     }
 

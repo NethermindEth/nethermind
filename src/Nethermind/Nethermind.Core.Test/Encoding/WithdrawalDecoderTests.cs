@@ -110,7 +110,7 @@ public class WithdrawalDecoderTests
 
         byte[] rlp = CombineRlpList(tamperedRlp1, tamperedRlp2);
 
-        void Decode() => rlp.AsRlpContext().DecodeArray(decoder!);
+        void Decode() => new RlpReader(rlp).DecodeArray(decoder!);
         Assert.That(Decode, Throws.InstanceOf<RlpException>().And.Message.Contain("checkpoint failed"));
     }
 

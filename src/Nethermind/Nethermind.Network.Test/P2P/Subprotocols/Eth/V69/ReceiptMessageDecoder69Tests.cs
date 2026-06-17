@@ -29,7 +29,7 @@ public class ReceiptMessageDecoder69Tests
         RlpWriter writer = new(encoded);
         decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
 
-        RlpReader context = encoded.AsRlpContext();
+        RlpReader context = new(encoded);
         TxReceipt? decoded = decoder.Decode(ref context, RlpBehaviors.Eip658Receipts);
 
         Assert.That(decoded, Is.Not.Null);

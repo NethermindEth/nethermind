@@ -79,7 +79,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
 
             CompactReceiptStorageDecoder decoder = new();
-            RlpReader valueContext = rlp.Bytes.AsRlpContext();
+            RlpReader valueContext = new(rlp.Bytes);
             TxReceipt deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpected());
@@ -103,7 +103,7 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            RlpReader ctx = rlp.Bytes.AsRlpContext();
+            RlpReader ctx = new(rlp.Bytes);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             AssertStorageReceipt(txReceipt, deserialized);
@@ -189,7 +189,7 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            RlpReader ctx = rlp.Bytes.AsRlpContext();
+            RlpReader ctx = new(rlp.Bytes);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             txReceipt.TxType = TxType.Legacy; // Compact decoder does not store tx type
@@ -228,7 +228,7 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            RlpReader ctx = rlp.Bytes.AsRlpContext();
+            RlpReader ctx = new(rlp.Bytes);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             txReceipt.TxType = TxType.Legacy; // It does not store tx type

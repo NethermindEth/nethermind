@@ -101,7 +101,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static T Decode<T>(Span<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            RlpReader valueContext = bytes.AsRlpContext();
+            RlpReader valueContext = new(bytes);
             return Decode<T>(ref valueContext, rlpBehaviors);
         }
 
@@ -274,7 +274,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             CappedArray<byte> buffer = bufferPool.SafeRent(LengthOf(item));
-            RlpWriter writer = buffer.AsRlpWriter();
+            RlpWriter writer = new(buffer);
             writer.Encode(item);
             return buffer;
         }
@@ -917,7 +917,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int size = LengthOf(i);
                 byte[] buffer = new byte[size];
-                RlpWriter writer = buffer.AsRlpWriter();
+                RlpWriter writer = new(buffer);
                 writer.Encode(i);
                 cache[i] = new CappedArray<byte>(buffer);
             }

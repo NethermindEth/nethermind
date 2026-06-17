@@ -102,7 +102,7 @@ public class KeccaksIteratorTests
     private static byte[] Encode(Hash256[] input, int totalLength)
     {
         byte[] rlp = new byte[Rlp.LengthOfSequence(totalLength)];
-        RlpWriter writer = rlp.AsRlpWriter();
+        RlpWriter writer = new(rlp);
         writer.StartSequence(totalLength);
         foreach (Hash256 keccak in input)
         {

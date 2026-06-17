@@ -38,7 +38,7 @@ public class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     {
         (PublicKey farPublicKey, _, IByteBuffer data) = PrepareForDeserialization(msgBytes);
 
-        RlpReader ctx = data.AsRlpContext();
+        RlpReader ctx = new(data.AsSpan());
 
         ctx.ReadSequenceLength();
         ctx.ReadSequenceLength();

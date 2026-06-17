@@ -177,10 +177,8 @@ namespace Nethermind.Core.Test
         {
             TestRlpWriteBackend writer = new();
             writer.Encode(Bloom.Empty);
-            writer.Dispose();
 
             Assert.That(writer.Bytes.ToArray(), Is.EqualTo(ExpectedBloom(Bloom.Empty)));
-            Assert.That(writer.Disposed, Is.True);
         }
 
         [Test]
@@ -203,7 +201,7 @@ namespace Nethermind.Core.Test
                 Assert.Ignore("Size over limit");
 
             byte[] rlp = position == 0 ? test.rlp : [.. Enumerable.Range(0, position).Select(static i => (byte)i), .. test.rlp];
-            RlpReader context = rlp.AsRlpContext();
+            RlpReader context = new(rlp);
             context.Position = position;
 
             Assert.That(
@@ -225,7 +223,7 @@ namespace Nethermind.Core.Test
             bytes[0] = (byte)(0x80 + size + 1);
 
             Assert.That(
-                () => decoder.Invoke(bytes.AsRlpContext()),
+                () => decoder.Invoke(new RlpReader(bytes)),
                 Throws.InstanceOf<RlpException>()
             );
         }
@@ -241,7 +239,7 @@ namespace Nethermind.Core.Test
                 new byte[] { 0x83, 0x00, 0x01, 0x00 }, new byte[] { 0x84, 0x00, 0x00, 0x00, 0x01 }
             )] byte[] bytes) =>
             Assert.That(
-                () => decoder.Invoke(bytes.AsRlpContext()),
+                () => decoder.Invoke(new RlpReader(bytes)),
                 Throws.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>()
             );
 
@@ -435,7 +433,7 @@ namespace Nethermind.Core.Test
         [TestCase(new byte[] { 128 }, false)]
         [TestCase(new byte[] { 1 }, true)]
         public void Decode_bool(byte[] rlp, bool expectedBool) =>
-            Assert.That(rlp.AsRlpContext().DecodeBool(), Is.EqualTo(expectedBool));
+            Assert.That(new RlpReader(rlp).DecodeBool(), Is.EqualTo(expectedBool));
 
         [TestCase(new byte[] { 0 })]
         [TestCase(new byte[] { 2 })]
@@ -460,7 +458,7 @@ namespace Nethermind.Core.Test
             1,0,0,0,0,0,0,0
         })]
         public void Decode_bool_invalid(byte[] rlp) =>
-            Assert.Throws<RlpException>(() => rlp.AsRlpContext().DecodeBool());
+            Assert.Throws<RlpException>(() => new RlpReader(rlp).DecodeBool());
 
         [Test]
         public void Long_and_big_integer_encoded_the_same(
@@ -522,7 +520,7 @@ namespace Nethermind.Core.Test
 
             int requiredLength = Rlp.LengthOf(randomBytes) * 3;
             byte[] encoded = new byte[requiredLength];
-            RlpWriter writer = encoded.AsRlpWriter();
+            RlpWriter writer = new(encoded);
             writer.Encode(randomBytes);
             writer.Encode(randomBytes);
             writer.Encode(randomBytes);
@@ -567,9 +565,16 @@ namespace Nethermind.Core.Test
         [Test]
         public void Encode_stream_with_null_items_produces_empty_list()
         {
-            RlpWriter writer = new(Rlp.OfEmptyList.Length);
-            TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
-            Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
+            PooledRlpWriter writer = new(Rlp.OfEmptyList.Length);
+            try
+            {
+                TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
+                Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
+            }
+            finally
+            {
+                writer.Dispose();
+            }
         }
 
         [Test]
@@ -654,7 +659,7 @@ namespace Nethermind.Core.Test
 
             int requiredLength = Rlp.LengthOf(randomBytes);
             byte[] rlp = new byte[requiredLength];
-            RlpWriter writer = rlp.AsRlpWriter();
+            RlpWriter writer = new(rlp);
             writer.Encode(randomBytes);
             return rlp;
         }
@@ -938,15 +943,9 @@ namespace Nethermind.Core.Test
 
         private struct TestRlpWriteBackend : IRlpWriteBackend
         {
-            public TestRlpWriteBackend()
-            {
-                Bytes = [];
-                Disposed = false;
-            }
+            public TestRlpWriteBackend() => Bytes = [];
 
             public List<byte> Bytes { get; }
-
-            public bool Disposed { get; private set; }
 
             public void WriteByte(byte byteToWrite) => Bytes.Add(byteToWrite);
 
@@ -966,7 +965,6 @@ namespace Nethermind.Core.Test
                 }
             }
 
-            public void Dispose() => Disposed = true;
         }
 
         private static void AssertItemCount(byte[] rlp, int expected)

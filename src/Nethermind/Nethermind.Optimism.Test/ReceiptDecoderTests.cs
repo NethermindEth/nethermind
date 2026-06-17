@@ -19,9 +19,17 @@ public class ReceiptDecoderTests
             RlpReader ctx = new(rlp);
             OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
 
-            RlpWriter encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
-            decoder.Encode(ref encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
-            byte[] encodedBytes = encodedRlp.WrittenSpan.ToArray();
+            PooledRlpWriter encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
+            byte[] encodedBytes;
+            try
+            {
+                decoder.Encode(ref encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+                encodedBytes = encodedRlp.WrittenSpan.ToArray();
+            }
+            finally
+            {
+                encodedRlp.Dispose();
+            }
 
             Assert.Multiple(() =>
             {

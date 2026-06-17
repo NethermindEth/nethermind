@@ -228,7 +228,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
         try
         {
-            RlpWriter rlpWriter = buffer.AsRlpWriter();
+            RlpWriter rlpWriter = new(buffer);
             TxDecoder.Instance.Encode(ref rlpWriter, transaction, RlpBehaviors.SkipTypedWrapping);
             HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > HexChunkThreshold);
         }

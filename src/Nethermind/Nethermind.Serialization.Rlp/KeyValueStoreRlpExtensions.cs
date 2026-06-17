@@ -106,7 +106,7 @@ public static class KeyValueStoreRlpExtensions
                 return null;
             }
 
-            RlpReader rlpValueContext = data.AsRlpContext();
+            RlpReader rlpValueContext = new(data);
             return valueDecoder.Decode(ref rlpValueContext, rlpBehaviors | RlpBehaviors.AllowExtraBytes);
         }
         finally
@@ -130,7 +130,7 @@ public static class KeyValueStoreRlpExtensions
                 return null;
             }
 
-            RlpReader rlpValueContext = data.AsRlpContext();
+            RlpReader rlpValueContext = new(data);
             return valueDecoder.Decode(ref rlpValueContext, rlpBehaviors | RlpBehaviors.AllowExtraBytes);
         }
         finally

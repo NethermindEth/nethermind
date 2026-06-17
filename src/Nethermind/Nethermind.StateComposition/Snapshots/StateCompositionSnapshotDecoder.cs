@@ -12,166 +12,134 @@ using Nethermind.StateComposition.Diff;
 
 namespace Nethermind.StateComposition.Snapshots;
 
-/// <summary>
-/// RLP encoder/decoder for <see cref="StateCompositionSnapshot"/>.
-/// Field order:
-///   0. schema version byte (current = 1)
-///   1. 13 longs (CumulativeTrieStats)
-///   2. blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber
-///   3. depthPresent (long; 1 = depth stats follow, 0 = absent)
-///   4. [optional] 146 longs of CumulativeDepthStats:
-///        9 rows × 16 longs (Account{Full,Short,Value,Bytes}, Storage{Full,Short,Value,Bytes}, BranchOccupancy)
-///        + TotalBranchNodes + TotalBranchChildren
-///   5. codeBytesTotal (long)
-///   6. 16 longs of SlotCountHistogram
-///   7. slotCountByAddress: int count, then count × (keccak hash, long slot count)
-///   8. codeHashRefcounts: int count, then count × (keccak hash, int refcount)
-///   9. codeHashSizes: int count, then count × (keccak hash, int size)
-/// Legacy snapshots (wrong version or pre-version schema) fail to decode with
-/// <see cref="RlpException"/> and are discarded by the plugin, which then
-/// triggers a fresh scan to rebuild the baseline with the new schema.
-/// </summary>
 public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositionSnapshot>
 {
     public static StateCompositionSnapshotDecoder Instance { get; } = new();
 
-    /// <summary>
-    /// Wire-format version tag written as the first field inside the snapshot
-    /// sequence. Incompatible field layout changes must bump this. The decoder
-    /// throws <see cref="RlpException"/> on mismatch so callers treat the payload
-    /// as missing and trigger a fresh scan.
-    /// </summary>
     private const byte SchemaVersion = 1;
 
-    private delegate TValue DecodeValueDelegate<TValue>(ref RlpReader ctx);
-    private delegate void EncodeValueDelegate<TWriter, TValue>(ref TWriter writer, TValue value)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct;
-
-    /// <summary>
-    /// Encodes a snapshot into an RLP value writer.
-    /// </summary>
     public override void Encode<TWriter>(ref TWriter writer, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetContentLength(item));
-        EncodeOrLength(ref writer, write: true, item);
+        EncodeContent(ref writer, item);
     }
 
-    /// <summary>
-    /// Single-pass encoder/length-calculator. When <paramref name="write"/> is false, returns
-    /// the content length only (used by <see cref="GetLength"/> and the sequence prefix).
-    /// When true, writes each field into the writer and still returns the content length.
-    /// Having a single method for both roles eliminates two parallel field lists that used to drift
-    /// when the schema changed.
-    /// </summary>
-    private static int EncodeOrLength<TWriter>(ref TWriter writer, bool write, StateCompositionSnapshot item)
+    private static void EncodeContent<TWriter>(ref TWriter writer, StateCompositionSnapshot item)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int length = 0;
+        writer.Encode(SchemaVersion);
+        EncodeStats(ref writer, item.Stats);
 
-        length += EncodeInt(ref writer, write, SchemaVersion);
-        length += EncodeLong(ref writer, write, item.Stats.AccountsTotal);
-        length += EncodeLong(ref writer, write, item.Stats.ContractsTotal);
-        length += EncodeLong(ref writer, write, item.Stats.StorageSlotsTotal);
-        length += EncodeLong(ref writer, write, item.Stats.AccountTrieBranches);
-        length += EncodeLong(ref writer, write, item.Stats.AccountTrieExtensions);
-        length += EncodeLong(ref writer, write, item.Stats.AccountTrieLeaves);
-        length += EncodeLong(ref writer, write, item.Stats.AccountTrieBytes);
-        length += EncodeLong(ref writer, write, item.Stats.StorageTrieBranches);
-        length += EncodeLong(ref writer, write, item.Stats.StorageTrieExtensions);
-        length += EncodeLong(ref writer, write, item.Stats.StorageTrieLeaves);
-        length += EncodeLong(ref writer, write, item.Stats.StorageTrieBytes);
-        length += EncodeLong(ref writer, write, item.Stats.ContractsWithStorage);
-        length += EncodeLong(ref writer, write, item.Stats.EmptyAccounts);
+        writer.Encode(item.BlockNumber);
+        writer.Encode(item.StateRoot);
+        writer.Encode(item.DiffsSinceBaseline);
+        writer.Encode(item.ScanBlockNumber);
 
-        length += EncodeLong(ref writer, write, item.BlockNumber);
-        if (write) writer.Encode(item.StateRoot);
-        length += Rlp.LengthOf(item.StateRoot);
-        length += EncodeInt(ref writer, write, item.DiffsSinceBaseline);
-        length += EncodeLong(ref writer, write, item.ScanBlockNumber);
+        EncodeDepthStats(ref writer, item.DepthStats);
+        writer.Encode(item.Stats.CodeBytesTotal);
+        EncodeSlotCountHistogram(ref writer, item.Stats.SlotCountHistogram);
 
-        // Depth stats: present only if seeded. Stored as a leading marker long
-        // (1 = present, 0 = absent) followed by 146 longs (9×16 + 2 scalars)
-        // when present.
-        CumulativeDepthStats depth = item.DepthStats;
+        EncodeLongMap(ref writer, item.SlotCountByAddress);
+        EncodeIntMap(ref writer, item.CodeHashRefcounts);
+        EncodeIntMap(ref writer, item.CodeHashSizes);
+    }
+
+    private static void EncodeStats<TWriter>(ref TWriter writer, CumulativeTrieStats stats)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        writer.Encode(stats.AccountsTotal);
+        writer.Encode(stats.ContractsTotal);
+        writer.Encode(stats.StorageSlotsTotal);
+        writer.Encode(stats.AccountTrieBranches);
+        writer.Encode(stats.AccountTrieExtensions);
+        writer.Encode(stats.AccountTrieLeaves);
+        writer.Encode(stats.AccountTrieBytes);
+        writer.Encode(stats.StorageTrieBranches);
+        writer.Encode(stats.StorageTrieExtensions);
+        writer.Encode(stats.StorageTrieLeaves);
+        writer.Encode(stats.StorageTrieBytes);
+        writer.Encode(stats.ContractsWithStorage);
+        writer.Encode(stats.EmptyAccounts);
+    }
+
+    private static void EncodeDepthStats<TWriter>(ref TWriter writer, CumulativeDepthStats depth)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
         if (depth.IsSeeded)
         {
-            length += EncodeLong(ref writer, write, 1L);
+            writer.Encode(1L);
             for (int s = 0; s < CumulativeDepthStats.CategoryCount; s++)
             {
                 ReadOnlySpan<long> row = depth.GetRow(s);
-                foreach (long v in row) length += EncodeLong(ref writer, write, v);
+                foreach (long v in row)
+                {
+                    writer.Encode(v);
+                }
             }
-            length += EncodeLong(ref writer, write, depth.TotalBranchNodes);
-            length += EncodeLong(ref writer, write, depth.TotalBranchChildren);
+            writer.Encode(depth.TotalBranchNodes);
+            writer.Encode(depth.TotalBranchChildren);
         }
         else
         {
-            length += EncodeLong(ref writer, write, 0L);
+            writer.Encode(0L);
         }
+    }
 
-        // CodeBytesTotal + 16 slot-count histogram longs — always written so a
-        // restarted node resumes these metrics from the last persisted baseline
-        // instead of dropping to zero until the next full scan.
-        length += EncodeLong(ref writer, write, item.Stats.CodeBytesTotal);
-        ImmutableArray<long> hist = item.Stats.SlotCountHistogram;
+    private static void EncodeSlotCountHistogram<TWriter>(ref TWriter writer, ImmutableArray<long> hist)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
         for (int i = 0; i < CumulativeTrieStats.SlotHistogramLength; i++)
-            length += EncodeLong(ref writer, write, hist.IsDefault ? 0L : hist[i]);
-
-        length += EncodeOrLengthMap(ref writer, write, item.SlotCountByAddress,
-            static (ref TWriter w, long v) => w.Encode(v), static v => Rlp.LengthOf(v));
-        length += EncodeOrLengthMap(ref writer, write, item.CodeHashRefcounts,
-            static (ref TWriter w, int v) => w.Encode(v), static v => Rlp.LengthOf(v));
-        length += EncodeOrLengthMap(ref writer, write, item.CodeHashSizes,
-            static (ref TWriter w, int v) => w.Encode(v), static v => Rlp.LengthOf(v));
-
-        return length;
-    }
-
-    private static int EncodeLong<TWriter>(ref TWriter writer, bool write, long value)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        if (write) writer.Encode(value);
-        return Rlp.LengthOf(value);
-    }
-
-    private static int EncodeInt<TWriter>(ref TWriter writer, bool write, int value)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        if (write) writer.Encode(value);
-        return Rlp.LengthOf(value);
-    }
-
-    private static int EncodeOrLengthMap<TWriter, TValue>(
-        ref TWriter writer,
-        bool write,
-        IReadOnlyDictionary<ValueHash256, TValue> map,
-        EncodeValueDelegate<TWriter, TValue> encodeValue,
-        System.Func<TValue, int> lengthOfValue)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        int total = EncodeInt(ref writer, write, map.Count);
-        foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
         {
-            if (write)
-            {
-                writer.Encode(new Hash256(kvp.Key));
-                encodeValue(ref writer, kvp.Value);
-            }
-            total += Rlp.LengthOfKeccakRlp + lengthOfValue(kvp.Value);
+            writer.Encode(hist.IsDefault ? 0L : hist[i]);
         }
-        return total;
     }
 
-    private static Dictionary<ValueHash256, TValue> DecodeMap<TValue>(
-        ref RlpReader ctx,
-        DecodeValueDelegate<TValue> decodeValue)
+    private static void EncodeLongMap<TWriter>(
+        ref TWriter writer,
+        IReadOnlyDictionary<ValueHash256, long> map)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        writer.Encode(map.Count);
+        foreach (KeyValuePair<ValueHash256, long> kvp in map)
+        {
+            writer.Encode(new Hash256(kvp.Key));
+            writer.Encode(kvp.Value);
+        }
+    }
+
+    private static void EncodeIntMap<TWriter>(
+        ref TWriter writer,
+        IReadOnlyDictionary<ValueHash256, int> map)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        writer.Encode(map.Count);
+        foreach (KeyValuePair<ValueHash256, int> kvp in map)
+        {
+            writer.Encode(new Hash256(kvp.Key));
+            writer.Encode(kvp.Value);
+        }
+    }
+
+    private static Dictionary<ValueHash256, long> DecodeLongMap(ref RlpReader ctx)
     {
         int count = ctx.DecodePositiveInt();
-        Dictionary<ValueHash256, TValue> map = new(count);
+        Dictionary<ValueHash256, long> map = new(count);
         for (int i = 0; i < count; i++)
         {
             ValueHash256 key = ctx.DecodeKeccak();
-            map[key] = decodeValue(ref ctx);
+            map[key] = ctx.DecodeLong();
+        }
+        return map;
+    }
+
+    private static Dictionary<ValueHash256, int> DecodeIntMap(ref RlpReader ctx)
+    {
+        int count = ctx.DecodePositiveInt();
+        Dictionary<ValueHash256, int> map = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            ValueHash256 key = ctx.DecodeKeccak();
+            map[key] = ctx.DecodeInt();
         }
         return map;
     }
@@ -180,8 +148,9 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
 
     private static int GetContentLength(StateCompositionSnapshot item)
     {
-        RlpWriter writer = new(Span<byte>.Empty);
-        return EncodeOrLength(ref writer, write: false, item);
+        RlpLengthWriter writer = new();
+        EncodeContent(ref writer, item);
+        return writer.Position;
     }
 
     protected override StateCompositionSnapshot DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -192,7 +161,33 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
         if (schemaVersion != SchemaVersion)
             throw new RlpException($"StateComposition snapshot schema version {schemaVersion} does not match expected {SchemaVersion}");
 
-        CumulativeTrieStats stats = new(
+        CumulativeTrieStats stats = DecodeStats(ref ctx);
+        long blockNumber = ctx.DecodeLong();
+        Hash256 stateRoot = ctx.DecodeKeccak()!;
+        int diffsSinceBaseline = ctx.DecodeInt();
+        long scanBlockNumber = ctx.DecodeLong();
+
+        CumulativeDepthStats depthStats = DecodeDepthStats(ref ctx);
+        long codeBytesTotal = ctx.DecodeLong();
+        ImmutableArray<long> slotCountHistogram = DecodeSlotCountHistogram(ref ctx);
+
+        stats = stats with
+        {
+            CodeBytesTotal = codeBytesTotal,
+            SlotCountHistogram = slotCountHistogram,
+        };
+
+        Dictionary<ValueHash256, long> slotCountByAddress = DecodeLongMap(ref ctx);
+        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeIntMap(ref ctx);
+        Dictionary<ValueHash256, int> codeHashSizes = DecodeIntMap(ref ctx);
+
+        return new StateCompositionSnapshot(
+            stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,
+            slotCountByAddress, codeHashRefcounts, codeHashSizes);
+    }
+
+    private static CumulativeTrieStats DecodeStats(ref RlpReader ctx) =>
+        new(
             AccountsTotal: ctx.DecodeLong(),
             ContractsTotal: ctx.DecodeLong(),
             StorageSlotsTotal: ctx.DecodeLong(),
@@ -207,15 +202,8 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
             ContractsWithStorage: ctx.DecodeLong(),
             EmptyAccounts: ctx.DecodeLong());
 
-        long blockNumber = ctx.DecodeLong();
-        Hash256 stateRoot = ctx.DecodeKeccak()!;
-        int diffsSinceBaseline = ctx.DecodeInt();
-        long scanBlockNumber = ctx.DecodeLong();
-
-        // Depth stats: marker long followed by 146 longs when present. The
-        // decoder always materializes an instance — an unseeded one when the
-        // snapshot was written before depth tracking was enabled — so the
-        // holder gates on IsSeeded instead of a null check.
+    private static CumulativeDepthStats DecodeDepthStats(ref RlpReader ctx)
+    {
         long depthPresent = ctx.DecodeLong();
         CumulativeDepthStats depthStats = new();
         if (depthPresent == 1L)
@@ -223,29 +211,39 @@ public sealed class StateCompositionSnapshotDecoder : RlpDecoder<StateCompositio
             for (int s = 0; s < CumulativeDepthStats.CategoryCount; s++)
             {
                 Span<long> row = depthStats.GetRow(s);
-                for (int i = 0; i < row.Length; i++) row[i] = ctx.DecodeLong();
+                for (int i = 0; i < row.Length; i++)
+                {
+                    row[i] = ctx.DecodeLong();
+                }
             }
             depthStats.TotalBranchNodes = ctx.DecodeLong();
             depthStats.TotalBranchChildren = ctx.DecodeLong();
             depthStats.MarkSeeded();
         }
 
-        long codeBytesTotal = ctx.DecodeLong();
+        return depthStats;
+    }
+
+    private static ImmutableArray<long> DecodeSlotCountHistogram(ref RlpReader ctx)
+    {
         long[] hist = new long[CumulativeTrieStats.SlotHistogramLength];
-        for (int i = 0; i < CumulativeTrieStats.SlotHistogramLength; i++) hist[i] = ctx.DecodeLong();
-
-        stats = stats with
+        for (int i = 0; i < CumulativeTrieStats.SlotHistogramLength; i++)
         {
-            CodeBytesTotal = codeBytesTotal,
-            SlotCountHistogram = ImmutableArray.Create(hist),
-        };
+            hist[i] = ctx.DecodeLong();
+        }
 
-        Dictionary<ValueHash256, long> slotCountByAddress = DecodeMap(ref ctx, static (ref c) => c.DecodeLong());
-        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeMap(ref ctx, static (ref c) => c.DecodeInt());
-        Dictionary<ValueHash256, int> codeHashSizes = DecodeMap(ref ctx, static (ref c) => c.DecodeInt());
+        return ImmutableArray.Create(hist);
+    }
 
-        return new StateCompositionSnapshot(
-            stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,
-            slotCountByAddress, codeHashRefcounts, codeHashSizes);
+    private struct RlpLengthWriter : IRlpWriteBackend
+    {
+        public int Position { get; private set; }
+
+        void IRlpWriteBackend.WriteByte(byte byteToWrite) => Position++;
+
+        void IRlpWriteBackend.Write(scoped ReadOnlySpan<byte> bytesToWrite) => Position += bytesToWrite.Length;
+
+        void IRlpWriteBackend.WriteZero(int length) => Position += length;
+
     }
 }

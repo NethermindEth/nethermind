@@ -290,7 +290,7 @@ public sealed class EraWriter : IDisposable
             totalLength += Rlp.LengthOfSequence(GetReceiptContentLength(receipt, isEip658));
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(totalLength)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         writer.StartSequence(totalLength);
         foreach (TxReceipt receipt in receipts)
             WriteReceipt(ref writer, receipt, isEip658);

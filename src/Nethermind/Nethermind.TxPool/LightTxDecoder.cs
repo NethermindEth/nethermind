@@ -27,7 +27,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     public static byte[] Encode(Transaction tx)
     {
         byte[] bytes = new byte[GetLength(tx)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
 
         writer.Encode(tx.Timestamp);
         writer.Encode(tx.SenderAddress);

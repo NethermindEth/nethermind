@@ -145,7 +145,7 @@ public class AuthorizationTupleDecoderTests
             + Rlp.LengthOf(sig.R)
             + Rlp.LengthOf(sig.S);
         byte[] rlp = new byte[Rlp.LengthOfSequence(length)];
-        RlpWriter writer = rlp.AsRlpWriter();
+        RlpWriter writer = new(rlp);
         writer.StartSequence(length);
         writer.Encode(1);
         writer.Encode(codeAddress);
@@ -166,7 +166,7 @@ public class AuthorizationTupleDecoderTests
             + Rlp.LengthOf(r)
             + Rlp.LengthOf(s);
         byte[] rlp = new byte[Rlp.LengthOfSequence(length)];
-        RlpWriter writer = rlp.AsRlpWriter();
+        RlpWriter writer = new(rlp);
         writer.StartSequence(length);
         writer.Encode(chainId);
         writer.Encode(address);

@@ -47,7 +47,7 @@ internal class QuorumCertificateDecoderTests
         byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
         RlpWriter writer = new(bytes);
         decoder.Encode(ref writer, quorumCert);
-        RlpReader decoderContext = bytes.AsRlpContext();
+        RlpReader decoderContext = new(bytes);
         QuorumCertificate decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());

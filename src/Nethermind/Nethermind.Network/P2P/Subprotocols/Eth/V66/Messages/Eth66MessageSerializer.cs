@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         public TEth66Message Deserialize(IByteBuffer byteBuffer)
         {
             int startReaderIndex = byteBuffer.ReaderIndex;
-            RlpReader ctx = byteBuffer.AsRlpContext();
+            RlpReader ctx = new(byteBuffer.AsSpan());
             int sequenceLength = ctx.ReadSequenceLength();
             int checkPosition = ctx.Position + sequenceLength;
             TEth66Message eth66Message = new();

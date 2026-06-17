@@ -49,7 +49,7 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         Encode(ref writer, item, rlpBehaviors);
 
         return new Rlp(bytes);

@@ -214,7 +214,7 @@ public static class BaseFlatPersistence
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(StoragePrefixPortion, StorageSlotKeySize));
                 ReadOnlySpan<byte> slotValue = rlpWrapSlots
-                    ? view.CurrentValue.AsRlpContext().DecodeByteArraySpan()
+                    ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
                     : view.CurrentValue;
                 // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
                 // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a

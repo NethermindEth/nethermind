@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Serialization.Rlp;
 
-public interface IRlpWriteBackend : IDisposable
+public interface IRlpWriteBackend
 {
     void WriteByte(byte byteToWrite);
 

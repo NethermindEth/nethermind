@@ -41,7 +41,7 @@ public class VoteDecoderTests
         VoteDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(vote);
-        RlpReader decoderContext = encoded.Bytes.AsRlpContext();
+        RlpReader decoderContext = new(encoded.Bytes);
         Vote decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
@@ -102,7 +102,7 @@ public class VoteDecoderTests
         Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        RlpReader context = sealingEncoded.Bytes.AsRlpContext();
+        RlpReader context = new(sealingEncoded.Bytes);
         Vote decoded = decoder.Decode(ref context, RlpBehaviors.ForSealing);
 
         Assert.That(decoded.Signature, Is.Null,
@@ -125,7 +125,7 @@ public class VoteDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        RlpReader context = Rlp.OfEmptyList.Bytes.AsRlpContext();
+        RlpReader context = new(Rlp.OfEmptyList.Bytes);
         Vote decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);

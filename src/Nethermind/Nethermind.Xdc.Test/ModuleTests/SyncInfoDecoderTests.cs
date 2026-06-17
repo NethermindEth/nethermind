@@ -62,7 +62,7 @@ public class SyncInfoDecoderTests
         SyncInfoDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(syncInfo);
-        RlpReader decoderContext = encoded.Bytes.AsRlpContext();
+        RlpReader decoderContext = new(encoded.Bytes);
         SyncInfo decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());
@@ -133,7 +133,7 @@ public class SyncInfoDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        RlpReader context = Rlp.OfEmptyList.Bytes.AsRlpContext();
+        RlpReader context = new(Rlp.OfEmptyList.Bytes);
         SyncInfo decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);

@@ -255,7 +255,7 @@ public class RlpItemListTests
         int innerSeqLen = Rlp.LengthOfSequence(contentLength);
         int outerSeqLen = Rlp.LengthOfSequence(innerSeqLen);
         byte[] expected = new byte[outerSeqLen];
-        RlpWriter expectedWriter = expected.AsRlpWriter();
+        RlpWriter expectedWriter = new(expected);
         expectedWriter.StartSequence(innerSeqLen);
         expectedWriter.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
@@ -343,7 +343,7 @@ public class RlpItemListTests
 
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] data = new byte[totalLength];
-        RlpWriter writer = data.AsRlpWriter();
+        RlpWriter writer = new(data);
 
         writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
@@ -375,7 +375,7 @@ public class RlpItemListTests
 
         int totalLength = Rlp.LengthOfSequence(outerContentLength);
         byte[] data = new byte[totalLength];
-        RlpWriter writer = data.AsRlpWriter();
+        RlpWriter writer = new(data);
 
         writer.StartSequence(outerContentLength);
         for (int i = 0; i < nestedItems.Length; i++)

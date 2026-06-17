@@ -131,7 +131,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         Encode(ref writer, item, rlpBehaviors);
         return new Rlp(bytes);
     }
@@ -139,7 +139,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         return new Rlp(bytes);
     }

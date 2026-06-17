@@ -43,7 +43,7 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = bytes.AsRlpWriter();
+        RlpWriter writer = new(bytes);
         Encode(ref writer, item, rlpBehaviors);
         return new(bytes);
     }

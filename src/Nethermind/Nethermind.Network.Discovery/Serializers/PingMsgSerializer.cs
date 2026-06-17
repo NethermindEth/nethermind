@@ -44,7 +44,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     public PingMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = Data.AsRlpContext();
+        RlpReader ctx = new(Data.AsSpan());
         ctx.ReadSequenceLength();
         int version = ctx.DecodeInt();
 

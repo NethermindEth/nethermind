@@ -286,7 +286,7 @@ namespace Nethermind.Core.Test.Encoding
 
             void DecodeContext()
             {
-                RlpReader ctx = invalidTxBytes.AsSpan().AsRlpContext();
+                RlpReader ctx = new(invalidTxBytes.AsSpan());
                 _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 

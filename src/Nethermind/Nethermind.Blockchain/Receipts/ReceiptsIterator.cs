@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
         {
-            _decoderContext = receiptsData.AsRlpContext();
+            _decoderContext = new RlpReader(receiptsData);
             _blocksDb = blocksDb;
             _receipts = null;
             _receiptIndex = 0;

@@ -36,7 +36,7 @@ public class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
     public EnrResponseMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = data.AsRlpContext();
+        RlpReader ctx = new(data.AsSpan());
         ctx.ReadSequenceLength();
         Hash256? requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
 

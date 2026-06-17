@@ -67,7 +67,7 @@ public class NeighborsMsgSerializer(
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        RlpReader ctx = Data.AsRlpContext();
+        RlpReader ctx = new(Data.AsSpan());
         ctx.ReadSequenceLength();
         Node[] nodes = ctx.DecodeArray(_decodeItem, limit: NodesRlpLimit)!;
 

@@ -175,7 +175,7 @@ public class RlpByteArrayListTests
         int contentLength = count * Rlp.LengthOf(new byte[] { 0x42 });
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] encoded = new byte[totalLength];
-        RlpWriter writer = encoded.AsRlpWriter();
+        RlpWriter writer = new(encoded);
         writer.StartSequence(contentLength);
         for (int i = 0; i < count; i++)
         {
@@ -201,7 +201,7 @@ public class RlpByteArrayListTests
 
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] encoded = new byte[totalLength];
-        RlpWriter writer = encoded.AsRlpWriter();
+        RlpWriter writer = new(encoded);
 
         writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)

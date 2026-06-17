@@ -92,7 +92,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
             int noSigContentLength = ctx.Length - ctx.Position;
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
             byte[] originalContent = new byte[noSigSequenceLength];
-            RlpWriter writer = originalContent.AsRlpWriter();
+            RlpWriter writer = new(originalContent);
             writer.StartSequence(noSigContentLength);
             writer.Write(ctx.Read(noSigContentLength));
             ctx.Position = startPosition;

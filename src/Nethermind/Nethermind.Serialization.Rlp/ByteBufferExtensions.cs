@@ -56,12 +56,6 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static RlpReader AsRlpContext(this IByteBuffer buffer) =>
-            new(buffer.AsSpan());
-
-        public static ByteBufferRlpWriter AsRlpWriter(this IByteBuffer buffer) =>
-            new(buffer);
-
         public static bool TryWriteRlpByteArrayList(this IByteBuffer byteBuffer, IByteArrayList list)
         {
             if (list is not IRlpWrapper rlpWrapper) return false;
@@ -72,7 +66,7 @@ namespace Nethermind.Serialization.Rlp
         public static void WriteRlpWrapper(this IByteBuffer byteBuffer, IRlpWrapper rlpWrapper)
         {
             byteBuffer.EnsureWritable(rlpWrapper.RlpLength);
-            ByteBufferRlpWriter writer = byteBuffer.AsRlpWriter();
+            ByteBufferRlpWriter writer = new(byteBuffer);
             rlpWrapper.Write(ref writer);
         }
 
@@ -89,7 +83,7 @@ namespace Nethermind.Serialization.Rlp
 
             int length = Rlp.LengthOfSequence(contentLength);
             byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = byteBuffer.AsRlpWriter();
+            ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
             for (int i = 0; i < list.Count; i++)
             {
@@ -121,7 +115,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static T DeserializeRlp<T>(this IByteBuffer buffer, DecodeRlpValue<T> deserialize)
         {
-            RlpReader ctx = buffer.AsRlpContext();
+            RlpReader ctx = new(buffer.AsSpan());
             try
             {
                 return deserialize(ref ctx);
