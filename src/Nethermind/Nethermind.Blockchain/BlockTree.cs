@@ -704,11 +704,6 @@ namespace Nethermind.Blockchain
 
         private Hash256? GetBlockHashOnMainOrBestDifficultyHash(ulong blockNumber)
         {
-            if (blockNumber < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Value must be greater or equal to zero but is {blockNumber}");
-            }
-
             ChainLevelInfo level = LoadLevel(blockNumber);
             if (level is null)
             {

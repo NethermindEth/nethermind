@@ -58,7 +58,9 @@ public sealed class CompactionSchedule : ICompactionSchedule
 
         ulong mod = (from + _offset) % _compactSize;
         ulong distance = mod == 0 ? _compactSize : _compactSize - mod;
-        return from + distance;
+        // Practically unreachable at realistic chain heights, but explicit so a degenerate
+        // `from` near ulong.MaxValue doesn't wrap into a wildly-wrong "next" boundary.
+        return from > ulong.MaxValue - distance ? ulong.MaxValue : from + distance;
     }
 
     private ulong ResolveOffset(IDb metadataDb, IFlatDbConfig config, ILogger logger)

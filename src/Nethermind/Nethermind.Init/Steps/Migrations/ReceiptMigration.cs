@@ -402,14 +402,17 @@ namespace Nethermind.Init.Steps.Migrations
                     _completedAwaitingContiguity.Add(blockNumber);
 
                     bool advanced = false;
+                    bool reachedGenesis = false;
                     while (_completedAwaitingContiguity.Remove(_nextToConfirm))
                     {
-                        _nextToConfirm--;
                         advanced = true;
+                        if (_nextToConfirm == 0) { reachedGenesis = true; break; }
+                        _nextToConfirm--;
                     }
 
-                    ulong migratedBlockNumber = _nextToConfirm + 1;
-                    if (advanced && receiptStorage.MigratedBlockNumber > migratedBlockNumber)
+                    if (!advanced) return;
+                    ulong migratedBlockNumber = reachedGenesis ? 0UL : _nextToConfirm + 1;
+                    if (receiptStorage.MigratedBlockNumber > migratedBlockNumber)
                     {
                         receiptStorage.MigratedBlockNumber = migratedBlockNumber;
                     }

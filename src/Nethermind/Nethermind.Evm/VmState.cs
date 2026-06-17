@@ -288,7 +288,9 @@ public class VmState<TGasPolicy> : IDisposable
     public void CommitToParent(VmState<TGasPolicy> parentState)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        parentState.Refund += Refund;
+        // Gas-bounded refunds can't realistically overflow ulong, but guard the unsigned add since
+        // master's signed long would have caught a buggy negative-child silently.
+        parentState.Refund = checked(parentState.Refund + Refund);
         _canRestore = false; // we can't restore if we committed
     }
 }

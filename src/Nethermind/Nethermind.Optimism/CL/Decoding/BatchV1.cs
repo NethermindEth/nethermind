@@ -116,7 +116,7 @@ public sealed class BatchV1
                         }
 
                         (UInt256 legacyValue, tx.GasPrice, byte[] legacyData) = DecodeLegacyTransaction(Txs.Data[(int)txIdx].Span);
-                        tx.Value = (ulong)legacyValue;
+                        tx.Value = legacyValue;
                         tx.Data = legacyData;
                         break;
                     }
@@ -124,7 +124,7 @@ public sealed class BatchV1
                     {
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
                         (UInt256 accessValue, tx.GasPrice, byte[] accessData, tx.AccessList) = DecodeAccessListTransaction(Txs.Data[(int)txIdx].Span);
-                        tx.Value = (ulong)accessValue;
+                        tx.Value = accessValue;
                         tx.Data = accessData;
                         break;
                     }
@@ -133,8 +133,8 @@ public sealed class BatchV1
                         v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
                         (UInt256 eipValue, tx.GasPrice, UInt256 maxFee, byte[] eipData, tx.AccessList) =
                             DecodeEip1559Transaction(Txs.Data[(int)txIdx].Span);
-                        tx.Value = (ulong)eipValue;
-                        tx.DecodedMaxFeePerGas = (ulong)maxFee;
+                        tx.Value = eipValue;
+                        tx.DecodedMaxFeePerGas = maxFee;
                         tx.Data = eipData;
                         break;
                     }

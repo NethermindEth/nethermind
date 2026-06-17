@@ -85,8 +85,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (_blockTree.Head is not null && _blockTree.Head?.Number != 0)
                 {
                     // However, the head may not be canon, so the destination need to be before that.
-                    ulong safeNumber = _blockTree.Head!.Number - Reorganization.MaxDepth + 1;
-                    return Math.Max(1, safeNumber);
+                    ulong headNumber = _blockTree.Head!.Number;
+                    return headNumber > Reorganization.MaxDepth ? headNumber - Reorganization.MaxDepth + 1 : 1;
                 }
 
                 return _blockTree.SyncPivot.BlockNumber + 1;

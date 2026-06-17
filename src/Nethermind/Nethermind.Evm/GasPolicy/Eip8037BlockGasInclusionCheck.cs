@@ -22,8 +22,13 @@ public static class Eip8037BlockGasInclusionCheck
         ulong intrinsicRegular,
         ulong intrinsicState)
     {
-        ulong regularAvailable = blockGasLimit.SaturatingSub(cumulativeBlockRegular);
-        ulong stateAvailable = blockGasLimit.SaturatingSub(cumulativeBlockState);
+        // A cumulative dimension that already exceeded the block limit must reject — silent saturation
+        // would otherwise let the worst-case check pass and admit a tx that block-end validation rejects.
+        if (cumulativeBlockRegular > blockGasLimit) return Outcome.RegularDimensionExceeded;
+        if (cumulativeBlockState > blockGasLimit) return Outcome.StateDimensionExceeded;
+
+        ulong regularAvailable = blockGasLimit - cumulativeBlockRegular;
+        ulong stateAvailable = blockGasLimit - cumulativeBlockState;
 
         // Keep below-intrinsic txs from producing a negative worst-case regular dimension.
         ulong worstCaseRegular = txGas.SaturatingSub(intrinsicState);

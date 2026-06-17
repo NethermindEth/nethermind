@@ -67,17 +67,18 @@ namespace Nethermind.Consensus.AuRa
 
         private static ulong LoadInitialLastFinalizedBlockLevel(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository)
         {
-            bool hasHead = blockTree.Head is not null;
-            long level = hasHead ? (long)blockTree.Head!.Number + 1 : 0;
+            if (blockTree.Head is null) return 0UL;
+            ulong level = blockTree.Head.Number + 1;
             ChainLevelInfo chainLevel;
             do
             {
+                if (level == 0) return 0UL;
                 level--;
-                chainLevel = chainLevelInfoRepository.LoadLevel((ulong)level);
+                chainLevel = chainLevelInfoRepository.LoadLevel(level);
             }
-            while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
+            while (chainLevel?.MainChainBlock?.IsFinalized != true);
 
-            return level >= 0 ? (ulong)level : 0UL;
+            return level;
         }
 
         private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
@@ -318,9 +319,8 @@ namespace Nethermind.Consensus.AuRa
             {
                 // in that case check if it has enough blocks to best known to be finalized
                 // as everything before pivot should be finalized
-                long blocksAfter = (long)_blockTree.BestKnownNumber - (long)level + 1;
-                // safe: minSealersForFinalization is derived from validator counts and is bounded well within positive long range
-                if (blocksAfter >= (long)minSealersForFinalization)
+                ulong bestKnown = _blockTree.BestKnownNumber;
+                if (bestKnown >= level && bestKnown - level + 1 >= minSealersForFinalization)
                 {
                     return level + minSealersForFinalization - 1UL;
                 }

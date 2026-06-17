@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -550,7 +551,12 @@ public static partial class EvmInstructions
                     // Adjust refunds based on a change from or to a zero value.
                     if (currentIsZero)
                     {
-                        vmState.Refund -= sClearRefunds;
+                        // EIP-2200/3529 invariant: the matching `Refund += sClearRefunds` ran earlier in
+                        // the same tx, so Refund >= sClearRefunds. Saturating guards against an unsigned
+                        // wrap silently granting the maximum post-cap refund. Consensus-relevant.
+                        Debug.Assert(vmState.Refund >= sClearRefunds,
+                            "EIP-2200/3529 refund accumulator went below the per-slot clear amount.");
+                        vmState.Refund = vmState.Refund.SaturatingSub(sClearRefunds);
                         if (vm.TxTracer.IsTracingRefunds)
                             vm.TxTracer.ReportRefund(-(long)sClearRefunds);
                     }

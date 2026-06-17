@@ -278,7 +278,6 @@ namespace Nethermind.Synchronization.FastBlocks
                         Block? block = _blockTree.FindBlock(blockInfo.BlockHash);
                         if (block is null)
                         {
-                            // blockInfo.BlockNumber is ulong; _barrier is long. Cast is safe for realistic heights.
                             if (blockInfo.BlockNumber >= _barrier)
                             {
                                 if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");

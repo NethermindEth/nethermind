@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -509,6 +510,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateAvailableFromIntrinsic(ulong gasLimit, in EthereumGasPolicy intrinsicGas, IReleaseSpec spec)
     {
+        // Callers must validate intrinsic gas against gasLimit (ValidateIntrinsicGas / Eip8037.ExceedsCap)
+        // before calling; if they don't, the subtraction wraps silently.
+        Debug.Assert(gasLimit >= intrinsicGas.Value + intrinsicGas.StateReservoir,
+            $"gasLimit ({gasLimit}) < intrinsicRegular ({intrinsicGas.Value}) + intrinsicState ({intrinsicGas.StateReservoir})");
+        Debug.Assert(!spec.IsEip8037Enabled || Eip7825Constants.DefaultTxGasLimitCap >= intrinsicGas.Value,
+            "Eip8037 enabled but intrinsicRegular exceeds tx gas cap.");
+
         ulong executionGas = gasLimit - intrinsicGas.Value - intrinsicGas.StateReservoir;
         ulong reservoir = 0;
 
