@@ -127,7 +127,7 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
-    public async Task Invoke_UpdateMainChain_Once()
+    public async Task Invoke_TryUpdateMainChain_Once()
     {
         long headNumber = 100;
         int fastSyncLag = 10;
@@ -850,7 +850,14 @@ public partial class BlockDownloaderTests
             .AddSingleton<ResponseBuilder>()
             .AddDecorator<IBlockTree>((ctx, tree) =>
             {
-                if (tree.Genesis is null) tree.SuggestBlock(genesis);
+                if (tree.Genesis is null)
+                {
+                    // Mirror a real node: GenesisLoader processes genesis and makes it canonical, so it is
+                    // on the main chain before any sync. Without this, the canonicalization walk would treat
+                    // genesis as a non-canonical root and move it.
+                    tree.SuggestBlock(genesis);
+                    tree.TryUpdateMainChain(genesis.Header, wereProcessed: true);
+                }
                 return tree;
             })
 

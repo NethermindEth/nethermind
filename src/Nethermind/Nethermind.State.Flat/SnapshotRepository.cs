@@ -21,6 +21,11 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new([]);
 
+    // StateId is larger than a machine word, so its read/write across threads must be synchronized.
+    private readonly Lock _lastCommittedLock = new();
+    private StateId _lastCommittedStateId;
+    private bool _hasLastCommitted;
+
     public int SnapshotCount => _snapshots.Count;
     public int CompactedSnapshotCount => _compactedSnapshots.Count;
 
@@ -206,6 +211,45 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);
         return sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
+    }
+
+    public void SetLastCommittedStateId(in StateId stateId)
+    {
+        using Lock.Scope _ = _lastCommittedLock.EnterScope();
+        _lastCommittedStateId = stateId;
+        _hasLastCommitted = true;
+    }
+
+    public StateId? GetLastCommittedStateId()
+    {
+        using Lock.Scope _ = _lastCommittedLock.EnterScope();
+        return _hasLastCommitted ? _lastCommittedStateId : null;
+    }
+
+    public bool TryFindAncestorStateAtBlock(in StateId head, long blockNumber, out StateId ancestor)
+    {
+        if (head.BlockNumber < blockNumber)
+        {
+            ancestor = default;
+            return false;
+        }
+
+        if (head.BlockNumber == blockNumber)
+        {
+            ancestor = head;
+            return true;
+        }
+
+        using SnapshotPooledList path = AssembleSnapshotsUntil(head, blockNumber, estimatedSize: 16); // BFS initial capacity hint
+        if (path.Count == 0)
+        {
+            ancestor = default;
+            return false;
+        }
+
+        // result[0].From is the terminus: the state at blockNumber on the head's chain.
+        ancestor = path[0].From;
+        return true;
     }
 
     public bool RemoveAndReleaseCompactedKnownState(in StateId stateId)

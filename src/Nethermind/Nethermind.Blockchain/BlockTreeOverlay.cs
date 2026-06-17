@@ -19,7 +19,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     // Cannot be called until blocktree is ready.
     public void ResetMainChain() =>
-        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true);
+        _overlayTree.TryUpdateMainChain(_baseTree.Head!.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { _baseTree.Head! });
 
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
@@ -46,6 +46,24 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public Hash256? PendingHash => _overlayTree.PendingHash ?? _baseTree.PendingHash;
     public Hash256? FinalizedHash => _overlayTree.FinalizedHash ?? _baseTree.FinalizedHash;
     public Hash256? SafeHash => _overlayTree.SafeHash ?? _baseTree.SafeHash;
+
+    public long LastFinalizedBlockLevel =>
+        _overlayTree.LastFinalizedBlockLevel != 0 ? _overlayTree.LastFinalizedBlockLevel : _baseTree.LastFinalizedBlockLevel;
+
+    public event EventHandler<FinalizeEventArgs> BlocksFinalized
+    {
+        add
+        {
+            _baseTree.BlocksFinalized += value;
+            _overlayTree.BlocksFinalized += value;
+        }
+
+        remove
+        {
+            _baseTree.BlocksFinalized -= value;
+            _overlayTree.BlocksFinalized -= value;
+        }
+    }
     public Block? Head => _overlayTree.Head ?? _baseTree.Head;
     public long? BestPersistedState { get => _overlayTree.BestPersistedState; set => _overlayTree.BestPersistedState = value; }
 
@@ -81,8 +99,8 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public bool WasProcessed(long number, Hash256 blockHash) => _overlayTree.WasProcessed(number, blockHash) || _baseTree.WasProcessed(number, blockHash);
 
-    public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) =>
-        _overlayTree.UpdateMainChain(blocks, wereProcessed, forceHeadBlock);
+    public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks) =>
+        _overlayTree.TryUpdateMainChain(newHead, wereProcessed, forceUpdateHeadBlock, preloadedBlocks);
 
     public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => _overlayTree.MarkChainAsProcessed(blocks);
 

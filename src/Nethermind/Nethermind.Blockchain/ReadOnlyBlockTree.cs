@@ -84,6 +84,13 @@ namespace Nethermind.Blockchain
         public Hash256 PendingHash => _wrapped.PendingHash;
         public Hash256 FinalizedHash => _wrapped.FinalizedHash;
         public Hash256 SafeHash => _wrapped.SafeHash;
+        public long LastFinalizedBlockLevel => _wrapped.LastFinalizedBlockLevel;
+
+        public event EventHandler<FinalizeEventArgs> BlocksFinalized
+        {
+            add { }
+            remove { }
+        }
 
         public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
 
@@ -201,7 +208,7 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock { get => _wrapped.IsProcessingBlock; set { } }
 
-        public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
+        public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(TryUpdateMainChain)} calls");
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
 
