@@ -257,8 +257,15 @@ internal static class HsstBTreeReader
         // a second page. The builder guarantees a node never straddles a page boundary, so the
         // remainder of the page always holds the whole node (oversized nodes fall to the cold
         // re-pin below).
+        int winLen = (int)Math.Min(SpeculativePinSize, available);
+        // Cap the window at the end of absStart's 4 KiB page so the speculative pin avoids faulting a
+        // second page — but only when that still leaves room for the 12-byte header. The page-skip
+        // assumes absStart is in the same absolute coordinate the builder padded in; a region-relative
+        // reader (a SpanByteReader scoped to a non-page-aligned bound) can see pageRemaining < 12, and
+        // clamping there would truncate the header read below. available >= 12 is guaranteed above, so
+        // the header stays readable; an oversized node still falls to the precise cold re-pin below.
         long pageRemaining = PageLayout.PageSize - (absStart & PageLayout.PageMask);
-        int winLen = (int)Math.Min(Math.Min(SpeculativePinSize, available), pageRemaining);
+        if (pageRemaining >= 12) winLen = (int)Math.Min(winLen, pageRemaining);
 
         TPin speculativePin = reader.PinBuffer(new Bound(absStart, winLen));
         bool keepSpeculative = false;
