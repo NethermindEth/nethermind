@@ -663,14 +663,17 @@ public partial class EngineModuleTests
             await Task.Delay(milliseconds);
 
             // starting building on block X + 1
+            Task secondImprovementTask = chain.WaitForImprovedBlock(getPayloadResult.BlockHash);
             string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
                     new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
                     new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
                 .Result.Data.PayloadId!;
+            await secondImprovementTask;
 
-            ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
+            ExecutionPayload? getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload!))).Data;
+            Assert.That(getSecondBlockPayload, Is.Not.Null, $"iteration {iteration}");
 
-            Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV1(getSecondBlockPayload);
+            Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV1(getSecondBlockPayload!);
             if (secondBlock.Result.Data.Status != PayloadStatus.Valid)
             {
                 string[] files = Directory.GetFiles(logFolder);
