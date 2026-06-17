@@ -19,7 +19,7 @@ public class StorageLayerTests
 
     // Look up a catalog entry by (To, depth) over the loaded list — the catalog has no Find method
     // and no in-memory index; Load() reads the current state from the DB each call.
-    private static SnapshotCatalog.CatalogEntry? FindEntry(SnapshotCatalog catalog, StateId to, long depth) =>
+    private static CatalogEntry? FindEntry(SnapshotCatalog catalog, StateId to, long depth) =>
         catalog.Load().FirstOrDefault(e => e.To.Equals(to) && e.To.BlockNumber - e.From.BlockNumber == depth);
 
     [SetUp]
@@ -83,9 +83,9 @@ public class StorageLayerTests
 
         Assert.That(loaded.Load().Count, Is.EqualTo(4));
 
-        SnapshotCatalog.CatalogEntry? loadedBase = FindEntry(loaded, sharedTo, depth: 1);
-        SnapshotCatalog.CatalogEntry? loadedCompacted = FindEntry(loaded, sharedTo, depth: 2);
-        SnapshotCatalog.CatalogEntry? loadedCompactSized = FindEntry(loaded, sharedTo, depth: 4);
+        CatalogEntry? loadedBase = FindEntry(loaded, sharedTo, depth: 1);
+        CatalogEntry? loadedCompacted = FindEntry(loaded, sharedTo, depth: 2);
+        CatalogEntry? loadedCompactSized = FindEntry(loaded, sharedTo, depth: 4);
         Assert.That(loadedBase, Is.Not.Null);
         Assert.That(loadedBase!.From, Is.EqualTo(s_base_from));
         Assert.That(loadedBase.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
@@ -99,7 +99,7 @@ public class StorageLayerTests
         Assert.That(loadedCompactSized.Location, Is.EqualTo(new SnapshotLocation(0, 3072, 4096)));
         Assert.That(loadedCompactSized.Tier, Is.EqualTo(SnapshotTier.PersistedCompactSized));
 
-        SnapshotCatalog.CatalogEntry? loadedTail = FindEntry(loaded, s2, depth: 100);
+        CatalogEntry? loadedTail = FindEntry(loaded, s2, depth: 100);
         Assert.That(loadedTail, Is.Not.Null);
         Assert.That(loadedTail!.From, Is.EqualTo(sharedTo));
         Assert.That(loadedTail.Location, Is.EqualTo(new SnapshotLocation(0, 7168, 2048)));
@@ -365,7 +365,7 @@ public class StorageLayerTests
         // Fresh manager over the same dir, primed with the catalog entry referencing the small file.
         // Open succeeds only if Initialize recognized the small_arena_ prefix and loaded the file;
         // otherwise the entry is dropped and the arena left unregistered.
-        SnapshotCatalog.CatalogEntry entry = new(from, to, location, SnapshotTier.PersistedBase);
+        CatalogEntry entry = new(from, to, location, SnapshotTier.PersistedBase);
         using ArenaManager second = new(arenaDir, config, LimboLogs.Instance);
         second.Initialize([entry]);
 

@@ -32,7 +32,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // ---- Persisted tier: four buckets keyed by StateId.To. Each bucket is self-contained and
     // individually-locked. A `To` can live in more than one bucket (a base and a compacted snapshot
     // can share it).
-    private readonly SnapshotCatalog _catalog;
+    private readonly ISnapshotCatalog _catalog;
     private readonly int _compactSize;
     private readonly PersistedSnapshotBucket _base;
     private readonly PersistedSnapshotBucket _smallCompacted;
@@ -56,17 +56,17 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public SnapshotRepository(
         IArenaManager arenaManager,
         BlobArenaManager blobArenaManager,
-        SnapshotCatalog catalog,
+        ISnapshotCatalog catalog,
         IFlatDbConfig config,
         ILogManager logManager)
     {
         _catalog = catalog;
-        _base = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedBase);
-        _smallCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedSmallCompacted);
-        _largeCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedLargeCompacted);
-        _compactSized = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedCompactSized);
-        _compactSize = config.CompactSize;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
+        _base = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedBase, _logger);
+        _smallCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedSmallCompacted, _logger);
+        _largeCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedLargeCompacted, _logger);
+        _compactSized = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedCompactSized, _logger);
+        _compactSize = config.CompactSize;
     }
 
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
@@ -504,8 +504,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// caller retains and disposes its construction lease, and owns the catalog entry — a freshly
     /// persisted/compacted snapshot writes one; a snapshot reloaded from the catalog does not.
     /// </summary>
-    public void AddPersistedSnapshot(PersistedSnapshot snapshot, SnapshotTier tier) =>
+    public void AddPersistedSnapshot(PersistedSnapshot snapshot, SnapshotTier tier)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Created persisted snapshot {tier} {snapshot.From.BlockNumber}->{snapshot.To.BlockNumber} ({snapshot.Size} bytes)");
         BucketFor(tier).Add(snapshot.To, snapshot);
+    }
 
     /// <summary>
     /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket for

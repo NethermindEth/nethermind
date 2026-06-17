@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
+using Nethermind.Init.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -389,5 +391,24 @@ public class LongFinalityIntegrationTests
         Assert.That(config.EnableLongFinality, Is.False);
         Assert.That(config.MaxReorgDepth, Is.EqualTo(90000));
         Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
+    }
+
+    [Test]
+    public void DisabledLongFinality_WiresInertPersistedTier()
+    {
+        FlatDbConfig config = new() { EnableLongFinality = false };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(config))
+            .AddSingleton<IFlatDbConfig>(config)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+
+        Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
+        Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
+        Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+
+        // The Null loader/catalog keep the tier inert: loading is a no-op and nothing is ever recorded.
+        container.Resolve<IPersistedSnapshotLoader>().Load();
+        Assert.That(container.Resolve<ISnapshotCatalog>().Load(), Is.Empty);
     }
 }

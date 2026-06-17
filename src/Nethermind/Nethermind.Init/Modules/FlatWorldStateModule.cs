@@ -106,6 +106,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     Path.Combine("persisted_snapshot", "catalog"))))
             .AddSingleton<SnapshotCatalog>(ctx =>
                 new SnapshotCatalog(ctx.ResolveKeyed<IDb>(DbNames.PersistedSnapshotCatalog)))
+            .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
@@ -133,13 +134,18 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             })
             ;
 
-        // EnableLongFinality off: swap in the Null compactor so no background compaction runs.
-        // The conversion paths in PersistenceManager.DetermineSnapshotAction are also gated on this
-        // flag, so the persisted tier stays empty — though SnapshotRepository still constructs its
-        // persisted-tier arena/blob/catalog stores under `<data-dir>/persisted_snapshot/`.
+        // EnableLongFinality off: inert the whole persisted tier. The Null loader skips loading any
+        // on-disk tier at startup and never converts in-memory snapshots into it; the Null catalog keeps
+        // it empty (nothing recorded or loaded); the Null compactor runs no background compaction. The
+        // conversion paths in PersistenceManager.DetermineSnapshotAction are also gated on this flag.
+        // SnapshotRepository still constructs its arena/blob/catalog stores under
+        // `<data-dir>/persisted_snapshot/`, but they stay empty and unread.
         if (!flatDbConfig.EnableLongFinality)
         {
-            builder.AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
+            builder
+                .AddSingleton<ISnapshotCatalog>(NullSnapshotCatalog.Instance)
+                .AddSingleton<IPersistedSnapshotLoader>(NullPersistedSnapshotLoader.Instance)
+                .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
         }
 
         if (flatDbConfig.ImportFromPruningTrieState)

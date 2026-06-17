@@ -35,7 +35,7 @@ public class PersistedSnapshotCompactor(
     ISnapshotRepository snapshotRepository,
     IArenaManager arenaManager,
     BlobArenaManager blobs,
-    SnapshotCatalog catalog,
+    ISnapshotCatalog catalog,
     IFlatDbConfig config,
     ICompactionSchedule schedule,
     IPersistedSnapshotLoader loader,
@@ -44,7 +44,7 @@ public class PersistedSnapshotCompactor(
     // Held only to anchor the disposal order documented above (loader disposed after this).
     private readonly IPersistedSnapshotLoader _disposeOrderingAnchor = loader;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
-    private readonly SnapshotCatalog _catalog = catalog;
+    private readonly ISnapshotCatalog _catalog = catalog;
     private readonly ICompactionSchedule _schedule = schedule;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
@@ -313,7 +313,7 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             reservation.Fsync();
 
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location, tier));
+            _catalog.Add(new CatalogEntry(from, to, location, tier));
             using (PersistedSnapshot compacted = new(from, to, reservation, blobs, tier, mergedBloom))
             {
                 reservation.Dispose();

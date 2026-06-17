@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
@@ -26,7 +27,7 @@ public sealed class PersistedSnapshotLoader(
     ISnapshotRepository repository,
     IArenaManager arena,
     BlobArenaManager blobs,
-    SnapshotCatalog catalog,
+    ISnapshotCatalog catalog,
     IFlatDbConfig config,
     ILogManager logManager) : IPersistedSnapshotLoader
 {
@@ -38,7 +39,7 @@ public sealed class PersistedSnapshotLoader(
     // itself dedups via state-change comparison, so sub-second ticks are cheap.
     private const int ProgressLogIntervalMs = 1000;
 
-    private readonly SnapshotCatalog _catalog = catalog;
+    private readonly ISnapshotCatalog _catalog = catalog;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotLoader>();
@@ -63,7 +64,7 @@ public sealed class PersistedSnapshotLoader(
 
         // Can be millions of entries on a long-running node — materialised once and shared by the
         // arena init and the parallel load below.
-        List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Load()];
+        List<CatalogEntry> entries = [.. _catalog.Load()];
         arena.Initialize(entries);
 
         LoadSnapshotsParallel(entries);
@@ -75,7 +76,7 @@ public sealed class PersistedSnapshotLoader(
         ReconstructBloom();
     }
 
-    private void LoadSnapshotsParallel(List<SnapshotCatalog.CatalogEntry> entries)
+    private void LoadSnapshotsParallel(List<CatalogEntry> entries)
     {
         ProgressLogger? loadLog = null;
         Timer? heartbeat = null;
@@ -109,7 +110,7 @@ public sealed class PersistedSnapshotLoader(
     /// which indexes it under the bucket's lock — so this is safe to run from the parallel load.
     /// No catalog write: the entry is already in the catalog (we are reading from it).
     /// </summary>
-    private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
+    private void LoadSnapshot(CatalogEntry entry)
     {
         ArenaReservation reservation = arena.Open(entry.Location);
 
@@ -218,16 +219,31 @@ public sealed class PersistedSnapshotLoader(
         reservation.Fsync();
         blobWriter.Fsync();
 
+        if (_logger.IsDebug) _logger.Debug($"Persisted snapshot {snapshot.From.BlockNumber}->{snapshot.To.BlockNumber} to disk (arena {location.ArenaId}, {location.Size} bytes)");
+
         // Build the persisted snapshot (its ctor takes its own reservation + blob leases, so we drop
         // ours), record the catalog entry, then index it. AddPersistedSnapshot takes the bucket's own
         // lease, so we drop this construction lease once indexing (and optional validation) is done.
         PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, blobs, SnapshotTier.PersistedBase, bloom);
         reservation.Dispose();
-        _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
+        _catalog.Add(new CatalogEntry(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase));
         repository.AddPersistedSnapshot(persisted, SnapshotTier.PersistedBase);
 
         if (_validatePersistedSnapshot)
-            PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+        {
+            try
+            {
+                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Validation runs on a background persistence thread; an unhandled throw here would either
+                // be swallowed (looking like a good run) or crash the process with a 128+ code that git
+                // bisect treats as "abort". Exit explicitly with a bisect-compatible "bad" code instead.
+                if (_logger.IsError) _logger.Error($"Persisted snapshot validation failed for range {snapshot.From.BlockNumber}..{snapshot.To.BlockNumber}. Exiting with code {ExitCodes.GeneralError} for git bisect compatibility.", ex);
+                Environment.Exit(ExitCodes.GeneralError);
+            }
+        }
 
         persisted.Dispose();
     }

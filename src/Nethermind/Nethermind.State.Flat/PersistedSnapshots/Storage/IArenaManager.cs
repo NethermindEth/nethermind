@@ -5,7 +5,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 public unsafe interface IArenaManager : IDisposable
 {
-    void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
+    void Initialize(IReadOnlyList<CatalogEntry> entries);
 
     /// <summary>
     /// Create an <see cref="ArenaWriter"/> for a new snapshot slice.

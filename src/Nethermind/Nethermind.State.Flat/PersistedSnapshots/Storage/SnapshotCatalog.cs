@@ -17,20 +17,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// key stores the catalog-version word; entry keys are 48 bytes, so the lengths
 /// cannot collide.
 /// </summary>
-public sealed class SnapshotCatalog(IDb db)
+public sealed class SnapshotCatalog(IDb db) : ISnapshotCatalog
 {
-    /// <summary>
-    /// A single catalog entry describing a persisted snapshot's identity, metadata-arena
-    /// location and persisted <see cref="SnapshotTier"/>. The contiguous blob-RLP region (base
-    /// snapshots only) lives in the snapshot's own metadata HSST under the <c>blob_range</c>
-    /// key, not here.
-    /// </summary>
-    public sealed record CatalogEntry(
-        StateId From,
-        StateId To,
-        SnapshotLocation Location,
-        SnapshotTier Tier);
-
     // Binary layout per entry: fromBlock(8) + fromRoot(32) + toBlock(8) + toRoot(32) +
     // arenaId(4) + offset(8) + size(8) + tier(1) = 101
     private const int EntrySize = 101;

@@ -77,7 +77,7 @@ public sealed class ArenaManager : IArenaManager
     /// Initialize from existing arena files and catalog entries.
     /// Computes allocation frontiers and dead bytes per arena.
     /// </summary>
-    public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries)
+    public void Initialize(IReadOnlyList<CatalogEntry> entries)
     {
         using Lock.Scope scope = _lock.EnterScope();
         // Open existing arena files. Defer the per-file metric push until after frontier
@@ -113,7 +113,7 @@ public sealed class ArenaManager : IArenaManager
         // missing arena id (not per entry).
         Dictionary<int, long> liveSizes = [];
         HashSet<int> missingArenas = [];
-        foreach (SnapshotCatalog.CatalogEntry entry in entries)
+        foreach (CatalogEntry entry in entries)
         {
             int aid = entry.Location.ArenaId;
             if (!_arenas.TryGetValue(aid, out ArenaFile? arena))
@@ -222,6 +222,7 @@ public sealed class ArenaManager : IArenaManager
     {
         if (!_arenas.TryGetValue(location.ArenaId, out ArenaFile? arenaFile))
             throw new InvalidOperationException($"Arena {location.ArenaId} is not registered with this manager.");
+        if (_logger.IsDebug) _logger.Debug($"Reserved arena {location.ArenaId} [{location.Offset}, {location.Offset + location.Size}) ({location.Size} bytes)");
         return new ArenaReservation(this, arenaFile, location.ArenaId, location.Offset, location.Size);
     }
 
@@ -245,11 +246,14 @@ public sealed class ArenaManager : IArenaManager
         // also makes ArenaReservation.CleanUp skip the hole punch, so a file the next
         // session rehydrates is never zeroed.
         if (_disposed) return false;
+        // Sole caller is ArenaReservation.CleanUp, so one call == one reservation released.
+        if (_logger.IsDebug) _logger.Debug($"Released arena reservation on arena {file.Id} ({deadSize} bytes)");
         file.DeadBytes += deadSize;
         if (file.DeadBytes < file.Frontier) return true;
         PoolFor(file).Remove(file.Id);
         if (_arenas.TryRemove(file.Id, out _))
         {
+            if (_logger.IsDebug) _logger.Debug($"Released arena file {file.Id} (all {file.Frontier} bytes dead)");
             file.ReportRemoved();
             file.Dispose();
         }
@@ -332,6 +336,7 @@ public sealed class ArenaManager : IArenaManager
         string path = Path.Combine(_basePath, $"{prefix}{id:D4}{ArenaFileExtension}");
         ArenaFile arena = new(id, path, mappedSize, small);
         _arenas[id] = arena;
+        if (_logger.IsDebug) _logger.Debug($"Created arena file {path} (mapped {mappedSize} bytes{(dedicated ? ", dedicated" : "")}{(small ? ", small" : "")})");
         // Fresh shared file isn't added to _mutableArenas — the writer that just took it
         // is its "owner". The writer's Complete / Cancel adds it (if room remains).
         arena.ReportAdded();
