@@ -218,8 +218,8 @@ public class ProofRpcModuleCallTests
     /// when a slot is written (via SSTORE → WorldState.Set) and then reverted (via REVERT → WorldState.Restore),
     /// the cached write is discarded and the trie is never traversed during the call. The witness must
     /// still include the storage trie nodes for the slot — <see cref="WitnessGeneratingWorldState.GetWitness"/>
-    /// re-walks touched keys via <c>MultiAccountProofCollector</c> + per-account <c>AccountProofCollector</c> to
-    /// capture them. A cross-client (geth) verifier cannot reconstruct the slot without these nodes.
+    /// walks the touched keys over the pre-state trie with <c>PatriciaTrieWitnessGenerator</c> to capture them.
+    /// A cross-client (geth) verifier cannot reconstruct the slot without these nodes.
     /// </summary>
     [Test]
     public async Task Proof_call_includes_trie_nodes_for_storage_sstore_then_reverted()
@@ -288,10 +288,9 @@ public class ProofRpcModuleCallTests
         Assert.That(expectedStorageProofNodes, Is.Not.Empty,
             "the contract should have a non-empty storage proof for slot 0 in the parent state");
 
-        // The witness must contain every expected storage trie node by hash. If the
-        // MultiAccountProofCollector / per-account AccountProofCollector re-walk were dropped, this
-        // would fail because the SSTORE was reverted (the trie was never traversed during the call)
-        // and only the re-walk could have captured these nodes.
+        // The witness must contain every expected storage trie node by hash. If the post-execution
+        // generator walk were dropped, this would fail because the SSTORE was reverted (the trie was
+        // never traversed during the call) and only walking the touched keys could capture these nodes.
         HashSet<Hash256> witnessNodeHashes = result.Witness.State
             .Select(Keccak.Compute)
             .ToHashSet();
@@ -466,8 +465,8 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression guard: a single-slot call must still capture the state-root node (via the
-    /// <c>MultiAccountProofCollector</c> walk); without it, tiny-call witnesses fail stateless re-execution.
+    /// Regression guard: a single-slot call must still capture the state-root node (via the generator
+    /// walk over the touched keys); without it, tiny-call witnesses fail stateless re-execution.
     /// </summary>
     [Test]
     public async Task Proof_call_single_slot_includes_state_root_in_witness()
@@ -529,9 +528,8 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression: a call touching two accounts must capture the storage trie for both. The pre-fix
-    /// <c>MultiAccountProofCollector</c> keyed its storage-walk discriminator by an address hash
-    /// the visitor never provided, so the second account's storage was silently dropped.
+    /// Regression: a call touching two accounts must capture the storage trie for both — the witness
+    /// walk runs per touched account, so neither account's storage is dropped.
     /// </summary>
     [Test]
     public async Task Proof_call_with_two_accounts_captures_storage_trie_for_each()
