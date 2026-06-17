@@ -50,7 +50,7 @@ public class ProofRpcModuleCallTests
         Assert.That(result.Witness.Headers, Is.Not.Empty);
 
         // Contractual: executed-against header is the last entry (ascending block-number order).
-        ValueRlpReader stream = new(result.Witness.Headers[^1]);
+        RlpReader stream = new(result.Witness.Headers[^1]);
         BlockHeader lastHeader = _headerDecoder.Decode(ref stream)!;
         Assert.That(lastHeader.Hash, Is.EqualTo(head.Hash!), "the executed-against block header must be included");
     }
@@ -169,20 +169,20 @@ public class ProofRpcModuleCallTests
         BlockHeader executed = blockchain.BlockTree.Head!.Header;
 
         // Contractual ordering: BLOCKHASH-touched ancestor first, executed-against header last.
-        ValueRlpReader firstStream = new(result.Witness.Headers[0]);
+        RlpReader firstStream = new(result.Witness.Headers[0]);
         BlockHeader firstHeader = _headerDecoder.Decode(ref firstStream)!;
         Assert.That(firstHeader.Hash, Is.EqualTo(block1.Hash),
             "the BLOCKHASH-touched ancestor must be the first witness header");
 
-        ValueRlpReader lastStream = new(result.Witness.Headers[^1]);
+        RlpReader lastStream = new(result.Witness.Headers[^1]);
         BlockHeader lastHeader = _headerDecoder.Decode(ref lastStream)!;
         Assert.That(lastHeader.Hash, Is.EqualTo(executed.Hash!),
             "the executed-against header must remain the last witness header under BLOCKHASH");
 
         for (int i = 1; i < result.Witness.Headers.Count; i++)
         {
-            ValueRlpReader prevStream = new(result.Witness.Headers[i - 1]);
-            ValueRlpReader curStream = new(result.Witness.Headers[i]);
+            RlpReader prevStream = new(result.Witness.Headers[i - 1]);
+            RlpReader curStream = new(result.Witness.Headers[i]);
             long prevNumber = _headerDecoder.Decode(ref prevStream)!.Number;
             long curNumber = _headerDecoder.Decode(ref curStream)!.Number;
             Assert.That(curNumber, Is.GreaterThan(prevNumber),
@@ -439,7 +439,7 @@ public class ProofRpcModuleCallTests
         Assert.That(proof.Result![^1], Is.EqualTo(0xAB));
 
         // The executed-against header must be present (used by the verifier to bind state root → block).
-        ValueRlpReader lastHeaderStream = new(proof.Witness.Headers[^1]);
+        RlpReader lastHeaderStream = new(proof.Witness.Headers[^1]);
         BlockHeader witnessHeader = _headerDecoder.Decode(ref lastHeaderStream)!;
         Assert.That(witnessHeader.Hash, Is.EqualTo(sourceHeader.Hash!));
         Assert.That(witnessHeader.StateRoot, Is.EqualTo(sourceHeader.StateRoot!));
@@ -580,7 +580,7 @@ public class ProofRpcModuleCallTests
 
         Assert.That(proof.Witness.State, Is.Not.Empty);
 
-        ValueRlpReader stream = new(proof.Witness.Headers[^1]);
+        RlpReader stream = new(proof.Witness.Headers[^1]);
         BlockHeader witnessHeader = _headerDecoder.Decode(ref stream)!;
         IWorldState statelessWorld = new WorldState(
             new TrieStoreScopeProvider(
@@ -627,11 +627,11 @@ public class ProofRpcModuleCallTests
             Assert.That(atLater.Data.Result![^1], Is.EqualTo(0xAA), $"round {round}: later-block call");
 
             // Each witness must reference its own block (a stale state root or scope leak would mismatch).
-            ValueRlpReader deployStream = new(atDeploy.Data.Witness.Headers[^1]);
+            RlpReader deployStream = new(atDeploy.Data.Witness.Headers[^1]);
             BlockHeader deployHdr = _headerDecoder.Decode(ref deployStream)!;
             Assert.That(deployHdr.Number, Is.EqualTo(deployBlock), $"round {round}: header at deploy-block call");
 
-            ValueRlpReader laterStream = new(atLater.Data.Witness.Headers[^1]);
+            RlpReader laterStream = new(atLater.Data.Witness.Headers[^1]);
             BlockHeader laterHdr = _headerDecoder.Decode(ref laterStream)!;
             Assert.That(laterHdr.Number, Is.EqualTo(laterBlock), $"round {round}: header at later-block call");
         }
@@ -674,7 +674,7 @@ public class ProofRpcModuleCallTests
 
                 // Header must match the requested block — a scope leak between two concurrent
                 // rents would manifest as a mismatched block number here.
-                ValueRlpReader stream = new(result.Witness.Headers[^1]);
+                RlpReader stream = new(result.Witness.Headers[^1]);
                 BlockHeader hdr = _headerDecoder.Decode(ref stream)!;
                 Assert.That(hdr.Number, Is.EqualTo(block), $"task {i}: header number");
                 return (block, result.Result[^1]);

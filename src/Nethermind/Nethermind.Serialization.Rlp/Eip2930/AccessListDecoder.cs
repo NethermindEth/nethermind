@@ -16,7 +16,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         public static readonly AccessListDecoder Instance = new();
 
         protected override AccessList? DecodeInternal(
-            ref ValueRlpReader decoderContext,
+            ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
@@ -70,7 +70,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

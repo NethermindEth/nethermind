@@ -41,7 +41,7 @@ public class NeighborsMsgSerializer(
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
         if (msg.Nodes.Count != 0)
         {
@@ -67,7 +67,7 @@ public class NeighborsMsgSerializer(
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        ValueRlpReader ctx = Data.AsRlpContext();
+        RlpReader ctx = Data.AsRlpContext();
         ctx.ReadSequenceLength();
         Node[] nodes = ctx.DecodeArray(_decodeItem, limit: NodesRlpLimit)!;
 

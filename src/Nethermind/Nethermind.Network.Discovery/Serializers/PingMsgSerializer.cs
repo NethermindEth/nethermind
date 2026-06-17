@@ -21,7 +21,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, MsgTypeByte);
-        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
         writer.Encode(msg.Version);
         Encode(ref writer, msg.SourceAddress, sourceAddressLength);
@@ -44,7 +44,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     public PingMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        ValueRlpReader ctx = Data.AsRlpContext();
+        RlpReader ctx = Data.AsRlpContext();
         ctx.ReadSequenceLength();
         int version = ctx.DecodeInt();
 

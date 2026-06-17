@@ -64,8 +64,8 @@ public sealed partial class DeferredRlpItemList : IRlpItemList
 
     public int RlpLength => Rlp.LengthOfSequence(Entries[_entryStart].Length);
 
-    public void Write<TBackend>(ref ValueRlpWriter<TBackend> writer)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    public void Write<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         Span<Builder.Entry> entries = Entries;
         Span<byte> values = ValueBuffer;

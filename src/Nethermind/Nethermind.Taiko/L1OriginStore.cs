@@ -57,7 +57,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, L1O
 
         byte[]? data = db.Get(keyBytes);
         if (data is null) return null;
-        ValueRlpReader ctx = data.AsRlpValueContext();
+        RlpReader ctx = data.AsRlpContext();
         return decoder.Decode(ref ctx);
     }
 
@@ -82,7 +82,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, L1O
 
         try
         {
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = buffer.AsRlpValueWriter();
+            RlpWriter writer = buffer.AsRlpWriter();
             decoder.Encode(ref writer, l1Origin);
             db.PutSpan(key, buffer.AsSpan(0, encodedL1OriginLength));
         }

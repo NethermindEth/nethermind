@@ -6,6 +6,6 @@ namespace Nethermind.Serialization.Rlp;
 public interface IRlpWrapper
 {
     int RlpLength { get; }
-    void Write<TBackend>(ref ValueRlpWriter<TBackend> writer)
-        where TBackend : IValueRlpWriteBackend, allows ref struct;
+    void Write<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 }

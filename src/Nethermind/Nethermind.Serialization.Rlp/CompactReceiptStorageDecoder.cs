@@ -18,7 +18,7 @@ namespace Nethermind.Serialization.Rlp
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
 
-        protected override TxReceipt? DecodeInternal(ref ValueRlpReader decoderContext,
+        protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        public void DecodeStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors,
+        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,
             out TxReceiptStructRef item)
         {
             // Note: This method runs at 2.5 million times/sec on my machine
@@ -116,15 +116,15 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void DecodeLogEntryStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors none,
+        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none,
             out LogEntryStructRef current) => CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
 
-        public Hash256[] DecodeTopics(ValueRlpReader valueDecoderContext) => CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
+        public Hash256[] DecodeTopics(RlpReader valueDecoderContext) => CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
 
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

@@ -9,10 +9,10 @@ public class NonceChangeDecoder : IndexedChangeDecoder<NonceChange>
 {
     public static readonly NonceChangeDecoder Instance = new();
 
-    protected override NonceChange DecodeFields(ref ValueRlpReader ctx)
+    protected override NonceChange DecodeFields(ref RlpReader ctx)
         => new(ctx.DecodeUInt(), ctx.DecodeULong());
 
-    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer, NonceChange item)
+    protected override void EncodeValue<TWriter>(ref TWriter writer, NonceChange item)
         => writer.Encode(item.Value);
 
     protected override int GetValueLength(NonceChange item)

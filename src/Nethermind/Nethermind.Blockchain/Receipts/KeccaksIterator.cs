@@ -11,14 +11,14 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly int _length;
         private readonly int _startPosition;
-        private ValueRlpReader _decoderContext;
+        private RlpReader _decoderContext;
         private readonly Span<byte> _buffer;
         public long Index { get; private set; }
 
         public KeccaksIterator(ReadOnlySpan<byte> data, Span<byte> buffer)
         {
             if (buffer.Length != 32) throw new ArgumentException("Buffer must be 32 bytes long");
-            _decoderContext = new ValueRlpReader(data);
+            _decoderContext = new RlpReader(data);
             _length = _decoderContext.ReadSequenceLength();
             _startPosition = _decoderContext.Position;
             _buffer = buffer;

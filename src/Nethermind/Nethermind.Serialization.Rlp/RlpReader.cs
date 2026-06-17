@@ -17,68 +17,39 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp;
 
-/// <summary>
-/// Span-backed RLP decoder cursor used by value-based decoders.
-/// </summary>
-/// <remarks>
-/// The reader never owns the backing bytes. When constructed from <see cref="Memory{T}"/>, callers may opt in to
-/// memory slicing for decoded byte arrays; otherwise byte-array decoding returns copies to avoid retaining a larger
-/// backing buffer accidentally.
-/// </remarks>
-public ref struct ValueRlpReader
+public ref struct RlpReader
 {
     private bool _isNotNull;
 
-    /// <summary>
-    /// Initializes a reader over RLP bytes without retaining memory ownership metadata.
-    /// </summary>
-    public ValueRlpReader(scoped in ReadOnlySpan<byte> data)
+    public RlpReader(scoped in ReadOnlySpan<byte> data)
     {
         Data = data;
         Position = 0;
         _isNotNull = true;
     }
 
-    /// <summary>
-    /// Initializes a reader over a capped byte buffer without copying the encoded RLP data.
-    /// </summary>
-    /// <param name="data">The capped byte buffer containing encoded RLP data.</param>
-    public ValueRlpReader(CappedArray<byte> data)
+    public RlpReader(CappedArray<byte> data)
     {
         Data = data.AsSpan();
         Position = 0;
         _isNotNull = data.IsNotNull;
     }
 
-    /// <summary>
-    /// Initializes a reader over RLP bytes with optional decoded-memory slicing.
-    /// </summary>
-    /// <param name="memory">The memory that backs <see cref="Data"/>.</param>
-    /// <param name="sliceMemory">
-    /// When <c>true</c>, byte-array memory decodes return slices of <paramref name="memory"/> instead of copies.
-    /// </param>
-    public ValueRlpReader(Memory<byte> memory, bool sliceMemory = false)
+    public RlpReader(Memory<byte> memory, bool sliceMemory = false)
     {
         Memory = memory;
         Data = memory.Span;
         Position = 0;
         _isNotNull = true;
 
-        // Slice memory is turned off by default. Because if you are not careful and being explicit about it,
-        // you can end up with a memory leak.
+        // Slicing is opt-in to avoid retaining larger pooled or network buffers through decoded fields.
         _sliceMemory = sliceMemory;
     }
 
-    /// <summary>
-    /// Original memory backing this reader when the reader was constructed from <see cref="Memory{T}"/>.
-    /// </summary>
     public Memory<byte>? Memory { get; }
 
     private bool _sliceMemory = false;
 
-    /// <summary>
-    /// Full RLP input bytes visible to this reader.
-    /// </summary>
     public ReadOnlySpan<byte> Data { get; }
 
     public readonly bool IsEmpty => Data.IsEmpty;
@@ -89,16 +60,10 @@ public ref struct ValueRlpReader
 
     internal readonly string Description => Data[..Math.Min(Rlp.DebugMessageContentLength, Data.Length)].ToHexString() ?? "0x";
 
-    /// <summary>
-    /// Current cursor position in <see cref="Data"/>.
-    /// </summary>
     public int Position { get; set; }
 
     public readonly int Length => Data.Length;
 
-    /// <summary>
-    /// Indicates whether decoded byte-array memory should be returned as slices of <see cref="Memory"/>.
-    /// </summary>
     public readonly bool ShouldSliceMemory => _sliceMemory;
 
     public readonly bool IsSequenceNext() => Data[Position] >= 192;
@@ -213,8 +178,7 @@ public ref struct ValueRlpReader
     private static void ThrowCheckEndFailed(int position) =>
         throw new RlpException($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {position}");
 
-    // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
-    // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings.
+    // Used to avoid allocating detailed error strings on receipt fallback decode paths.
     private class DecodeKeccakRlpException : RlpException
     {
         private readonly int _prefix;
@@ -769,10 +733,6 @@ public ref struct ValueRlpReader
 
     public int DecodeInt() => (int)DecodeUInt();
 
-    /// <summary>
-    /// Decodes a non-negative int value. Throws if the decoded value is negative.
-    /// Use this for fields that should never be negative.
-    /// </summary>
     public int DecodePositiveInt()
     {
         int position = Position;
@@ -782,10 +742,6 @@ public ref struct ValueRlpReader
         return value;
     }
 
-    /// <summary>
-    /// Decodes a non-negative long value. Throws if the decoded value is negative.
-    /// Use this for fields that should never be negative (e.g., gas values).
-    /// </summary>
     public long DecodePositiveLong()
     {
         int position = Position;

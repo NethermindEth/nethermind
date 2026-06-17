@@ -9,7 +9,7 @@ namespace Nethermind.Xdc.RLP;
 internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
 {
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
-    protected override ExtraFieldsV2 DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override ExtraFieldsV2 DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -34,12 +34,12 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         Encode(ref writer, item, rlpBehaviors);
         return new Rlp(bytes);
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ExtraFieldsV2 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

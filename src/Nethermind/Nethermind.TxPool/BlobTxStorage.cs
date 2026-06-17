@@ -127,7 +127,7 @@ public class BlobTxStorage : IBlobTxStorage
 
         if (bytes is not null)
         {
-            ValueRlpReader ctx = new(bytes);
+            RlpReader ctx = new(bytes);
             blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
             return true;
         }
@@ -193,7 +193,7 @@ public class BlobTxStorage : IBlobTxStorage
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+        RlpWriter writer = new(bytes);
         writer.StartSequence(contentLength);
         for (int i = 0; i < blockBlobTransactions.Count; i++)
         {

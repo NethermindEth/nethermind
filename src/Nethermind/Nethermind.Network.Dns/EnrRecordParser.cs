@@ -55,7 +55,7 @@ public class EnrRecordParser(INodeRecordSigner nodeRecordSigner) : IEnrRecordPar
         IByteBuffer base64Buffer = Base64.Decode(buffer, Base64Dialect.URL_SAFE);
         try
         {
-            ValueRlpReader ctx = base64Buffer.AsRlpContext();
+            RlpReader ctx = base64Buffer.AsRlpContext();
             NodeRecord result = _nodeRecordSigner.Deserialize(ref ctx);
             base64Buffer.SetReaderIndex(base64Buffer.ReaderIndex + ctx.Position);
             return result;

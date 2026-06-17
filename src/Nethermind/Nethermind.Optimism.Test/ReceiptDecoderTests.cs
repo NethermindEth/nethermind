@@ -16,10 +16,10 @@ public class ReceiptDecoderTests
         static OptimismTxReceipt TestNetworkEncodingRoundTrip(byte[] rlp, bool includesNonce, bool includesVersion)
         {
             OptimismReceiptMessageDecoder decoder = new();
-            ValueRlpReader ctx = new(rlp);
+            RlpReader ctx = new(rlp);
             OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
 
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> encodedRlp = RlpWriter.ForLength(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
+            RlpWriter encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
             decoder.Encode(ref encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
             byte[] encodedBytes = encodedRlp.WrittenSpan.ToArray();
 
@@ -38,10 +38,10 @@ public class ReceiptDecoderTests
             OptimismCompactReceiptStorageDecoder decoder = new();
 
             byte[] encodedRlp = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(encodedRlp);
+            RlpWriter writer = new(encodedRlp);
             decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
-            ValueRlpReader valueDecoderCtx = new(encodedRlp);
+            RlpReader valueDecoderCtx = new(encodedRlp);
             OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.Decode(ref valueDecoderCtx, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>
@@ -57,11 +57,11 @@ public class ReceiptDecoderTests
         {
             OptimismReceiptTrieDecoder trieDecoder = new();
             byte[] encodedTrieRlp = new byte[trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(encodedTrieRlp);
+            RlpWriter writer = new(encodedTrieRlp);
 
             trieDecoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
-            ValueRlpReader trieCtx = new(encodedTrieRlp);
+            RlpReader trieCtx = new(encodedTrieRlp);
             OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.Decode(ref trieCtx, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>

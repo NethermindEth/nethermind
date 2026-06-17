@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 + Rlp.LengthOf(message.Bytes);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
             writer.StartSequence(contentLength);
 
@@ -78,8 +78,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static void EncodePaths<TBackend>(ref ValueRlpWriter<TBackend> writer, IOwnedReadOnlyList<PathGroup> paths)
-            where TBackend : IValueRlpWriteBackend, allows ref struct
+        private static void EncodePaths<TWriter>(ref TWriter writer, IOwnedReadOnlyList<PathGroup> paths)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             int contentLength = 0;
             ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();
@@ -114,7 +114,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            ValueRlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory, true);
             int startingPosition = ctx.Position;
             GetTrieNodesMessage message = new();
             IRlpItemList? rawPaths = null;

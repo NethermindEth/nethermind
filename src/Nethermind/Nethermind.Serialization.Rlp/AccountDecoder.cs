@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
         public AccountDecoder(bool slimFormat = false) => _slimFormat = slimFormat;
 
-        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref ValueRlpReader context)
+        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref RlpReader context)
         {
             context.SkipLength();
             context.SkipItem();
@@ -33,7 +33,7 @@ namespace Nethermind.Serialization.Rlp
             return (codeHash, storageRoot);
         }
 
-        public Hash256 DecodeStorageRootOnly(ref ValueRlpReader context)
+        public Hash256 DecodeStorageRootOnly(ref RlpReader context)
         {
             context.SkipLength();
             context.SkipItem();
@@ -42,7 +42,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -53,8 +53,8 @@ namespace Nethermind.Serialization.Rlp
             Encode(item, ref writer);
         }
 
-        public void Encode<TBackend>(Account account, ref ValueRlpWriter<TBackend> writer, int? contentLength = null)
-            where TBackend : IValueRlpWriteBackend, allows ref struct
+        public void Encode<TWriter>(Account account, ref TWriter writer, int? contentLength = null)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             contentLength ??= GetContentLength(account);
 
@@ -139,7 +139,7 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        protected override Account? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Account? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)
@@ -159,7 +159,7 @@ namespace Nethermind.Serialization.Rlp
             return new(nonce, balance, storageRoot, codeHash);
         }
 
-        private Hash256 DecodeStorageRoot(ref ValueRlpReader rlpStream)
+        private Hash256 DecodeStorageRoot(ref RlpReader rlpStream)
         {
             Hash256 storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
@@ -175,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        private Hash256 DecodeCodeHash(ref ValueRlpReader rlpStream)
+        private Hash256 DecodeCodeHash(ref RlpReader rlpStream)
         {
             Hash256 codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
@@ -191,7 +191,7 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        private ValueHash256 DecodeStorageRootStruct(ref ValueRlpReader rlpStream)
+        private ValueHash256 DecodeStorageRootStruct(ref RlpReader rlpStream)
         {
             ValueHash256 storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
@@ -207,7 +207,7 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        private ValueHash256 DecodeCodeHashStruct(ref ValueRlpReader rlpStream)
+        private ValueHash256 DecodeCodeHashStruct(ref RlpReader rlpStream)
         {
             ValueHash256 codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyByteArray())
@@ -223,7 +223,7 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        public bool TryDecodeStruct(ref ValueRlpReader decoderContext, out AccountStruct account)
+        public bool TryDecodeStruct(ref RlpReader decoderContext, out AccountStruct account)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)

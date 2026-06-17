@@ -24,7 +24,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             totalLength += Rlp.LengthOf(msg.Version);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(totalLength);
             writer.Encode(msg.EphemeralPublicKey.Bytes);
             writer.Encode(msg.Nonce);
@@ -34,7 +34,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         public AckEip8Message Deserialize(IByteBuffer msgBytes) =>
             msgBytes.DeserializeRlp(Deserialize);
 
-        private static AckEip8Message Deserialize(ref ValueRlpReader ctx)
+        private static AckEip8Message Deserialize(ref RlpReader ctx)
         {
             AckEip8Message authEip8Message = new();
             ctx.ReadSequenceLength();

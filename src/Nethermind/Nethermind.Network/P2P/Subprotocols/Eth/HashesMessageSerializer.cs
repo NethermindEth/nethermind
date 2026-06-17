@@ -12,21 +12,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
         protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(static (ref ValueRlpReader ctx) => DeserializeHashes(ref ctx));
+            byteBuffer.DeserializeRlp(static (ref RlpReader ctx) => DeserializeHashes(ref ctx));
 
-        protected static Hash256[] DeserializeHashes(ref ValueRlpReader ctx, RlpLimit? limit = null) =>
-            ctx.DecodeArray(static (ref ValueRlpReader c) => c.DecodeKeccak(), limit: limit);
+        protected static Hash256[] DeserializeHashes(ref RlpReader ctx, RlpLimit? limit = null) =>
+            ctx.DecodeArray(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
 
         protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null) =>
-            byteBuffer.DeserializeRlp((ref ValueRlpReader ctx) => DeserializeHashesArrayPool(ref ctx, limit));
+            byteBuffer.DeserializeRlp((ref RlpReader ctx) => DeserializeHashesArrayPool(ref ctx, limit));
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref ValueRlpReader ctx, RlpLimit? limit = null) => ctx.DecodeArrayPoolList(static (ref ValueRlpReader c) => c.DecodeKeccak(), limit: limit);
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref RlpReader ctx, RlpLimit? limit = null) => ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
             writer.StartSequence(contentLength);
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();

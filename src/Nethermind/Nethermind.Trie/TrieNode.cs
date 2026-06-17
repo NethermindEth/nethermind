@@ -183,12 +183,12 @@ namespace Nethermind.Trie
 
         public CappedArray<byte> FullRlp => ReadRlp();
 
-        public ValueRlpReader RlpReader
+        public RlpReader RlpReader
         {
             get
             {
                 CappedArray<byte> rlp = ReadRlp();
-                return new ValueRlpReader(rlp);
+                return new RlpReader(rlp);
             }
         }
 
@@ -421,7 +421,7 @@ namespace Nethermind.Trie
                 IsPersisted = true;
             }
 
-            if (!DecodeRlp(new ValueRlpReader(rlp), bufferPool, out int numberOfItems))
+            if (!DecodeRlp(new RlpReader(rlp), bufferPool, out int numberOfItems))
             {
                 ThrowUnexpectedNumberOfItems(numberOfItems, path);
             }
@@ -473,7 +473,7 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                return DecodeRlp(new ValueRlpReader(rlp), bufferPool, out _);
+                return DecodeRlp(new RlpReader(rlp), bufferPool, out _);
             }
             catch (RlpException)
             {
@@ -481,7 +481,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private bool DecodeRlp(ValueRlpReader rlpReader, ICappedArrayPool bufferPool, out int itemsCount)
+        private bool DecodeRlp(RlpReader rlpReader, ICappedArrayPool bufferPool, out int itemsCount)
         {
             Metrics.TreeNodeRlpDecodings++;
 
@@ -588,7 +588,7 @@ namespace Nethermind.Trie
                 return null;
             }
 
-            ValueRlpReader rlpReader = new(rlp);
+            RlpReader rlpReader = new(rlp);
             SeekChild(ref rlpReader, i);
             (int _, int length) = rlpReader.PeekPrefixAndContentLength();
             return length == 32 ? rlpReader.DecodeKeccak() : null;
@@ -603,7 +603,7 @@ namespace Nethermind.Trie
                 return null;
             }
 
-            ValueRlpReader rlpReader = new(rlp);
+            RlpReader rlpReader = new(rlp);
             SeekChild(ref rlpReader, i);
 
             int prefix = rlpReader.PeekByte();
@@ -637,7 +637,7 @@ namespace Nethermind.Trie
                 return null;
             }
 
-            ValueRlpReader rlpReader = new(rlp);
+            RlpReader rlpReader = new(rlp);
             SeekChild(ref rlpReader, i);
 
             int prefixValue = rlpReader.PeekByte();
@@ -661,7 +661,7 @@ namespace Nethermind.Trie
                 return false;
             }
 
-            ValueRlpReader rlpReader = new(rlp);
+            RlpReader rlpReader = new(rlp);
             SeekChild(ref rlpReader, i);
             (_, int length) = rlpReader.PeekPrefixAndContentLength();
             if (length == 32 && rlpReader.TryDecodeValueKeccak(out keccak))
@@ -683,7 +683,7 @@ namespace Nethermind.Trie
             ref object data = ref _nodeData[i];
             if (rlp.IsNotNull && data is null)
             {
-                ValueRlpReader rlpReader = new(rlp);
+                RlpReader rlpReader = new(rlp);
                 SeekChild(ref rlpReader, i);
                 return rlpReader.PeekNextRlpLength() == 1;
             }
@@ -1221,7 +1221,7 @@ namespace Nethermind.Trie
                 }
                 else if (Value.Length > 64) // if not a storage leaf
                 {
-                    ValueRlpReader valueContext = Value.AsSpan().AsRlpValueContext();
+                    RlpReader valueContext = Value.AsSpan().AsRlpContext();
                     Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueContext);
                     if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
                     {
@@ -1246,7 +1246,7 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
-        private void SeekChild(ref ValueRlpReader rlpReader, int index)
+        private void SeekChild(ref RlpReader rlpReader, int index)
         {
             if (rlpReader.IsNull)
             {
@@ -1256,7 +1256,7 @@ namespace Nethermind.Trie
             SeekChildNotNull(ref rlpReader, index);
         }
 
-        private void SeekChildNotNull(ref ValueRlpReader rlpReader, int index)
+        private void SeekChildNotNull(ref RlpReader rlpReader, int index)
         {
             rlpReader.Reset();
             rlpReader.SkipLength();
@@ -1288,7 +1288,7 @@ namespace Nethermind.Trie
                 if (childOrRef is null)
                 {
                     // Allows to load children in parallel
-                    ValueRlpReader rlpReader = new(rlp);
+                    RlpReader rlpReader = new(rlp);
                     SeekChild(ref rlpReader, i);
                     int prefix = rlpReader.ReadByte();
 
@@ -1351,7 +1351,7 @@ namespace Nethermind.Trie
                 return chCount;
             }
 
-            ValueRlpReader rlpReader = new(rlp);
+            RlpReader rlpReader = new(rlp);
             rlpReader.Reset();
             rlpReader.SkipLength();
 
@@ -1427,7 +1427,7 @@ namespace Nethermind.Trie
         // Allow faster forward child iteration by not re-skipping items on each child seek
         public ref struct ChildIterator(TrieNode node)
         {
-            private ValueRlpReader _rlpReader;
+            private RlpReader _rlpReader;
             private int? _currentStreamIndex;
 
             private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
@@ -1452,7 +1452,7 @@ namespace Nethermind.Trie
                         }
                         else
                         {
-                            _rlpReader = new ValueRlpReader(rlp);
+                            _rlpReader = new RlpReader(rlp);
                             _rlpReader.Reset();
                             _rlpReader.SkipLength();
                             if (node.IsExtension)

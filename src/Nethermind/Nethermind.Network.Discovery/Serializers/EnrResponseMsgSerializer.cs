@@ -24,7 +24,7 @@ public class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
         writer.Encode(msg.RequestKeccak);
         msg.NodeRecord.Encode(ref writer);
@@ -36,7 +36,7 @@ public class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
     public EnrResponseMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
-        ValueRlpReader ctx = data.AsRlpContext();
+        RlpReader ctx = data.AsRlpContext();
         ctx.ReadSequenceLength();
         Hash256? requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
 

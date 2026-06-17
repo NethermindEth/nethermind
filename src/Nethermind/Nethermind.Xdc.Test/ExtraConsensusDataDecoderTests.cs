@@ -18,12 +18,12 @@ internal class ExtraConsensusDataDecoderTests
     public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(string extraDataRlp)
     {
         ExtraConsensusDataDecoder decoder = new();
-        ValueRlpReader context = new(Bytes.FromHexString(extraDataRlp));
+        RlpReader context = new(Bytes.FromHexString(extraDataRlp));
         ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
 
         Rlp encodedExtraData = decoder.Encode(decodedExtraData);
 
-        ValueRlpReader encodedContext = encodedExtraData.Bytes.AsRlpValueContext();
+        RlpReader encodedContext = encodedExtraData.Bytes.AsRlpContext();
         ExtraFieldsV2 unencoded = decoder.Decode(ref encodedContext);
 
         Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingXdcComparer());
@@ -35,10 +35,10 @@ internal class ExtraConsensusDataDecoderTests
         ExtraFieldsV2 extraFields = new(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(extraFields, RlpBehaviors.None)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+        RlpWriter writer = new(bytes);
         decoder.Encode(ref writer, extraFields);
 
-        ValueRlpReader context = new(bytes);
+        RlpReader context = new(bytes);
         ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
 
         Assert.That(decodedExtraData, Is.EqualTo(extraFields).UsingXdcComparer());
@@ -52,7 +52,7 @@ internal class ExtraConsensusDataDecoderTests
 
         Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
 
-        ValueRlpReader context = encodedExtraData.Bytes.AsRlpValueContext();
+        RlpReader context = encodedExtraData.Bytes.AsRlpContext();
         ExtraFieldsV2 unencoded = decoder.Decode(ref context);
 
         Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingXdcComparer());

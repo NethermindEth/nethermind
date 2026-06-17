@@ -210,7 +210,7 @@ namespace Nethermind.Core.Test
         public void KeccakRlpStream_EncodeEmptyBloom_HashesCanonicalZeroBytes()
         {
             byte[] expected = new byte[Rlp.LengthOf(Bloom.Empty)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> expectedWriter = expected.AsRlpValueWriter();
+            RlpWriter expectedWriter = expected.AsRlpWriter();
             expectedWriter.Encode(Bloom.Empty);
 
             KeccakRlpStream stream = new();
@@ -1276,7 +1276,7 @@ namespace Nethermind.Core.Test
             }
 
             byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = encoded.AsRlpValueWriter();
+            RlpWriter writer = encoded.AsRlpWriter();
             writer.StartSequence(contentLength);
             for (int i = 0; i < items.Length; i++)
             {

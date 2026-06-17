@@ -24,11 +24,11 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
     public void Sign(NodeRecord nodeRecord) => nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
 
     /// <summary>
-    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="ValueRlpReader"/>.
+    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="RlpReader"/>.
     /// </summary>
     /// <param name="ctx">A value decoder context to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
-    public NodeRecord Deserialize(ref ValueRlpReader ctx)
+    public NodeRecord Deserialize(ref RlpReader ctx)
     {
         int startPosition = ctx.Position;
         int recordRlpLength = ctx.ReadSequenceLength();
@@ -92,7 +92,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
             int noSigContentLength = ctx.Length - ctx.Position;
             int noSigSequenceLength = Rlp.LengthOfSequence(noSigContentLength);
             byte[] originalContent = new byte[noSigSequenceLength];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = originalContent.AsRlpValueWriter();
+            RlpWriter writer = originalContent.AsRlpWriter();
             writer.StartSequence(noSigContentLength);
             writer.Write(ctx.Read(noSigContentLength));
             ctx.Position = startPosition;

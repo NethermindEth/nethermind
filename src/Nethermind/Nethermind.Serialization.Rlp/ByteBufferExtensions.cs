@@ -56,11 +56,11 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static ValueRlpReader AsRlpContext(this IByteBuffer buffer) =>
+        public static RlpReader AsRlpContext(this IByteBuffer buffer) =>
             new(buffer.AsSpan());
 
-        public static ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> AsRlpValueWriter(this IByteBuffer buffer) =>
-            RlpWriter.ForByteBuffer(buffer);
+        public static ByteBufferRlpWriter AsRlpWriter(this IByteBuffer buffer) =>
+            new(buffer);
 
         public static bool TryWriteRlpByteArrayList(this IByteBuffer byteBuffer, IByteArrayList list)
         {
@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Rlp
         public static void WriteRlpWrapper(this IByteBuffer byteBuffer, IRlpWrapper rlpWrapper)
         {
             byteBuffer.EnsureWritable(rlpWrapper.RlpLength);
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = byteBuffer.AsRlpValueWriter();
+            ByteBufferRlpWriter writer = byteBuffer.AsRlpWriter();
             rlpWrapper.Write(ref writer);
         }
 
@@ -89,7 +89,7 @@ namespace Nethermind.Serialization.Rlp
 
             int length = Rlp.LengthOfSequence(contentLength);
             byteBuffer.EnsureWritable(length);
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = byteBuffer.AsRlpValueWriter();
+            ByteBufferRlpWriter writer = byteBuffer.AsRlpWriter();
             writer.StartSequence(contentLength);
             for (int i = 0; i < list.Count; i++)
             {
@@ -100,7 +100,7 @@ namespace Nethermind.Serialization.Rlp
         public static RlpByteArrayList DecodeRlpByteArrayList(this IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            ValueRlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
             RlpByteArrayList? list = null;
 
@@ -121,7 +121,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static T DeserializeRlp<T>(this IByteBuffer buffer, DecodeRlpValue<T> deserialize)
         {
-            ValueRlpReader ctx = buffer.AsRlpContext();
+            RlpReader ctx = buffer.AsRlpContext();
             try
             {
                 return deserialize(ref ctx);
@@ -144,13 +144,6 @@ namespace Nethermind.Serialization.Rlp
             buffer.ResetWriterIndex();
         }
 
-        /// <summary>
-        /// Return readable space of this byte buffer as a span.
-        /// </summary>
-        /// <param name="buffer"></param>
-        /// <param name="startIndex">Optional start index of the underlying buffer.</param>
-        /// <returns></returns>
-        /// <exception cref="InvalidOperationException"></exception>
         public static Span<byte> AsSpan(this IByteBuffer buffer, int? startIndex = null)
         {
             if (!buffer.HasArray) throw new InvalidOperationException("Byte buffer does not have array backing");
@@ -159,13 +152,6 @@ namespace Nethermind.Serialization.Rlp
                 .Slice(buffer.ArrayOffset + startIdx, buffer.WriterIndex - startIdx);
         }
 
-        /// <summary>
-        /// Return readable space of this byte buffer as a memory.
-        /// </summary>
-        /// <param name="buffer"></param>
-        /// <param name="startIndex">Optional start index of the underlying buffer.</param>
-        /// <returns></returns>
-        /// <exception cref="InvalidOperationException"></exception>
         public static Memory<byte> AsMemory(this IByteBuffer buffer, int? startIndex = null)
         {
             if (!buffer.HasArray) throw new InvalidOperationException("Byte buffer does not have array backing");

@@ -96,7 +96,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         if (value.IsEmpty)
             return null;
 
-        ValueRlpReader context = value.AsRlpValueContext();
+        RlpReader context = value.AsRlpContext();
         TSnapshot decoded = _snapshotDecoder.Decode(ref context);
         snapshot = decoded;
         _snapshotCache.Set(headerHash, snapshot);

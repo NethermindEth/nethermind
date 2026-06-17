@@ -157,7 +157,7 @@ internal static class PayloadBodiesDirectResponseWriter
         byte[] blockRlp,
         MemoryManager<byte>? blockAccessList = null)
     {
-        ValueRlpReader ctx = new(blockRlp);
+        RlpReader ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
 
         // Keep this field order aligned with BlockBodyDecoder.DecodeUnwrapped; this path streams without materializing BlockBody.
@@ -228,7 +228,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
         try
         {
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> rlpWriter = buffer.AsRlpValueWriter();
+            RlpWriter rlpWriter = buffer.AsRlpWriter();
             TxDecoder.Instance.Encode(ref rlpWriter, transaction, RlpBehaviors.SkipTypedWrapping);
             HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > HexChunkThreshold);
         }
@@ -240,7 +240,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(byte[] blockRlp)
     {
-        ValueRlpReader ctx = new(blockRlp);
+        RlpReader ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
         ctx.SkipItem(); // header
         byte[][] transactions = GetTransactionsFromBlockRlp(ref ctx);
@@ -251,17 +251,17 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static byte[][] GetTransactionsFromBlockRlp(byte[] blockRlp)
     {
-        ValueRlpReader ctx = CreateTransactionContext(blockRlp, out int txsEnd);
+        RlpReader ctx = CreateTransactionContext(blockRlp, out int txsEnd);
         return GetTransactionsFromBlockRlp(ref ctx, txsEnd);
     }
 
-    private static byte[][] GetTransactionsFromBlockRlp(ref ValueRlpReader ctx)
+    private static byte[][] GetTransactionsFromBlockRlp(ref RlpReader ctx)
     {
         int txsEnd = ctx.ReadSequenceLength() + ctx.Position;
         return GetTransactionsFromBlockRlp(ref ctx, txsEnd);
     }
 
-    private static byte[][] GetTransactionsFromBlockRlp(ref ValueRlpReader ctx, int txsEnd)
+    private static byte[][] GetTransactionsFromBlockRlp(ref RlpReader ctx, int txsEnd)
     {
         int count = ctx.PeekNumberOfItemsRemaining(txsEnd);
         byte[][] transactions = new byte[count][];
@@ -275,17 +275,17 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, byte[] blockRlp)
     {
-        ValueRlpReader ctx = CreateTransactionContext(blockRlp, out int txsEnd);
+        RlpReader ctx = CreateTransactionContext(blockRlp, out int txsEnd);
         WriteTransactionsFromBlockRlp(writer, ref ctx, txsEnd);
     }
 
-    private static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, ref ValueRlpReader ctx)
+    private static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx)
     {
         int txsEnd = ctx.ReadSequenceLength() + ctx.Position;
         WriteTransactionsFromBlockRlp(writer, ref ctx, txsEnd);
     }
 
-    private static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, ref ValueRlpReader ctx, int txsEnd)
+    private static void WriteTransactionsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx, int txsEnd)
     {
         writer.Write("["u8);
 
@@ -299,16 +299,16 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("]"u8);
     }
 
-    private static ValueRlpReader CreateTransactionContext(byte[] blockRlp, out int txsEnd)
+    private static RlpReader CreateTransactionContext(byte[] blockRlp, out int txsEnd)
     {
-        ValueRlpReader ctx = new(blockRlp);
+        RlpReader ctx = new(blockRlp);
         ctx.ReadSequenceLength();
         ctx.SkipItem(); // header
         txsEnd = ctx.ReadSequenceLength() + ctx.Position;
         return ctx;
     }
 
-    private static ReadOnlySpan<byte> ReadTransactionBytes(ref ValueRlpReader ctx)
+    private static ReadOnlySpan<byte> ReadTransactionBytes(ref RlpReader ctx)
     {
         ReadOnlySpan<byte> transaction = ctx.PeekNextItem();
         ctx.SkipItem(); // current transaction
@@ -319,7 +319,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
         // Typed transactions are stored as an RLP string containing type || payload;
         // Engine payload bodies expect the string content, not the RLP wrapper.
-        ValueRlpReader transactionContext = new(transaction);
+        RlpReader transactionContext = new(transaction);
         (_, int contentLength) = transactionContext.PeekPrefixAndContentLength();
         return transaction.Slice(transaction.Length - contentLength, contentLength);
     }
@@ -335,7 +335,7 @@ internal static class PayloadBodiesDirectResponseWriter
         WriteWithdrawalArray(writer, withdrawals);
     }
 
-    private static void WriteWithdrawalsFromBlockRlp(IBufferWriter<byte> writer, ref ValueRlpReader ctx, int blockEnd)
+    private static void WriteWithdrawalsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx, int blockEnd)
     {
         if (ctx.Position == blockEnd)
         {
@@ -392,7 +392,7 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("}"u8);
     }
 
-    private static void WriteWithdrawalFromBlockRlp(IBufferWriter<byte> writer, ref ValueRlpReader ctx)
+    private static void WriteWithdrawalFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx)
     {
         int withdrawalEnd = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -409,7 +409,7 @@ internal static class PayloadBodiesDirectResponseWriter
         ctx.Check(withdrawalEnd);
     }
 
-    private static void WriteAddressFromBlockRlp(IBufferWriter<byte> writer, ref ValueRlpReader ctx)
+    private static void WriteAddressFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx)
     {
         int prefix = ctx.ReadByte();
         if (prefix == Rlp.EmptyByteArrayByte)

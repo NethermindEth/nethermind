@@ -14,11 +14,11 @@ public interface INodeRecordSigner
     void Sign(NodeRecord nodeRecord);
 
     /// <summary>
-    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="ValueRlpReader"/>.
+    /// Deserializes a <see cref="NodeRecord"/> from a <see cref="RlpReader"/>.
     /// </summary>
     /// <param name="ctx">A value decoder context to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
-    NodeRecord Deserialize(ref ValueRlpReader ctx);
+    NodeRecord Deserialize(ref RlpReader ctx);
 
     /// <summary>
     /// Verifies if the public key recovered from the <see cref="Signature"/> of this record matches

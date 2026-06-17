@@ -31,7 +31,7 @@ public class LogEntryDecoderTests
         LogEntry? decoded;
         if (useDecoderInstance)
         {
-            ValueRlpReader ctx = new(rlp.Bytes);
+            RlpReader ctx = new(rlp.Bytes);
             decoded = decoder.Decode(ref ctx);
         }
         else
@@ -49,7 +49,7 @@ public class LogEntryDecoderTests
     {
         LogEntry logEntry = CreateSampleLogEntry();
         Rlp rlp = Rlp.Encode(logEntry);
-        ValueRlpReader valueDecoderContext = new(rlp.Bytes);
+        RlpReader valueDecoderContext = new(rlp.Bytes);
         LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
 
         using (Assert.EnterMultipleScope())
@@ -80,7 +80,7 @@ public class LogEntryDecoderTests
     public void Interface_decoders_return_null_for_empty_log_entry(bool compact)
     {
         RlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
-        ValueRlpReader ctx = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
+        RlpReader ctx = Rlp.OfEmptyList.Bytes.AsRlpContext();
 
         Assert.That(decoder.Decode(ref ctx), Is.Null);
     }
@@ -95,7 +95,7 @@ public class LogEntryDecoderTests
 
         Assert.Throws<RlpException>(() =>
         {
-            ValueRlpReader ctx = new(malformed.Bytes);
+            RlpReader ctx = new(malformed.Bytes);
             LogEntryDecoder.Instance.Decode(ref ctx);
         });
     }
@@ -108,7 +108,7 @@ public class LogEntryDecoderTests
 
         Assert.Throws<RlpLimitException>(() =>
         {
-            ValueRlpReader ctx = new(malformed.Bytes);
+            RlpReader ctx = new(malformed.Bytes);
             if (useStructRef)
             {
                 CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
@@ -127,7 +127,7 @@ public class LogEntryDecoderTests
 
         Assert.Throws<RlpLimitException>(() =>
         {
-            ValueRlpReader ctx = new(malformed);
+            RlpReader ctx = new(malformed);
             CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
         });
     }

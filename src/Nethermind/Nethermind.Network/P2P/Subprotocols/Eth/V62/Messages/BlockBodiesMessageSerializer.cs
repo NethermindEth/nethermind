@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
@@ -53,7 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
 
-            ValueRlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory, true);
             int startingPosition = ctx.Position;
             try
             {

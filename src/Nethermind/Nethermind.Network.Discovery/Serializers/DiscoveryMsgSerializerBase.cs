@@ -109,8 +109,8 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return (nodeId, mdc, data);
     }
 
-    protected static void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, IPEndPoint address, int length)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int length)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(length);
         writer.Encode(address.Address.GetAddressBytes());
@@ -128,8 +128,8 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return length;
     }
 
-    protected static void SerializeNode<TBackend>(ref ValueRlpWriter<TBackend> writer, IPEndPoint address, byte[] id)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    protected static void SerializeNode<TWriter>(ref TWriter writer, IPEndPoint address, byte[] id)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int length = GetLengthSerializeNode(address, id);
         writer.StartSequence(length);

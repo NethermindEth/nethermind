@@ -17,7 +17,7 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
 
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
-    protected override ReadOnlySlotChanges DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlySlotChanges DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
@@ -58,15 +58,15 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
     public int GetLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetContentLength(item, rlpBehaviors));
         writer.Encode(item.Key);
         EncodeStorageChanges(ref writer, item.Changes, rlpBehaviors);
     }
 
-    public void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    public void Encode<TWriter>(ref TWriter writer, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(GetContentLength(item, rlpBehaviors));
         writer.Encode(item.Key);
@@ -89,8 +89,8 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return Rlp.LengthOfSequence(len);
     }
 
-    private static void EncodeStorageChanges<TBackend>(ref ValueRlpWriter<TBackend> writer, IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    private static void EncodeStorageChanges<TWriter>(ref TWriter writer, IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int len = 0;
         foreach (StorageChange c in changes) len += StorageChangeDecoder.Instance.GetLength(c, rlpBehaviors);

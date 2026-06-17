@@ -8,12 +8,12 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 public interface ITxDecoder
 {
-    public TxType Type { get; }
+    TxType Type { get; }
 
-    public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public void Encode<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-        where TBackend : IValueRlpWriteBackend, allows ref struct;
+    void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-    public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
+    int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 }

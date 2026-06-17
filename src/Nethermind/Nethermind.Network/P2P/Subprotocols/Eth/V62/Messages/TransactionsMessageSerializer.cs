@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
             writer.StartSequence(contentLength);
             foreach (Transaction tx in message.Transactions.AsSpan())
@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static TransactionsMessage Deserialize(ref ValueRlpReader ctx) =>
+        private static TransactionsMessage Deserialize(ref RlpReader ctx) =>
             new(DeserializeTxs(ref ctx));
 
         public int GetLength(TransactionsMessage message, out int contentLength)
@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref ValueRlpReader ctx)
+        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx)
         {
             int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
             int length = ctx.PeekNumberOfItemsRemaining(checkPosition);

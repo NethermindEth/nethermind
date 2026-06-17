@@ -17,14 +17,14 @@ internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         _syncInfoDecoder.Encode(ref writer, message.SyncInfo);
     }
 
     public SyncInfoMsg Deserialize(IByteBuffer byteBuffer)
     {
         Memory<byte> memory = byteBuffer.AsMemory();
-        ValueRlpReader ctx = new(memory, true);
+        RlpReader ctx = new(memory, true);
         Types.SyncInfo syncInfo = _syncInfoDecoder.Decode(ref ctx, RlpBehaviors.None);
         byteBuffer.SkipBytes(memory.Length);
         return new() { SyncInfo = syncInfo };

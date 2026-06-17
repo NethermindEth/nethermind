@@ -11,7 +11,7 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
     private readonly TimeoutCertificateDecoder _timeoutCertificateDecoder = new();
 
-    protected override SyncInfo DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override SyncInfo DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -39,13 +39,13 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         Encode(ref writer, item, rlpBehaviors);
 
         return new Rlp(bytes);
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

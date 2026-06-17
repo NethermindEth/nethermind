@@ -31,23 +31,23 @@ internal class QuorumCertificateDecoderTests
     {
         QuorumCertificateDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+        RlpWriter writer = new(bytes);
         decoder.Encode(ref writer, quorumCert);
-        ValueRlpReader ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         QuorumCertificate decoded = decoder.Decode(ref ctx);
 
         Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
     }
 
     [Test]
-    public void Encode_ValueRlpReader_IsEquivalentAfterReencoding()
+    public void Encode_RlpReader_IsEquivalentAfterReencoding()
     {
         QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
         byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+        RlpWriter writer = new(bytes);
         decoder.Encode(ref writer, quorumCert);
-        ValueRlpReader decoderContext = bytes.AsRlpValueContext();
+        RlpReader decoderContext = bytes.AsRlpContext();
         QuorumCertificate decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());

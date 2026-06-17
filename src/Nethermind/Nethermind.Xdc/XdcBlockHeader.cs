@@ -77,7 +77,7 @@ public class XdcBlockHeader(
             //Check V2 consensus version in ExtraData field.
             if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
                 return null;
-            ValueRlpReader valueDecoderContext = new(ExtraData.AsSpan(1));
+            RlpReader valueDecoderContext = new(ExtraData.AsSpan(1));
             _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
             return _extraFieldsV2;
         }
@@ -93,7 +93,7 @@ public class XdcBlockHeader(
     public virtual ValueHash256 CalculateHash()
     {
         KeccakRlpStream rlpStream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = rlpStream.AsValueWriter();
+        KeccakRlpWriter writer = rlpStream.AsValueWriter();
         _headerDecoder.Encode(ref writer, this);
         return rlpStream.GetHash();
     }

@@ -22,7 +22,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     private static readonly RlpLimit NetworkWrapperCellProofsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCellProofsCountLimit, $"{nameof(ShardBlobNetworkWrapper.Proofs)} {ProofVersion.V1}");
 
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-        ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int networkWrapperCheck = 0;
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
@@ -59,7 +59,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         }
     }
 
-    protected override void EncodeTypedWrapped<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
+    protected override void EncodeTypedWrapped<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
     {
         if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
@@ -78,7 +78,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             EncodeShardBlobNetworkWrapper(transaction, ref writer);
         }
 
-        static void EncodeShardBlobNetworkWrapper(Transaction transaction, ref ValueRlpWriter<TBackend> writer)
+        static void EncodeShardBlobNetworkWrapper(Transaction transaction, ref TWriter writer)
         {
             ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
             if (networkWrapper.Version > ProofVersion.V0)
@@ -92,7 +92,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         }
     }
 
-    protected override void DecodePayload(Transaction transaction, ref ValueRlpReader decoderContext,
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
@@ -100,14 +100,14 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
     }
 
-    protected override void EncodePayload<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         base.EncodePayload(transaction, ref writer, rlpBehaviors);
         writer.Encode(transaction.MaxFeePerBlobGas!.Value);
         writer.Encode(transaction.BlobVersionedHashes!);
     }
 
-    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref ValueRlpReader decoderContext)
+    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpReader decoderContext)
     {
         ProofVersion version = ProofVersion.V0;
         if (!decoderContext.IsSequenceNext())

@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
         private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
 
-        protected override TxReceipt DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (ctx.IsNextItemEmptyList())
             {
@@ -150,12 +150,12 @@ namespace Nethermind.Serialization.Rlp
 
             int length = GetLength(item, rlpBehaviors);
             byte[] bytes = new byte[length];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+            RlpWriter writer = bytes.AsRlpWriter();
             Encode(ref writer, item, rlpBehaviors);
             return bytes;
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

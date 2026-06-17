@@ -255,7 +255,7 @@ namespace Nethermind.Trie
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
-                        ValueRlpReader rlpReader = state.item.RlpReader;
+                        RlpReader rlpReader = state.item.RlpReader;
                         state.item.SeekChild(ref rlpReader, i);
                         object? data = state.item._nodeData[i];
                         if (data is null)
@@ -293,7 +293,7 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
-                ValueRlpReader rlpReader = item.RlpReader;
+                RlpReader rlpReader = item.RlpReader;
                 item.SeekChild(ref rlpReader, 0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
@@ -383,7 +383,7 @@ namespace Nethermind.Trie
 
             private static void WriteChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
-                ValueRlpReader rlpReader = item.RlpReader;
+                RlpReader rlpReader = item.RlpReader;
                 item.SeekChild(ref rlpReader, 0);
                 int position = 0;
                 for (int i = 0; i < BranchesCount; i++)

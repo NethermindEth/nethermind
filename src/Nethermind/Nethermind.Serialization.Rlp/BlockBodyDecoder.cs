@@ -83,7 +83,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return sum;
     }
 
-    protected override BlockBody? DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockBody? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int startingPosition = ctx.Position;
@@ -95,7 +95,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref ValueRlpReader ctx, int lastPosition)
+    public BlockBody? DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
     {
         Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
@@ -109,7 +109,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(GetBodyLength(body));
         writer.StartSequence(GetTxLength(body.Transactions));

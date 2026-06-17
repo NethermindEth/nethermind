@@ -16,7 +16,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
     // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
     private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
 
-    protected override TxReceipt? DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (ctx.IsNextItemEmptyList())
         {
@@ -123,7 +123,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         return Rlp.LengthOfSequence(total);
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

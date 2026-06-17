@@ -45,9 +45,9 @@ public class RlpDecoderTests
         }
 
         byte[] bytes = new byte[decoder.GetLength(withdrawals)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+        RlpWriter writer = new(bytes);
         decoder.Encode(ref writer, withdrawals);
-        ValueRlpReader context = new(bytes);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
@@ -70,7 +70,7 @@ public class RlpDecoderTests
         static void DecodeEmptyInput()
         {
             WithdrawalDecoder decoder = new();
-            ValueRlpReader context = new(ReadOnlySpan<byte>.Empty);
+            RlpReader context = new(ReadOnlySpan<byte>.Empty);
             decoder.Decode(ref context);
         }
     }
@@ -135,7 +135,7 @@ public class RlpDecoderTests
 
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
-        ValueRlpReader context = new(bytes);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
@@ -146,7 +146,7 @@ public class RlpDecoderTests
 
     private static void AssertEncodedNullItem(ReadOnlySpan<byte> bytes)
     {
-        ValueRlpReader context = new(bytes);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
@@ -167,13 +167,13 @@ public class RlpDecoderTests
             return Rlp.OfEmptyByteArray.Length;
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
             writer.Encode(Rlp.OfEmptyByteArray);
         }
 
-        protected override NonNullableItem DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

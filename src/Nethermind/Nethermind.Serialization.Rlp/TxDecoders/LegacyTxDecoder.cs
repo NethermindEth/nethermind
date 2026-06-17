@@ -13,7 +13,7 @@ public class LegacyTxDecoder<T>(Func<T>? transactionFactory = null) : BaseTxDeco
 
     protected override ulong GetSignatureFirstElement(Signature signature) => signature.V;
 
-    protected override void EncodeSignature<TBackend>(Signature? signature, ref ValueRlpWriter<TBackend> writer, bool forSigning, bool isEip155Enabled, ulong chainId)
+    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning, bool isEip155Enabled, ulong chainId)
     {
         if (forSigning)
         {

@@ -29,7 +29,7 @@ namespace Nethermind.Clique.Test
             Snapshot expected = GenerateSnapshot(hash, number, candidate);
             // Encode snapshot
             byte[] bytes = new byte[decoder.GetLength(expected, RlpBehaviors.None)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+            RlpWriter writer = new(bytes);
             decoder.Encode(ref writer, expected);
             // Decode snapshot
             Snapshot actual = decoder.Decode(bytes);

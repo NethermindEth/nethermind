@@ -9,10 +9,10 @@ public class BalanceChangeDecoder : IndexedChangeDecoder<BalanceChange>
 {
     public static readonly BalanceChangeDecoder Instance = new();
 
-    protected override BalanceChange DecodeFields(ref ValueRlpReader ctx)
+    protected override BalanceChange DecodeFields(ref RlpReader ctx)
         => new(ctx.DecodeUInt(), ctx.DecodeUInt256());
 
-    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer, BalanceChange item)
+    protected override void EncodeValue<TWriter>(ref TWriter writer, BalanceChange item)
         => writer.Encode(item.Value);
 
     protected override int GetValueLength(BalanceChange item)

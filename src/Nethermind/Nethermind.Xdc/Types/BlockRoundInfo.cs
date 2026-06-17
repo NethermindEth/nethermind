@@ -19,7 +19,7 @@ public class BlockRoundInfo(Hash256 hash256, ulong round, long number)
     public Hash256 SigHash()
     {
         KeccakRlpStream stream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _decoder.Encode(ref writer, this);
         return stream.GetHash();
     }

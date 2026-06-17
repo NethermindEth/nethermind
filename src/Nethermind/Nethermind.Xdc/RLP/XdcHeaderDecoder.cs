@@ -21,7 +21,7 @@ public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
         byte[]? extraData)
         => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
 
-    protected override void DecodeHeaderSpecificFields(ref ValueRlpReader decoderContext, XdcBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
+    protected override void DecodeHeaderSpecificFields(ref RlpReader decoderContext, XdcBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
     {
         header.Validators = decoderContext.DecodeByteArray();
         if (!IsForSealing(rlpBehaviors))
@@ -37,7 +37,7 @@ public sealed class XdcHeaderDecoder : BaseXdcHeaderDecoder<XdcBlockHeader>
         }
     }
 
-    protected override void EncodeHeaderSpecificFields<TBackend>(ref ValueRlpWriter<TBackend> writer, XdcBlockHeader header, RlpBehaviors rlpBehaviors)
+    protected override void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, XdcBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         writer.Encode(header.Validators);
         if (!IsForSealing(rlpBehaviors))

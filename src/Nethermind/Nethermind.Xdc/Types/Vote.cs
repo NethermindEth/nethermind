@@ -25,14 +25,14 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
     public (ulong Round, Hash256 hash) PoolKey()
     {
         KeccakRlpStream stream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _decoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
         return (ProposedBlockInfo.Round, stream.GetHash());
     }
 
     protected override void Encode(KeccakRlpStream stream)
     {
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _decoder.Encode(ref writer, this, RlpBehaviors.None);
     }
 }

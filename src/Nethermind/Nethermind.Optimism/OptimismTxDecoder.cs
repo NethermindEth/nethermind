@@ -14,11 +14,11 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
 {
     protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
 
-    protected override void EncodeSignature<TBackend>(Signature? signature, ref ValueRlpWriter<TBackend> writer, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
     {
     }
 
-    protected override void DecodePayload(Transaction transaction, ref ValueRlpReader decoderContext,
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         transaction.SourceHash = decoderContext.DecodeKeccak();
@@ -46,7 +46,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         + Rlp.LengthOf(transaction.IsOPSystemTransaction)
         + Rlp.LengthOf(transaction.Data);
 
-    protected override void EncodePayload<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.Encode(transaction.SourceHash);
         writer.Encode(transaction.SenderAddress);

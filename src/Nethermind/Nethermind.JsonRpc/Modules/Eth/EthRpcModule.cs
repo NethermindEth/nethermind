@@ -419,7 +419,7 @@ public partial class EthRpcModule(
         ArrayPoolList<byte> buffer = new(length, length);
         try
         {
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForCappedArray(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
+            RlpWriter writer = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
             TxDecoder.Instance.Encode(ref writer, tx, encodeBehaviors);
             return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
             {

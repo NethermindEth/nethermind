@@ -28,7 +28,7 @@ namespace Nethermind.Xdc.Test
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // Decode
-            ValueRlpReader context = encodedBytes.AsRlpValueContext();
+            RlpReader context = encodedBytes.AsRlpContext();
             BlockHeader? decodedBase = codec.Decode(ref context);
             Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
             Assert.That(decodedBase, Is.InstanceOf<XdcSubnetBlockHeader>(), "The decoded header should be an instance of XdcSubnetBlockHeader.");
@@ -68,7 +68,7 @@ namespace Nethermind.Xdc.Test
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(decoder, true);
 
             // ForSealing encoding
-            ValueRlpReader context = encodedBytes.AsRlpValueContext();
+            RlpReader context = encodedBytes.AsRlpContext();
             XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode(ref context, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null, "ForSealing encoding should not contain Validator field.");

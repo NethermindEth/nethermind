@@ -89,9 +89,9 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip((string TestName, AccessList? AccessList) testCase)
         {
             byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+            RlpWriter writer = new(bytes);
             _decoder.Encode(ref writer, testCase.AccessList);
-            ValueRlpReader ctx = new(bytes);
+            RlpReader ctx = new(bytes);
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
@@ -107,9 +107,9 @@ namespace Nethermind.Core.Test.Encoding
         public void Roundtrip_value((string TestName, AccessList? AccessList) testCase)
         {
             byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+            RlpWriter writer = new(bytes);
             _decoder.Encode(ref writer, testCase.AccessList);
-            ValueRlpReader ctx = bytes.AsSpan().AsRlpValueContext();
+            RlpReader ctx = bytes.AsSpan().AsRlpContext();
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
@@ -132,7 +132,7 @@ namespace Nethermind.Core.Test.Encoding
 
             void DecodeStream()
             {
-                ValueRlpReader ctx = invalid.AsSpan().AsRlpValueContext();
+                RlpReader ctx = invalid.AsSpan().AsRlpContext();
                 _decoder.Decode(ref ctx);
             }
 
@@ -140,7 +140,7 @@ namespace Nethermind.Core.Test.Encoding
 
             void DecodeContext()
             {
-                ValueRlpReader ctx = invalid.AsSpan().AsRlpValueContext();
+                RlpReader ctx = invalid.AsSpan().AsRlpContext();
                 _decoder.Decode(ref ctx);
             }
 

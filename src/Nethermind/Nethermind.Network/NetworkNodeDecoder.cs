@@ -14,7 +14,7 @@ namespace Nethermind.Network
 
         static NetworkNodeDecoder() => Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
 
-        protected override NetworkNode DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override NetworkNode DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.ReadSequenceLength();
 
@@ -36,7 +36,7 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
             writer.StartSequence(contentLength);

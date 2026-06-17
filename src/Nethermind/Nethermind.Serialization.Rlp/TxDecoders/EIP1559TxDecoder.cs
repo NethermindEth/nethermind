@@ -9,13 +9,13 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public class BaseEIP1559TxDecoder<T>(TxType txType, Func<T>? transactionFactory = null)
     : BaseAccessListTxDecoder<T>(txType, transactionFactory) where T : Transaction, new()
 {
-    protected override void DecodeGasPrice(Transaction transaction, ref ValueRlpReader decoderContext)
+    protected override void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext)
     {
         base.DecodeGasPrice(transaction, ref decoderContext);
         transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
     }
 
-    protected override void EncodeGasPrice<TBackend>(Transaction transaction, ref ValueRlpWriter<TBackend> writer)
+    protected override void EncodeGasPrice<TWriter>(Transaction transaction, ref TWriter writer)
     {
         base.EncodeGasPrice(transaction, ref writer);
         writer.Encode(transaction.DecodedMaxFeePerGas);

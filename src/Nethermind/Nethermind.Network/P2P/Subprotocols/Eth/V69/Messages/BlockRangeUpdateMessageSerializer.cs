@@ -14,7 +14,7 @@ public class BlockRangeUpdateMessageSerializer :
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
 
         writer.Encode(message.EarliestBlock);
@@ -25,7 +25,7 @@ public class BlockRangeUpdateMessageSerializer :
     public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer) =>
         byteBuffer.DeserializeRlp(Deserialize);
 
-    private static BlockRangeUpdateMessage Deserialize(ref ValueRlpReader ctx)
+    private static BlockRangeUpdateMessage Deserialize(ref RlpReader ctx)
     {
         ctx.ReadSequenceLength();
 

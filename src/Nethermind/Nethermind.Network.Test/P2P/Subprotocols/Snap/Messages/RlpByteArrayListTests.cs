@@ -73,13 +73,13 @@ public class RlpByteArrayListTests
     }
 
     [TestCaseSource(nameof(TestCases))]
-    public void ValueRlpWriter_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    public void RlpWriter_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
     {
         using RlpByteArrayList list = CreateList(items);
         byte[] expected = EncodeItems(items);
 
         byte[] buffer = new byte[list.RlpLength];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(buffer);
+        RlpWriter writer = new(buffer);
         writer.WriteByteArrayList(list);
 
         Assert.That(writer.Position, Is.EqualTo(expected.Length));
@@ -100,13 +100,13 @@ public class RlpByteArrayListTests
     }
 
     [TestCaseSource(nameof(TestCases))]
-    public void ByteBuffer_ValueRlpWriter_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    public void ByteBuffer_RlpWriter_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
     {
         using RlpByteArrayList list = CreateList(items);
         byte[] expected = EncodeItems(items);
 
         using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
-        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         writer.WriteByteArrayList(list);
 
         Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
@@ -147,13 +147,13 @@ public class RlpByteArrayListTests
         {
             Assert.Throws<RlpLimitException>(() =>
             {
-                ValueRlpReader ctx = new(encoded, true);
+                RlpReader ctx = new(encoded, true);
                 using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
             });
         }
         else
         {
-            ValueRlpReader ctx = new(encoded, true);
+            RlpReader ctx = new(encoded, true);
             using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
             Assert.That(list.Count, Is.EqualTo(itemCount));
         }
@@ -165,7 +165,7 @@ public class RlpByteArrayListTests
         const int count = 10_000;
         byte[] encoded = EncodeSingleByteItemList(count);
 
-        ValueRlpReader ctx = new(encoded, true);
+        RlpReader ctx = new(encoded, true);
         using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
         Assert.That(list.Count, Is.EqualTo(count));
     }
@@ -175,7 +175,7 @@ public class RlpByteArrayListTests
         int contentLength = count * Rlp.LengthOf(new byte[] { 0x42 });
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] encoded = new byte[totalLength];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = encoded.AsRlpValueWriter();
+        RlpWriter writer = encoded.AsRlpWriter();
         writer.StartSequence(contentLength);
         for (int i = 0; i < count; i++)
         {
@@ -201,7 +201,7 @@ public class RlpByteArrayListTests
 
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] encoded = new byte[totalLength];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = encoded.AsRlpValueWriter();
+        RlpWriter writer = encoded.AsRlpWriter();
 
         writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)

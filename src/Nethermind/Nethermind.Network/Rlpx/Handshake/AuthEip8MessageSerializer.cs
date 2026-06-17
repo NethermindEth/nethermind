@@ -18,7 +18,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             int totalLength = GetLength(msg);
             // TODO: Account for the padding
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(totalLength);
             writer.Encode(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId));
             writer.Encode(msg.PublicKey.Bytes);
@@ -39,7 +39,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         public AuthEip8Message Deserialize(IByteBuffer msgBytes) =>
             msgBytes.DeserializeRlp(Deserialize);
 
-        private static AuthEip8Message Deserialize(ref ValueRlpReader ctx)
+        private static AuthEip8Message Deserialize(ref RlpReader ctx)
         {
             AuthEip8Message authMessage = new();
             ctx.ReadSequenceLength();

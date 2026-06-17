@@ -77,7 +77,7 @@ public class NodeRecord
     private Hash256 CalculateContentHash()
     {
         KeccakRlpStream rlpStream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = rlpStream.AsValueWriter();
+        KeccakRlpWriter writer = rlpStream.AsValueWriter();
         EncodeContent(ref writer);
         return rlpStream.GetHash();
     }
@@ -172,8 +172,8 @@ public class NodeRecord
     /// Applies Rlp([seq, k, v, ...]]).
     /// </summary>
     /// <param name="writer">An RLP writer to encode the content to.</param>
-    private void EncodeContent<TBackend>(ref ValueRlpWriter<TBackend> writer)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    private void EncodeContent<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int contentLength = GetContentLengthWithoutSignature();
         writer.StartSequence(contentLength);
@@ -193,7 +193,7 @@ public class NodeRecord
         int contentLength = GetContentLengthWithSignature();
         int totalLength = Rlp.LengthOfSequence(contentLength);
         byte[] bytes = new byte[totalLength];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         Encode(ref writer);
         return bytes.AsSpan().ToHexString();
     }
@@ -202,8 +202,8 @@ public class NodeRecord
     /// Applies Rlp([signature, seq, k, v, ...]]).
     /// </summary>
     /// <param name="writer">An RLP writer to encode the content to.</param>
-    public void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    public void Encode<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         RequireSignature();
 
@@ -226,7 +226,7 @@ public class NodeRecord
         IByteBuffer buffer = NethermindBuffers.Default.Buffer(rlpLength);
         try
         {
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(buffer);
+            ByteBufferRlpWriter writer = new(buffer);
             Encode(ref writer);
             IByteBuffer resultBuffer = Base64.Encode(buffer, Base64Dialect.URL_SAFE);
             try

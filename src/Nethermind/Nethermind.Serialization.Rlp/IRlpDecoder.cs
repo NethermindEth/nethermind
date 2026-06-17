@@ -17,8 +17,8 @@ public interface IRlpDecoder<T> : IRlpDecoder
     int GetContentLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
 
 
-    void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TBackend : IValueRlpWriteBackend, allows ref struct;
+    void Encode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
     Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
@@ -26,14 +26,14 @@ public interface IRlpDecoder<T> : IRlpDecoder
 
     CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null);
 
-    void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-        where TBackend : IValueRlpWriteBackend, allows ref struct;
+    void Encode<TWriter>(ref TWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
 
 
-    T Decode(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    T Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    T[] DecodeArray(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null);
+    T[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null);
 
     T Decode(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
@@ -41,7 +41,7 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
     /// and verifies that the end of the stream has been reached.
     /// </summary>
-    T DecodeComplete(ref ValueRlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    T DecodeComplete(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     /// <summary>
     /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>
@@ -49,14 +49,14 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// </summary>
     T DecodeComplete(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    T DecodeGuardNotNull(ref ValueRlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     /// <summary>
     /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
     /// and verifies that the end of the stream has been reached.
     /// Throws if decoded value is <c>null</c>.
     /// </summary>
-    T DecodeCompleteNotNull(ref ValueRlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    T DecodeCompleteNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     /// <summary>
     /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>

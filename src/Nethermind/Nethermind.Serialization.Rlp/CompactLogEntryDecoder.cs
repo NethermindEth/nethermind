@@ -15,7 +15,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static CompactLogEntryDecoder Instance { get; } = new();
 
-        protected override LogEntry? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -44,7 +44,7 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics.ToArray());
         }
 
-        public static void DecodeLogEntryStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
+        public static void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
             item = new LogEntryStructRef(address, data, topics);
         }
 
-        public static Hash256[] DecodeTopics(ValueRlpReader valueDecoderContext)
+        public static Hash256[] DecodeTopics(RlpReader valueDecoderContext)
         {
             int sequenceLength = valueDecoderContext.ReadSequenceLength();
             int untilPosition = valueDecoderContext.Position + sequenceLength;
@@ -82,7 +82,7 @@ namespace Nethermind.Serialization.Rlp
             return topics.ToArray();
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -117,7 +117,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
 
-        private static byte[] DecodeCompactData(scoped ref ValueRlpReader decoderContext)
+        private static byte[] DecodeCompactData(scoped ref RlpReader decoderContext)
         {
             int zeroPrefix = decoderContext.DecodePositiveInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();

@@ -23,7 +23,7 @@ public class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
         Encode(ref writer, msg.FarAddress, farAddressLength);
         writer.Encode(msg.PingMdc);
@@ -38,7 +38,7 @@ public class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     {
         (PublicKey farPublicKey, _, IByteBuffer data) = PrepareForDeserialization(msgBytes);
 
-        ValueRlpReader ctx = data.AsRlpContext();
+        RlpReader ctx = data.AsRlpContext();
 
         ctx.ReadSequenceLength();
         ctx.ReadSequenceLength();

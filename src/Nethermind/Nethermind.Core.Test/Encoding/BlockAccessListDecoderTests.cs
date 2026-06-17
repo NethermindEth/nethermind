@@ -57,7 +57,7 @@ public class BlockAccessListDecoderTests
         envelope[^2] = 0xbe;
         envelope[^1] = 0xef;
 
-        ValueRlpReader ctx = new(envelope);
+        RlpReader ctx = new(envelope);
         ReadOnlyBlockAccessList decoded = BlockAccessListDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
 
         using (Assert.EnterMultipleScope())
@@ -123,7 +123,7 @@ public class BlockAccessListDecoderTests
         Console.SetError(error);
         try
         {
-            ValueRlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+            RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
 
             RlpException? exception = null;
             try
@@ -152,7 +152,7 @@ public class BlockAccessListDecoderTests
     public void DecodeArrayPool_disposes_decoded_items_when_element_decoder_throws()
     {
         DisposableElement.DisposedCount = 0;
-        ValueRlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+        RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
 
         RlpException? exception = null;
         try
@@ -175,7 +175,7 @@ public class BlockAccessListDecoderTests
     public void DecodeArrayPool_disposes_runtime_disposable_items_when_static_type_does_not_implement_disposable()
     {
         DisposableElement.DisposedCount = 0;
-        ValueRlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+        RlpReader ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
 
         RlpException? exception = null;
         try
@@ -196,7 +196,7 @@ public class BlockAccessListDecoderTests
 
     [Test]
     public void DecodeArrayPool_wraps_non_rlp_decoder_exceptions() => Assert.That(
-        () => { ValueRlpReader c = new(new byte[] { 0xc1, 0x01 }); Rlp.DecodeArrayPool(ref c, new ThrowingArgumentDecoder()); },
+        () => { RlpReader c = new(new byte[] { 0xc1, 0x01 }); Rlp.DecodeArrayPool(ref c, new ThrowingArgumentDecoder()); },
         Throws.TypeOf<RlpException>().With.InnerException.TypeOf<ArgumentException>());
 
     [Test]
@@ -211,7 +211,7 @@ public class BlockAccessListDecoderTests
         RlpException? thrown = null;
         try
         {
-            ValueRlpReader ctx = new(rlp);
+            RlpReader ctx = new(rlp);
             SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         }
         catch (RlpException e)
@@ -237,9 +237,9 @@ public class BlockAccessListDecoderTests
     [Test]
     public void DecodeArray_with_decoder_stays_constrained_to_reference_types()
     {
-        MethodInfo decodeArray = typeof(ValueRlpReader)
+        MethodInfo decodeArray = typeof(RlpReader)
             .GetMethods()
-            .Single(m => m.Name == nameof(ValueRlpReader.DecodeArray)
+            .Single(m => m.Name == nameof(RlpReader.DecodeArray)
                 && m.IsGenericMethodDefinition
                 && m.GetParameters()[0].ParameterType.IsGenericType
                 && m.GetParameters()[0].ParameterType.GetGenericTypeDefinition() == typeof(IRlpDecoder<>));
@@ -278,7 +278,7 @@ public class BlockAccessListDecoderTests
     public void Can_decode_then_encode_balance_change()
     {
         const string rlp = "0xc801861319718811c8";
-        ValueRlpReader ctx = new(Bytes.FromHexString(rlp));
+        RlpReader ctx = new(Bytes.FromHexString(rlp));
         BalanceChange balanceChange = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         BalanceChange expected = new(1, 0x1319718811c8);
         Assert.That(balanceChange, Is.EqualTo(expected));
@@ -295,7 +295,7 @@ public class BlockAccessListDecoderTests
         BalanceChange original = new(0x10_0000u, 0x42);
 
         Rlp encoded = Rlp.Encode(original);
-        ValueRlpReader ctx = new(encoded.Bytes);
+        RlpReader ctx = new(encoded.Bytes);
         BalanceChange decoded = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
 
         Assert.That(decoded, Is.EqualTo(original));
@@ -306,7 +306,7 @@ public class BlockAccessListDecoderTests
     public void Can_decode_then_encode_nonce_change()
     {
         const string rlp = "0xc20101";
-        ValueRlpReader ctx = new(Bytes.FromHexString(rlp));
+        RlpReader ctx = new(Bytes.FromHexString(rlp));
         NonceChange nonceChange = NonceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         NonceChange expected = new(1, 1);
         Assert.That(nonceChange, Is.EqualTo(expected));
@@ -323,7 +323,7 @@ public class BlockAccessListDecoderTests
 
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
 
-        ValueRlpReader ctx = new(Bytes.FromHexString(expectedRlp));
+        RlpReader ctx = new(Bytes.FromHexString(expectedRlp));
         ReadOnlySlotChanges slotChange = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         Assert.That(slotChange, Is.EqualTo(expected));
 
@@ -338,7 +338,7 @@ public class BlockAccessListDecoderTests
 
         string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
 
-        ValueRlpReader ctx = new(Bytes.FromHexString(expectedRlp));
+        RlpReader ctx = new(Bytes.FromHexString(expectedRlp));
         StorageChange storageChange = StorageChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(expected));
 
@@ -351,7 +351,7 @@ public class BlockAccessListDecoderTests
     {
         const string rlp = "0xc20100";
 
-        ValueRlpReader ctx = new(Bytes.FromHexString(rlp));
+        RlpReader ctx = new(Bytes.FromHexString(rlp));
         CodeChange codeChange = CodeChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
         CodeChange expected = new(1, [0x0]);
         Assert.That(codeChange, Is.EqualTo(expected));
@@ -363,7 +363,7 @@ public class BlockAccessListDecoderTests
     [TestCaseSource(nameof(AccountChangesTestSource))]
     public void Can_decode_then_encode_account_change(string rlp, ReadOnlyAccountChanges expected)
     {
-        ValueRlpReader ctx = new(Bytes.FromHexString(rlp));
+        RlpReader ctx = new(Bytes.FromHexString(rlp));
         ReadOnlyAccountChanges accountChange = AccountChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
 
         Assert.That(accountChange, Is.EqualTo(expected));
@@ -658,7 +658,7 @@ public class BlockAccessListDecoderTests
             + Rlp.OfEmptyList.Length;
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         writer.StartSequence(contentLength);
         writer.Encode(address);
         writer.StartSequence(Rlp.OfEmptyList.Length);
@@ -682,7 +682,7 @@ public class BlockAccessListDecoderTests
         }
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         writer.StartSequence(contentLength);
         writer.Encode(address);
         for (int i = 0; i < fieldCount; i++)
@@ -706,7 +706,7 @@ public class BlockAccessListDecoderTests
         int changesContentLength = count * Rlp.OfEmptyList.Length;
         int contentLength = Rlp.LengthOf(UInt256.Zero) + Rlp.LengthOfSequence(changesContentLength);
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         writer.StartSequence(contentLength);
         writer.Encode(UInt256.Zero);
         writer.StartSequence(changesContentLength);
@@ -723,7 +723,7 @@ public class BlockAccessListDecoderTests
         public const string Error = "semantic failure";
         private int _calls;
 
-        protected override byte DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override byte DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             byte value = decoderContext.DecodeByte();
             _calls++;
@@ -737,7 +737,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -753,7 +753,7 @@ public class BlockAccessListDecoderTests
         public const string Error = "disposable semantic failure";
         private int _calls;
 
-        protected override DisposableElement DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override DisposableElement DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             _calls++;
@@ -767,7 +767,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -776,7 +776,7 @@ public class BlockAccessListDecoderTests
         public const string Error = "object semantic failure";
         private int _calls;
 
-        protected override object DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override object DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             _calls++;
@@ -790,13 +790,13 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
     private sealed class ThrowingArgumentDecoder : RlpDecoder<byte>
     {
-        protected override byte DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override byte DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             decoderContext.DecodeByte();
             throw new ArgumentException("semantic argument failure");
@@ -804,7 +804,7 @@ public class BlockAccessListDecoderTests
 
         public override int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message)
         {
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = GetRlpWriterAndStartSequence(byteBuffer, message);
+            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
 
             writer.Encode(message.RequestId);
             writer.Encode(message.StorageRange.RootHash);
@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             writer.Encode(message.ResponseBytes);
         }
 
-        protected override GetStorageRangeMessage Deserialize(ref ValueRlpReader ctx)
+        protected override GetStorageRangeMessage Deserialize(ref RlpReader ctx)
         {
             GetStorageRangeMessage message = new();
             ctx.ReadSequenceLength();
@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             message.StorageRange = new();
             message.StorageRange.RootHash = ctx.DecodeKeccak();
-            message.StorageRange.Accounts = ctx.DecodeArrayPoolList(static (ref ValueRlpReader c) => new PathWithAccount() { Path = c.DecodeKeccak() }, limit: SnapMessageLimits.GetStorageRangeAccountsRlpLimit);
+            message.StorageRange.Accounts = ctx.DecodeArrayPoolList(static (ref RlpReader c) => new PathWithAccount() { Path = c.DecodeKeccak() }, limit: SnapMessageLimits.GetStorageRangeAccountsRlpLimit);
             message.StorageRange.StartingHash = ctx.DecodeKeccak();
             message.StorageRange.LimitHash = ctx.DecodeKeccak();
             message.ResponseBytes = ctx.DecodeLong();

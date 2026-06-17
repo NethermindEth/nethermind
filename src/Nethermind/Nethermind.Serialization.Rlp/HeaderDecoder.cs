@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
     {
         public const int NonceLength = 8;
 
-        protected override BlockHeader? DecodeInternal(ref ValueRlpReader decoderContext,
+        protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
@@ -90,7 +90,7 @@ namespace Nethermind.Serialization.Rlp
             return blockHeader;
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (header is null)
             {
@@ -162,7 +162,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+            RlpWriter writer = bytes.AsRlpWriter();
             Encode(ref writer, item, rlpBehaviors);
 
             return new Rlp(bytes);

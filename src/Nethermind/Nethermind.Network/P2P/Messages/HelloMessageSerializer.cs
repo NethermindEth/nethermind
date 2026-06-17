@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Messages
         {
             (int totalLength, int innerLength) = GetLength(msg);
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), force: true);
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(totalLength);
             writer.Encode(msg.P2PVersion);
             writer.Encode(msg.ClientId);
@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Messages
         public HelloMessage Deserialize(IByteBuffer msgBytes) =>
             msgBytes.DeserializeRlp(Deserialize);
 
-        private static HelloMessage Deserialize(ref ValueRlpReader ctx)
+        private static HelloMessage Deserialize(ref RlpReader ctx)
         {
             ctx.ReadSequenceLength();
 
@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P.Messages
             helloMessage.P2PVersion = ctx.DecodeByte();
             helloMessage.ClientId = ctx.DecodeString(ClientIdRlpLimit);
 
-            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref ValueRlpReader c) =>
+            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref RlpReader c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;

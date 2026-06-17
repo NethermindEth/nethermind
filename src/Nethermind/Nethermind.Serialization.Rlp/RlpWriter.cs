@@ -8,50 +8,177 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp;
 
-/// <summary>
-/// Creates value RLP writers for concrete write targets.
-/// </summary>
-public static class RlpWriter
+public ref struct RlpWriter : IRlpWriteBackend
 {
-    /// <summary>
-    /// Creates a writer over a caller-owned output span.
-    /// </summary>
-    public static ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> ForSpan(Span<byte> data) =>
-        new(new IValueRlpWriteBackend.SpanBackend(data));
+    private Span<byte> _data;
+    private int _position;
 
-    /// <summary>
-    /// Creates a writer over a caller-owned output array.
-    /// </summary>
-    public static ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> ForArray(byte[]? data) =>
-        ForSpan(data ?? []);
+    public RlpWriter(Span<byte> data)
+    {
+        _data = data;
+        _position = 0;
+    }
 
-    /// <summary>
-    /// Creates a writer over a caller-owned capped array.
-    /// </summary>
-    public static ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> ForCappedArray(in CappedArray<byte> data) =>
-        ForSpan((data.IsNotNull ? data : CappedArray<byte>.Empty).AsSpan());
+    public RlpWriter(byte[]? data)
+        : this((data ?? Array.Empty<byte>()).AsSpan())
+    {
+    }
 
-    /// <summary>
-    /// Creates a writer over a DotNetty buffer, advancing its writer index as bytes are written.
-    /// </summary>
-    public static ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> ForByteBuffer(IByteBuffer byteBuffer) =>
-        new(new IValueRlpWriteBackend.ByteBufferBackend(byteBuffer));
+    public RlpWriter(in CappedArray<byte> data)
+        : this((data.IsNotNull ? data : CappedArray<byte>.Empty).AsSpan())
+    {
+    }
 
-    /// <summary>
-    /// Creates a writer that feeds encoded bytes directly into a Keccak accumulator.
-    /// </summary>
-    public static ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> ForKeccak(KeccakHash keccakHash) =>
-        new(new IValueRlpWriteBackend.KeccakBackend(keccakHash));
+    public RlpWriter(int length)
+        : this(new byte[length])
+    {
+    }
 
-    /// <summary>
-    /// Creates a writer over a custom backend. Disposing the writer disposes the backend.
-    /// </summary>
-    public static ValueRlpWriter<IValueRlpWriteBackend.CustomBackend> ForBackend(IValueRlpWriteBackend backend) =>
-        new(new IValueRlpWriteBackend.CustomBackend(backend));
+    public readonly Span<byte> Data => _data;
 
-    /// <summary>
-    /// Creates a span-backed writer with a new output array of the requested length.
-    /// </summary>
-    public static ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> ForLength(int length) =>
-        ForArray(new byte[length]);
+    public readonly ReadOnlySpan<byte> WrittenSpan => _data[.._position];
+
+    public int Position
+    {
+        readonly get => _position;
+        set => _position = value;
+    }
+
+    public readonly int Length => _data.Length;
+
+    void IRlpWriteBackend.WriteByte(byte byteToWrite) => _data[_position++] = byteToWrite;
+
+    void IRlpWriteBackend.Write(scoped ReadOnlySpan<byte> bytesToWrite)
+    {
+        bytesToWrite.CopyTo(_data.Slice(_position, bytesToWrite.Length));
+        _position += bytesToWrite.Length;
+    }
+
+    void IRlpWriteBackend.WriteZero(int length)
+    {
+        _data.Slice(_position, length).Clear();
+        _position += length;
+    }
+
+    public void Reset() => _position = 0;
+
+    void IDisposable.Dispose()
+    {
+    }
+
+    public override readonly string ToString() => $"[{nameof(RlpWriter)}|{_position}/{Length}]";
+}
+
+public struct ByteBufferRlpWriter : IRlpWriteBackend
+{
+    private readonly IByteBuffer _byteBuffer;
+    private int _position;
+
+    public ByteBufferRlpWriter(IByteBuffer byteBuffer)
+    {
+        ArgumentNullException.ThrowIfNull(byteBuffer);
+
+        _byteBuffer = byteBuffer;
+        _position = 0;
+    }
+
+    public int Position
+    {
+        readonly get => _position;
+        set => throw new InvalidOperationException("ByteBuffer-backed writer position cannot be reassigned.");
+    }
+
+    void IRlpWriteBackend.WriteByte(byte byteToWrite)
+    {
+        _byteBuffer.EnsureWritable(1);
+        _byteBuffer.WriteByte(byteToWrite);
+        _position++;
+    }
+
+    void IRlpWriteBackend.Write(scoped ReadOnlySpan<byte> bytesToWrite)
+    {
+        _byteBuffer.EnsureWritable(bytesToWrite.Length);
+        if (_byteBuffer.HasArray)
+        {
+            Span<byte> target = _byteBuffer.Array.AsSpan(_byteBuffer.ArrayOffset + _byteBuffer.WriterIndex, bytesToWrite.Length);
+            bytesToWrite.CopyTo(target);
+            _byteBuffer.SetWriterIndex(_byteBuffer.WriterIndex + bytesToWrite.Length);
+        }
+        else
+        {
+            for (int i = 0; i < bytesToWrite.Length; i++)
+            {
+                _byteBuffer.WriteByte(bytesToWrite[i]);
+            }
+        }
+
+        _position += bytesToWrite.Length;
+    }
+
+    void IRlpWriteBackend.WriteZero(int length)
+    {
+        _byteBuffer.EnsureWritable(length);
+        _byteBuffer.WriteZero(length);
+        _position += length;
+    }
+
+    readonly void IDisposable.Dispose()
+    {
+    }
+
+    public override readonly string ToString() => $"[{nameof(ByteBufferRlpWriter)}|{_byteBuffer.GetType().Name}|{_position}]";
+}
+
+public struct KeccakRlpWriter : IRlpWriteBackend
+{
+    private readonly KeccakHash _keccakHash;
+    private int _position;
+
+    public KeccakRlpWriter(KeccakHash keccakHash)
+    {
+        ArgumentNullException.ThrowIfNull(keccakHash);
+
+        _keccakHash = keccakHash;
+        _position = 0;
+    }
+
+    public int Position
+    {
+        readonly get => _position;
+        set => throw new InvalidOperationException("Keccak-backed writer position cannot be reassigned.");
+    }
+
+    void IRlpWriteBackend.WriteByte(byte byteToWrite)
+    {
+        Span<byte> singleByte = stackalloc byte[1] { byteToWrite };
+        _keccakHash.Update(singleByte);
+        _position++;
+    }
+
+    void IRlpWriteBackend.Write(scoped ReadOnlySpan<byte> bytesToWrite)
+    {
+        _keccakHash.Update(bytesToWrite);
+        _position += bytesToWrite.Length;
+    }
+
+    void IRlpWriteBackend.WriteZero(int length)
+    {
+        int originalLength = length;
+        Span<byte> zeros = stackalloc byte[Math.Min(length, 256)];
+        zeros.Clear();
+        while (length > 0)
+        {
+            int chunkLength = Math.Min(length, zeros.Length);
+            _keccakHash.Update(zeros[..chunkLength]);
+            length -= chunkLength;
+        }
+
+        _position += originalLength;
+    }
+
+    readonly void IDisposable.Dispose()
+    {
+    }
+
+    public override readonly string ToString() => $"[{nameof(KeccakRlpWriter)}|{_keccakHash.GetType().Name}|{_position}]";
 }

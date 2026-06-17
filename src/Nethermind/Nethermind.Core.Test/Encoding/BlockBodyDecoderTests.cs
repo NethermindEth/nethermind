@@ -16,9 +16,9 @@ public class BlockBodyDecoderTests
     {
         int length = BlockBodyDecoder.Instance.GetLength(body, RlpBehaviors.None);
         byte[] bytes = new byte[length];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+        RlpWriter writer = new(bytes);
         BlockBodyDecoder.Instance.Encode(ref writer, body);
-        ValueRlpReader ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         BlockBody decodedBody = BlockBodyDecoder.Instance.Decode(ref ctx);
 
         Assert.That(decodedBody, Is.EqualTo(body).UsingBlockBodyComparer());
@@ -60,7 +60,7 @@ public class BlockBodyDecoderTests
 
     private static void DecodeBody(byte[] bytes)
     {
-        ValueRlpReader ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, bytes.Length);
     }
 
@@ -71,7 +71,7 @@ public class BlockBodyDecoderTests
                         + (withdrawalCount.HasValue ? Rlp.LengthOfSequence(withdrawalCount.Value) : 0);
 
         byte[] bytes = new byte[totalLength];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         WriteEmptyItems(ref writer, txCount);
         WriteEmptyItems(ref writer, uncleCount);
         if (withdrawalCount.HasValue)
@@ -79,7 +79,7 @@ public class BlockBodyDecoderTests
 
         return bytes;
 
-        static void WriteEmptyItems(ref ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer, int count)
+        static void WriteEmptyItems(ref RlpWriter writer, int count)
         {
             writer.StartSequence(count);
             for (int i = 0; i < count; i++)

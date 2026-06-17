@@ -23,7 +23,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     public int GetLength(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    protected override ReadOnlyBlockAccessList DecodeInternal(ref ValueRlpReader ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlyBlockAccessList DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
         // Capture the BAL's RLP slice so the wire hash can be cached on the returned instance;
         // BlockValidator would otherwise recompute the same keccak per block.
@@ -59,7 +59,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
         PrepareGeneratedLengths(sortedAccounts.AsSpan(), accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         EncodeGeneratedPrepared(ref writer, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
         return bytes;
     }
@@ -71,12 +71,12 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accounts.Length, accounts.Length);
         PrepareReadOnlyLengths(accounts, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         EncodeReadOnlyPrepared(ref writer, accounts, accountLengths.AsSpan(), contentLength, rlpBehaviors);
         return bytes;
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChanges.AsSpan();
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accounts.Length, accounts.Length);
@@ -84,8 +84,8 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         EncodeReadOnlyPrepared(ref writer, accounts, accountLengths.AsSpan(), contentLength, rlpBehaviors);
     }
 
-    public void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    public void Encode<TWriter>(ref TWriter writer, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
@@ -149,13 +149,13 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         }
     }
 
-    private static void EncodeReadOnlyPrepared<TBackend>(
-        ref ValueRlpWriter<TBackend> writer,
+    private static void EncodeReadOnlyPrepared<TWriter>(
+        ref TWriter writer,
         ReadOnlySpan<ReadOnlyAccountChanges> accounts,
         ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
         int contentLength,
         RlpBehaviors rlpBehaviors)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         Debug.Assert(accountLengths.Length >= accounts.Length);
 
@@ -167,13 +167,13 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         }
     }
 
-    private static void EncodeGeneratedPrepared<TBackend>(
-        ref ValueRlpWriter<TBackend> writer,
+    private static void EncodeGeneratedPrepared<TWriter>(
+        ref TWriter writer,
         ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
         ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
         int contentLength,
         RlpBehaviors rlpBehaviors)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         Debug.Assert(accountLengths.Length >= sortedAccounts.Length);
 

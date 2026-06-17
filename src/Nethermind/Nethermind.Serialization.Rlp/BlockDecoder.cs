@@ -57,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        protected override Block? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override Block? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -87,12 +87,12 @@ namespace Nethermind.Serialization.Rlp
             }
 
             byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+            RlpWriter writer = bytes.AsRlpWriter();
             Encode(ref writer, item, rlpBehaviors);
             return new(bytes);
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -140,7 +140,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
-            ValueRlpReader decoderContext = new(memory, true);
+            RlpReader decoderContext = new(memory, true);
 
             if (decoderContext.IsNextItemEmptyList())
             {

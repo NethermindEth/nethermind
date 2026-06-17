@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Rlp
         {
         }
 
-        protected override TxReceipt? DecodeInternal(ref ValueRlpReader decoderContext,
+        protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
@@ -98,7 +98,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -249,7 +249,7 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public void DecodeStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors,
+        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,
             out TxReceiptStructRef item)
         {
             item = new TxReceiptStructRef();
@@ -321,10 +321,10 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void DecodeLogEntryStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors behaviour,
+        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors behaviour,
             out LogEntryStructRef current) => LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
 
-        public Hash256[] DecodeTopics(ValueRlpReader valueDecoderContext) => HashDecoder.DecodeArray(ref valueDecoderContext);
+        public Hash256[] DecodeTopics(RlpReader valueDecoderContext) => HashDecoder.DecodeArray(ref valueDecoderContext);
 
         public bool CanDecodeBloom => true;
     }

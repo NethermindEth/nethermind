@@ -27,7 +27,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     public static byte[] Encode(Transaction tx)
     {
         byte[] bytes = new byte[GetLength(tx)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
 
         writer.Encode(tx.Timestamp);
         writer.Encode(tx.SenderAddress);
@@ -48,7 +48,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
 
     public static LightTransaction Decode(byte[] data)
     {
-        ValueRlpReader ctx = new(data);
+        RlpReader ctx = new(data);
         return new LightTransaction(
             timestamp: ctx.DecodeUInt256(),
             sender: ctx.DecodeAddress()!,

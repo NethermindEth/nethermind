@@ -10,7 +10,7 @@ namespace Nethermind.Xdc.RLP;
 internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot>
 {
 
-    protected override SubnetSnapshot DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override SubnetSnapshot DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         SubnetSnapshot subnetSnapshot = DecodeBase<SubnetSnapshot>(ref decoderContext, (number, hash, candidates) => new SubnetSnapshot(number, hash, candidates), rlpBehaviors);
         if (subnetSnapshot is null)
@@ -20,7 +20,7 @@ internal sealed class SubnetSnapshotDecoder : BaseSnapshotDecoder<SubnetSnapshot
         return subnetSnapshot;
     }
 
-    protected override void EncodeContent<TBackend>(ref ValueRlpWriter<TBackend> writer, SubnetSnapshot item, RlpBehaviors rlpBehaviors)
+    protected override void EncodeContent<TWriter>(ref TWriter writer, SubnetSnapshot item, RlpBehaviors rlpBehaviors)
     {
         base.EncodeContent(ref writer, item, rlpBehaviors);
 

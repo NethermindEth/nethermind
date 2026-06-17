@@ -21,12 +21,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public delegate T DecodeRlpValue<T>(ref ValueRlpReader ctx);
+    public delegate T DecodeRlpValue<T>(ref RlpReader ctx);
 
     /// <summary>
     ///     https://github.com/ethereum/wiki/wiki/RLP
     ///
-    ///     Note: Prefer ValueRlpWriter to encode into caller-owned buffers.
+    ///     Note: Prefer RlpWriter to encode into caller-owned buffers.
     /// </summary>
     public partial class Rlp
     {
@@ -101,7 +101,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static T Decode<T>(Span<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            ValueRlpReader valueContext = bytes.AsRlpValueContext();
+            RlpReader valueContext = bytes.AsRlpContext();
             return Decode<T>(ref valueContext, rlpBehaviors);
         }
 
@@ -127,7 +127,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
 
-        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             IRlpDecoder<T>? rlpDecoder = GetDecoder<T>();
             return rlpDecoder is not null
@@ -135,7 +135,7 @@ namespace Nethermind.Serialization.Rlp
                 : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueRlpReader decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             ArrayPoolList<T>? result = null;
             try
@@ -211,7 +211,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static T Decode<T>(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T Decode<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             IRlpDecoder<T> rlpDecoder = GetDecoder<T>() ??
                 throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
@@ -274,7 +274,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             CappedArray<byte> buffer = bufferPool.SafeRent(LengthOf(item));
-            ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = buffer.AsRlpValueWriter();
+            RlpWriter writer = buffer.AsRlpWriter();
             writer.Encode(item);
             return buffer;
         }
@@ -917,7 +917,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int size = LengthOf(i);
                 byte[] buffer = new byte[size];
-                ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = buffer.AsRlpValueWriter();
+                RlpWriter writer = buffer.AsRlpWriter();
                 writer.Encode(i);
                 cache[i] = new CappedArray<byte>(buffer);
             }

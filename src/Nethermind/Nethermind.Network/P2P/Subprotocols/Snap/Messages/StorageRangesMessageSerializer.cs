@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             using ArrayPoolSpan<int> returnAccountSlotsLengths = accountSlotsLengths;
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
             writer.StartSequence(contentLength);
 
@@ -61,7 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            ValueRlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
 
             StorageRangeMessage message = new();
@@ -71,8 +71,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 ctx.ReadSequenceLength();
                 message.RequestId = ctx.DecodeLong();
 
-                message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref ValueRlpReader outerCtx) =>
-                    outerCtx.DecodeArrayPoolList(static (ref ValueRlpReader innerCtx) =>
+                message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref RlpReader outerCtx) =>
+                    outerCtx.DecodeArrayPoolList(static (ref RlpReader innerCtx) =>
                     {
                         int length = innerCtx.ReadSequenceLength();
                         int checkPosition = innerCtx.Position + length;

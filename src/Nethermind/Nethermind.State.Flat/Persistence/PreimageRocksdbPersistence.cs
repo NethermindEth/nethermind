@@ -203,7 +203,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                 return null;
             }
 
-            ValueRlpReader ctx = new(valueBuffer[..responseSize]);
+            RlpReader ctx = new(valueBuffer[..responseSize]);
             return AccountDecoder.Slim.Decode(ref ctx);
         }
 

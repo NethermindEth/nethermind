@@ -15,7 +15,7 @@ public static class EthereumEcdsaExtensions
     {
         KeccakRlpStream stream = new();
         stream.WriteByte(Eip7702Constants.Magic);
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
         Signature sig = ecdsa.Sign(signer, stream.GetValueHash());
         return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
@@ -29,7 +29,7 @@ public static class EthereumEcdsaExtensions
         }
 
         KeccakRlpStream stream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, ecdsa.ChainId);
         ValueHash256 hash = stream.GetValueHash();
         tx.Signature = ecdsa.Sign(privateKey, in hash);
@@ -100,7 +100,7 @@ public static class EthereumEcdsaExtensions
         };
 
         KeccakRlpStream stream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
 
         return stream.GetValueHash();
@@ -112,7 +112,7 @@ public static class EthereumEcdsaExtensions
     {
         KeccakRlpStream stream = new();
         stream.WriteByte(Eip7702Constants.Magic);
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         AuthorizationTupleDecoder.EncodeWithoutSignature(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
         return ecdsa.RecoverAddress(tuple.AuthoritySignature, stream.GetValueHash());
     }

@@ -60,7 +60,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
-    protected override TxReceipt[] DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt[] DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.PeekByte() == CompactEncoding)
         {
@@ -82,7 +82,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, TxReceipt[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (items is null || items.Length == 0)
         {
@@ -122,12 +122,12 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
-            ValueRlpReader decoderContext = new(receiptsData[1..]);
+            RlpReader decoderContext = new(receiptsData[1..]);
             return CompactDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
-            ValueRlpReader decoderContext = new(receiptsData);
+            RlpReader decoderContext = new(receiptsData);
             try
             {
                 return Decoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
@@ -142,7 +142,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
     public TxReceipt DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)
     {
-        ValueRlpReader context = new(receiptData);
+        RlpReader context = new(receiptData);
         try
         {
             TxReceipt receipt = Decoder.Decode(ref context, RlpBehaviors.Storage);

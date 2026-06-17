@@ -22,7 +22,7 @@ internal static partial class XdcExtensions
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
         KeccakRlpStream stream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _headerDecoder.Encode(ref writer, header, RlpBehaviors.ForSealing);
         ValueHash256 hash = stream.GetValueHash();
         return ecdsa.Sign(privateKey, in hash);
@@ -30,7 +30,7 @@ internal static partial class XdcExtensions
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
         KeccakRlpStream stream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
         ValueHash256 hash = stream.GetValueHash();
         return ecdsa.RecoverAddress(vote.Signature, in hash);
@@ -85,7 +85,7 @@ internal static partial class XdcExtensions
         && (blockInfo.Hash == blockHeader.Hash)
         && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
 
-    public static Signature DecodeSignature(this ref ValueRlpReader decoderContext)
+    public static Signature DecodeSignature(this ref RlpReader decoderContext)
     {
         //includes the list prefix, which is 2 bytes for a 65 byte signature
         ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();

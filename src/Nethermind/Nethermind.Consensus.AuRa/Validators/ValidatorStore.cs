@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             get
             {
-                ValueRlpReader ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
+                RlpReader ctx = new(_db.Get(PendingValidatorsKey) ?? Rlp.OfEmptyList.Bytes);
                 return PendingValidatorsDecoder.Decode(ref ctx);
             }
             set => StorePendingValidators(value);

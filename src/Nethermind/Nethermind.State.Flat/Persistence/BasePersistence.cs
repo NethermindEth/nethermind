@@ -381,7 +381,7 @@ public static class BasePersistence
                 return null;
             }
 
-            ValueRlpReader ctx = new(valueBuffer[..responseSize]);
+            RlpReader ctx = new(valueBuffer[..responseSize]);
             return _accountDecoder.Decode(ref ctx);
         }
 

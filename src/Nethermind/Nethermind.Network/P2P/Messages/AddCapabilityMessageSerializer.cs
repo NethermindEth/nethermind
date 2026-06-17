@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Messages
             int totalLength = GetLength(msg, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
 
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
             writer.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
             writer.Encode(msg.Capability.Version);
@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Messages
         public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static AddCapabilityMessage Deserialize(ref ValueRlpReader ctx)
+        private static AddCapabilityMessage Deserialize(ref RlpReader ctx)
         {
             ctx.ReadSequenceLength();
             string protocolCode = ctx.DecodeString(RlpLimit);

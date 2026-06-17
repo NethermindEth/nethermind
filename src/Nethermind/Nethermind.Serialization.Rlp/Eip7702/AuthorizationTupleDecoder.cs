@@ -14,7 +14,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
 {
     public static readonly AuthorizationTupleDecoder Instance = new();
 
-    protected override AuthorizationTuple DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override AuthorizationTuple DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
@@ -38,7 +38,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item);
         writer.StartSequence(contentLength);
@@ -50,8 +50,8 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.Encode(new UInt256(item.AuthoritySignature.S.Span, true));
     }
 
-    public static void EncodeWithoutSignature<TBackend>(ref ValueRlpWriter<TBackend> writer, UInt256 chainId, Address codeAddress, ulong nonce)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    public static void EncodeWithoutSignature<TWriter>(ref TWriter writer, UInt256 chainId, Address codeAddress, ulong nonce)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         writer.StartSequence(contentLength);
@@ -60,8 +60,8 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.Encode(nonce);
     }
 
-    public void EncodeArray<TBackend>(ref ValueRlpWriter<TBackend> writer, AuthorizationTuple[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    public void EncodeArray<TWriter>(ref TWriter writer, AuthorizationTuple[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (items is null)
         {

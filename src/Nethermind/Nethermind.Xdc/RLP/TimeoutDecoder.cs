@@ -10,7 +10,7 @@ namespace Nethermind.Xdc.RLP;
 
 public sealed class TimeoutDecoder : RlpDecoder<Timeout>
 {
-    protected override Timeout DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Timeout DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -44,13 +44,13 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         Encode(ref writer, item, rlpBehaviors);
 
         return new Rlp(bytes);
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, Timeout item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

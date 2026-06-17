@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     internal sealed class PendingValidatorsDecoder : RlpDecoder<PendingValidators>
     {
-        protected override PendingValidators DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override PendingValidators DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return result;
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.ProtocolVersion);
             writer.Encode(message.NetworkId);
@@ -63,7 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public StatusMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static StatusMessage Deserialize(ref ValueRlpReader ctx)
+        private static StatusMessage Deserialize(ref RlpReader ctx)
         {
             StatusMessage statusMessage = new();
             ctx.ReadSequenceLength();

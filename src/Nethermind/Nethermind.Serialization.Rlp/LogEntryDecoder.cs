@@ -15,7 +15,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
         public static LogEntryDecoder Instance { get; } = new();
 
-        protected override LogEntry? DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
             {
@@ -44,7 +44,7 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics);
         }
 
-        public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -109,7 +109,7 @@ namespace Nethermind.Serialization.Rlp
             return topicsLength;
         }
 
-        public static void DecodeStructRef(scoped ref ValueRlpReader decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
+        public static void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors storage, out LogEntryStructRef item)
         {
             if (decoderContext.IsNextItemEmptyList())
             {

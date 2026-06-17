@@ -21,7 +21,7 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
         byte[]? extraData)
         => new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
 
-    protected override void DecodeHeaderSpecificFields(ref ValueRlpReader decoderContext, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
+    protected override void DecodeHeaderSpecificFields(ref RlpReader decoderContext, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors, int headerCheck)
     {
         if (!IsForSealing(rlpBehaviors))
         {
@@ -38,7 +38,7 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
         header.Penalties = decoderContext.DecodeByteArray();
     }
 
-    protected override void EncodeHeaderSpecificFields<TBackend>(ref ValueRlpWriter<TBackend> writer, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
+    protected override void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         if (!IsForSealing(rlpBehaviors))
         {

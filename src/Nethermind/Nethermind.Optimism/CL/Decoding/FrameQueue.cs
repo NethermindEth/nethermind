@@ -49,7 +49,7 @@ public class FrameQueue(ILogManager logManager) : IFrameQueue
             ReadOnlyMemory<byte> decodedChannel = ChannelDecoder.DecodeChannel(_frameData.ToArray());
             _frameData.Clear();
 
-            ValueRlpReader rlp = new(decodedChannel.Span);
+            RlpReader rlp = new(decodedChannel.Span);
             Memory<byte> batchData = rlp.DecodeByteArrayMemory();
             BatchV1[] batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
             return batches;

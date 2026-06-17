@@ -17,7 +17,7 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetBlockAccessListsMessage message)
     {
-        ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+        ByteBufferRlpWriter writer = new(byteBuffer);
         int hashesContentLength = GetHashesContentLength(message.Hashes);
         writer.StartSequence(hashesContentLength);
 
@@ -27,10 +27,10 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
         }
     }
 
-    protected override GetBlockAccessListsMessage DeserializeInternal(ref ValueRlpReader ctx, long requestId)
+    protected override GetBlockAccessListsMessage DeserializeInternal(ref RlpReader ctx, long requestId)
     {
         ArrayPoolList<Hash256> hashes =
-            ctx.DecodeArrayPoolList(static (ref ValueRlpReader nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
+            ctx.DecodeArrayPoolList(static (ref RlpReader nestedContext) => nestedContext.DecodeKeccak(), limit: RlpLimit);
 
         return new GetBlockAccessListsMessage(requestId, hashes);
     }

@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
             writer.StartSequence(contentLength);
             for (int i = 0; i < message.BlockHashes.Length; i++)
@@ -45,9 +45,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static NewBlockHashesMessage Deserialize(ref ValueRlpReader ctx)
+        private static NewBlockHashesMessage Deserialize(ref RlpReader ctx)
         {
-            (Hash256, long)[] blockHashes = ctx.DecodeArray(static (ref ValueRlpReader c) =>
+            (Hash256, long)[] blockHashes = ctx.DecodeArray(static (ref RlpReader c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;

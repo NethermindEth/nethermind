@@ -12,7 +12,7 @@ namespace Nethermind.Xdc.RLP;
 internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
 {
     private readonly XdcBlockInfoDecoder _blockInfoDecoder = new();
-    protected override QuorumCertificate DecodeInternal(ref ValueRlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override QuorumCertificate DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = decoderContext.ReadSequenceLength();
         if (sequenceLength == 0)
@@ -46,13 +46,13 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         Encode(ref writer, item, rlpBehaviors);
 
         return new Rlp(bytes);
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {

@@ -44,7 +44,7 @@ public class WithdrawalDecoderTests
     }
 
     [Test]
-    public void Should_decode_with_ValueRlpReader()
+    public void Should_decode_with_RlpReader()
     {
         Withdrawal withdrawal = new()
         {
@@ -55,11 +55,11 @@ public class WithdrawalDecoderTests
         };
         WithdrawalDecoder codec = new();
         byte[] bytes = new byte[codec.GetLength(withdrawal, RlpBehaviors.None)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(bytes);
+        RlpWriter writer = new(bytes);
 
         codec.Encode(ref writer, withdrawal);
 
-        ValueRlpReader decoderContext = new(bytes);
+        RlpReader decoderContext = new(bytes);
         Withdrawal? decoded = codec.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
@@ -110,7 +110,7 @@ public class WithdrawalDecoderTests
 
         byte[] rlp = CombineRlpList(tamperedRlp1, tamperedRlp2);
 
-        void Decode() => rlp.AsRlpValueContext().DecodeArray(decoder!);
+        void Decode() => rlp.AsRlpContext().DecodeArray(decoder!);
         Assert.That(Decode, Throws.InstanceOf<RlpException>().And.Message.Contain("checkpoint failed"));
     }
 

@@ -26,10 +26,10 @@ public class ReceiptMessageDecoder69Tests
         ReceiptMessageDecoder69 decoder = new();
         int length = decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts);
         byte[] encoded = new byte[length];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForSpan(encoded);
+        RlpWriter writer = new(encoded);
         decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
 
-        ValueRlpReader context = encoded.AsRlpValueContext();
+        RlpReader context = encoded.AsRlpContext();
         TxReceipt? decoded = decoder.Decode(ref context, RlpBehaviors.Eip658Receipts);
 
         Assert.That(decoded, Is.Not.Null);

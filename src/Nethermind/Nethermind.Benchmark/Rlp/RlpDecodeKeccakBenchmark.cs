@@ -25,7 +25,7 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public Hash256 Current()
         {
-            Serialization.Rlp.ValueRlpReader ctx = new(_scenarios[ScenarioIndex]);
+            Serialization.Rlp.RlpReader ctx = new(_scenarios[ScenarioIndex]);
             return ctx.DecodeKeccak();
         }
     }

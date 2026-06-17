@@ -29,21 +29,21 @@ public class AuthorizationTupleDecoderTests
         AuthorizationTupleDecoder sut = new();
 
         Rlp result = sut.Encode(item);
-        ValueRlpReader ctx = new(result.Bytes);
+        RlpReader ctx = new(result.Bytes);
 
         AuthorizationTuple decoded = sut.Decode(ref ctx);
         Assert.That(decoded, Is.EqualTo(item).UsingAuthorizationTupleComparer());
     }
 
     [Test]
-    public void DecodeValueRlpReader_CodeAddressIsNull_ThrowsRlpException()
+    public void DecodeRlpReader_CodeAddressIsNull_ThrowsRlpException()
     {
         byte[] tuple = TupleRlpWithNull();
 
         AuthorizationTupleDecoder sut = new();
         Assert.That(() =>
         {
-            ValueRlpReader decoderContext = new(tuple);
+            RlpReader decoderContext = new(tuple);
             sut.Decode(ref decoderContext, RlpBehaviors.None);
         }, Throws.TypeOf<RlpException>());
     }
@@ -128,7 +128,7 @@ public class AuthorizationTupleDecoderTests
 
         Assert.That(() =>
         {
-            ValueRlpReader ctx = new(badEncoding);
+            RlpReader ctx = new(badEncoding);
             sut.Decode(ref ctx, RlpBehaviors.None);
         }, Throws.InstanceOf<RlpException>());
     }
@@ -145,7 +145,7 @@ public class AuthorizationTupleDecoderTests
             + Rlp.LengthOf(sig.R)
             + Rlp.LengthOf(sig.S);
         byte[] rlp = new byte[Rlp.LengthOfSequence(length)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = rlp.AsRlpValueWriter();
+        RlpWriter writer = rlp.AsRlpWriter();
         writer.StartSequence(length);
         writer.Encode(1);
         writer.Encode(codeAddress);
@@ -166,7 +166,7 @@ public class AuthorizationTupleDecoderTests
             + Rlp.LengthOf(r)
             + Rlp.LengthOf(s);
         byte[] rlp = new byte[Rlp.LengthOfSequence(length)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = rlp.AsRlpValueWriter();
+        RlpWriter writer = rlp.AsRlpWriter();
         writer.StartSequence(length);
         writer.Encode(chainId);
         writer.Encode(address);

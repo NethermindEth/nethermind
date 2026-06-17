@@ -9,7 +9,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class GetAccountRangeMessageSerializer : SnapSerializerBase<GetAccountRangeMessage>
     {
-        protected override GetAccountRangeMessage Deserialize(ref ValueRlpReader ctx)
+        protected override GetAccountRangeMessage Deserialize(ref RlpReader ctx)
         {
             GetAccountRangeMessage message = new();
             ctx.ReadSequenceLength();
@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public override void Serialize(IByteBuffer byteBuffer, GetAccountRangeMessage message)
         {
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = GetRlpWriterAndStartSequence(byteBuffer, message);
+            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
 
             writer.Encode(message.RequestId);
             writer.Encode(message.AccountRange.RootHash);

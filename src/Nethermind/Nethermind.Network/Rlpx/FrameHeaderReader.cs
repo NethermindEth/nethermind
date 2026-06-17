@@ -23,7 +23,7 @@ namespace Nethermind.Network.Rlpx
             frameSize = (frameSize << 8) + (HeaderBytes[1] & 0xFF);
             frameSize = (frameSize << 8) + (HeaderBytes[2] & 0xFF);
 
-            ValueRlpReader headerBodyItems = HeaderBytes.AsSpan(3, 13).AsRlpValueContext();
+            RlpReader headerBodyItems = HeaderBytes.AsSpan(3, 13).AsRlpContext();
             int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
             int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
             headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position

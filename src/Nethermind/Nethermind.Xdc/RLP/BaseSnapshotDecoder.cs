@@ -11,7 +11,7 @@ namespace Nethermind.Xdc.RLP;
 
 internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapshot
 {
-    protected TResult DecodeBase<TResult>(ref ValueRlpReader decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
+    protected TResult DecodeBase<TResult>(ref RlpReader decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -25,7 +25,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         Address[] candidates = DecodeAddressArray(ref decoderContext);
         return createSnapshot(number, hash256, candidates);
     }
-    public static Address[] DecodeAddressArray(ref ValueRlpReader decoderContext)
+    public static Address[] DecodeAddressArray(ref RlpReader decoderContext)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -53,12 +53,12 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
             return Rlp.OfEmptyList;
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = bytes.AsRlpValueWriter();
+        RlpWriter writer = bytes.AsRlpWriter();
         Encode(ref writer, item, rlpBehaviors);
         return new Rlp(bytes);
     }
 
-    public override void Encode<TBackend>(ref ValueRlpWriter<TBackend> writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -70,8 +70,8 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         EncodeContent(ref writer, item, rlpBehaviors);
     }
 
-    protected virtual void EncodeContent<TBackend>(ref ValueRlpWriter<TBackend> writer, T item, RlpBehaviors rlpBehaviors)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    protected virtual void EncodeContent<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.Encode(item.BlockNumber);
         writer.Encode(item.HeaderHash);
@@ -82,8 +82,8 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
             EncodeAddressSequence(ref writer, item.NextEpochCandidates);
     }
 
-    protected void EncodeAddressSequence<TBackend>(ref ValueRlpWriter<TBackend> writer, Address[] nextEpochCandidates)
-        where TBackend : IValueRlpWriteBackend, allows ref struct
+    protected void EncodeAddressSequence<TWriter>(ref TWriter writer, Address[] nextEpochCandidates)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int length = nextEpochCandidates.Length;
         writer.StartSequence(Rlp.LengthOfAddressRlp * length);

@@ -12,10 +12,10 @@ public class CodeChangeDecoder : IndexedChangeDecoder<CodeChange>
     public static readonly CodeChangeDecoder Instance = new();
     private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
 
-    protected override CodeChange DecodeFields(ref ValueRlpReader ctx)
+    protected override CodeChange DecodeFields(ref RlpReader ctx)
         => new(ctx.DecodeUInt(), ctx.DecodeByteArray(_codeLimit));
 
-    protected override void EncodeValue<TBackend>(ref ValueRlpWriter<TBackend> writer, CodeChange item)
+    protected override void EncodeValue<TWriter>(ref TWriter writer, CodeChange item)
         => writer.Encode(item.Code);
 
     protected override int GetValueLength(CodeChange item)

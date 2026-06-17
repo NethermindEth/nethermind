@@ -17,7 +17,7 @@ public class QuorumCertificate(BlockRoundInfo proposedBlockInfo, Signature[]? si
 
     protected override void Encode(KeccakRlpStream stream)
     {
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _decoder.Encode(ref writer, this, RlpBehaviors.None);
     }
 }

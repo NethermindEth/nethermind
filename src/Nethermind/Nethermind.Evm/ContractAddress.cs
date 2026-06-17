@@ -22,7 +22,7 @@ namespace Nethermind.Evm
             byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
             try
             {
-                ValueRlpWriter<IValueRlpWriteBackend.SpanBackend> writer = RlpWriter.ForCappedArray(new CappedArray<byte>(rented, totalLength));
+                RlpWriter writer = new(new CappedArray<byte>(rented, totalLength));
                 writer.StartSequence(contentLength);
                 writer.Encode(deployingAddress);
                 writer.Encode(nonce);

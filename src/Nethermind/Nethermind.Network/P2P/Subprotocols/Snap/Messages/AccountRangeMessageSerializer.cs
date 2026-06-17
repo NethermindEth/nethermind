@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
-            ValueRlpWriter<IValueRlpWriteBackend.ByteBufferBackend> writer = RlpWriter.ForByteBuffer(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
 
             writer.Encode(message.RequestId);
@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            ValueRlpReader ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
             AccountRangeMessage message = new();
             ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;

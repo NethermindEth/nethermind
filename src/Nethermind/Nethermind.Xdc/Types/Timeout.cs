@@ -21,14 +21,14 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool is
     public (ulong Round, Hash256 hash) PoolKey()
     {
         KeccakRlpStream stream = new();
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
         return (Round, stream.GetHash());
     }
 
     protected override void Encode(KeccakRlpStream stream)
     {
-        ValueRlpWriter<IValueRlpWriteBackend.KeccakBackend> writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = stream.AsValueWriter();
         _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.None);
     }
 }
