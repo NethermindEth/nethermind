@@ -16,7 +16,7 @@ namespace Nethermind.Core.Crypto;
 /// <summary>
 /// This is a minimalistic one-way set associative cache for Keccak values.
 ///
-/// It allocates only 16MB of memory to store 128k of entries.
+/// It allocates only 64MB of memory to store 512k of entries.
 /// No misaligned reads. Everything is aligned to both cache lines as well as to boundaries so no torn reads.
 /// Uses seqlock pattern for lock-free reads: read sequence, speculatively read data, verify sequence unchanged.
 /// Requires a single CAS to lock on writes and <see cref="Volatile.Write(ref int,int)"/> to unlock.
@@ -29,7 +29,7 @@ public static unsafe class KeccakCache
     /// </summary>
     public const nuint Count = BucketMask + 1;
 
-    private const int BucketMask = 0x0001_FFFF;
+    private const int BucketMask = 0x0007_FFFF;
     private const uint HashMask = unchecked((uint)~BucketMask);
     private const uint LockMarker = 0x0000_8000;
     private const uint VersionMask = 0x0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
