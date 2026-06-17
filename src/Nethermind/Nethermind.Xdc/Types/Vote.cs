@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
@@ -24,15 +23,11 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
 
     public (ulong Round, Hash256 hash) PoolKey()
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _decoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
-        return (ProposedBlockInfo.Round, stream.GetHash());
+        return (ProposedBlockInfo.Round, writer.GetHash());
     }
 
-    protected override void Encode(KeccakRlpStream stream)
-    {
-        KeccakRlpWriter writer = stream.AsValueWriter();
+    protected override void Encode(ref KeccakRlpWriter writer) =>
         _decoder.Encode(ref writer, this, RlpBehaviors.None);
-    }
 }

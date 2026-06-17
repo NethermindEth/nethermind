@@ -564,13 +564,13 @@ namespace Nethermind.Core.Test
             Assert.Throws<RlpLimitException>(() => { RlpReader ctx = new(data); ctx.DecodeByteArray(); });
         }
 
-        //[Test]
-        //public void Encode_stream_with_null_items_produces_empty_list()
-        //{
-        //    RlpWriter stream = new(Rlp.OfEmptyList.Length);
-        //    TransactionDecoder.Encode(stream, (Transaction[]?)null);
-        //    Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
-        //}
+        [Test]
+        public void Encode_stream_with_null_items_produces_empty_list()
+        {
+            RlpWriter writer = new(Rlp.OfEmptyList.Length);
+            TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
+            Assert.That(writer.WrittenSpan.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
+        }
 
         [Test]
         public void Encode_array_with_null_items_produces_empty_list()

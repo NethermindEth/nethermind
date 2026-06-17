@@ -254,10 +254,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
 
     private static ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _voteDecoder.Encode(ref writer, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
-        return stream.GetValueHash();
+        return writer.GetValueHash();
     }
 
     public void Initialize(XdcBlockHeader current)

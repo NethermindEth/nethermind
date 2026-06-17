@@ -35,10 +35,9 @@ internal static class XdcTestHelper
 
     public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         decoder.Encode(ref writer, new Vote(roundInfo, gapNumber), RlpBehaviors.ForSealing);
-        ValueHash256 hash = stream.GetValueHash();
+        ValueHash256 hash = writer.GetValueHash();
         Signature[] signatures = new Signature[keys.Length];
         Parallel.For(0, keys.Length, i => signatures[i] = ecdsa.Sign(keys[i], hash));
         return signatures;
@@ -66,10 +65,9 @@ internal static class XdcTestHelper
     public static Vote BuildSignedVote(BlockRoundInfo info, ulong gap, PrivateKey key)
     {
         Vote vote = new(info, gap);
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         decoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        vote.Signature = ecdsa.Sign(key, stream.GetValueHash());
+        vote.Signature = ecdsa.Sign(key, writer.GetValueHash());
         vote.Signer = key.Address;
         return vote;
     }

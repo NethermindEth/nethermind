@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -142,6 +143,12 @@ public struct KeccakRlpWriter : IRlpWriteBackend
         _position = 0;
     }
 
+    public static KeccakRlpWriter Create() => new(KeccakHash.Create());
+
+    public readonly Hash256 GetHash() => new(_keccakHash.GenerateValueHash());
+
+    public readonly ValueHash256 GetValueHash() => _keccakHash.GenerateValueHash();
+
     public int Position
     {
         readonly get => _position;
@@ -150,8 +157,7 @@ public struct KeccakRlpWriter : IRlpWriteBackend
 
     void IRlpWriteBackend.WriteByte(byte byteToWrite)
     {
-        Span<byte> singleByte = stackalloc byte[1] { byteToWrite };
-        _keccakHash.Update(singleByte);
+        _keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1));
         _position++;
     }
 

@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
@@ -20,15 +19,11 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool is
     public override string ToString() => $"{Round}:{GapNumber}";
     public (ulong Round, Hash256 hash) PoolKey()
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
-        return (Round, stream.GetHash());
+        return (Round, writer.GetHash());
     }
 
-    protected override void Encode(KeccakRlpStream stream)
-    {
-        KeccakRlpWriter writer = stream.AsValueWriter();
+    protected override void Encode(ref KeccakRlpWriter writer) =>
         _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.None);
-    }
 }

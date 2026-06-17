@@ -3,9 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
-using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -21,23 +19,9 @@ public static class RlpDecoderArrayPoolExtensions
     {
         if (item is null)
         {
-            ArrayPoolSpan<byte> empty = new(1);
-            RlpWriter emptyWriter = new((Span<byte>)empty);
-            emptyWriter.WriteByte(Rlp.EmptyListByte);
-            return empty;
+            return EmptyListSpan();
         }
 
-        ArrayPoolSpan<byte> encoded = new(decoder.GetLength(item, rlpBehaviors));
-        RlpWriter writer = new((Span<byte>)encoded);
-        decoder.Encode(ref writer, item, rlpBehaviors);
-        return encoded;
-    }
-
-    /// <summary>
-    /// Encodes <paramref name="item"/> into a new disposable pooled byte span.
-    /// </summary>
-    public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan(this BlockAccessListDecoder decoder, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
         ArrayPoolSpan<byte> encoded = new(decoder.GetLength(item, rlpBehaviors));
         RlpWriter writer = new((Span<byte>)encoded);
         decoder.Encode(ref writer, item, rlpBehaviors);
@@ -51,10 +35,7 @@ public static class RlpDecoderArrayPoolExtensions
     {
         if (items is null)
         {
-            ArrayPoolSpan<byte> empty = new(1);
-            RlpWriter emptyWriter = new((Span<byte>)empty);
-            emptyWriter.WriteByte(Rlp.EmptyListByte);
-            return empty;
+            return EmptyListSpan();
         }
 
         int totalLength = 0;
@@ -84,10 +65,7 @@ public static class RlpDecoderArrayPoolExtensions
     {
         if (items is null)
         {
-            ArrayPoolSpan<byte> empty = new(1);
-            RlpWriter emptyWriter = new((Span<byte>)empty);
-            emptyWriter.WriteByte(Rlp.EmptyListByte);
-            return empty;
+            return EmptyListSpan();
         }
 
         int totalLength = 0;
@@ -133,6 +111,14 @@ public static class RlpDecoderArrayPoolExtensions
         }
 
         return encoded;
+    }
+
+    private static ArrayPoolSpan<byte> EmptyListSpan()
+    {
+        ArrayPoolSpan<byte> empty = new(1);
+        RlpWriter writer = new((Span<byte>)empty);
+        writer.WriteByte(Rlp.EmptyListByte);
+        return empty;
     }
 
     private static void EncodeNullable<TWriter, T>(IRlpDecoder<T> decoder, ref TWriter writer, T? item, RlpBehaviors behaviors)

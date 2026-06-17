@@ -52,13 +52,9 @@ public ref struct RlpReader
 
     public ReadOnlySpan<byte> Data { get; }
 
-    public readonly bool IsEmpty => Data.IsEmpty;
-
     public readonly bool IsNull => !_isNotNull;
 
     public readonly bool IsNotNull => _isNotNull;
-
-    internal readonly string Description => Data[..Math.Min(Rlp.DebugMessageContentLength, Data.Length)].ToHexString() ?? "0x";
 
     public int Position { get; set; }
 

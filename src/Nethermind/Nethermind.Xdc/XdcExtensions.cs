@@ -21,18 +21,16 @@ internal static partial class XdcExtensions
     private static readonly VoteDecoder _voteDecoder = new();
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _headerDecoder.Encode(ref writer, header, RlpBehaviors.ForSealing);
-        ValueHash256 hash = stream.GetValueHash();
+        ValueHash256 hash = writer.GetValueHash();
         return ecdsa.Sign(privateKey, in hash);
     }
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        ValueHash256 hash = stream.GetValueHash();
+        ValueHash256 hash = writer.GetValueHash();
         return ecdsa.RecoverAddress(vote.Signature, in hash);
     }
 

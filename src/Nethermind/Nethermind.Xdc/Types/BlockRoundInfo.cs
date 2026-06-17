@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
@@ -18,9 +17,8 @@ public class BlockRoundInfo(Hash256 hash256, ulong round, long number)
 
     public Hash256 SigHash()
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _decoder.Encode(ref writer, this);
-        return stream.GetHash();
+        return writer.GetHash();
     }
 }

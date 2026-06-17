@@ -178,17 +178,17 @@ namespace Nethermind.Core.Test
             ValueHash256 h = ValueKeccak.Compute(bytes);
             Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
 
-            KeccakRlpStream stream = new();
+            KeccakRlpWriter writer = KeccakRlpWriter.Create();
             for (int i = 0; i < bytes.Length; i++)
             {
-                stream.Write([bytes[i]]);
+                writer.Write([bytes[i]]);
             }
 
-            Assert.That(stream.GetHash().Bytes.ToHexString(), Is.EqualTo(expected));
+            Assert.That(writer.GetHash().Bytes.ToHexString(), Is.EqualTo(expected));
         }
 
         [Test]
-        public void KeccakRlpStream_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding()
+        public void KeccakRlpWriter_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding()
         {
             byte[] large = new byte[60];
             for (int i = 0; i < large.Length; i++)
@@ -200,23 +200,23 @@ namespace Nethermind.Core.Test
             byte[] expected = EncodeItems(items);
             using RlpByteArrayList list = CreateList(expected);
 
-            KeccakRlpStream stream = new();
-            stream.WriteByteArrayList(list);
+            KeccakRlpWriter writer = KeccakRlpWriter.Create();
+            writer.WriteByteArrayList(list);
 
-            Assert.That(stream.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
+            Assert.That(writer.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
         }
 
         [Test]
-        public void KeccakRlpStream_EncodeEmptyBloom_HashesCanonicalZeroBytes()
+        public void KeccakRlpWriter_EncodeEmptyBloom_HashesCanonicalZeroBytes()
         {
             byte[] expected = new byte[Rlp.LengthOf(Bloom.Empty)];
             RlpWriter expectedWriter = expected.AsRlpWriter();
             expectedWriter.Encode(Bloom.Empty);
 
-            KeccakRlpStream stream = new();
-            stream.Encode(Bloom.Empty);
+            KeccakRlpWriter writer = KeccakRlpWriter.Create();
+            writer.Encode(Bloom.Empty);
 
-            Assert.That(stream.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
+            Assert.That(writer.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
         }
 
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]

@@ -423,10 +423,9 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
 
     private ValueHash256 VoteHash(Vote vote)
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        return stream.GetValueHash();
+        return writer.GetValueHash();
     }
 
     private bool IsExtendingFromAncestor(BlockRoundInfo currentBlock, BlockRoundInfo ancestorBlock)

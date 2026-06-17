@@ -76,10 +76,9 @@ public class NodeRecord
 
     private Hash256 CalculateContentHash()
     {
-        KeccakRlpStream rlpStream = new();
-        KeccakRlpWriter writer = rlpStream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         EncodeContent(ref writer);
-        return rlpStream.GetHash();
+        return writer.GetHash();
     }
 
     /// <summary>

@@ -41,10 +41,9 @@ public class XdcSubnetBlockHeader(
 
     public override ValueHash256 CalculateHash()
     {
-        KeccakRlpStream rlpStream = new();
-        KeccakRlpWriter writer = rlpStream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _headerDecoder.Encode(ref writer, this);
-        return rlpStream.GetHash();
+        return writer.GetHash();
     }
 
     /// <inheritdoc />

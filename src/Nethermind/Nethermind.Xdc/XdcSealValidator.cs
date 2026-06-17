@@ -141,10 +141,9 @@ internal class XdcSealValidator(
                  || xdcHeader.Validator[64] >= 4)
                 return false;
 
-            KeccakRlpStream stream = new();
-            KeccakRlpWriter writer = stream.AsValueWriter();
+            KeccakRlpWriter writer = KeccakRlpWriter.Create();
             _headerDecoder.Encode(ref writer, xdcHeader, RlpBehaviors.ForSealing);
-            ValueHash256 hash = stream.GetValueHash();
+            ValueHash256 hash = writer.GetValueHash();
             Address signer = _ethereumEcdsa.RecoverAddress(new Signature(xdcHeader.Validator.AsSpan(0, 64), xdcHeader.Validator[64]), in hash);
 
             header.Author = signer;

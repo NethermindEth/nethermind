@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
@@ -16,10 +15,9 @@ public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate hi
 
     public (ulong Round, Hash256 Hash) GetSyncInfoKey()
     {
-        KeccakRlpStream stream = new();
-        KeccakRlpWriter writer = stream.AsValueWriter();
+        KeccakRlpWriter writer = KeccakRlpWriter.Create();
         _decoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
-        Hash256 hash = stream.GetHash();
+        Hash256 hash = writer.GetHash();
 
         if (HighestQuorumCert is not null)
         {
