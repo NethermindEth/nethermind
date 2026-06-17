@@ -36,4 +36,43 @@ public interface ISnapshotRepository
     /// </remarks>
     /// <param name="canonicalStateId">The canonical state being persisted.</param>
     void RemoveSiblingAndDescendents(in StateId canonicalStateId);
+
+    /// <summary>
+    /// Registers the reverse diff of a persisted chunk, keyed by its older end (<see cref="Snapshot.To"/>),
+    /// so historical reads can walk the chain from a chunk boundary up to the persisted state.
+    /// </summary>
+    bool TryAddReverseDiff(Snapshot reverseDiff);
+
+    /// <summary>
+    /// True when <paramref name="stateId"/> is kept as a historical snapshot below the persisted state.
+    /// </summary>
+    bool HasHistoricalState(in StateId stateId);
+
+    /// <summary>
+    /// Early-persist replacement for <see cref="RemoveStatesUntil"/>: moves the canonical per-block
+    /// chain at or below <paramref name="persistedStateId"/> into the historical set (releasing the
+    /// persisted state's own snapshot, compacted snapshots, and non-canonical leftovers) so it stays
+    /// available for snap serving.
+    /// </summary>
+    void ArchiveStatesUntil(in StateId persistedStateId);
+
+    /// <summary>
+    /// Assembles the snapshot stack for a historical state below the persisted state: per-block forward
+    /// snapshots down to the nearest chunk boundary, then reverse diffs up to <paramref name="persistedState"/>.
+    /// Returns an empty list when the chain is broken or the state is outside the serving window.
+    /// </summary>
+    SnapshotPooledList AssembleHistoricalSnapshots(in StateId baseBlock, in StateId persistedState, int estimatedSize);
+
+    /// <summary>
+    /// Releases reverse diffs and historical snapshots no longer needed to serve states at or above
+    /// <paramref name="oldestServedBlockNumber"/>, keeping the reverse chain connected from
+    /// <paramref name="persistedState"/> down to the chunk boundary at or below it.
+    /// </summary>
+    void PruneHistory(long oldestServedBlockNumber, in StateId persistedState);
+
+    /// <summary>
+    /// Releases all reverse diffs and historical snapshots, collapsing the historical serving window.
+    /// Used when a chunk cannot be reversed (irreversible self-destruct).
+    /// </summary>
+    void ClearHistory();
 }

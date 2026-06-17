@@ -3,7 +3,9 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Channels;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -47,6 +49,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _clearBundleCacheTask;
 
     private readonly int _compactSize;
+    private readonly bool _earlyPersist;
+    private readonly int _historicalWindow;
     private readonly TimeSpan _compactorStallTimeout;
 
     // For debugging. Do the compaction synchronously
@@ -66,6 +70,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IPersistenceManager persistenceManager,
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
+        ISyncConfig syncConfig,
         ILogManager logManager,
         bool enableDetailedMetrics)
     {
@@ -78,6 +83,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _enableDetailedMetrics = enableDetailedMetrics;
 
         _compactSize = config.CompactSize;
+        _earlyPersist = config.EarlyPersist;
+        _historicalWindow = syncConfig.SnapServingMaxDepth;
 
         // We assume that the state must be able to be persisted in half the slot time at the very
         // least. If block processing is stalled for longer than this, persistence is simply too slow
@@ -160,7 +167,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
+        if (_earlyPersist)
+        {
+            _snapshotRepository.ArchiveStatesUntil(currentPersistedStateId);
+            _snapshotRepository.PruneHistory(latestSnapshot.BlockNumber - _historicalWindow, currentPersistedStateId);
+        }
+        else
+        {
+            _snapshotRepository.RemoveStatesUntil(currentPersistedStateId);
+        }
         ClearReadOnlyBundleCache();
         ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
@@ -241,6 +256,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     }
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+        => TryGatherReadOnlySnapshotBundle(baseBlock, out ReadOnlySnapshotBundle? bundle)
+            ? bundle
+            : throw new InvalidOperationException($"State {baseBlock} no longer exists; concurrently removed.");
+
+    public bool TryGatherReadOnlySnapshotBundle(in StateId baseBlock, [NotNullWhen(true)] out ReadOnlySnapshotBundle? bundle)
     {
         // Note to self: The current verdict on trying to use a linked list of snapshots is that it is error prone and
         // hard to pull of due to the constantly moving chain making invalidation hard.
@@ -249,7 +269,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
+            bundle = new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics);
+            return true;
         }
 
         long sw = 0;
@@ -257,7 +278,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         while (true)
         {
             // Fastpath: Share a recently created ReadOnlySnapshotBundle
-            if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
+            if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out bundle) && bundle.TryLease()) return true;
 
             if (attempt == 1) sw = Stopwatch.GetTimestamp();
             if (attempt != 0)
@@ -273,12 +294,17 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
             SnapshotPooledList snapshots;
+            bool isHistorical;
             try
             {
-                snapshots = _snapshotRepository.AssembleSnapshots(
-                    baseBlock,
-                    persistenceReader.CurrentState,
-                    estimatedSize: Math.Max(1, _snapshotRepository.SnapshotCount / _compactSize));
+                StateId persistedState = persistenceReader.CurrentState;
+                isHistorical = baseBlock.BlockNumber < persistedState.BlockNumber;
+                snapshots = isHistorical
+                    ? _snapshotRepository.AssembleHistoricalSnapshots(baseBlock, persistedState, estimatedSize: _compactSize)
+                    : _snapshotRepository.AssembleSnapshots(
+                        baseBlock,
+                        persistedState,
+                        estimatedSize: Math.Max(1, _snapshotRepository.SnapshotCount / _compactSize));
             }
             catch (Exception)
             {
@@ -288,15 +314,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
 
             // Empty result + reader not at baseBlock means the path was removed concurrently;
-            // retry unless baseBlock itself was pruned (orphaned), which no retry can recover.
+            // retry unless baseBlock itself was pruned (orphaned) or fell out of the historical serving
+            // window, which no retry can recover.
             if (snapshots.Count == 0 && persistenceReader.CurrentState != baseBlock)
             {
                 snapshots.Dispose();
                 persistenceReader.Dispose();
 
-                if (!_snapshotRepository.HasState(baseBlock))
+                if (isHistorical
+                    ? !_snapshotRepository.HasHistoricalState(baseBlock)
+                    : !_snapshotRepository.HasState(baseBlock))
                 {
-                    throw new InvalidOperationException($"State {baseBlock} no longer exists; concurrently removed.");
+                    bundle = null;
+                    return false;
                 }
 
                 attempt++;
@@ -314,7 +344,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             }
 
             Metrics.SnapshotBundleSize = snapshots.Count;
-            return res;
+            bundle = res;
+            return true;
         }
     }
 
@@ -416,7 +447,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState.BlockNumber < 0) return;
 
-        _snapshotRepository.RemoveStatesUntil(persistedState);
+        if (_earlyPersist)
+        {
+            _snapshotRepository.ArchiveStatesUntil(persistedState);
+        }
+        else
+        {
+            _snapshotRepository.RemoveStatesUntil(persistedState);
+        }
 
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();

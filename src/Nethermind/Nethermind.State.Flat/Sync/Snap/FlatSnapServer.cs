@@ -38,7 +38,15 @@ public class FlatSnapServer(
             return false;
         }
 
-        bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+        // The state can be pruned (or fall out of the historical serving window) between the index
+        // lookup and the gather; respond empty rather than throw.
+        if (!flatDbManager.TryGatherReadOnlySnapshotBundle(stateId, out ReadOnlySnapshotBundle? gathered))
+        {
+            bundle = null!;
+            return false;
+        }
+
+        bundle = gathered;
         return true;
     }
 

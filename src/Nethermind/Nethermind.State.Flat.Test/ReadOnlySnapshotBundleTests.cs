@@ -191,6 +191,47 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void ReverseDiffStack_ReadsForwardThenNearestReverseDiffThenPersistence()
+    {
+        // Historical stack: ascending list [R_top (nearest persisted), R_boundary, F]. The newest-first
+        // read loop must check F, then R_boundary, then R_top, then persistence.
+        Address inForward = TestItem.AddressA;
+        Address inBothDiffs = TestItem.AddressB;
+        Address nullMarker = TestItem.AddressC;
+        Address onlyPersisted = TestItem.AddressD;
+
+        Account forwardValue = TestItem.GenerateIndexedAccount(1);
+        Account boundaryValue = TestItem.GenerateIndexedAccount(2);
+        Account topValue = TestItem.GenerateIndexedAccount(3);
+        Account persistedValue = TestItem.GenerateIndexedAccount(4);
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.GetAccount(onlyPersisted).Returns(persistedValue);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            MakeSnapshot(c =>
+            {
+                c.Accounts[new HashedKey<Address>(inBothDiffs)] = topValue;
+                c.Accounts[new HashedKey<Address>(nullMarker)] = topValue;
+            }),
+            MakeSnapshot(c =>
+            {
+                c.Accounts[new HashedKey<Address>(inBothDiffs)] = boundaryValue;
+                c.Accounts[new HashedKey<Address>(nullMarker)] = null;
+            }),
+            MakeSnapshot(c => c.Accounts[new HashedKey<Address>(inForward)] = forwardValue)), reader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.GetAccount(inForward), Is.EqualTo(forwardValue));
+            Assert.That(bundle.GetAccount(inBothDiffs), Is.EqualTo(boundaryValue), "diff nearest the served state wins");
+            Assert.That(bundle.GetAccount(nullMarker), Is.Null, "null marker shadows the newer persisted value");
+            Assert.That(bundle.GetAccount(onlyPersisted), Is.EqualTo(persistedValue));
+        }
+        reader.DidNotReceive().GetAccount(nullMarker);
+    }
+
+    [Test]
     public void TryLease_ReturnsTrueWhileAlive_ThrowsAfterDispose()
     {
         ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()));

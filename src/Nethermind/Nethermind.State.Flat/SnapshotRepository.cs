@@ -21,6 +21,12 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new([]);
 
+    // History kept below the persisted state for snap serving (early persist mode). Per-block forward
+    // snapshots keyed by To, and per-chunk reverse diffs keyed by To (their older end) so the chain can
+    // be walked from any chunk boundary up to the persisted state.
+    private readonly ConcurrentDictionary<StateId, Snapshot> _historicalSnapshots = new();
+    private readonly ConcurrentDictionary<StateId, Snapshot> _reverseDiffs = new();
+
     public int SnapshotCount => _snapshots.Count;
     public int CompactedSnapshotCount => _compactedSnapshots.Count;
 
@@ -127,21 +133,15 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
     }
 
     public bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
-    {
-        SpinWait sw = new();
-        while (_compactedSnapshots.TryGetValue(stateId, out entry))
-        {
-            if (entry.TryAcquire()) return true;
-
-            sw.SpinOnce();
-        }
-        return false;
-    }
+        => TryLeaseFrom(_compactedSnapshots, stateId, out entry);
 
     public bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
+        => TryLeaseFrom(_snapshots, stateId, out entry);
+
+    private static bool TryLeaseFrom(ConcurrentDictionary<StateId, Snapshot> snapshots, in StateId stateId, [NotNullWhen(true)] out Snapshot? entry)
     {
         SpinWait sw = new();
-        while (_snapshots.TryGetValue(stateId, out entry))
+        while (snapshots.TryGetValue(stateId, out entry))
         {
             if (entry.TryAcquire()) return true;
 
@@ -266,6 +266,209 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             RemoveAndReleaseCompactedKnownState(stateToRemove);
             RemoveAndReleaseKnownState(stateToRemove);
+        }
+    }
+
+    public bool TryAddReverseDiff(Snapshot reverseDiff)
+    {
+        if (_reverseDiffs.TryAdd(reverseDiff.To, reverseDiff))
+        {
+            Metrics.ReverseDiffCount++;
+
+            // Unlike compacted snapshots, reverse diff values are not shared with other snapshots.
+            long totalBytes = reverseDiff.EstimateMemory();
+            Metrics.ReverseDiffMemory += totalBytes;
+            Metrics.TotalSnapshotMemory += totalBytes;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public bool HasHistoricalState(in StateId stateId) => _historicalSnapshots.ContainsKey(stateId);
+
+    public void ArchiveStatesUntil(in StateId persistedStateId)
+    {
+        // Move the canonical per-block chain below the persisted state into the historical set. The
+        // persisted state's own snapshot is released instead: that state is fully readable from
+        // persistence and its chunk is covered by the reverse diff. Compacted snapshots are released
+        // outright; historical reads only ever need per-block granularity above a chunk boundary.
+        StateId current = persistedStateId;
+        bool isPersistedState = true;
+        while (_snapshots.TryGetValue(current, out Snapshot? snapshot))
+        {
+            StateId from = snapshot.From;
+
+            RemoveAndReleaseCompactedKnownState(current);
+            if (isPersistedState)
+            {
+                RemoveAndReleaseKnownState(current);
+            }
+            else
+            {
+                MoveToHistorical(current);
+            }
+
+            isPersistedState = false;
+            current = from;
+        }
+
+        // Sweep non-canonical leftovers (orphaned forks at or below the persisted block).
+        using ArrayPoolList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(persistedStateId);
+        foreach (StateId stateToRemove in statesBeforeStateId)
+        {
+            RemoveAndReleaseCompactedKnownState(stateToRemove);
+            RemoveAndReleaseKnownState(stateToRemove);
+        }
+    }
+
+    /// <summary>
+    /// Assembles the snapshot stack for a historical state <paramref name="baseBlock"/> below the
+    /// persisted state: per-block forward snapshots down to the nearest chunk boundary, then reverse
+    /// diffs up to <paramref name="persistedState"/>.
+    /// </summary>
+    /// <remarks>
+    /// Returned list is in ascending read priority like <see cref="AssembleSnapshots"/>: reverse diffs
+    /// first (topmost last), then forwards ending at <paramref name="baseBlock"/>, so the newest-first
+    /// read loop checks forwards, then reverse diffs from the boundary upward, then persistence.
+    /// Returns an empty list when the chain is broken (pruned concurrently or outside the serving
+    /// window); the caller retries or fails.
+    /// </remarks>
+    public SnapshotPooledList AssembleHistoricalSnapshots(in StateId baseBlock, in StateId persistedState, int estimatedSize)
+    {
+        using ArrayPoolListRef<Snapshot> forwards = new(estimatedSize);
+        using ArrayPoolListRef<Snapshot> reverses = new(4);
+        bool success = false;
+        try
+        {
+            // Per-block forwards downward from baseBlock until a state with a reverse diff (chunk boundary).
+            StateId current = baseBlock;
+            Snapshot? reverse;
+            while (!TryLeaseFrom(_reverseDiffs, current, out reverse))
+            {
+                if (!TryLeaseFrom(_historicalSnapshots, current, out Snapshot? snapshot)) return SnapshotPooledList.Empty();
+
+                forwards.Add(snapshot);
+                current = snapshot.From;
+            }
+
+            // Reverse diffs upward; each diff's From is the chunk boundary above it.
+            while (true)
+            {
+                reverses.Add(reverse);
+                if (reverse.From == persistedState) break;
+                if (!TryLeaseFrom(_reverseDiffs, reverse.From, out reverse)) return SnapshotPooledList.Empty();
+            }
+
+            SnapshotPooledList result = new(forwards.Count + reverses.Count);
+            for (int i = reverses.Count - 1; i >= 0; i--) result.Add(reverses[i]);
+            for (int i = forwards.Count - 1; i >= 0; i--) result.Add(forwards[i]);
+            success = true;
+            return result;
+        }
+        finally
+        {
+            if (!success)
+            {
+                foreach (Snapshot snapshot in forwards) snapshot.Dispose();
+                foreach (Snapshot snapshot in reverses) snapshot.Dispose();
+            }
+        }
+    }
+
+    public void PruneHistory(long oldestServedBlockNumber, in StateId persistedState)
+    {
+        // Walk the reverse chain down from the persisted state; the first diff reaching at or below
+        // oldestServedBlockNumber is the keep-boundary (chunk granularity keeps historical reads able to
+        // reach every state in the serving window). Everything below it or off-chain is released.
+        StateId keepBoundary = persistedState;
+        using PooledSet<StateId> keptDiffs = new();
+        while (TryFindReverseDiffFrom(keepBoundary, out StateId diffTo))
+        {
+            keptDiffs.Add(diffTo);
+            keepBoundary = diffTo;
+            if (diffTo.BlockNumber <= oldestServedBlockNumber) break;
+        }
+
+        foreach (KeyValuePair<StateId, Snapshot> kv in _reverseDiffs)
+        {
+            if (!keptDiffs.Contains(kv.Key)) RemoveAndReleaseReverseDiff(kv.Key);
+        }
+
+        foreach (KeyValuePair<StateId, Snapshot> kv in _historicalSnapshots)
+        {
+            if (kv.Key.BlockNumber <= keepBoundary.BlockNumber) RemoveAndReleaseHistoricalState(kv.Key);
+        }
+    }
+
+    public void ClearHistory()
+    {
+        foreach (KeyValuePair<StateId, Snapshot> kv in _reverseDiffs) RemoveAndReleaseReverseDiff(kv.Key);
+        foreach (KeyValuePair<StateId, Snapshot> kv in _historicalSnapshots) RemoveAndReleaseHistoricalState(kv.Key);
+    }
+
+    private bool TryFindReverseDiffFrom(in StateId from, out StateId diffTo)
+    {
+        foreach (KeyValuePair<StateId, Snapshot> kv in _reverseDiffs)
+        {
+            if (kv.Value.From == from)
+            {
+                diffTo = kv.Key;
+                return true;
+            }
+        }
+
+        diffTo = default;
+        return false;
+    }
+
+    private void MoveToHistorical(in StateId stateId)
+    {
+        if (_snapshots.TryRemove(stateId, out Snapshot? snapshot))
+        {
+            Metrics.SnapshotCount--;
+
+            using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
+            {
+                sortedSnapshots.Remove(stateId);
+            }
+
+            // TotalSnapshotMemory is unchanged; the snapshot is still alive, just re-homed.
+            long totalBytes = snapshot.EstimateMemory();
+            Metrics.SnapshotMemory -= totalBytes;
+            Metrics.HistoricalSnapshotCount++;
+            Metrics.HistoricalSnapshotMemory += totalBytes;
+
+            _historicalSnapshots[stateId] = snapshot;
+        }
+    }
+
+    private void RemoveAndReleaseHistoricalState(in StateId stateId)
+    {
+        if (_historicalSnapshots.TryRemove(stateId, out Snapshot? snapshot))
+        {
+            Metrics.HistoricalSnapshotCount--;
+
+            long totalBytes = snapshot.EstimateMemory();
+            Metrics.HistoricalSnapshotMemory -= totalBytes;
+            Metrics.TotalSnapshotMemory -= totalBytes;
+
+            snapshot.Dispose();
+        }
+    }
+
+    private void RemoveAndReleaseReverseDiff(in StateId stateId)
+    {
+        if (_reverseDiffs.TryRemove(stateId, out Snapshot? reverseDiff))
+        {
+            Metrics.ReverseDiffCount--;
+
+            long totalBytes = reverseDiff.EstimateMemory();
+            Metrics.ReverseDiffMemory -= totalBytes;
+            Metrics.TotalSnapshotMemory -= totalBytes;
+
+            reverseDiff.Dispose();
         }
     }
 

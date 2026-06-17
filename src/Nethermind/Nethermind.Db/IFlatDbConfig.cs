@@ -16,6 +16,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     int CompactSize { get; set; }
 
+    [ConfigItem(Description = "Persist state at the finalized compaction boundary instead of keeping MinReorgDepth blocks in memory. Historical state for snap serving is kept as in-memory reverse diffs.", DefaultValue = "false")]
+    bool EarlyPersist { get; set; }
+
     [ConfigItem(Description = "Enabled", DefaultValue = "false")]
     bool Enabled { get; set; }
 

@@ -59,6 +59,26 @@ public static class Metrics
     [Description("Total estimated snapshot memory in bytes")]
     public static long TotalSnapshotMemory { get; set; }
 
+    [GaugeMetric]
+    [Description("Number of historical snapshots kept below the persisted state for snap serving")]
+    public static long HistoricalSnapshotCount { get; set; }
+
+    [GaugeMetric]
+    [Description("Estimated memory used by historical snapshots in bytes")]
+    public static long HistoricalSnapshotMemory { get; set; }
+
+    [GaugeMetric]
+    [Description("Number of reverse diffs kept for serving state below the persisted state")]
+    public static long ReverseDiffCount { get; set; }
+
+    [GaugeMetric]
+    [Description("Estimated memory used by reverse diffs in bytes")]
+    public static long ReverseDiffMemory { get; set; }
+
+    [CounterMetric]
+    [Description("Number of times the historical serving window was truncated due to an irreversible self-destruct")]
+    public static long HistoricalWindowTruncations { get; set; }
+
     [DetailedMetric]
     [Description("Active pooled resources by category and type")]
     [KeyIsLabel("category", "resource_type")]
