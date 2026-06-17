@@ -202,8 +202,7 @@ public class PatriciaTrieWitnessGeneratorTests
         // Absent-key read and absent-key delete (no-op) over a populated trie.
         List<(Hash256, byte[])> populated = PatriciaTreeBulkSetterTests.GenRandomOfLength(50, 99);
         yield return Case(new Scenario("absent read/delete", populated,
-            [Hash("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd0")],
-            [Hash("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0")], []));
+            [Hash("dd")], [Hash("ee")], []));
 
         // Order-independence: an off-key insert (write branching off a deleted leaf's key) must NOT keep the sibling
         // (2b) out of the witness, because applying the delete before the insert transiently collapses the branch.

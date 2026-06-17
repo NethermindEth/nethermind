@@ -117,6 +117,8 @@ public class WitnessGeneratingWorldState(
 
             foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> kvp in _storageSlots)
             {
+                // An account touched only at the account level (e.g. a self-destruct with no SLOAD) has no
+                // slots to walk; removing its state-trie leaf already accounts for its whole storage subtree.
                 if (kvp.Value.Count == 0) continue;
                 Address address = kvp.Key;
                 if (!stateReader.TryGetAccount(parentHeader, address, out AccountStruct account)) continue;
