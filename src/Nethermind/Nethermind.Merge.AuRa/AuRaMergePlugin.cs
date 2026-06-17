@@ -34,7 +34,6 @@ namespace Nethermind.Merge.AuRa
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
     public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : MergePlugin(chainSpec, mergeConfig)
     {
-        private AuRaNethermindApi? _auraApi;
         private readonly IMergeConfig _mergeConfig = mergeConfig;
         private readonly ChainSpec _chainSpec = chainSpec;
 
@@ -48,19 +47,12 @@ namespace Nethermind.Merge.AuRa
             if (MergeEnabled)
             {
                 await base.Init(nethermindApi);
-                _auraApi = (AuRaNethermindApi)nethermindApi;
 
                 // this runs before all init steps that use tx filters
                 TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
                     originalFilter is MinGasPriceContractTxFilter ? originalFilter
                     : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
             }
-        }
-
-        protected override void InitializeMergeFinalization()
-        {
-            AuRaTerminalBlockDisposer disposer = new(_auraApi!.AuRaFinalizationManager, _poSSwitcher, _api.BlockTree!);
-            _api.DisposeStack.Push(disposer);
         }
 
         public override IModule Module => new AuRaMergeModule();
@@ -97,6 +89,10 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
+
+                // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
+                // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.
+                .AddSingleton<AuRaTerminalBlockDisposer>()
 
                 // Merge-aware override: skips wiring the branch processor on post-merge chains so
                 // the AuRa finalization manager's startup catch-up walk never runs.

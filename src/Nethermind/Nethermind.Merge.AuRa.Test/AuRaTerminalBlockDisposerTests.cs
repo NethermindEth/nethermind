@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -67,6 +68,28 @@ public class AuRaTerminalBlockDisposerTests
 
         _poSSwitcher.TerminalBlockReached += Raise.Event();
         _auRaFinalizationManager.DidNotReceive().Dispose();
+    }
+
+    [Test]
+    public void Registered_as_singleton_and_resolving_triggers_disposal_when_head_post_merge()
+    {
+        // The disposer is wired through DI (AuRaMergeModule + InitializeBlockchainAuRaMerge) rather than
+        // hand-constructed: registering it as a singleton and resolving it must trigger the same ctor
+        // side-effect (immediate disposal on a post-merge head) and yield a single instance.
+        SetHead(postMerge: true);
+
+        ContainerBuilder builder = new();
+        builder
+            .AddSingleton(_auRaFinalizationManager)
+            .AddSingleton(_poSSwitcher)
+            .AddSingleton(_blockTree)
+            .AddSingleton<AuRaTerminalBlockDisposer>();
+        using IContainer container = builder.Build();
+
+        AuRaTerminalBlockDisposer disposer = container.Resolve<AuRaTerminalBlockDisposer>();
+
+        Assert.That(container.Resolve<AuRaTerminalBlockDisposer>(), Is.SameAs(disposer));
+        _auRaFinalizationManager.Received(1).Dispose();
     }
 
     [Test]

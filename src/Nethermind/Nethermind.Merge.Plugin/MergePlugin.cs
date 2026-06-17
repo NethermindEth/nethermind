@@ -196,7 +196,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
 
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-            InitializeMergeFinalization();
 
             if (_poSSwitcher.TransitionFinished)
             {
@@ -221,12 +220,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         if (_logger.IsInfo) _logger.Info("Adding eth/71 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
     }
-
-    /// <summary>
-    /// Hook for derived plugins (e.g. AuRaMergePlugin) to set up merge-transition lifecycle
-    /// (e.g. disposing AuRa's finalization manager at terminal block). Default: no-op.
-    /// </summary>
-    protected virtual void InitializeMergeFinalization() { }
 
     public bool MustInitialize { get => true; }
 
