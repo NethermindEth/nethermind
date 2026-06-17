@@ -65,6 +65,8 @@ public class BalRecordingBranchProcessor(
         return false;
     }
 
+    public long LastPreWarmMicroseconds => inner.LastPreWarmMicroseconds;
+
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
     {
         add => inner.BlockProcessed += value;

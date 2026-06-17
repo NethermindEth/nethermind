@@ -502,7 +502,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (!readonlyChain)
         {
-            long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
+            // When Blocks.PreWarmBeforeProcessing is enabled, the prewarmer ran as a blocking pre-pass
+            // inside the stopwatch window; subtract it so the reported time reflects warm execution only
+            // (it is 0 in the default concurrent-prewarm mode, so this is a no-op there).
+            long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds() - _branchProcessor.LastPreWarmMicroseconds;
+            if (blockProcessingTimeInMicrosecs < 0) blockProcessingTimeInMicrosecs = 0;
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
             int blockQueueCount = _blockQueue.Reader.Count;
             Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);

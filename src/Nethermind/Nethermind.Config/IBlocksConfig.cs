@@ -40,6 +40,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 
+    [ConfigItem(Description = "DIAGNOSTIC (benchmark only, not for production): run the speculative prewarmer to completion BEFORE the measured block processing instead of concurrently with it, and exclude that prewarm time from the reported processing time. Removes the prewarmer's thread-contention from the measured window so per-block timing is more deterministic (lower run-to-run variance) while keeping its warm-cache speed-up. Read-only/consensus-safe.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmBeforeProcessing { get; set; }
+
     [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
     bool CachePrecompilesOnBlockProcessing { get; set; }
 

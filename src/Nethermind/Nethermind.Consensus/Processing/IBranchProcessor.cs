@@ -28,6 +28,14 @@ public interface IBranchProcessor
         CancellationToken token = default);
 
     /// <summary>
+    /// Microseconds spent pre-warming during the most recent <see cref="Process"/> call that were run
+    /// as a blocking pre-pass — only non-zero when <c>Blocks.PreWarmBeforeProcessing</c> is enabled.
+    /// Callers subtract this from the measured processing time so the reported time reflects warm
+    /// execution only. Zero in the default concurrent-prewarm mode.
+    /// </summary>
+    long LastPreWarmMicroseconds => 0;
+
+    /// <summary>
     /// Fired after a block has been processed.
     /// </summary>
     event EventHandler<BlockProcessedEventArgs> BlockProcessed;

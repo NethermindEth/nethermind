@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -23,7 +25,8 @@ public class BranchProcessor(
     IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
-    IBlockCachePreWarmer? preWarmer = null)
+    IBlockCachePreWarmer? preWarmer = null,
+    IBlocksConfig? blocksConfig = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
@@ -31,6 +34,13 @@ public class BranchProcessor(
 
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
+
+    // Benchmark-only diagnostic: when set, the prewarmer is awaited to completion before ProcessOne
+    // (rather than running concurrently with it) and the time spent is reported via
+    // LastPreWarmMicroseconds so the caller can exclude it from the measured processing time.
+    private readonly bool _preWarmBefore = blocksConfig?.PreWarmBeforeProcessing ?? false;
+    private long _lastPreWarmMicroseconds;
+    public long LastPreWarmMicroseconds => _lastPreWarmMicroseconds;
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -48,6 +58,7 @@ public class BranchProcessor(
     {
         if (suggestedBlocks.Count == 0) return [];
 
+        _lastPreWarmMicroseconds = 0;
         Block suggestedBlock = suggestedBlocks[0];
 
         IDisposable? worldStateCloser = null;
@@ -128,6 +139,16 @@ public class BranchProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
+                }
+                else if (_preWarmBefore)
+                {
+                    // Benchmark-only: drain the prewarmer to completion before the measured execution so
+                    // it no longer overlaps/contends with the main thread, then exclude its time from the
+                    // reported processing time. The warmed caches survive into ProcessOne (they are only
+                    // cleared after, via QueueClearCaches/WaitAndClear), so execution runs fully warm.
+                    long preWarmStart = Stopwatch.GetTimestamp();
+                    preWarmTask.GetAwaiter().GetResult();
+                    _lastPreWarmMicroseconds += (long)Stopwatch.GetElapsedTime(preWarmStart).TotalMicroseconds;
                 }
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
