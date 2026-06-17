@@ -44,10 +44,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private long _snapshotCount;
     private long _compactedSnapshotCount;
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new([]);
-    // Last-registered tip under its own lock — read on the hot BFS-seed path, independent of the
-    // ordered-set operations.
-    private readonly Lock _lastRegisteredLock = new();
-    private StateId? _lastRegisteredState;
 
     // StateId is larger than a machine word, so its read/write across threads must be synchronized.
     private readonly Lock _lastCommittedLock = new();
@@ -76,26 +72,10 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public int PersistedSnapshotCount => (int)(_base.Count + _smallCompacted.Count + _largeCompacted.Count + _compactSized.Count);
 
-    /// <summary>
-    /// Seed for backward walks over the snapshot graph (see <see cref="PersistenceManager"/>).
-    /// Tracks call order of <see cref="AddStateId"/>, not block-number max — the most-recent
-    /// registration wins even if it lowers the block number.
-    /// </summary>
-    public StateId? LastRegisteredState
-    {
-        get
-        {
-            using Lock.Scope scope = _lastRegisteredLock.EnterScope();
-            return _lastRegisteredState;
-        }
-    }
-
     public void AddStateId(in StateId stateId)
     {
         using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
             sortedSnapshots.Add(stateId);
-        using Lock.Scope scope = _lastRegisteredLock.EnterScope();
-        _lastRegisteredState = stateId;
     }
 
     public AssembledSnapshotResult AssembleSnapshots(in StateId baseBlock, in StateId targetState, int estimatedSize)
@@ -314,16 +294,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             Interlocked.Decrement(ref _snapshotCount);
             Metrics.SnapshotCount--;
 
-            StateId? newMax;
             using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
-            {
                 sortedSnapshots.Remove(stateId);
-                newMax = sortedSnapshots.Count == 0 ? null : sortedSnapshots.Max;
-            }
-            // Only reset if still the removed tip; a racing AddStateId that advanced the tip leaves
-            // _lastRegisteredState != stateId, so the (possibly stale) newMax isn't applied.
-            using (_lastRegisteredLock.EnterScope())
-                if (_lastRegisteredState == stateId) _lastRegisteredState = newMax;
 
             long totalBytes = existing.EstimateMemory();
             Metrics.SnapshotMemory -= totalBytes;

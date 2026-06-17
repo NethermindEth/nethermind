@@ -115,9 +115,9 @@ public class PersistenceManager(
         {
             // Backstop (finalization stalled): seed from the committed head so the forced persist
             // follows the canonical chain rather than an arbitrary/longest fork (which
-            // RemoveSiblingAndDescendents would then orphan). Falls back to the longest chain only
-            // when nothing was committed this session.
-            seed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.LastRegisteredState;
+            // RemoveSiblingAndDescendents would then orphan). Falls back to the longest chain, then the
+            // latest state, only when nothing was committed this session.
+            seed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
             forcedByBackstop = true;
         }
 

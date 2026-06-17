@@ -19,10 +19,6 @@ public interface ISnapshotRepository
     /// set and records it as the last-registered tip.</summary>
     void AddStateId(in StateId stateId);
 
-    /// <summary>The most recently registered tip — by <see cref="AddStateId"/> call order, not block-number
-    /// max — used as the seed for backward graph walks. <c>null</c> when none is registered.</summary>
-    StateId? LastRegisteredState { get; }
-
     /// <summary>Add an in-memory snapshot to the <paramref name="tier"/> store. <paramref name="tier"/>
     /// must be <see cref="SnapshotTier.InMemoryBase"/> or <see cref="SnapshotTier.InMemoryCompacted"/>.</summary>
     bool TryAdd(Snapshot snapshot, SnapshotTier tier);

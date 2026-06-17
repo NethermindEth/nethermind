@@ -229,8 +229,8 @@ public class PersistenceManagerTests
         StateId tierTip = CreateStateId(_config.CompactSize);
         _finalizedStateProvider.SetFinalizedBlockNumber(10);
 
-        // CreateSnapshot registers the snapshot's To as the in-memory tier's LastRegisteredState, so the
-        // backstop seeds on tierTip; emulate a one-hop graph by registering a base at tierTip with From = Block0.
+        // CreateSnapshot registers the snapshot's To, so GetLastSnapshotId returns tierTip and the backstop
+        // seeds on it; emulate a one-hop graph by registering a base at tierTip with From = Block0.
         using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
 
         (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = _persistenceManager.DetermineSnapshotAction(latest);
@@ -444,9 +444,9 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_LongerNonCanonicalFork_PersistsCommittedHeadChain()
     {
-        // The longest in-memory chain runs through target1 (registered last, so it is LastRegisteredState),
-        // but the committed head is the shorter chain through target2. The backstop must follow the committed
-        // head (target2), not the longer fork (target1) that the bare last-registered fallback would pick.
+        // The longest in-memory chain runs through target1 (longHead is the max, so GetLastSnapshotId would
+        // pick it), but the committed head is the shorter chain through target2. The backstop must follow the
+        // committed head (target2), not the longer fork (target1) that the GetLastSnapshotId fallback would pick.
         StateId persisted = Block0;
         StateId target1 = CreateStateId(16, rootByte: 1); // boundary state on the longer, non-canonical fork
         StateId target2 = CreateStateId(16, rootByte: 2); // boundary state on the committed head's chain
@@ -455,8 +455,8 @@ public class PersistenceManagerTests
 
         _finalizedStateProvider.SetFinalizedBlockNumber(0); // unfinalized at the boundary
 
-        // Register the committed-head chain first, then the longer fork last so LastRegisteredState is the
-        // longer fork — only honouring the committed head selects target2.
+        // longHead (block 95001) is the max, so the GetLastSnapshotId fallback would pick the longer fork —
+        // only honouring the committed head selects target2.
         using Snapshot fork2 = CreateSnapshot(persisted, target2, compacted: true);
         using Snapshot toCommittedHead = CreateSnapshot(target2, committedHead, compacted: true);
         using Snapshot fork1 = CreateSnapshot(persisted, target1, compacted: true);
