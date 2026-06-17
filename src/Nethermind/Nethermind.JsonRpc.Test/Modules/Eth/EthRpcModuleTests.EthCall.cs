@@ -1061,7 +1061,7 @@ public partial class EthRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
-            Assert.That(message, Does.Contain("insufficient funds for gas * price + value"));
+            Assert.That(message, Does.Contain("insufficient sender balance for gas * price + value"));
             Assert.That(message, Does.Contain(expectedDetailSubstring));
         }
     }
