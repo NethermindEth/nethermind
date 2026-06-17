@@ -1599,7 +1599,9 @@ jobs:
       max-parallel: 1
       fail-fast: false
     runs-on: [self-hosted, reproducible-benchmarks]
-    timeout-minutes: 720
+    # SWEEP: per-image cap (pull + ~5min run + buffer). An image that crash-loops or runs >~5min is
+    # auto-cancelled here so it doesn't block the serial runner; fail-fast:false lets the sweep continue.
+    timeout-minutes: 8
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
       CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
