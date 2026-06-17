@@ -12,7 +12,6 @@ using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
-using Nethermind.Serialization.Ssz;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test.SszRest;

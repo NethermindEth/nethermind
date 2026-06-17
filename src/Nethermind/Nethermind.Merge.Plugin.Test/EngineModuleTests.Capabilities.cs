@@ -4,7 +4,6 @@
 using Nethermind.Core.Specs;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using NUnit.Framework;
 

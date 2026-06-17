@@ -1345,7 +1345,7 @@ public class Eth72ProtocolHandlerTests
             {
                 x[1] = txAvailable ? tx : null!;
                 return txAvailable;
-        });
+            });
         _transactionPool.TryMergeBlobCells(tx.Hash!, cellMask, Arg.Any<byte[][]>()).Returns(true);
 
         HandleIncomingStatusMessage();
