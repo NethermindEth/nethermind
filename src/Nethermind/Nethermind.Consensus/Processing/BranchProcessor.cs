@@ -228,13 +228,6 @@ public class BranchProcessor(
         }
         else if (preWarmer is not null)
         {
-            // Reached only when prewarming was skipped for this block (preWarmTask is null), so no
-            // warmer was ever queued for it; and the previous block's prewarm task — which only
-            // completes after its AddressWarmer finishes — is awaited every iteration before the
-            // next block runs. Nothing can be concurrently touching the prewarmer caches here, so
-            // clearing inline is race-free and avoids the per-block ThreadPool dispatch (and Task
-            // allocation) that otherwise dominates the cost of near-empty blocks during early
-            // archive sync. The clear is an O(1) epoch bump on already-empty caches.
             preWarmer.ClearCaches();
             _clearTask = Task.CompletedTask;
         }
