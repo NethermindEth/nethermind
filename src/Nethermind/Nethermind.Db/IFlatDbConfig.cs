@@ -40,6 +40,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     int MinReorgDepth { get; set; }
 
+    [ConfigItem(Description = "Lower bound, in bytes, for the RocksDB write buffer (memtable) size of the flat-state columns. The per-batch adjuster never shrinks a column's memtable below this value. Raising it lets frequent small persistence batches (small CompactSize) coalesce and deduplicate in the memtable instead of churning L0, decoupling write amplification from CompactSize.", DefaultValue = "16777216")]
+    long PersistenceWriteBufferFloor { get; set; }
+
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 

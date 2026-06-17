@@ -45,5 +45,8 @@
   },
   "Merge": {
     "FinalTotalDifficulty": "231708131825107706987652208063906496124457284"
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }
