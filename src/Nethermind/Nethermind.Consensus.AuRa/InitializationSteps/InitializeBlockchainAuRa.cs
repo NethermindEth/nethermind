@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -40,7 +41,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
     /// Got cyclic dependency. AuRaBlockFinalizationManager -> IAuraValidator -> AuraBlockProcessor -> AuraBlockFinalizationManager.
     /// </remarks>
     protected virtual void WireFinalizationBranchProcessor() =>
-        api.AuRaFinalizationManager.SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
+        api.Context.Resolve<IAuRaBlockFinalizationManager>().SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {

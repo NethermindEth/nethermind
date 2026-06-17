@@ -25,9 +25,9 @@ public class AuraMainProcessingModule(
     AuRaChainSpecEngineParameters chainSpecAuRa
 ) : Module, IMainProcessingModule
 {
-    protected override void Load(ContainerBuilder builder) => builder.AddSingleton<IAuRaValidator, AuRaNethermindApi, IWorldState, ITransactionProcessor>(CreateAuRaValidator);
+    protected override void Load(ContainerBuilder builder) => builder.AddSingleton<IAuRaValidator, AuRaNethermindApi, IWorldState, ITransactionProcessor, IAuRaBlockFinalizationManager>(CreateAuRaValidator);
 
-    private IAuRaValidator CreateAuRaValidator(AuRaNethermindApi api, IWorldState worldState, ITransactionProcessor transactionProcessor)
+    private IAuRaValidator CreateAuRaValidator(AuRaNethermindApi api, IWorldState worldState, ITransactionProcessor transactionProcessor, IAuRaBlockFinalizationManager finalizationManager)
     {
 
         IAuRaValidator validator = new AuRaValidatorFactory(
@@ -38,7 +38,7 @@ public class AuraMainProcessingModule(
                 envFactory.Create(),
                 api.ReceiptStorage,
                 api.ValidatorStore,
-                api.AuRaFinalizationManager,
+                finalizationManager,
                 new TxPoolSender(api.TxPool, new TxSealer(api.EngineSigner, api.Timestamper), api.NonceManager, api.EthereumEcdsa),
                 api.TxPool,
                 api.Config<IBlocksConfig>(),
